@@ -44,6 +44,7 @@ from .model_client import (
     update_model_config,
 )
 from .onboarding import run_onboarding_pipeline
+from .operation_bindings import assess_operation_bindings
 from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
 from .release_readiness import assess_ontology_release_readiness
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
@@ -332,6 +333,14 @@ def get_data_source_schema_drift(data_source_id: int) -> dict[str, object]:
 def get_data_source_semantic_coverage(data_source_id: int) -> dict[str, object]:
     try:
         return build_semantic_coverage(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/operation-bindings")
+def get_data_source_operation_bindings(data_source_id: int) -> dict[str, object]:
+    try:
+        return assess_operation_bindings(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

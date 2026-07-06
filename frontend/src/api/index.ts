@@ -10,6 +10,7 @@ import type {
   DataSourceReadiness,
   SchemaDriftResult,
   SemanticCoverageResult,
+  OperationBindingResult,
   OntologyDraftCreate,
   OntologyDetail,
   ReleaseReadinessResult,
@@ -120,6 +121,11 @@ export const dataSourceApi = {
   getSemanticCoverage: async (id: number): Promise<SemanticCoverageResult> => {
     const { data } = await api.get(`/data-sources/${id}/semantic-coverage`);
     return data as SemanticCoverageResult;
+  },
+
+  getOperationBindings: async (id: number): Promise<OperationBindingResult> => {
+    const { data } = await api.get(`/data-sources/${id}/operation-bindings`);
+    return data as OperationBindingResult;
   },
 
   createApi: async (dataSourceId: number, payload: SourceApiCreate): Promise<SourceApi> => {

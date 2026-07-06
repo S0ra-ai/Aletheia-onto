@@ -238,6 +238,35 @@ export interface SemanticCoverageResult {
   nextActions: string[];
 }
 
+export interface OperationBindingItem {
+  operationCode: string;
+  name: string;
+  method: string;
+  path: string;
+  semanticAction: string;
+  objectCode: string;
+  actionCode: string;
+  status: 'ready' | 'bound' | 'incomplete' | 'unbound' | 'invalid';
+  automationReady: boolean;
+  gaps: string[];
+}
+
+export interface OperationBindingResult {
+  dataSourceId: number;
+  name: string;
+  status: 'ready' | 'partial' | 'blocked';
+  summary: {
+    operations: number;
+    boundOperations: number;
+    readyOperations: number;
+    unboundOperations: number;
+    invalidActions: number;
+    blockedOperations: number;
+  };
+  items: OperationBindingItem[];
+  nextActions: string[];
+}
+
 // 元数据相关类型
 export interface ScanResult {
   tables: number;

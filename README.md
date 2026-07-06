@@ -39,6 +39,7 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /data-sources/{id}/scan`：扫描数据库元数据。
 - `GET /data-sources/{id}/readiness`：查看数据源接入准备度。
 - `GET /data-sources/{id}/semantic-coverage`：查看业务对象、映射、规则和 API 的语义覆盖度。
+- `GET /data-sources/{id}/operation-bindings`：校验传统业务系统 API 的语义动作是否绑定到本体对象并具备自动化条件。
 - `GET /data-sources/{id}/schema-drift`：对比实时数据库结构与最近扫描基线，分析结构漂移影响。
 - `GET /data-sources/{id}/kernel-package/download`：导出可安装的业务语义内核包。
 - `GET /industry-blueprints`：查看内置和自定义行业蓝图。

@@ -28,6 +28,7 @@ from ontology_platform.kernel_package import build_kernel_package, export_kernel
 from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
+from ontology_platform.operation_bindings import assess_operation_bindings
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.release_readiness import assess_ontology_release_readiness
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
@@ -346,6 +347,33 @@ def test_semantic_coverage_reports_object_rule_mapping_and_operation_readiness(t
     assert ready["summary"]["fullyCoveredObjects"] >= 1
     assert contract_ready["automationReady"] is True
     assert any(item["operationCode"] == "submit_contract" for item in contract_ready["operations"])
+
+
+def test_operation_binding_assessment_validates_semantic_actions_against_ontology_objects(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(platform_db, source.id, "archive_case", "归档案件", "POST", "/cases/{id}/archive", "case.archive")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+    bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "API 绑定验证")
+
+    bindings = assess_operation_bindings(platform_db, source.id)
+    submit = next(item for item in bindings["items"] if item["operationCode"] == "submit_contract")
+    archive = next(item for item in bindings["items"] if item["operationCode"] == "archive_case")
+
+    assert bindings["status"] == "partial"
+    assert bindings["summary"]["operations"] == 2
+    assert bindings["summary"]["readyOperations"] == 1
+    assert bindings["summary"]["unboundOperations"] == 1
+    assert submit["status"] == "ready"
+    assert submit["automationReady"] is True
+    assert archive["status"] == "unbound"
+    assert "未绑定到当前数据源本体对象" in archive["gaps"][0]
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

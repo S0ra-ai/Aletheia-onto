@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
 import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject } from '../../types';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -17,6 +17,7 @@ const DataSourceDetail: React.FC = () => {
   const [readiness, setReadiness] = useState<DataSourceReadiness | null>(null);
   const [schemaDrift, setSchemaDrift] = useState<SchemaDriftResult | null>(null);
   const [semanticCoverage, setSemanticCoverage] = useState<SemanticCoverageResult | null>(null);
+  const [operationBindings, setOperationBindings] = useState<OperationBindingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [driftLoading, setDriftLoading] = useState(false);
@@ -31,16 +32,18 @@ const DataSourceDetail: React.FC = () => {
     if (!id) return;
     setLoading(true);
     try {
-      const [tablesData, apisData, readinessData, coverageData] = await Promise.all([
+      const [tablesData, apisData, readinessData, coverageData, bindingData] = await Promise.all([
         dataSourceApi.getTables(parseInt(id)),
         dataSourceApi.getApis(parseInt(id)),
         dataSourceApi.getReadiness(parseInt(id)),
         dataSourceApi.getSemanticCoverage(parseInt(id)),
+        dataSourceApi.getOperationBindings(parseInt(id)),
       ]);
       setTables(tablesData);
       setApis(apisData);
       setReadiness(readinessData);
       setSemanticCoverage(coverageData);
+      setOperationBindings(bindingData);
       // 获取数据源基本信息（从列表中获取）
       const sources = await dataSourceApi.list();
       const source = sources.find(s => s.id === parseInt(id));
@@ -147,6 +150,12 @@ const DataSourceDetail: React.FC = () => {
     },
   ];
 
+  function bindingColor(status?: string) {
+    if (status === 'ready') return 'green';
+    if (status === 'partial' || status === 'incomplete' || status === 'bound') return 'orange';
+    return 'red';
+  }
+
   const apiColumns = [
     {
       title: '操作码',
@@ -178,6 +187,34 @@ const DataSourceDetail: React.FC = () => {
       dataIndex: 'semanticAction',
       key: 'semanticAction',
       render: (action: string) => action || '-',
+    },
+  ];
+
+  const operationBindingColumns = [
+    ...apiColumns,
+    {
+      title: '绑定对象',
+      dataIndex: 'objectCode',
+      key: 'objectCode',
+      render: (objectCode: string) => objectCode || '-',
+    },
+    {
+      title: '绑定状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => <Tag color={bindingColor(status)}>{status}</Tag>,
+    },
+    {
+      title: '自动化',
+      dataIndex: 'automationReady',
+      key: 'automationReady',
+      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? '就绪' : '待补齐'}</Tag>,
+    },
+    {
+      title: '缺口',
+      dataIndex: 'gaps',
+      key: 'gaps',
+      render: (gaps: string[]) => gaps.length ? gaps.join('；') : '-',
     },
   ];
 
@@ -570,10 +607,33 @@ const DataSourceDetail: React.FC = () => {
                 导入 OpenAPI
               </Button>
             </div>
+            {operationBindings && (
+              <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+                <Descriptions column={4}>
+                  <Descriptions.Item label="状态">
+                    <Tag color={bindingColor(operationBindings.status)}>{operationBindings.status}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="API">{operationBindings.summary.operations}</Descriptions.Item>
+                  <Descriptions.Item label="已绑定">{operationBindings.summary.boundOperations}</Descriptions.Item>
+                  <Descriptions.Item label="自动化就绪">{operationBindings.summary.readyOperations}</Descriptions.Item>
+                  <Descriptions.Item label="未绑定">{operationBindings.summary.unboundOperations}</Descriptions.Item>
+                  <Descriptions.Item label="格式错误">{operationBindings.summary.invalidActions}</Descriptions.Item>
+                  <Descriptions.Item label="阻断">{operationBindings.summary.blockedOperations}</Descriptions.Item>
+                </Descriptions>
+                {operationBindings.nextActions.length > 0 && (
+                  <Alert
+                    style={{ marginTop: 16 }}
+                    type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
+                    message="绑定建议"
+                    description={operationBindings.nextActions.join('；')}
+                  />
+                )}
+              </div>
+            )}
             <Table
-              columns={apiColumns}
-              dataSource={apis}
-              rowKey="id"
+              columns={operationBindingColumns}
+              dataSource={operationBindings?.items || []}
+              rowKey="operationCode"
             />
           </TabPane>
           <TabPane tab="语义覆盖" key="coverage">
