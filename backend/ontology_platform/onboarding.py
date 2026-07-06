@@ -5,6 +5,7 @@ from typing import Any
 
 from .metadata import (
     assess_data_source_readiness,
+    check_business_api_gateway,
     check_data_source_connection,
     import_openapi_operations,
     import_openapi_operations_from_url,
@@ -41,12 +42,21 @@ def run_onboarding_pipeline(
         return {
             "dataSource": source.__dict__,
             "connection": connection,
+            "apiGateway": None,
             "scan": None,
             "ontology": None,
             "readiness": readiness,
             "steps": steps,
             "status": "blocked",
         }
+
+    api_gateway = None
+    if api_base_url or "api" in system_category.lower():
+        api_gateway = check_business_api_gateway(platform_db, source.id)
+        gateway_status = "completed" if api_gateway["reachable"] else "failed"
+        steps.append(_step("test_api_gateway", gateway_status, api_gateway["message"], api_gateway))
+    else:
+        steps.append(_step("test_api_gateway", "skipped", "系统分类未声明 API 能力，已跳过业务网关测试。", {}))
 
     scan = scan_data_source(platform_db, source.id)
     steps.append(_step("scan_metadata", "completed", f"已扫描 {len(scan['tables'])} 张表。", scan))
@@ -80,6 +90,7 @@ def run_onboarding_pipeline(
     return {
         "dataSource": source.__dict__,
         "connection": connection,
+        "apiGateway": api_gateway,
         "scan": scan,
         "apiImport": api_import,
         "ontology": ontology,

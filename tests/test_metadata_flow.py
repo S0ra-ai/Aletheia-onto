@@ -300,6 +300,7 @@ def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_read
     )
 
     assert result["connection"]["reachable"] is True
+    assert result["apiGateway"]["status"] == "not_configured"
     assert result["scan"]["tables"]
     assert result["ontology"]["blueprint"]["id"] == "contract-management"
     assert result["readiness"]["summary"]["tables"] == 4
@@ -307,6 +308,7 @@ def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_read
     assert [step["code"] for step in result["steps"]] == [
         "register_data_source",
         "test_connection",
+        "test_api_gateway",
         "scan_metadata",
         "import_openapi",
         "generate_ontology",
@@ -327,7 +329,6 @@ def test_onboarding_pipeline_imports_openapi_operations(tmp_path: Path) -> None:
         str(legacy_db),
         domain="合同管理",
         system_category="database+api",
-        api_base_url="https://legacy.example/api",
         blueprint_id="contract-management",
         openapi_spec={
             "openapi": "3.0.0",
