@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs } from 'antd';
+import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined } from '@ant-design/icons';
 import { semanticApi, automationApi } from '../../api';
-import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult } from '../../types';
+import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -11,7 +11,9 @@ const SemanticService: React.FC = () => {
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);
   const [assessResult, setAssessResult] = useState<InstanceAssessResult | null>(null);
   const [preflightResult, setPreflightResult] = useState<OperationPreflightResult | null>(null);
+  const [executeResult, setExecuteResult] = useState<OperationExecuteResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [operationForm] = Form.useForm();
 
   const handleExplain = async (values: { objectCode: string; instanceId: string; ontologyId?: number }) => {
     setLoading(true);
@@ -40,10 +42,37 @@ const SemanticService: React.FC = () => {
   const handlePreflight = async (values: { operationCode: string; ontologyId: number; dataSourceId: number; instanceId: string; objectCode?: string }) => {
     setLoading(true);
     try {
-      const result = await automationApi.preflight(values.operationCode, values);
+      const result = await automationApi.preflight(values.operationCode, {
+        ontologyId: Number(values.ontologyId),
+        dataSourceId: Number(values.dataSourceId),
+        instanceId: values.instanceId,
+        objectCode: values.objectCode,
+      });
       setPreflightResult(result);
     } catch (error) {
       message.error('操作预检失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExecute = async () => {
+    const values = await operationForm.validateFields();
+    setLoading(true);
+    try {
+      const payload = values.payloadJson ? JSON.parse(values.payloadJson) : {};
+      const result = await automationApi.execute(values.operationCode, {
+        ontologyId: Number(values.ontologyId),
+        dataSourceId: Number(values.dataSourceId),
+        instanceId: values.instanceId,
+        objectCode: values.objectCode,
+        actor: values.actor || 'console_user',
+        dryRun: values.dryRun !== false,
+        payload,
+      });
+      setExecuteResult(result);
+    } catch (error) {
+      message.error(error instanceof SyntaxError ? '请求载荷不是合法 JSON' : '操作执行失败');
     } finally {
       setLoading(false);
     }
@@ -147,7 +176,7 @@ const SemanticService: React.FC = () => {
 
         <TabPane tab="操作预检" key="preflight">
           <Card>
-            <Form layout="vertical" onFinish={handlePreflight}>
+            <Form form={operationForm} layout="vertical" onFinish={handlePreflight} initialValues={{ dryRun: true }}>
               <Form.Item name="operationCode" label="操作码" rules={[{ required: true }]}>
                 <Input placeholder="例如：submit_contract" />
               </Form.Item>
@@ -163,9 +192,21 @@ const SemanticService: React.FC = () => {
               <Form.Item name="objectCode" label="业务对象编码">
                 <Input placeholder="可选，例如：contract" />
               </Form.Item>
+              <Form.Item name="actor" label="操作者">
+                <Input placeholder="例如：业务控制台" />
+              </Form.Item>
+              <Form.Item name="payloadJson" label="执行载荷 JSON">
+                <Input.TextArea rows={4} placeholder='例如：{"comment":"自动提交"}' />
+              </Form.Item>
+              <Form.Item name="dryRun" label="仅生成执行计划" valuePropName="checked">
+                <Switch />
+              </Form.Item>
               <Form.Item>
-                <Button type="primary" icon={<RocketOutlined />} htmlType="submit" loading={loading}>
+                <Button type="primary" icon={<RocketOutlined />} htmlType="submit" loading={loading} style={{ marginRight: 8 }}>
                   预检
+                </Button>
+                <Button icon={<RocketOutlined />} onClick={handleExecute} loading={loading}>
+                  执行
                 </Button>
               </Form.Item>
             </Form>
@@ -197,6 +238,32 @@ const SemanticService: React.FC = () => {
                 <Divider />
                 <Title level={5}>建议</Title>
                 <Alert message={preflightResult.recommendation} type="info" />
+              </Card>
+            )}
+
+            {executeResult && (
+              <Card style={{ marginTop: 16 }} type="inner" title="执行结果">
+                <Descriptions column={2}>
+                  <Descriptions.Item label="操作码">{executeResult.operationCode}</Descriptions.Item>
+                  <Descriptions.Item label="实例ID">{executeResult.instanceId}</Descriptions.Item>
+                  <Descriptions.Item label="状态">
+                    <Tag color={executeResult.executed ? 'green' : executeResult.status === 'blocked_by_semantic_kernel' ? 'red' : 'blue'}>
+                      {executeResult.status}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="决策">{executeResult.decision}</Descriptions.Item>
+                </Descriptions>
+                <Divider />
+                <Alert message={executeResult.message} type={executeResult.status === 'blocked_by_semantic_kernel' ? 'error' : 'success'} />
+                {executeResult.execution && (
+                  <>
+                    <Divider />
+                    <Title level={5}>执行计划</Title>
+                    <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8 }}>
+                      {JSON.stringify(executeResult.execution, null, 2)}
+                    </pre>
+                  </>
+                )}
               </Card>
             )}
           </Card>

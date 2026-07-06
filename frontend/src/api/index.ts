@@ -11,6 +11,7 @@ import type {
   InstanceExplainResult,
   InstanceAssessResult,
   OperationPreflightResult,
+  OperationExecuteResult,
   AuditLogItem,
   ModelInvocationItem,
   ModelStatus,
@@ -206,6 +207,37 @@ export const automationApi = {
       })),
       explanation: data.decision?.recommendation ?? '',
       recommendation: data.nextAction ?? data.decision?.recommendation ?? '',
+    };
+  },
+
+  execute: async (
+    operationCode: string,
+    payload: {
+      ontologyId: number;
+      dataSourceId: number;
+      instanceId: string;
+      objectCode?: string;
+      payload?: Record<string, unknown>;
+      actor?: string;
+      dryRun?: boolean;
+    }
+  ): Promise<OperationExecuteResult> => {
+    const { data } = await api.post(`/automation/operations/${operationCode}/execute`, payload);
+    return {
+      operationCode: data.preflight?.operation?.operationCode ?? operationCode,
+      instanceId: data.preflight?.target?.instanceId ?? payload.instanceId,
+      decision: (data.preflight?.decision?.status ?? 'review') as 'approved' | 'review' | 'blocked',
+      executed: Boolean(data.executed),
+      status: data.status,
+      message: data.message,
+      recommendation: data.preflight?.nextAction ?? data.preflight?.decision?.recommendation ?? '',
+      execution: data.execution ?? null,
+      rulesHit: (data.preflight?.ruleResults || []).map((rule: any) => ({
+        ruleCode: rule.ruleCode,
+        ruleName: rule.ruleName,
+        passed: rule.passed,
+        message: rule.explanation,
+      })),
     };
   },
 };

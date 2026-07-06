@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.adapters import get_adapter
-from ontology_platform.automation import preflight_operation
+from ontology_platform.automation import execute_operation, preflight_operation
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,
@@ -60,6 +60,44 @@ def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
     preflight = preflight_operation(platform_db, ontology["id"], source.id, "submit_contract", "3")
     assert preflight["allowed"] is False
     assert preflight["nextAction"] == "route_to_human_review"
+
+
+def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    ready = execute_operation(
+        platform_db,
+        ontology["id"],
+        source.id,
+        "submit_contract",
+        "1",
+        payload={"comment": "自动提交"},
+        actor="测试用户",
+    )
+    assert ready["status"] == "ready_for_execution"
+    assert ready["executed"] is False
+    assert ready["preflight"]["allowed"] is True
+    assert ready["execution"]["path"] == "/contracts/1/submit"
+    assert ready["execution"]["payload"] == {"comment": "自动提交"}
+
+    blocked = execute_operation(platform_db, ontology["id"], source.id, "submit_contract", "3", actor="测试用户")
+    assert blocked["status"] == "blocked_by_semantic_kernel"
+    assert blocked["executed"] is False
+    assert blocked["preflight"]["allowed"] is False
+
+    with connect(platform_db) as conn:
+        audit_count = conn.execute(
+            "select count(*) from audit_log where action = 'execute_operation'"
+        ).fetchone()[0]
+    assert audit_count == 2
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

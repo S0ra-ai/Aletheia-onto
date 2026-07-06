@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from .automation import preflight_operation
+from .automation import execute_operation, preflight_operation
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
 from .governance import (
     bulk_review_semantic_mappings,
@@ -89,6 +89,13 @@ class OperationPreflightCreate(BaseModel):
     dataSourceId: int
     instanceId: str
     objectCode: Optional[str] = None
+
+
+class OperationExecuteCreate(OperationPreflightCreate):
+    payload: dict[str, object] = Field(default_factory=dict)
+    actor: str = "semantic_kernel"
+    dryRun: bool = True
+    timeoutSeconds: float = 10
 
 
 class MappingReviewCreate(BaseModel):
@@ -390,6 +397,25 @@ def preflight_business_operation(operation_code: str, payload: OperationPrefligh
         )
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/automation/operations/{operation_code}/execute")
+def execute_business_operation(operation_code: str, payload: OperationExecuteCreate) -> dict[str, object]:
+    try:
+        return execute_operation(
+            DEFAULT_PLATFORM_DB,
+            payload.ontologyId,
+            payload.dataSourceId,
+            operation_code,
+            payload.instanceId,
+            payload.objectCode,
+            payload.payload,
+            payload.actor,
+            payload.dryRun,
+            payload.timeoutSeconds,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/model/status")

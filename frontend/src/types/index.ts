@@ -195,6 +195,25 @@ export interface OperationPreflightResult {
   recommendation: string;
 }
 
+export interface OperationExecuteResult {
+  operationCode: string;
+  instanceId: string;
+  decision: 'approved' | 'review' | 'blocked';
+  executed: boolean;
+  status: string;
+  message: string;
+  recommendation: string;
+  execution?: {
+    method: string;
+    path: string;
+    semanticAction: string;
+    payload: Record<string, unknown>;
+    dryRun: boolean;
+    remote?: unknown;
+  } | null;
+  rulesHit: RuleHit[];
+}
+
 // 治理审计相关类型
 export interface AuditLogItem {
   actor: string;
