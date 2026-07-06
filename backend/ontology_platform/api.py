@@ -20,7 +20,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .industry_blueprints import list_industry_blueprints
-from .metadata import assess_data_source_readiness, check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from .metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import (
     OpenRouterClient,
     OpenRouterConfig,
@@ -83,6 +83,10 @@ class SourceApiCreate(BaseModel):
     semanticAction: str = ""
     requestSchema: dict[str, object] = Field(default_factory=dict)
     responseSchema: dict[str, object] = Field(default_factory=dict)
+
+
+class OpenApiImportCreate(BaseModel):
+    spec: dict[str, object]
 
 
 class OntologyDraftCreate(BaseModel):
@@ -266,6 +270,14 @@ def create_source_api(data_source_id: int, payload: SourceApiCreate) -> dict[str
 @app.get("/data-sources/{data_source_id}/apis")
 def get_source_apis(data_source_id: int) -> dict[str, object]:
     return {"apis": list_source_apis(DEFAULT_PLATFORM_DB, data_source_id)}
+
+
+@app.post("/data-sources/{data_source_id}/apis/import-openapi")
+def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> dict[str, object]:
+    try:
+        return import_openapi_operations(DEFAULT_PLATFORM_DB, data_source_id, payload.spec)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/data-sources/{data_source_id}/readiness")

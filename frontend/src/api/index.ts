@@ -112,6 +112,15 @@ export const dataSourceApi = {
     const { data } = await api.post(`/data-sources/${dataSourceId}/apis`, payload);
     return normalizeSourceApi(data);
   },
+
+  importOpenApi: async (dataSourceId: number, spec: Record<string, unknown>): Promise<{ imported: SourceApi[]; skipped: unknown[]; count: number }> => {
+    const { data } = await api.post(`/data-sources/${dataSourceId}/apis/import-openapi`, { spec });
+    return {
+      imported: (data.imported || []).map(normalizeSourceApi),
+      skipped: data.skipped || [],
+      count: data.count || 0,
+    };
+  },
 };
 
 export const onboardingApi = {

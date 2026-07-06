@@ -22,7 +22,7 @@ from ontology_platform.governance import (
     upsert_business_rule,
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
-from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
@@ -192,6 +192,55 @@ def test_onboarding_pipeline_stops_when_connection_fails(tmp_path: Path) -> None
     assert result["scan"] is None
     assert result["ontology"] is None
     assert [step["code"] for step in result["steps"]] == ["register_data_source", "test_connection"]
+
+
+def test_openapi_import_registers_business_operations(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+    spec = {
+        "openapi": "3.0.0",
+        "paths": {
+            "/contracts/{id}/submit": {
+                "post": {
+                    "operationId": "submit_contract",
+                    "summary": "提交合同审批",
+                    "x-semantic-action": "contract.submit_for_approval",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {"type": "object", "properties": {"comment": {"type": "string"}}}
+                            }
+                        }
+                    },
+                    "responses": {"200": {"content": {"application/json": {"schema": {"type": "object"}}}}},
+                }
+            },
+            "/contracts/{id}/archive": {
+                "post": {
+                    "summary": "归档合同",
+                    "responses": {"202": {"description": "accepted"}},
+                }
+            },
+        },
+    }
+
+    result = import_openapi_operations(platform_db, source.id, spec)
+    apis = list_source_apis(platform_db, source.id)
+
+    assert result["count"] == 2
+    assert {api["operation_code"] for api in apis} == {"submit_contract", "post_contracts_id_archive"}
+    submit = next(api for api in apis if api["operation_code"] == "submit_contract")
+    archive = next(api for api in apis if api["operation_code"] == "post_contracts_id_archive")
+    assert submit["semantic_action"] == "contract.submit_for_approval"
+    assert json.loads(submit["request_schema"])["properties"]["comment"]["type"] == "string"
+    assert archive["semantic_action"].startswith("archive.")
+
+    readiness = assess_data_source_readiness(platform_db, source.id)
+    assert readiness["summary"]["apis"] == 2
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

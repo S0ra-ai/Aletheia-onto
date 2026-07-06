@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert } from 'antd';
-import { ArrowLeftOutlined, ScanOutlined, PlusOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
+import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined } from '@ant-design/icons';
 import { dataSourceApi } from '../../api';
 import type { DataSource, SourceTable, SourceApi, DataSourceReadiness } from '../../types';
 
@@ -17,6 +17,9 @@ const DataSourceDetail: React.FC = () => {
   const [readiness, setReadiness] = useState<DataSourceReadiness | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [openApiModalVisible, setOpenApiModalVisible] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [openApiForm] = Form.useForm();
 
   const fetchData = async () => {
     if (!id) return;
@@ -56,6 +59,23 @@ const DataSourceDetail: React.FC = () => {
       message.error('扫描失败');
     } finally {
       setScanLoading(false);
+    }
+  };
+
+  const handleImportOpenApi = async (values: { specJson: string }) => {
+    if (!id) return;
+    setImportLoading(true);
+    try {
+      const spec = JSON.parse(values.specJson);
+      const result = await dataSourceApi.importOpenApi(parseInt(id), spec);
+      message.success(`已导入 ${result.count} 个业务 API`);
+      setOpenApiModalVisible(false);
+      openApiForm.resetFields();
+      fetchData();
+    } catch (error) {
+      message.error(error instanceof SyntaxError ? 'OpenAPI JSON 格式不正确' : 'OpenAPI 导入失败');
+    } finally {
+      setImportLoading(false);
     }
   };
 
@@ -243,6 +263,13 @@ const DataSourceDetail: React.FC = () => {
               <Button icon={<PlusOutlined />}>
                 新增API
               </Button>
+              <Button
+                icon={<ImportOutlined />}
+                style={{ marginLeft: 8 }}
+                onClick={() => setOpenApiModalVisible(true)}
+              >
+                导入 OpenAPI
+              </Button>
             </div>
             <Table
               columns={apiColumns}
@@ -260,6 +287,31 @@ const DataSourceDetail: React.FC = () => {
           </TabPane>
         </Tabs>
       </Card>
+
+      <Modal
+        title="导入 OpenAPI"
+        open={openApiModalVisible}
+        onCancel={() => {
+          setOpenApiModalVisible(false);
+          openApiForm.resetFields();
+        }}
+        onOk={() => openApiForm.submit()}
+        confirmLoading={importLoading}
+        width={760}
+      >
+        <Form form={openApiForm} layout="vertical" onFinish={handleImportOpenApi}>
+          <Form.Item
+            name="specJson"
+            label="OpenAPI JSON"
+            rules={[{ required: true, message: '请粘贴 OpenAPI JSON 文档' }]}
+          >
+            <Input.TextArea
+              rows={14}
+              placeholder='{"openapi":"3.0.0","paths":{"/contracts/{id}/submit":{"post":{"operationId":"submit_contract","summary":"提交合同审批"}}}}'
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

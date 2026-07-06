@@ -139,6 +139,49 @@ def list_source_apis(platform_db: Path | str, data_source_id: int) -> list[dict[
         return [dict(row) for row in rows]
 
 
+def import_openapi_operations(platform_db: Path | str, data_source_id: int, spec: dict[str, Any]) -> dict[str, Any]:
+    paths = spec.get("paths")
+    if not isinstance(paths, dict):
+        raise ValueError("OpenAPI 文档缺少 paths 对象")
+    imported = []
+    skipped = []
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        for method, operation in path_item.items():
+            method_upper = method.upper()
+            if method_upper not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+                continue
+            if not isinstance(operation, dict):
+                skipped.append({"path": path, "method": method_upper, "reason": "operation 不是对象"})
+                continue
+            operation_code = _operation_code(path, method_upper, operation)
+            source_api = register_source_api(
+                platform_db,
+                data_source_id,
+                operation_code,
+                operation.get("summary") or operation.get("description") or operation_code,
+                method_upper,
+                path,
+                operation.get("x-semantic-action") or _semantic_action(operation_code, path),
+                _request_schema(operation),
+                _response_schema(operation),
+            )
+            imported.append(source_api.__dict__)
+    with connect(platform_db) as conn:
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                "system",
+                "import_openapi_operations",
+                "data_source",
+                str(data_source_id),
+                json.dumps({"imported": len(imported), "skipped": len(skipped)}, ensure_ascii=False),
+            ),
+        )
+    return {"imported": imported, "skipped": skipped, "count": len(imported)}
+
+
 def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
@@ -371,6 +414,57 @@ def _mapping_count(rows: list[sqlite3.Row], status: str) -> int:
         if row["status"] == status:
             return int(row["total"])
     return 0
+
+
+def _operation_code(path: str, method: str, operation: dict[str, Any]) -> str:
+    raw = operation.get("operationId")
+    if not raw:
+        raw = f"{method.lower()}_{path.strip('/') or 'root'}"
+    value = "".join(char if char.isalnum() else "_" for char in str(raw))
+    return "_".join(part for part in value.lower().split("_") if part)
+
+
+def _semantic_action(operation_code: str, path: str) -> str:
+    path_parts = [part.strip("{}").replace("-", "_") for part in path.strip("/").split("/") if part and not part.startswith("{")]
+    object_code = path_parts[-1] if path_parts else operation_code.split("_", 1)[0]
+    object_code = object_code[:-1] if object_code.endswith("s") else object_code
+    action = operation_code
+    for prefix in ("get_", "post_", "put_", "patch_", "delete_"):
+        if action.startswith(prefix):
+            action = action.removeprefix(prefix)
+            break
+    return f"{object_code}.{action}"
+
+
+def _request_schema(operation: dict[str, Any]) -> dict[str, Any]:
+    request_body = operation.get("requestBody") or {}
+    content = request_body.get("content") if isinstance(request_body, dict) else None
+    if isinstance(content, dict):
+        for media_type in ("application/json", "application/*+json"):
+            schema = content.get(media_type, {}).get("schema") if isinstance(content.get(media_type), dict) else None
+            if schema:
+                return schema
+    parameters = operation.get("parameters")
+    if isinstance(parameters, list):
+        return {"parameters": parameters}
+    return {}
+
+
+def _response_schema(operation: dict[str, Any]) -> dict[str, Any]:
+    responses = operation.get("responses")
+    if not isinstance(responses, dict):
+        return {}
+    for status in ("200", "201", "202", "default"):
+        response = responses.get(status)
+        if not isinstance(response, dict):
+            continue
+        content = response.get("content")
+        if not isinstance(content, dict):
+            continue
+        json_media = content.get("application/json")
+        if isinstance(json_media, dict) and isinstance(json_media.get("schema"), dict):
+            return json_media["schema"]
+    return {}
 
 
 def _row_to_source_api(row: sqlite3.Row) -> SourceApi:
