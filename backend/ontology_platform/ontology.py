@@ -200,8 +200,10 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
 
 
 def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
-    existing = conn.execute("select id from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
+    existing = conn.execute("select id, status from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
     if existing:
+        if existing["status"] == "published":
+            raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
         ontology_id = int(existing["id"])
         conn.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
         conn.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))

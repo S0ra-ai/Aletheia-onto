@@ -12,6 +12,7 @@ from ontology_platform.automation import preflight_operation
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,
+    derive_ontology_version,
     list_business_rules,
     list_semantic_mappings,
     publish_ontology,
@@ -108,6 +109,13 @@ def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
     assert published["mappingCounts"]["confirmed"] == len(mappings["items"])
 
     try:
+        generate_ontology_draft(platform_db, source.id)
+    except ValueError as error:
+        assert "本体版本已发布" in str(error)
+    else:
+        raise AssertionError("已发布本体版本不应被重新生成草案覆盖")
+
+    try:
         review_semantic_mapping(platform_db, first_mapping_id, "rejected", "业务专家", "发布后尝试修改")
     except ValueError as error:
         assert "已发布本体" in str(error)
@@ -131,6 +139,37 @@ def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
         assert "已发布本体" in str(error)
     else:
         raise AssertionError("发布后的规则不应允许直接修改")
+
+    derived = derive_ontology_version(platform_db, ontology["id"], "0.2.0", "架构师")
+    assert derived["status"] == "draft"
+    assert derived["version"] == "0.2.0"
+    assert derived["sourceOntologyId"] == ontology["id"]
+    assert derived["mappingCount"] == len(mappings["items"])
+
+    derived_mappings = list_semantic_mappings(platform_db, derived["id"])
+    assert {item["status"] for item in derived_mappings["items"]} == {"pending"}
+    assert all("需重新审核" in item["evidence"] for item in derived_mappings["items"])
+
+    derived_rule = upsert_business_rule(
+        platform_db,
+        derived["id"],
+        "contract_title_required",
+        "合同标题不能为空",
+        "validation",
+        "contract",
+        "title != null",
+        "blocking",
+        "合同标题不能为空。",
+        "规则管理员",
+    )
+    assert derived_rule["code"] == "contract_title_required"
+
+    try:
+        derive_ontology_version(platform_db, derived["id"], "0.3.0", "架构师")
+    except ValueError as error:
+        assert "已发布本体" in str(error)
+    else:
+        raise AssertionError("不应从未发布草案派生新版本")
 
 
 def test_scan_records_column_profile(tmp_path: Path) -> None:

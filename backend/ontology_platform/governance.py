@@ -153,6 +153,58 @@ def publish_ontology(platform_db: Path | str, ontology_id: int, publisher: str) 
         return _ontology_publication_summary(conn, ontology_id)
 
 
+def derive_ontology_version(
+    platform_db: Path | str,
+    source_ontology_id: int,
+    version: str,
+    actor: str,
+) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        source = _require_ontology(conn, source_ontology_id)
+        if source["status"] != "published":
+            raise ValueError("只能从已发布本体派生新版本。")
+        existing = conn.execute(
+            "select id from ontology where name = ? and version = ?",
+            (source["name"], version),
+        ).fetchone()
+        if existing is not None:
+            raise ValueError(f"本体版本已存在: {source['name']} {version}")
+
+        conn.execute(
+            "insert into ontology (name, domain, version, status) values (?, ?, ?, 'draft')",
+            (source["name"], source["domain"], version),
+        )
+        new_ontology_id = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+
+        object_id_map: dict[int, int] = {}
+        attribute_id_map: dict[int, int] = {}
+        _copy_business_objects(conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map)
+        _copy_business_relations(conn, source_ontology_id, new_ontology_id, object_id_map)
+        mapping_count = _copy_semantic_mappings(conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map, source["version"])
+        rule_count = _copy_business_rules(conn, source_ontology_id, new_ontology_id)
+
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                actor,
+                "derive_ontology_version",
+                "ontology",
+                str(source_ontology_id),
+                json.dumps(
+                    {
+                        "newOntologyId": new_ontology_id,
+                        "sourceVersion": source["version"],
+                        "newVersion": version,
+                        "mappings": mapping_count,
+                        "rules": rule_count,
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+        return _ontology_derivation_summary(conn, new_ontology_id, source_ontology_id, mapping_count, rule_count)
+
+
 def list_business_rules(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
@@ -272,3 +324,188 @@ def _ontology_publication_summary(conn: Any, ontology_id: int) -> dict[str, Any]
         "mappingCounts": {row["status"]: row["count"] for row in mapping_counts},
     }
 
+
+def _copy_business_objects(
+    conn: Any,
+    source_ontology_id: int,
+    new_ontology_id: int,
+    object_id_map: dict[int, int],
+    attribute_id_map: dict[int, int],
+) -> None:
+    objects = conn.execute(
+        """
+        select *
+        from business_object
+        where ontology_id = ?
+        order by id
+        """,
+        (source_ontology_id,),
+    ).fetchall()
+    for business_object in objects:
+        conn.execute(
+            """
+            insert into business_object (
+                ontology_id, code, name, description, source_table_id, status
+            )
+            values (?, ?, ?, ?, ?, 'draft')
+            """,
+            (
+                new_ontology_id,
+                business_object["code"],
+                business_object["name"],
+                business_object["description"],
+                business_object["source_table_id"],
+            ),
+        )
+        new_object_id = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+        object_id_map[business_object["id"]] = new_object_id
+
+        attributes = conn.execute(
+            "select * from business_attribute where object_id = ? order by id",
+            (business_object["id"],),
+        ).fetchall()
+        for attribute in attributes:
+            conn.execute(
+                """
+                insert into business_attribute (
+                    object_id, code, name, data_type, required, source_column_id
+                )
+                values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_object_id,
+                    attribute["code"],
+                    attribute["name"],
+                    attribute["data_type"],
+                    attribute["required"],
+                    attribute["source_column_id"],
+                ),
+            )
+            attribute_id_map[attribute["id"]] = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+
+
+def _copy_business_relations(
+    conn: Any,
+    source_ontology_id: int,
+    new_ontology_id: int,
+    object_id_map: dict[int, int],
+) -> None:
+    relations = conn.execute(
+        "select * from business_relation where ontology_id = ? order by id",
+        (source_ontology_id,),
+    ).fetchall()
+    for relation in relations:
+        conn.execute(
+            """
+            insert into business_relation (
+                ontology_id, source_object_id, target_object_id, code, name,
+                relation_type, source_foreign_key_id
+            )
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_ontology_id,
+                object_id_map[relation["source_object_id"]],
+                object_id_map[relation["target_object_id"]],
+                relation["code"],
+                relation["name"],
+                relation["relation_type"],
+                relation["source_foreign_key_id"],
+            ),
+        )
+
+
+def _copy_semantic_mappings(
+    conn: Any,
+    source_ontology_id: int,
+    new_ontology_id: int,
+    object_id_map: dict[int, int],
+    attribute_id_map: dict[int, int],
+    source_version: str,
+) -> int:
+    mappings = conn.execute(
+        "select * from semantic_mapping where ontology_id = ? order by id",
+        (source_ontology_id,),
+    ).fetchall()
+    for mapping in mappings:
+        conn.execute(
+            """
+            insert into semantic_mapping (
+                ontology_id, mapping_type, source_ref, target_ref, confidence,
+                status, evidence
+            )
+            values (?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (
+                new_ontology_id,
+                mapping["mapping_type"],
+                mapping["source_ref"],
+                _remap_mapping_target(mapping["target_ref"], object_id_map, attribute_id_map),
+                mapping["confidence"],
+                _append_review_note(mapping["evidence"], f"由已发布版本 {source_version} 派生，需重新审核。"),
+            ),
+        )
+    return len(mappings)
+
+
+def _copy_business_rules(conn: Any, source_ontology_id: int, new_ontology_id: int) -> int:
+    rules = conn.execute(
+        "select * from business_rule where ontology_id = ? order by id",
+        (source_ontology_id,),
+    ).fetchall()
+    for rule in rules:
+        conn.execute(
+            """
+            insert into business_rule (
+                ontology_id, code, name, rule_type, scope_object_code,
+                expression, severity, natural_language, status
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_ontology_id,
+                rule["code"],
+                rule["name"],
+                rule["rule_type"],
+                rule["scope_object_code"],
+                rule["expression"],
+                rule["severity"],
+                rule["natural_language"],
+                rule["status"],
+            ),
+        )
+    return len(rules)
+
+
+def _remap_mapping_target(target_ref: str, object_id_map: dict[int, int], attribute_id_map: dict[int, int]) -> str:
+    remapped = target_ref
+    for old_id, new_id in object_id_map.items():
+        remapped = remapped.replace(f"business_object:{old_id}", f"business_object:{new_id}")
+    for old_id, new_id in attribute_id_map.items():
+        remapped = remapped.replace(f"attribute:{old_id}", f"attribute:{new_id}")
+    return remapped
+
+
+def _ontology_derivation_summary(
+    conn: Any,
+    ontology_id: int,
+    source_ontology_id: int,
+    mapping_count: int,
+    rule_count: int,
+) -> dict[str, Any]:
+    ontology = _require_ontology(conn, ontology_id)
+    object_count = conn.execute(
+        "select count(*) as count from business_object where ontology_id = ?",
+        (ontology_id,),
+    ).fetchone()["count"]
+    return {
+        "id": ontology["id"],
+        "name": ontology["name"],
+        "domain": ontology["domain"],
+        "version": ontology["version"],
+        "status": ontology["status"],
+        "sourceOntologyId": source_ontology_id,
+        "objectCount": object_count,
+        "mappingCount": mapping_count,
+        "ruleCount": rule_count,
+    }

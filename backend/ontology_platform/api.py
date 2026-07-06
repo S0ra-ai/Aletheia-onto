@@ -11,6 +11,7 @@ from .automation import preflight_operation
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
 from .governance import (
     bulk_review_semantic_mappings,
+    derive_ontology_version,
     list_business_rules,
     list_semantic_mappings,
     publish_ontology,
@@ -84,6 +85,11 @@ class BulkMappingReviewCreate(BaseModel):
 
 class OntologyPublishCreate(BaseModel):
     publisher: str = "system"
+
+
+class OntologyDeriveCreate(BaseModel):
+    version: str
+    actor: str = "system"
 
 
 class BusinessRuleCreate(BaseModel):
@@ -265,6 +271,14 @@ def review_ontology_mappings(ontology_id: int, payload: BulkMappingReviewCreate)
 def publish_ontology_version(ontology_id: int, payload: OntologyPublishCreate) -> dict[str, object]:
     try:
         return publish_ontology(DEFAULT_PLATFORM_DB, ontology_id, payload.publisher)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/derive")
+def derive_ontology_draft(ontology_id: int, payload: OntologyDeriveCreate) -> dict[str, object]:
+    try:
+        return derive_ontology_version(DEFAULT_PLATFORM_DB, ontology_id, payload.version, payload.actor)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

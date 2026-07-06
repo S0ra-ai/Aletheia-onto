@@ -94,7 +94,8 @@
 3. 本体发布前不允许存在 `pending` 映射。
 4. 本体发布前必须至少存在一条 `confirmed` 映射。
 5. 规则管理员可以在草案阶段登记或更新业务规则。
-6. 本体发布后，映射和规则不可直接修改，后续应派生新版本。
+6. 本体发布后，映射和规则不可直接修改。
+7. 业务变化时，从已发布本体派生新的草案版本，新版本映射回到 `pending`，规则可重新调整。
 
 相关端点：
 
@@ -102,8 +103,9 @@
 2. `POST /semantic-mappings/{id}/review`。
 3. `POST /ontologies/{id}/mappings/review`。
 4. `POST /ontologies/{id}/publish`。
-5. `GET /ontologies/{id}/rules`。
-6. `POST /ontologies/{id}/rules`。
+5. `POST /ontologies/{id}/derive`。
+6. `GET /ontologies/{id}/rules`。
+7. `POST /ontologies/{id}/rules`。
 
 这个流程保证“AI 生成候选、专家确认、版本发布、运行时执行”之间有明确边界。
 
@@ -130,7 +132,7 @@
 2. 设备运维数据库接入、业务 API 登记、本体草案生成和风险研判。
 3. 数据库适配器登记，覆盖 SQLite、PostgreSQL、MySQL 三类企业常见数据库入口。
 4. 数据源连接测试，覆盖 SQLite 成功、SQLite 缺失文件和 PostgreSQL 不可达状态。
-5. 语义映射审核、本体发布、规则登记和发布后不可直接修改。
+5. 语义映射审核、本体发布、规则登记、发布后不可直接修改和派生新版本。
 6. 传统业务系统操作预检，能把语义研判转成自动化放行或人工复核。
 7. OpenRouter 请求形态，包括 Bearer key、应用标题、来源标识、模型 slug、服务层级和 session id。
 

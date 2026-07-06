@@ -39,6 +39,7 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /semantic-mappings/{id}/review`：审核单条语义映射。
 - `POST /ontologies/{id}/mappings/review`：批量审核语义映射。
 - `POST /ontologies/{id}/publish`：发布已审核本体版本。
+- `POST /ontologies/{id}/derive`：从已发布本体派生新的草案版本。
 - `GET /ontologies/{id}/rules`：查看业务规则。
 - `POST /ontologies/{id}/rules`：登记或更新业务规则。
 - `GET /semantic/objects/{objectCode}/instances/{id}/explain`：解释业务实例。
@@ -71,7 +72,8 @@ export OPENROUTER_SERVICE_TIER="auto"
 3. 业务专家审核语义映射，状态从 `pending` 变为 `confirmed` 或 `rejected`。
 4. 规则管理员补充或调整业务规则。
 5. 所有映射审核完成后发布本体版本。
-6. 已发布本体不可直接修改映射和规则，后续应派生新版本。
+6. 已发布本体不可直接修改映射和规则。
+7. 业务变化时，从已发布本体派生新的草案版本，重新审核映射并调整规则。
 
 ## 测试
 
