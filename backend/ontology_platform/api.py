@@ -19,7 +19,7 @@ from .governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from .industry_blueprints import list_industry_blueprints
+from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .kernel_package import build_kernel_package, export_kernel_package
 from .metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import (
@@ -95,6 +95,18 @@ class OntologyDraftCreate(BaseModel):
     name: Optional[str] = None
     domain: Optional[str] = None
     blueprintId: Optional[str] = None
+
+
+class IndustryBlueprintUpsert(BaseModel):
+    id: str
+    name: str
+    domain: str
+    description: str = ""
+    objectHints: dict[str, str] = Field(default_factory=dict)
+    attributeHints: dict[str, str] = Field(default_factory=dict)
+    rules: list[dict[str, object]] = Field(default_factory=list)
+    tableKeywords: list[str] = Field(default_factory=list)
+    capabilityTags: list[str] = Field(default_factory=list)
 
 
 class OperationPreflightCreate(BaseModel):
@@ -338,7 +350,15 @@ def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
 
 @app.get("/industry-blueprints")
 def get_industry_blueprints() -> dict[str, object]:
-    return {"items": list_industry_blueprints()}
+    return {"items": list_industry_blueprints(DEFAULT_PLATFORM_DB)}
+
+
+@app.post("/industry-blueprints")
+def upsert_blueprint(payload: IndustryBlueprintUpsert) -> dict[str, object]:
+    try:
+        return upsert_industry_blueprint(DEFAULT_PLATFORM_DB, payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/ontologies")

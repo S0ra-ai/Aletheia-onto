@@ -185,6 +185,11 @@ export const industryBlueprintApi = {
     const { data } = await api.get('/industry-blueprints');
     return (data.items || []) as IndustryBlueprint[];
   },
+
+  upsert: async (payload: IndustryBlueprint): Promise<IndustryBlueprint> => {
+    const { data } = await api.post('/industry-blueprints', payload);
+    return data as IndustryBlueprint;
+  },
 };
 
 // 语义服务 API

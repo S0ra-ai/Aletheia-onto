@@ -21,7 +21,7 @@ from ontology_platform.governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
+from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
 from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
@@ -298,6 +298,50 @@ def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Pa
         assert "行业蓝图不存在" in str(error)
     else:
         raise AssertionError("不存在的行业蓝图应被拒绝")
+
+
+def test_custom_industry_blueprint_can_be_imported_and_used_for_generation(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_equipment.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_equipment_sample_db(legacy_db)
+    blueprint = upsert_industry_blueprint(
+        platform_db,
+        {
+            "id": "lab-asset",
+            "name": "实验室资产蓝图",
+            "domain": "实验室资产",
+            "description": "覆盖实验室设备资产管理。",
+            "objectHints": {"equipment": "实验设备"},
+            "attributeHints": {"equipment_code": "资产编号", "criticality": "资产等级"},
+            "rules": [
+                {
+                    "code": "lab_asset_code_required",
+                    "name": "资产编号必填",
+                    "rule_type": "validation",
+                    "scope_object_code": "equipment",
+                    "expression": "equipment_code != null",
+                    "severity": "blocking",
+                    "natural_language": "实验设备必须具备资产编号。",
+                }
+            ],
+            "tableKeywords": ["equipment"],
+            "capabilityTags": ["asset-governance"],
+        },
+    )
+    assert blueprint["source"] == "custom"
+    assert any(item["id"] == "lab-asset" for item in list_industry_blueprints(platform_db))
+    assert infer_industry_blueprint(["equipment"], platform_db=platform_db).id == "lab-asset"
+
+    source = register_data_source(platform_db, "实验室资产系统", "sqlite", str(legacy_db), domain="实验室资产")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="lab-asset")
+
+    assert ontology["blueprint"]["id"] == "lab-asset"
+    assert any(item["code"] == "equipment" and item["name"] == "实验设备" for item in ontology["objects"])
+    assert any(item["code"] == "equipment_code" and item["name"] == "资产编号" for item in ontology["attributes"])
+    assert any(rule["code"] == "lab_asset_code_required" for rule in ontology["rules"])
 
 
 def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:

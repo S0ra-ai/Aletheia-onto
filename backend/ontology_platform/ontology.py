@@ -75,7 +75,7 @@ def generate_ontology_draft(
             raise ValueError(f"数据源不存在: {data_source_id}")
         tables = conn.execute("select * from source_table where data_source_id = ? order by table_name", (data_source_id,)).fetchall()
         table_names = [table["table_name"] for table in tables]
-        blueprint = get_industry_blueprint(blueprint_id, domain or data_source["domain"]) if blueprint_id else infer_industry_blueprint(table_names, domain or data_source["domain"])
+        blueprint = get_industry_blueprint(blueprint_id, domain or data_source["domain"], platform_db) if blueprint_id else infer_industry_blueprint(table_names, domain or data_source["domain"], platform_db)
         resolved_domain = domain or data_source["domain"] or blueprint.domain
         resolved_name = name or f"{resolved_domain}本体"
         ontology_id = _create_ontology(conn, resolved_name, resolved_domain)

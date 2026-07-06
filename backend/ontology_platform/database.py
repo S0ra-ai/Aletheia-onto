@@ -220,6 +220,22 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    create table if not exists industry_blueprint (
+        id text primary key,
+        name text not null,
+        domain text not null,
+        description text not null default '',
+        object_hints text not null default '{}',
+        attribute_hints text not null default '{}',
+        rule_templates text not null default '[]',
+        table_keywords text not null default '[]',
+        capability_tags text not null default '[]',
+        source text not null default 'custom',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+    )
+    """,
+    """
     create table if not exists model_config (
         id integer primary key check (id = 1),
         provider text not null default 'openrouter',

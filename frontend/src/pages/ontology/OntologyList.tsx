@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
-import { PlusOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ontologyApi, dataSourceApi, industryBlueprintApi } from '../../api';
 import type { Ontology, DataSource, OntologyDraftCreate, IndustryBlueprint } from '../../types';
@@ -15,7 +15,9 @@ const OntologyList: React.FC = () => {
   const [blueprints, setBlueprints] = useState<IndustryBlueprint[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [blueprintModalVisible, setBlueprintModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const [blueprintForm] = Form.useForm();
 
   const fetchData = async () => {
     setLoading(true);
@@ -45,6 +47,19 @@ const OntologyList: React.FC = () => {
       fetchData();
     } catch (error) {
       message.error('生成失败');
+    }
+  };
+
+  const handleImportBlueprint = async (values: { blueprintJson: string }) => {
+    try {
+      const payload = JSON.parse(values.blueprintJson) as IndustryBlueprint;
+      await industryBlueprintApi.upsert(payload);
+      message.success('行业蓝图已导入');
+      setBlueprintModalVisible(false);
+      blueprintForm.resetFields();
+      fetchData();
+    } catch (error) {
+      message.error(error instanceof SyntaxError ? '蓝图 JSON 格式不正确' : '蓝图导入失败');
     }
   };
 
@@ -110,13 +125,21 @@ const OntologyList: React.FC = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={3}>本体建模</Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setModalVisible(true)}
-        >
-          生成本体草案
-        </Button>
+        <Space>
+          <Button
+            icon={<ImportOutlined />}
+            onClick={() => setBlueprintModalVisible(true)}
+          >
+            导入行业蓝图
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setModalVisible(true)}
+          >
+            生成本体草案
+          </Button>
+        </Space>
       </div>
 
       <Card>
@@ -186,6 +209,30 @@ const OntologyList: React.FC = () => {
             label="业务领域"
           >
             <Input placeholder="例如：合同管理" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="导入行业蓝图"
+        open={blueprintModalVisible}
+        onCancel={() => {
+          setBlueprintModalVisible(false);
+          blueprintForm.resetFields();
+        }}
+        onOk={() => blueprintForm.submit()}
+        width={760}
+      >
+        <Form form={blueprintForm} layout="vertical" onFinish={handleImportBlueprint}>
+          <Form.Item
+            name="blueprintJson"
+            label="蓝图 JSON"
+            rules={[{ required: true, message: '请粘贴行业蓝图 JSON' }]}
+          >
+            <Input.TextArea
+              rows={14}
+              placeholder='{"id":"retail-order","name":"零售订单蓝图","domain":"零售订单","objectHints":{"order":"订单"},"attributeHints":{"order_no":"订单号"},"rules":[],"tableKeywords":["order"],"capabilityTags":["order-governance"]}'
+            />
           </Form.Item>
         </Form>
       </Modal>
