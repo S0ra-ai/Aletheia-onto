@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .metadata import assess_data_source_readiness, check_data_source_connection, register_data_source, scan_data_source
+from .metadata import (
+    assess_data_source_readiness,
+    check_data_source_connection,
+    import_openapi_operations,
+    import_openapi_operations_from_url,
+    register_data_source,
+    scan_data_source,
+)
 from .ontology import generate_ontology_draft
 
 
@@ -20,6 +27,8 @@ def run_onboarding_pipeline(
     blueprint_id: str | None = None,
     ontology_name: str | None = None,
     generate_ontology: bool = True,
+    openapi_url: str = "",
+    openapi_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     source = register_data_source(platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url, api_headers)
@@ -42,6 +51,16 @@ def run_onboarding_pipeline(
     scan = scan_data_source(platform_db, source.id)
     steps.append(_step("scan_metadata", "completed", f"已扫描 {len(scan['tables'])} 张表。", scan))
 
+    api_import = None
+    if openapi_url:
+        api_import = import_openapi_operations_from_url(platform_db, source.id, openapi_url)
+        steps.append(_step("import_openapi", "completed", f"已从 URL 导入 {api_import['count']} 个业务 API。", api_import))
+    elif openapi_spec:
+        api_import = import_openapi_operations(platform_db, source.id, openapi_spec)
+        steps.append(_step("import_openapi", "completed", f"已导入 {api_import['count']} 个业务 API。", api_import))
+    else:
+        steps.append(_step("import_openapi", "skipped", "未提供 OpenAPI 文档，已跳过业务 API 导入。", {}))
+
     ontology = None
     if generate_ontology:
         ontology = generate_ontology_draft(platform_db, source.id, ontology_name, domain or source.domain, blueprint_id)
@@ -62,6 +81,7 @@ def run_onboarding_pipeline(
         "dataSource": source.__dict__,
         "connection": connection,
         "scan": scan,
+        "apiImport": api_import,
         "ontology": ontology,
         "readiness": readiness,
         "steps": steps,

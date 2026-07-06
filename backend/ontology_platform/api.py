@@ -82,6 +82,8 @@ class OnboardingRunCreate(DataSourceCreate):
     blueprintId: Optional[str] = None
     ontologyName: Optional[str] = None
     generateOntology: bool = True
+    openApiUrl: str = ""
+    openApiSpec: Optional[dict[str, object]] = None
 
 
 class ModelConfigUpdate(BaseModel):
@@ -263,6 +265,8 @@ def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
             payload.blueprintId,
             payload.ontologyName,
             payload.generateOntology,
+            payload.openApiUrl,
+            payload.openApiSpec,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

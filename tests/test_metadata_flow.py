@@ -308,9 +308,46 @@ def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_read
         "register_data_source",
         "test_connection",
         "scan_metadata",
+        "import_openapi",
         "generate_ontology",
         "assess_readiness",
     ]
+
+
+def test_onboarding_pipeline_imports_openapi_operations(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    result = run_onboarding_pipeline(
+        platform_db,
+        "合同 API 一键接入",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_base_url="https://legacy.example/api",
+        blueprint_id="contract-management",
+        openapi_spec={
+            "openapi": "3.0.0",
+            "paths": {
+                "/contracts/{id}/submit": {
+                    "post": {
+                        "operationId": "submit_contract",
+                        "summary": "提交合同审批",
+                        "x-semantic-action": "contract.submit_for_approval",
+                        "responses": {"200": {"description": "ok"}},
+                    }
+                }
+            },
+        },
+    )
+
+    assert result["apiImport"]["count"] == 1
+    assert any(step["code"] == "import_openapi" and step["status"] == "completed" for step in result["steps"])
+    assert list_source_apis(platform_db, result["dataSource"]["id"])[0]["operation_code"] == "submit_contract"
+    assert result["readiness"]["summary"]["apis"] == 1
 
 
 def test_onboarding_pipeline_stops_when_connection_fails(tmp_path: Path) -> None:

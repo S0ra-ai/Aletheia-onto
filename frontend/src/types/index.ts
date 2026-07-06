@@ -28,6 +28,8 @@ export interface OnboardingRunCreate extends DataSourceCreate {
   blueprintId?: string;
   ontologyName?: string;
   generateOntology?: boolean;
+  openApiUrl?: string;
+  openApiSpec?: Record<string, unknown>;
 }
 
 export interface OnboardingStep {

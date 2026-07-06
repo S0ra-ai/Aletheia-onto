@@ -50,9 +50,23 @@ const DataSourceList: React.FC = () => {
     );
   };
 
+  const parseOpenApiSpec = (value?: string): Record<string, unknown> | undefined => {
+    if (!value?.trim()) return undefined;
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('OpenAPI JSON 必须是对象');
+    }
+    return parsed as Record<string, unknown>;
+  };
+
   const handleCreate = async (values: DataSourceCreate & { apiHeadersJson?: string }) => {
     try {
-      const { apiHeadersJson, ...payload } = values;
+      const { apiHeadersJson, openApiUrl, openApiSpecJson, blueprintId, ...payload } = values as DataSourceCreate & {
+        apiHeadersJson?: string;
+        openApiUrl?: string;
+        openApiSpecJson?: string;
+        blueprintId?: string;
+      };
       await dataSourceApi.create({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson) });
       message.success('数据源创建成功');
       setModalVisible(false);
@@ -108,10 +122,15 @@ const DataSourceList: React.FC = () => {
 
   const handleOnboarding = async () => {
     try {
-      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'apiHeadersJson', 'domain', 'systemCategory', 'blueprintId']);
+      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'apiHeadersJson', 'openApiUrl', 'openApiSpecJson', 'domain', 'systemCategory', 'blueprintId']);
       setOnboardingLoading(true);
-      const { apiHeadersJson, ...payload } = values;
-      const result = await onboardingApi.run({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson), generateOntology: true });
+      const { apiHeadersJson, openApiSpecJson, ...payload } = values;
+      const result = await onboardingApi.run({
+        ...payload,
+        apiHeaders: parseApiHeaders(apiHeadersJson),
+        openApiSpec: parseOpenApiSpec(openApiSpecJson),
+        generateOntology: true,
+      });
       setOnboardingResult(result);
       if (result.status === 'blocked') {
         message.warning('一键接入未完成，请查看步骤详情');
@@ -263,6 +282,21 @@ const DataSourceList: React.FC = () => {
             <Input.TextArea
               rows={3}
               placeholder={'例如：{"Authorization":"Bearer token","X-Tenant":"demo"}'}
+            />
+          </Form.Item>
+          <Form.Item
+            name="openApiUrl"
+            label="OpenAPI URL"
+          >
+            <Input placeholder="例如：https://legacy.example/openapi.json" />
+          </Form.Item>
+          <Form.Item
+            name="openApiSpecJson"
+            label="OpenAPI JSON"
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder='{"openapi":"3.0.0","paths":{"/contracts/{id}/submit":{"post":{"operationId":"submit_contract"}}}}'
             />
           </Form.Item>
           <Form.Item>
