@@ -45,6 +45,7 @@ from .model_client import (
 )
 from .onboarding import run_onboarding_pipeline
 from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
+from .release_readiness import assess_ontology_release_readiness
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
 from .semantic_kernel import assess_decision_consistency, assess_instance
 
@@ -453,6 +454,14 @@ def publish_ontology_version(ontology_id: int, payload: OntologyPublishCreate) -
         return publish_ontology(DEFAULT_PLATFORM_DB, ontology_id, payload.publisher)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/release-readiness")
+def get_ontology_release_readiness(ontology_id: int) -> dict[str, object]:
+    try:
+        return assess_ontology_release_readiness(DEFAULT_PLATFORM_DB, ontology_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/ontologies/{ontology_id}/derive")

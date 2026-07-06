@@ -12,6 +12,7 @@ import type {
   SemanticCoverageResult,
   OntologyDraftCreate,
   OntologyDetail,
+  ReleaseReadinessResult,
   DemoBootstrapResult,
   InstanceExplainResult,
   InstanceAssessResult,
@@ -158,6 +159,11 @@ export const ontologyApi = {
   get: async (id: number): Promise<OntologyDetail> => {
     const { data } = await api.get(`/ontologies/${id}`);
     return data as OntologyDetail;
+  },
+
+  getReleaseReadiness: async (id: number): Promise<ReleaseReadinessResult> => {
+    const { data } = await api.get(`/ontologies/${id}/release-readiness`);
+    return data as ReleaseReadinessResult;
   },
 
   createDraft: async (payload: OntologyDraftCreate): Promise<OntologyDetail> => {

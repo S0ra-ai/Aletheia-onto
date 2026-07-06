@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin } from 'antd';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi } from '../../api';
-import type { OntologyDetail } from '../../types';
+import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -12,14 +12,19 @@ const OntologyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [ontology, setOntology] = useState<OntologyDetail | null>(null);
+  const [releaseReadiness, setReleaseReadiness] = useState<ReleaseReadinessResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchOntology = async () => {
     if (!id) return;
     setLoading(true);
     try {
-      const data = await ontologyApi.get(parseInt(id));
+      const [data, readiness] = await Promise.all([
+        ontologyApi.get(parseInt(id)),
+        ontologyApi.getReleaseReadiness(parseInt(id)),
+      ]);
       setOntology(data);
+      setReleaseReadiness(readiness);
     } catch (error) {
       console.error('Failed to fetch ontology:', error);
     } finally {
@@ -78,6 +83,30 @@ const OntologyDetailPage: React.FC = () => {
     { title: '表达式', dataIndex: 'expression', key: 'expression', render: (expr: string) => <code>{expr}</code> },
   ];
 
+  const releaseGateColumns = [
+    { title: '门禁', dataIndex: 'name', key: 'name' },
+    {
+      title: '状态',
+      dataIndex: 'passed',
+      key: 'passed',
+      render: (passed: boolean) => <Tag color={passed ? 'green' : 'red'}>{passed ? '通过' : '未通过'}</Tag>,
+    },
+    {
+      title: '级别',
+      dataIndex: 'severity',
+      key: 'severity',
+      render: (severity: string) => <Tag color={severity === 'blocker' ? 'red' : 'orange'}>{severity}</Tag>,
+    },
+    { title: '证据', dataIndex: 'evidence', key: 'evidence' },
+    { title: '修复动作', dataIndex: 'remediation', key: 'remediation' },
+  ];
+
+  const releaseColor = (status?: string) => {
+    if (status === 'ready') return 'green';
+    if (status === 'review') return 'orange';
+    return 'red';
+  };
+
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
@@ -115,6 +144,41 @@ const OntologyDetailPage: React.FC = () => {
         </Descriptions>
       </Card>
 
+      {releaseReadiness && (
+        <Card style={{ marginBottom: 16 }} title="发布就绪度">
+          <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ minWidth: 220 }}>
+              <Progress
+                type="circle"
+                percent={Math.round((releaseReadiness.summary.passedGates / Math.max(releaseReadiness.summary.totalGates, 1)) * 100)}
+                strokeColor={releaseColor(releaseReadiness.status)}
+              />
+            </div>
+            <Descriptions column={4} style={{ flex: 1 }}>
+              <Descriptions.Item label="状态">
+                <Tag color={releaseColor(releaseReadiness.status)}>{releaseReadiness.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="业务对象">{releaseReadiness.summary.objects}</Descriptions.Item>
+              <Descriptions.Item label="数据源">{releaseReadiness.summary.dataSources}</Descriptions.Item>
+              <Descriptions.Item label="门禁">{releaseReadiness.summary.passedGates}/{releaseReadiness.summary.totalGates}</Descriptions.Item>
+              <Descriptions.Item label="阻断">{releaseReadiness.summary.blockers}</Descriptions.Item>
+              <Descriptions.Item label="预警">{releaseReadiness.summary.warnings}</Descriptions.Item>
+              <Descriptions.Item label="确认映射">{releaseReadiness.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label="待审映射">{releaseReadiness.summary.pendingMappings}</Descriptions.Item>
+              <Descriptions.Item label="发布规则">{releaseReadiness.summary.publishedRules}</Descriptions.Item>
+            </Descriptions>
+          </Space>
+          {releaseReadiness.nextActions.length > 0 && (
+            <Alert
+              style={{ marginTop: 16 }}
+              type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
+              message="下一步动作"
+              description={releaseReadiness.nextActions.join('；')}
+            />
+          )}
+        </Card>
+      )}
+
       <Card>
         <Tabs defaultActiveKey="objects">
           <TabPane tab={`业务对象 (${ontology.objects.length})`} key="objects">
@@ -150,6 +214,14 @@ const OntologyDetailPage: React.FC = () => {
               columns={ruleColumns}
               dataSource={ontology.rules}
               rowKey="id"
+            />
+          </TabPane>
+          <TabPane tab="发布门禁" key="release">
+            <Table
+              columns={releaseGateColumns}
+              dataSource={releaseReadiness?.gates || []}
+              rowKey="code"
+              pagination={false}
             />
           </TabPane>
         </Tabs>

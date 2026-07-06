@@ -49,6 +49,7 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /semantic-mappings/{id}/review`：审核单条语义映射。
 - `POST /ontologies/{id}/mappings/review`：批量审核语义映射。
 - `POST /ontologies/{id}/publish`：发布已审核本体版本。
+- `GET /ontologies/{id}/release-readiness`：评估本体发布门禁，汇总映射、规则、数据源准备度、语义覆盖和结构漂移证据。
 - `POST /ontologies/{id}/derive`：从已发布本体派生新的草案版本。
 - `GET /ontologies/{id}/rules`：查看业务规则。
 - `POST /ontologies/{id}/rules`：登记或更新业务规则。

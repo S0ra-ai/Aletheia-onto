@@ -29,6 +29,7 @@ from ontology_platform.metadata import analyze_schema_drift, assess_data_source_
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
+from ontology_platform.release_readiness import assess_ontology_release_readiness
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_decision_consistency, assess_instance, list_instance_ids
 
@@ -433,6 +434,10 @@ def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
     assert mappings["items"]
     assert {item["status"] for item in mappings["items"]} == {"pending"}
 
+    initial_release = assess_ontology_release_readiness(platform_db, ontology["id"])
+    assert initial_release["status"] == "blocked"
+    assert any(item["code"] == "pending_mappings" and not item["passed"] for item in initial_release["gates"])
+
     first_mapping_id = mappings["items"][0]["id"]
     reviewed = review_semantic_mapping(platform_db, first_mapping_id, "confirmed", "业务专家", "表对象映射正确")
     assert reviewed["status"] == "confirmed"
@@ -447,6 +452,12 @@ def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
 
     bulk = bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "MVP 批量确认")
     assert bulk["reviewedCount"] == len(mappings["items"]) - 1
+
+    reviewed_release = assess_ontology_release_readiness(platform_db, ontology["id"])
+    assert reviewed_release["status"] in {"ready", "review"}
+    assert reviewed_release["summary"]["confirmedMappings"] == len(mappings["items"])
+    assert reviewed_release["summary"]["blockers"] == 0
+    assert any(item["code"] == "data_source_1_schema_drift" and item["passed"] for item in reviewed_release["gates"])
 
     custom_rule = upsert_business_rule(
         platform_db,

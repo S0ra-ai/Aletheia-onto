@@ -321,6 +321,42 @@ export interface OntologyDetail {
   rules: BusinessRule[];
 }
 
+export interface ReleaseReadinessGate {
+  code: string;
+  name: string;
+  passed: boolean;
+  severity: 'blocker' | 'warning';
+  evidence: string;
+  remediation: string;
+}
+
+export interface ReleaseReadinessResult {
+  ontologyId: number;
+  name: string;
+  version: string;
+  status: 'ready' | 'review' | 'blocked';
+  summary: {
+    objects: number;
+    dataSources: number;
+    confirmedMappings: number;
+    pendingMappings: number;
+    rejectedMappings: number;
+    publishedRules: number;
+    passedGates: number;
+    totalGates: number;
+    blockers: number;
+    warnings: number;
+  };
+  gates: ReleaseReadinessGate[];
+  dataSources: Array<{
+    dataSourceId: number;
+    readiness: DataSourceReadiness;
+    coverage: SemanticCoverageResult;
+    schemaDrift: SchemaDriftResult | { status: 'error'; error: string };
+  }>;
+  nextActions: string[];
+}
+
 // 语义映射相关类型
 export interface SemanticMapping {
   id: number;
