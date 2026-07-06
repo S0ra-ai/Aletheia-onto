@@ -236,6 +236,48 @@ def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> Non
     assert ready["gaps"] == []
 
 
+def test_database_api_readiness_requires_business_api_base_url(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(
+        platform_db,
+        "合同管理 API 系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+    )
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+    bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "API 基址门禁验证")
+
+    missing_gateway = assess_data_source_readiness(platform_db, source.id)
+    assert missing_gateway["status"] == "partial"
+    assert missing_gateway["summary"]["requiresApiGateway"] is True
+    assert missing_gateway["summary"]["apiBaseUrlConfigured"] is False
+    assert any(item["code"] == "api_gateway" for item in missing_gateway["gaps"])
+
+    updated = register_data_source(
+        platform_db,
+        "合同管理 API 系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_base_url="https://legacy.example/api",
+    )
+    ready = assess_data_source_readiness(platform_db, updated.id)
+
+    assert ready["score"] == 100
+    assert ready["status"] == "ready"
+    assert ready["summary"]["apiBaseUrlConfigured"] is True
+    assert ready["gaps"] == []
+
+
 def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_readiness(tmp_path: Path) -> None:
     platform_db = tmp_path / "platform.sqlite3"
     legacy_db = tmp_path / "legacy_contracts.sqlite3"

@@ -233,6 +233,17 @@ def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -
             (data_source_id,),
         ).fetchall()
 
+    system_category = source["system_category"] or "database"
+    requires_api_gateway = "api" in system_category.lower()
+    api_base_url = (source["api_base_url"] or "").strip()
+    api_gateway_ready = not requires_api_gateway or _is_http_url(api_base_url)
+    if api_base_url:
+        api_gateway_evidence = f"业务 API 基址已配置为 {api_base_url}。"
+    elif requires_api_gateway:
+        api_gateway_evidence = "系统分类声明了 API 能力，但尚未配置业务 API 基址。"
+    else:
+        api_gateway_evidence = "系统分类未声明 API 能力，业务 API 基址不是必填项。"
+
     checks = [
         _readiness_check(
             "connection",
@@ -283,12 +294,20 @@ def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -
             15,
         ),
         _readiness_check(
+            "api_gateway",
+            "业务 API 网关",
+            api_gateway_ready,
+            api_gateway_evidence,
+            "为数据库+API 或 API 类传统系统配置 HTTP/HTTPS 业务 API 基址。",
+            10,
+        ),
+        _readiness_check(
             "business_apis",
             "业务 API",
             len(apis) > 0 and all(row["semantic_action"] for row in apis),
             f"已登记 {len(apis)} 个业务 API，其中 {sum(1 for row in apis if row['semantic_action'])} 个具备语义动作。",
             "登记传统业务系统 API，并为每个操作绑定语义动作。",
-            15,
+            5,
         ),
     ]
     gaps = [item for item in checks if not item["passed"]]
@@ -305,6 +324,8 @@ def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -
             "columns": len(columns),
             "foreignKeys": len(foreign_keys),
             "apis": len(apis),
+            "apiBaseUrlConfigured": bool(api_base_url),
+            "requiresApiGateway": requires_api_gateway,
             "ontologies": len(ontology_rows),
             "confirmedMappings": _mapping_count(mapping_counts, "confirmed"),
             "pendingMappings": _mapping_count(mapping_counts, "pending"),
@@ -492,6 +513,10 @@ def _mapping_count(rows: list[sqlite3.Row], status: str) -> int:
         if row["status"] == status:
             return int(row["total"])
     return 0
+
+
+def _is_http_url(value: str) -> bool:
+    return value.lower().startswith(("http://", "https://"))
 
 
 def _stored_schema(platform: sqlite3.Connection, data_source_id: int) -> dict[str, dict[str, Any]]:
