@@ -19,9 +19,9 @@ from ontology_platform.governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from ontology_platform.metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
-from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig
-from ontology_platform.ontology import explain_instance, generate_ontology_draft
+from ontology_platform.metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
+from ontology_platform.ontology import explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_instance
 
@@ -211,6 +211,121 @@ def test_data_source_connection_checks_sqlite_file(tmp_path: Path) -> None:
     assert registered["status"] == "ok"
     assert missing["reachable"] is False
     assert missing["status"] == "not_found"
+
+
+def test_platform_lists_data_sources_and_ontologies_for_control_plane(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id)
+
+    data_sources = list_data_sources(platform_db)
+    ontologies = list_ontologies(platform_db)
+
+    assert len(data_sources) == 1
+    assert data_sources[0]["id"] == source.id
+    assert data_sources[0]["name"] == "合同管理样例系统"
+    assert data_sources[0]["domain"] == "合同管理"
+    assert data_sources[0]["systemCategory"] == "database"
+    assert data_sources[0]["system_category"] == "database"
+    assert data_sources[0]["sourceType"] == "sqlite"
+    assert data_sources[0]["source_type"] == "sqlite"
+    assert data_sources[0]["connectionUri"] == str(legacy_db)
+    assert data_sources[0]["connection_uri"] == str(legacy_db)
+    assert data_sources[0]["capabilities"] == ["metadata_scan", "semantic_mapping"]
+    assert data_sources[0]["createdAt"]
+    assert ontologies[0]["id"] == ontology["id"]
+    assert ontologies[0]["name"] == ontology["name"]
+    assert ontologies[0]["domain"] == "合同管理"
+    assert ontologies[0]["version"] == "0.1.0"
+    assert ontologies[0]["status"] == "draft"
+
+
+def test_model_config_persists_masks_and_resets(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+
+    initialize_platform_db(platform_db)
+    initial = get_model_config(platform_db)
+    assert initial["provider"] == "openrouter"
+    assert initial["hasApiKey"] is False
+
+    saved = update_model_config(
+        platform_db,
+        {
+            "apiKey": "or-test-secret-key",
+            "model": "openai/test-model",
+            "baseUrl": "https://openrouter.ai/api/v1/",
+            "httpReferer": "https://example.com/app",
+            "appTitle": "Ontology Platform Test",
+            "serviceTier": "auto",
+            "timeoutSeconds": 12,
+        },
+    )
+    assert saved["success"] is True
+
+    persisted = get_model_config(platform_db)
+    assert persisted["configured"] is True
+    assert persisted["hasApiKey"] is True
+    assert persisted["apiKey"] == "or-tes...-key"
+    assert persisted["model"] == "openai/test-model"
+    assert persisted["baseUrl"] == "https://openrouter.ai/api/v1"
+    assert persisted["httpReferer"] == "https://example.com/app"
+    assert persisted["appTitle"] == "Ontology Platform Test"
+    assert persisted["timeoutSeconds"] == 12.0
+
+    update_model_config(platform_db, {"apiKey": "", "model": "openai/another-model"})
+    retained_key = get_model_config(platform_db)
+    assert retained_key["apiKey"] == "or-tes...-key"
+    assert retained_key["model"] == "openai/another-model"
+
+    reset = reset_model_config(platform_db)
+    assert reset["success"] is True
+    assert get_model_config(platform_db)["hasApiKey"] is False
+
+
+def test_legacy_model_config_table_migrates_to_single_row_schema(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+
+    initialize_platform_db(platform_db)
+    with connect(platform_db) as conn:
+        conn.execute("drop table model_config")
+        conn.execute(
+            """
+            create table model_config (
+                id integer primary key autoincrement,
+                config_key text not null unique,
+                config_value text not null,
+                description text not null default '',
+                updated_at text not null default current_timestamp
+            )
+            """
+        )
+        conn.executemany(
+            "insert into model_config (config_key, config_value) values (?, ?)",
+            [
+                ("api_key", "or-legacy-secret-key"),
+                ("model", "deepseek/deepseek-v4-flash"),
+                ("base_url", "https://openrouter.ai/api/v1"),
+                ("http_referer", "https://legacy.example"),
+                ("app_title", "Legacy Ontology Platform"),
+                ("service_tier", "auto"),
+                ("timeout_seconds", "15"),
+            ],
+        )
+
+    initialize_platform_db(platform_db)
+    migrated = get_model_config(platform_db)
+
+    assert migrated["hasApiKey"] is True
+    assert migrated["apiKey"] == "or-leg...-key"
+    assert migrated["model"] == "deepseek/deepseek-v4-flash"
+    assert migrated["httpReferer"] == "https://legacy.example"
+    assert migrated["appTitle"] == "Legacy Ontology Platform"
+    assert migrated["timeoutSeconds"] == 15.0
 
 
 def test_database_adapter_registry_supports_common_enterprise_databases(tmp_path: Path) -> None:

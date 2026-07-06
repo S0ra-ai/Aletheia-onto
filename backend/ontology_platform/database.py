@@ -201,6 +201,20 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         created_at text not null default current_timestamp
     )
     """,
+    """
+    create table if not exists model_config (
+        id integer primary key check (id = 1),
+        provider text not null default 'openrouter',
+        api_key text not null default '',
+        model text not null default '~openai/gpt-latest',
+        base_url text not null default 'https://openrouter.ai/api/v1',
+        http_referer text not null default '',
+        app_title text not null default 'Ontology Transformation Platform',
+        service_tier text not null default 'auto',
+        timeout_seconds real not null default 30,
+        updated_at text not null default current_timestamp
+    )
+    """,
 )
 
 
@@ -233,6 +247,53 @@ def initialize_platform_db(db_path: Path | str = DEFAULT_PLATFORM_DB) -> None:
             except sqlite3.OperationalError as error:
                 if "duplicate column name" not in str(error).lower():
                     raise
+        _migrate_model_config_schema(conn)
+
+
+def _migrate_model_config_schema(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("pragma table_info(model_config)").fetchall()}
+    if "api_key" in columns:
+        return
+    if not {"config_key", "config_value"}.issubset(columns):
+        return
+
+    legacy_rows = conn.execute("select config_key, config_value from model_config").fetchall()
+    legacy = {row["config_key"]: row["config_value"] for row in legacy_rows}
+    conn.execute("alter table model_config rename to model_config_legacy")
+    conn.execute(
+        """
+        create table model_config (
+            id integer primary key check (id = 1),
+            provider text not null default 'openrouter',
+            api_key text not null default '',
+            model text not null default '~openai/gpt-latest',
+            base_url text not null default 'https://openrouter.ai/api/v1',
+            http_referer text not null default '',
+            app_title text not null default 'Ontology Transformation Platform',
+            service_tier text not null default 'auto',
+            timeout_seconds real not null default 30,
+            updated_at text not null default current_timestamp
+        )
+        """
+    )
+    conn.execute(
+        """
+        insert into model_config (
+            id, provider, api_key, model, base_url, http_referer,
+            app_title, service_tier, timeout_seconds
+        )
+        values (1, 'openrouter', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            legacy.get("api_key", ""),
+            legacy.get("model", "~openai/gpt-latest"),
+            legacy.get("base_url", "https://openrouter.ai/api/v1"),
+            legacy.get("http_referer", ""),
+            legacy.get("app_title", "Ontology Transformation Platform"),
+            legacy.get("service_tier", "auto"),
+            float(legacy.get("timeout_seconds") or 30),
+        ),
+    )
 
 
 def fetch_one(conn: sqlite3.Connection, query: str, params: Iterable[object] = ()) -> Optional[sqlite3.Row]:

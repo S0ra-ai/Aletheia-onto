@@ -36,6 +36,23 @@ class OpenRouterConfig:
             timeout_seconds=float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30")),
         )
 
+    @classmethod
+    def from_db_or_env(cls, platform_db: Path | str) -> "OpenRouterConfig":
+        env_config = cls.from_env()
+        with connect(platform_db) as conn:
+            row = conn.execute("select * from model_config where id = 1").fetchone()
+            if row is None:
+                return env_config
+            return cls(
+                api_key=row["api_key"] or env_config.api_key,
+                model=row["model"] or env_config.model,
+                base_url=(row["base_url"] or env_config.base_url).rstrip("/"),
+                http_referer=row["http_referer"] or env_config.http_referer,
+                app_title=row["app_title"] or env_config.app_title,
+                service_tier=row["service_tier"] or env_config.service_tier,
+                timeout_seconds=float(row["timeout_seconds"] or env_config.timeout_seconds),
+            )
+
 
 @dataclass(frozen=True)
 class ModelResult:
@@ -116,7 +133,7 @@ def generate_semantic_suggestions(
     client: OpenRouterClient | None = None,
 ) -> dict[str, Any]:
     metadata = _metadata_prompt_payload(platform_db, data_source_id)
-    model_client = client or OpenRouterClient()
+    model_client = client or OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
     if not model_client.configured:
         return {
             "provider": "local-heuristic",
@@ -156,6 +173,92 @@ def generate_semantic_suggestions(
             "openrouter": model_client.status(),
             "remoteError": str(error),
         }
+
+
+def get_model_config(platform_db: Path | str) -> dict[str, Any]:
+    config = OpenRouterConfig.from_db_or_env(platform_db)
+    source = _model_config_source(platform_db)
+    return {
+        "configured": bool(config.api_key),
+        "provider": "openrouter",
+        "apiKey": _mask_api_key(config.api_key),
+        "hasApiKey": bool(config.api_key),
+        "model": config.model,
+        "baseUrl": config.base_url,
+        "httpReferer": config.http_referer,
+        "appTitle": config.app_title,
+        "serviceTier": config.service_tier,
+        "timeoutSeconds": config.timeout_seconds,
+        "source": source,
+    }
+
+
+def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dict[str, Any]:
+    current = OpenRouterConfig.from_db_or_env(platform_db)
+    api_key = payload.get("apiKey")
+    if api_key is None or api_key == "":
+        api_key = current.api_key
+    model = payload.get("model") or current.model
+    base_url = (payload.get("baseUrl") or current.base_url).rstrip("/")
+    http_referer = payload.get("httpReferer")
+    if http_referer is None:
+        http_referer = current.http_referer
+    app_title = payload.get("appTitle") or current.app_title
+    service_tier = payload.get("serviceTier") or current.service_tier
+    timeout_seconds = float(payload.get("timeoutSeconds") or current.timeout_seconds)
+    with connect(platform_db) as conn:
+        conn.execute(
+            """
+            insert into model_config (
+                id, provider, api_key, model, base_url, http_referer,
+                app_title, service_tier, timeout_seconds, updated_at
+            )
+            values (1, 'openrouter', ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+            on conflict(id) do update set
+                api_key = excluded.api_key,
+                model = excluded.model,
+                base_url = excluded.base_url,
+                http_referer = excluded.http_referer,
+                app_title = excluded.app_title,
+                service_tier = excluded.service_tier,
+                timeout_seconds = excluded.timeout_seconds,
+                updated_at = current_timestamp
+            """,
+            (api_key, model, base_url, http_referer, app_title, service_tier, timeout_seconds),
+        )
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            ("system", "update_model_config", "model_config", "1", json.dumps({"model": model, "hasApiKey": bool(api_key)}, ensure_ascii=False)),
+        )
+    return {"success": True, "message": "模型配置已保存。"}
+
+
+def reset_model_config(platform_db: Path | str) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        conn.execute("delete from model_config where id = 1")
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            ("system", "reset_model_config", "model_config", "1", "{}"),
+        )
+    return {"success": True, "message": "模型配置已重置为环境变量默认值。"}
+
+
+def test_model_config(platform_db: Path | str) -> dict[str, Any]:
+    client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
+    status = client.status()
+    if not client.configured:
+        return {"success": False, "message": "未配置 OpenRouter API Key。", "status": status}
+    try:
+        result = client.chat(
+            [{"role": "user", "content": "Return a short ok response for connectivity test."}],
+            purpose="model_config_test",
+            session_id="model-config-test",
+        )
+        _record_model_invocation(platform_db, result, "model_config_test", "success")
+        return {"success": True, "message": "OpenRouter 连接测试成功。", "model": result.model, "status": status}
+    except Exception as error:
+        _record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
+        return {"success": False, "message": str(error), "status": status}
 
 
 def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
@@ -283,3 +386,18 @@ def _record_model_invocation(
             ),
         )
 
+
+def _mask_api_key(api_key: str) -> str:
+    if not api_key:
+        return ""
+    if len(api_key) <= 10:
+        return "***"
+    return f"{api_key[:6]}...{api_key[-4:]}"
+
+
+def _model_config_source(platform_db: Path | str) -> str:
+    with connect(platform_db) as conn:
+        row = conn.execute("select id from model_config where id = 1").fetchone()
+        if row is not None:
+            return "database"
+    return "environment"

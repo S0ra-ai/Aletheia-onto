@@ -65,6 +65,19 @@ def register_data_source(
         return _row_to_data_source(row)
 
 
+def list_data_sources(platform_db: Path | str) -> list[dict[str, Any]]:
+    with connect(platform_db) as conn:
+        rows = conn.execute(
+            """
+            select id, name, domain, system_category, source_type, connection_uri,
+                   capabilities, created_at
+            from data_source
+            order by id
+            """
+        ).fetchall()
+        return [_data_source_dict(row) for row in rows]
+
+
 def register_source_api(
     platform_db: Path | str,
     data_source_id: int,
@@ -193,6 +206,23 @@ def _row_to_data_source(row: sqlite3.Row) -> DataSource:
         connection_uri=row["connection_uri"],
         capabilities=json.loads(row["capabilities"] or "[]"),
     )
+
+
+def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "domain": row["domain"],
+        "systemCategory": row["system_category"],
+        "system_category": row["system_category"],
+        "sourceType": row["source_type"],
+        "source_type": row["source_type"],
+        "connectionUri": row["connection_uri"],
+        "connection_uri": row["connection_uri"],
+        "capabilities": json.loads(row["capabilities"] or "[]"),
+        "createdAt": row["created_at"],
+        "created_at": row["created_at"],
+    }
 
 
 def _row_to_source_api(row: sqlite3.Row) -> SourceApi:

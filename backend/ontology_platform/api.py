@@ -18,9 +18,17 @@ from .governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from .metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
-from .model_client import OpenRouterClient, generate_semantic_suggestions
-from .ontology import explain_instance, generate_ontology_draft, summarize_ontology
+from .metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from .model_client import (
+    OpenRouterClient,
+    OpenRouterConfig,
+    generate_semantic_suggestions,
+    get_model_config,
+    reset_model_config,
+    test_model_config,
+    update_model_config,
+)
+from .ontology import explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
 from .semantic_kernel import assess_instance
 
@@ -46,6 +54,16 @@ class DataSourceCreate(BaseModel):
 class DataSourceConnectionTest(BaseModel):
     sourceType: str
     connectionUri: str
+
+
+class ModelConfigUpdate(BaseModel):
+    apiKey: Optional[str] = None
+    model: Optional[str] = None
+    baseUrl: Optional[str] = None
+    httpReferer: Optional[str] = None
+    appTitle: Optional[str] = None
+    serviceTier: Optional[str] = None
+    timeoutSeconds: Optional[float] = None
 
 
 class SourceApiCreate(BaseModel):
@@ -164,6 +182,12 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
     return source.__dict__
 
 
+@app.get("/data-sources")
+def get_data_sources() -> dict[str, object]:
+    items = list_data_sources(DEFAULT_PLATFORM_DB)
+    return {"dataSources": items, "data_sources": items}
+
+
 @app.post("/data-sources/test-connection")
 def test_unregistered_data_source(payload: DataSourceConnectionTest) -> dict[str, object]:
     try:
@@ -232,6 +256,12 @@ def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
         return generate_ontology_draft(DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies")
+def get_ontologies() -> dict[str, object]:
+    items = list_ontologies(DEFAULT_PLATFORM_DB)
+    return {"items": items, "ontologies": items}
 
 
 @app.get("/ontologies/{ontology_id}")
@@ -344,7 +374,27 @@ def preflight_business_operation(operation_code: str, payload: OperationPrefligh
 
 @app.get("/model/status")
 def model_status() -> dict[str, object]:
-    return OpenRouterClient().status()
+    return OpenRouterClient(OpenRouterConfig.from_db_or_env(DEFAULT_PLATFORM_DB)).status()
+
+
+@app.get("/model/config")
+def get_openrouter_config() -> dict[str, object]:
+    return get_model_config(DEFAULT_PLATFORM_DB)
+
+
+@app.post("/model/config")
+def update_openrouter_config(payload: ModelConfigUpdate) -> dict[str, object]:
+    return update_model_config(DEFAULT_PLATFORM_DB, payload.model_dump(exclude_unset=True))
+
+
+@app.delete("/model/config")
+def reset_openrouter_config() -> dict[str, object]:
+    return reset_model_config(DEFAULT_PLATFORM_DB)
+
+
+@app.get("/model/config/test")
+def test_openrouter_config() -> dict[str, object]:
+    return test_model_config(DEFAULT_PLATFORM_DB)
 
 
 @app.post("/ai/data-sources/{data_source_id}/ontology-suggestions")

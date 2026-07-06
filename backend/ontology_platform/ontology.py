@@ -148,9 +148,24 @@ def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str
         return {
             "ontology": {"id": ontology["id"], "name": ontology["name"], "version": ontology["version"]},
             "object": {"code": business_object["code"], "name": business_object["name"]},
+            "objectCode": business_object["code"],
+            "instanceId": instance_id,
             "source": {"table": source_table["table_name"], "primaryKey": primary_key, "instanceId": instance_id},
             "attributes": values,
+            "explanation": f"{business_object['name']}实例 {instance_id} 已映射到传统表 {source_table['table_name']}。",
         }
+
+
+def list_ontologies(platform_db: Path | str) -> list[dict[str, Any]]:
+    with connect(platform_db) as conn:
+        rows = conn.execute(
+            """
+            select id, name, domain, version, status, published_at, created_at
+            from ontology
+            order by id
+            """
+        ).fetchall()
+        return [_ontology_summary_row(row) for row in rows]
 
 
 def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, Any]:
@@ -159,7 +174,7 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
         raise ValueError(f"本体不存在: {ontology_id}")
     objects = conn.execute(
         """
-        select bo.id, bo.code, bo.name, st.table_name
+        select bo.id, bo.ontology_id, bo.code, bo.name, bo.description, st.table_name
         from business_object bo
         left join source_table st on st.id = bo.source_table_id
         where bo.ontology_id = ?
@@ -167,20 +182,46 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
         """,
         (ontology_id,),
     ).fetchall()
+    attributes = conn.execute(
+        """
+        select ba.id, bo.id as object_id, ba.code, ba.name, ba.data_type,
+               ba.required, sc.column_name, bo.code as object_code
+        from business_attribute ba
+        join business_object bo on bo.id = ba.object_id
+        left join source_column sc on sc.id = ba.source_column_id
+        where bo.ontology_id = ?
+        order by bo.code, ba.id
+        """,
+        (ontology_id,),
+    ).fetchall()
     relations = conn.execute(
         """
-        select br.code, br.name, so.code as source_code, tobj.code as target_code
+        select br.id, br.code, br.name, br.relation_type, fk.column_name as source_foreign_key,
+               so.id as source_object_id, tobj.id as target_object_id,
+               so.code as source_code, tobj.code as target_code
         from business_relation br
         join business_object so on so.id = br.source_object_id
         join business_object tobj on tobj.id = br.target_object_id
+        left join source_foreign_key fk on fk.id = br.source_foreign_key_id
         where br.ontology_id = ?
         order by br.id
         """,
         (ontology_id,),
     ).fetchall()
+    mappings = conn.execute(
+        """
+        select id, ontology_id, mapping_type, source_ref, target_ref,
+               confidence, status, evidence, reviewer, reviewed_at, created_at
+        from semantic_mapping
+        where ontology_id = ?
+        order by id
+        """,
+        (ontology_id,),
+    ).fetchall()
     rules = conn.execute(
         """
-        select code, name, rule_type, scope_object_code, expression, severity, natural_language
+        select id, ontology_id, code, name, rule_type, scope_object_code,
+               expression, severity, natural_language, status
         from business_rule
         where ontology_id = ?
         order by code
@@ -188,14 +229,13 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
         (ontology_id,),
     ).fetchall()
     return {
-        "id": ontology["id"],
-        "name": ontology["name"],
-        "domain": ontology["domain"],
-        "version": ontology["version"],
-        "status": ontology["status"],
-        "objects": [dict(row) for row in objects],
-        "relations": [dict(row) for row in relations],
-        "rules": [dict(row) for row in rules],
+        **_ontology_summary_row(ontology),
+        "ontology": _ontology_summary_row(ontology),
+        "objects": [_business_object_row(row) for row in objects],
+        "attributes": [_business_attribute_row(row) for row in attributes],
+        "relations": [_business_relation_row(row) for row in relations],
+        "mappings": [_semantic_mapping_row(row) for row in mappings],
+        "rules": [_business_rule_row(row) for row in rules],
     }
 
 
@@ -424,3 +464,135 @@ def _map_data_type(sql_type: str) -> str:
     if "date" in normalized or "time" in normalized:
         return "date"
     return "text"
+
+
+def _ontology_summary_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "domain": row["domain"],
+        "version": row["version"],
+        "status": row["status"],
+        "publishedAt": row["published_at"],
+        "published_at": row["published_at"],
+        "createdAt": row["created_at"],
+        "created_at": row["created_at"],
+    }
+
+
+def _business_object_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "ontologyId": row["ontology_id"],
+        "ontology_id": row["ontology_id"],
+        "code": row["code"],
+        "name": row["name"],
+        "description": row["description"],
+        "sourceTable": row["table_name"],
+        "source_table": row["table_name"],
+        "table_name": row["table_name"],
+    }
+
+
+def _business_attribute_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "objectId": row["object_id"],
+        "object_id": row["object_id"],
+        "objectCode": row["object_code"],
+        "code": row["code"],
+        "name": row["name"],
+        "dataType": row["data_type"],
+        "data_type": row["data_type"],
+        "required": bool(row["required"]),
+        "sourceColumn": row["column_name"],
+        "source_column": row["column_name"],
+        "description": "",
+    }
+
+
+def _business_relation_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "code": row["code"],
+        "name": row["name"],
+        "type": row["relation_type"],
+        "relationType": row["relation_type"],
+        "relation_type": row["relation_type"],
+        "sourceObjectId": row["source_object_id"],
+        "source_object_id": row["source_object_id"],
+        "targetObjectId": row["target_object_id"],
+        "target_object_id": row["target_object_id"],
+        "sourceCode": row["source_code"],
+        "source_code": row["source_code"],
+        "targetCode": row["target_code"],
+        "target_code": row["target_code"],
+        "sourceForeignKey": row["source_foreign_key"],
+        "source_foreign_key": row["source_foreign_key"],
+    }
+
+
+def _semantic_mapping_row(row: sqlite3.Row) -> dict[str, Any]:
+    source_table, source_column = _parse_source_ref(row["source_ref"])
+    target_object, target_attribute = _parse_target_ref(row["target_ref"])
+    return {
+        "id": row["id"],
+        "ontologyId": row["ontology_id"],
+        "ontology_id": row["ontology_id"],
+        "mappingType": row["mapping_type"],
+        "mapping_type": row["mapping_type"],
+        "sourceRef": row["source_ref"],
+        "source_ref": row["source_ref"],
+        "targetRef": row["target_ref"],
+        "target_ref": row["target_ref"],
+        "sourceTable": source_table,
+        "sourceColumn": source_column,
+        "targetObjectCode": target_object,
+        "targetAttributeCode": target_attribute,
+        "confidence": row["confidence"],
+        "status": row["status"],
+        "evidence": row["evidence"],
+        "reviewer": row["reviewer"],
+        "reviewedAt": row["reviewed_at"],
+        "createdAt": row["created_at"],
+    }
+
+
+def _business_rule_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "ontologyId": row["ontology_id"],
+        "ontology_id": row["ontology_id"],
+        "code": row["code"],
+        "name": row["name"],
+        "description": row["natural_language"],
+        "ruleType": row["rule_type"],
+        "rule_type": row["rule_type"],
+        "scopeObjectCode": row["scope_object_code"],
+        "scope_object_code": row["scope_object_code"],
+        "expression": row["expression"],
+        "severity": row["severity"],
+        "naturalLanguage": row["natural_language"],
+        "natural_language": row["natural_language"],
+        "status": row["status"],
+        "enabled": row["status"] == "published",
+    }
+
+
+def _parse_source_ref(source_ref: str) -> tuple[str, str | None]:
+    if not source_ref.startswith("table:"):
+        return source_ref, None
+    value = source_ref.removeprefix("table:")
+    if ".column:" in value:
+        table, column = value.split(".column:", 1)
+        return table, column
+    return value, None
+
+
+def _parse_target_ref(target_ref: str) -> tuple[str, str | None]:
+    object_match = re.search(r"business_object:(\d+)", target_ref)
+    attribute_match = re.search(r"attribute:(\d+)", target_ref)
+    return (
+        object_match.group(1) if object_match else target_ref,
+        attribute_match.group(1) if attribute_match else None,
+    )
