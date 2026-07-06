@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -355,6 +357,60 @@ def check_data_source_connection(
     if not source_type or not connection_uri:
         raise ValueError("测试未登记数据源时必须提供 sourceType 和 connectionUri")
     return test_connection(source_type, connection_uri)
+
+
+def check_business_api_gateway(platform_db: Path | str, data_source_id: int, timeout_seconds: float = 3) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
+        if source is None:
+            raise ValueError(f"数据源不存在: {data_source_id}")
+        api_base_url = (source["api_base_url"] or "").strip()
+
+    result: dict[str, Any] = {
+        "dataSourceId": data_source_id,
+        "name": source["name"],
+        "apiBaseUrl": api_base_url,
+        "configured": bool(api_base_url),
+        "reachable": False,
+        "status": "not_configured",
+        "statusCode": None,
+        "message": "尚未配置业务 API 基址。",
+    }
+    if not api_base_url:
+        return result
+    if not _is_http_url(api_base_url):
+        return {
+            **result,
+            "status": "invalid_url",
+            "message": "业务 API 基址必须是 HTTP/HTTPS 地址。",
+        }
+
+    request = urllib.request.Request(api_base_url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            status_code = int(response.status)
+        return {
+            **result,
+            "reachable": status_code < 500,
+            "status": "ok" if status_code < 500 else "server_error",
+            "statusCode": status_code,
+            "message": f"业务 API 网关返回 HTTP {status_code}。",
+        }
+    except urllib.error.HTTPError as error:
+        status_code = int(error.code)
+        return {
+            **result,
+            "reachable": status_code < 500,
+            "status": "http_error" if status_code < 500 else "server_error",
+            "statusCode": status_code,
+            "message": f"业务 API 网关返回 HTTP {status_code}。",
+        }
+    except Exception as error:
+        return {
+            **result,
+            "status": "connection_error",
+            "message": f"业务 API 网关不可达: {error}",
+        }
 
 
 def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:

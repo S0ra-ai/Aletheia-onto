@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
-import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
+import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi } from '../../api';
 import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult } from '../../types';
 
@@ -20,6 +20,7 @@ const DataSourceDetail: React.FC = () => {
   const [operationBindings, setOperationBindings] = useState<OperationBindingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [gatewayTesting, setGatewayTesting] = useState(false);
   const [driftLoading, setDriftLoading] = useState(false);
   const [openApiModalVisible, setOpenApiModalVisible] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -123,6 +124,24 @@ const DataSourceDetail: React.FC = () => {
       message.error('生成蓝图草案失败');
     } finally {
       setBlueprintDraftLoading(false);
+    }
+  };
+
+  const handleTestApiGateway = async () => {
+    if (!id) return;
+    setGatewayTesting(true);
+    try {
+      const result = await dataSourceApi.testApiGateway(parseInt(id));
+      if (result.reachable) {
+        message.success(result.message);
+      } else {
+        message.warning(result.message);
+      }
+      fetchData();
+    } catch {
+      message.error('业务 API 网关测试失败');
+    } finally {
+      setGatewayTesting(false);
     }
   };
 
@@ -508,6 +527,15 @@ const DataSourceDetail: React.FC = () => {
             onClick={handleGenerateBlueprintDraft}
           >
             生成蓝图草案
+          </Button>
+        )}
+        {id && (
+          <Button
+            icon={<ApiOutlined />}
+            loading={gatewayTesting}
+            onClick={handleTestApiGateway}
+          >
+            测试业务网关
           </Button>
         )}
       </Space>

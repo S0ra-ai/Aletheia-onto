@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import importlib
 import sys
@@ -26,7 +28,7 @@ from ontology_platform.governance import (
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
-from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.operation_bindings import assess_operation_bindings
@@ -747,6 +749,68 @@ def test_data_source_connection_checks_sqlite_file(tmp_path: Path) -> None:
     assert registered["status"] == "ok"
     assert missing["reachable"] is False
     assert missing["status"] == "not_found"
+
+
+def test_business_api_gateway_check_reports_configuration_and_reachability(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    class GatewayHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+
+    missing = check_business_api_gateway(platform_db, source.id)
+    assert missing["configured"] is False
+    assert missing["reachable"] is False
+    assert missing["status"] == "not_configured"
+
+    invalid = register_data_source(
+        platform_db,
+        "合同管理 API 系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_base_url="ftp://legacy.example/api",
+    )
+    invalid_result = check_business_api_gateway(platform_db, invalid.id)
+    assert invalid_result["configured"] is True
+    assert invalid_result["reachable"] is False
+    assert invalid_result["status"] == "invalid_url"
+
+    server = HTTPServer(("127.0.0.1", 0), GatewayHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        api_base_url = f"http://127.0.0.1:{server.server_port}/"
+        reachable = register_data_source(
+            platform_db,
+            "合同管理 API 系统",
+            "sqlite",
+            str(legacy_db),
+            domain="合同管理",
+            system_category="database+api",
+            api_base_url=api_base_url,
+        )
+        result = check_business_api_gateway(platform_db, reachable.id)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert result["configured"] is True
+    assert result["reachable"] is True
+    assert result["status"] == "ok"
+    assert result["statusCode"] == 204
+    assert result["apiBaseUrl"] == api_base_url
 
 
 def test_platform_lists_data_sources_and_ontologies_for_control_plane(tmp_path: Path) -> None:

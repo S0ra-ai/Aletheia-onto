@@ -94,6 +94,11 @@ export const dataSourceApi = {
     return data;
   },
 
+  testApiGateway: async (id: number): Promise<{ configured: boolean; reachable: boolean; status: string; statusCode: number | null; message: string; apiBaseUrl: string }> => {
+    const { data } = await api.post(`/data-sources/${id}/test-api-gateway`);
+    return data;
+  },
+
   getTables: async (id: number): Promise<SourceTable[]> => {
     const { data } = await api.get(`/data-sources/${id}/tables`);
     return ((data as { tables: unknown[] }).tables || []).map(normalizeSourceTable);

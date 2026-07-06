@@ -25,6 +25,7 @@ from .kernel_package import build_kernel_package, export_kernel_package
 from .metadata import (
     analyze_schema_drift,
     assess_data_source_readiness,
+    check_business_api_gateway,
     check_data_source_connection,
     import_openapi_operations,
     list_data_sources,
@@ -280,6 +281,14 @@ def test_unregistered_data_source(payload: DataSourceConnectionTest) -> dict[str
 def test_registered_data_source(data_source_id: int) -> dict[str, object]:
     try:
         return check_data_source_connection(DEFAULT_PLATFORM_DB, data_source_id=data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/data-sources/{data_source_id}/test-api-gateway")
+def test_registered_api_gateway(data_source_id: int) -> dict[str, object]:
+    try:
+        return check_business_api_gateway(DEFAULT_PLATFORM_DB, data_source_id=data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
