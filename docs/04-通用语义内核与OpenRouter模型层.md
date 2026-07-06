@@ -44,10 +44,17 @@
 当前适配器能力：
 
 1. `sqlite`：完整支持表、字段、主键、外键、字段画像、实例读取和关联上下文读取。
-2. `postgresql`：支持通过 `information_schema` 扫描表、字段、主键、外键和字段画像；运行时读取使用同一适配器。需要安装 `psycopg`。
-3. `mysql`：支持通过 `information_schema` 扫描表、字段、主键、外键和字段画像；运行时读取使用同一适配器。需要安装 `PyMySQL`。
+2. `postgresql`：支持连接测试，通过 `information_schema` 扫描表、字段、主键、外键和字段画像；运行时读取使用同一适配器。需要安装 `psycopg`。
+3. `mysql`：支持连接测试，通过 `information_schema` 扫描表、字段、主键、外键和字段画像；运行时读取使用同一适配器。需要安装 `PyMySQL`。
 
 适配器让平台可以逐步接入 Oracle、SQL Server、达梦、人大金仓等数据库，而不影响本体、映射、规则和语义服务层。
+
+连接测试端点：
+
+1. `POST /data-sources/test-connection`：登记前测试连接串、驱动和网络可达性。
+2. `POST /data-sources/{id}/test-connection`：测试已登记数据源。
+
+连接测试返回 `reachable`、`status` 和 `message`，便于实施人员区分驱动缺失、连接失败和成功连接。
 
 ## 4. 规则表达范围
 
@@ -99,8 +106,9 @@
 1. 合同管理数据库接入、扫描、本体草案生成、语义解释和风险研判。
 2. 设备运维数据库接入、业务 API 登记、本体草案生成和风险研判。
 3. 数据库适配器登记，覆盖 SQLite、PostgreSQL、MySQL 三类企业常见数据库入口。
-4. 传统业务系统操作预检，能把语义研判转成自动化放行或人工复核。
-5. OpenRouter 请求形态，包括 Bearer key、应用标题、来源标识、模型 slug、服务层级和 session id。
+4. 数据源连接测试，覆盖 SQLite 成功、SQLite 缺失文件和 PostgreSQL 不可达状态。
+5. 传统业务系统操作预检，能把语义研判转成自动化放行或人工复核。
+6. OpenRouter 请求形态，包括 Bearer key、应用标题、来源标识、模型 slug、服务层级和 session id。
 
 运行命令：
 

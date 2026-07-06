@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from .automation import preflight_operation
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
-from .metadata import list_source_apis, register_data_source, register_source_api, scan_data_source
+from .metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import OpenRouterClient, generate_semantic_suggestions
 from .ontology import explain_instance, generate_ontology_draft, summarize_ontology
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
@@ -32,6 +32,11 @@ class DataSourceCreate(BaseModel):
     domain: str = ""
     systemCategory: str = "database"
     capabilities: list[str] = Field(default_factory=lambda: ["metadata_scan", "semantic_mapping"])
+
+
+class DataSourceConnectionTest(BaseModel):
+    sourceType: str
+    connectionUri: str
 
 
 class SourceApiCreate(BaseModel):
@@ -115,6 +120,26 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return source.__dict__
+
+
+@app.post("/data-sources/test-connection")
+def test_unregistered_data_source(payload: DataSourceConnectionTest) -> dict[str, object]:
+    try:
+        return check_data_source_connection(
+            DEFAULT_PLATFORM_DB,
+            source_type=payload.sourceType,
+            connection_uri=payload.connectionUri,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/data-sources/{data_source_id}/test-connection")
+def test_registered_data_source(data_source_id: int) -> dict[str, object]:
+    try:
+        return check_data_source_connection(DEFAULT_PLATFORM_DB, data_source_id=data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/data-sources/{data_source_id}/apis")

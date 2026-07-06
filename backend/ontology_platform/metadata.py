@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter
+from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
 from .database import connect
 
 
@@ -126,6 +126,27 @@ def list_source_apis(platform_db: Path | str, data_source_id: int) -> list[dict[
         return [dict(row) for row in rows]
 
 
+def check_data_source_connection(
+    platform_db: Path | str,
+    source_type: str | None = None,
+    connection_uri: str | None = None,
+    data_source_id: int | None = None,
+) -> dict[str, Any]:
+    if data_source_id is not None:
+        with connect(platform_db) as conn:
+            source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
+            if source is None:
+                raise ValueError(f"数据源不存在: {data_source_id}")
+            result = test_connection(source["source_type"], source["connection_uri"])
+            result["dataSourceId"] = data_source_id
+            result["name"] = source["name"]
+            return result
+
+    if not source_type or not connection_uri:
+        raise ValueError("测试未登记数据源时必须提供 sourceType 和 connectionUri")
+    return test_connection(source_type, connection_uri)
+
+
 def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as platform:
         source = platform.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
@@ -134,8 +155,8 @@ def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, 
         adapter = get_adapter(source["source_type"])
         try:
             tables = adapter.scan(source["connection_uri"])
-        except RuntimeError as error:
-            raise ValueError(str(error)) from error
+        except Exception as error:
+            raise ValueError(f"数据源扫描失败: {error}") from error
 
         _delete_derived_drafts(platform, data_source_id)
         platform.execute("delete from source_foreign_key where source_table_id in (select id from source_table where data_source_id = ?)", (data_source_id,))

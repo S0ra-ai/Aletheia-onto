@@ -47,6 +47,9 @@ class SourceForeignKeyInfo:
 class DatabaseAdapter(Protocol):
     source_type: str
 
+    def test_connection(self, connection_uri: str) -> dict[str, Any]:
+        ...
+
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         ...
 
@@ -80,6 +83,10 @@ def get_adapter(source_type: str) -> DatabaseAdapter:
     raise ValueError(f"不支持的数据源类型: {source_type}。当前支持: {', '.join(SUPPORTED_SOURCE_TYPES)}")
 
 
+def test_connection(source_type: str, connection_uri: str) -> dict[str, Any]:
+    return get_adapter(source_type).test_connection(connection_uri)
+
+
 class SQLiteRuntime:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -109,6 +116,17 @@ class SQLiteRuntime:
 class SQLiteAdapter:
     source_type = "sqlite"
 
+    def test_connection(self, connection_uri: str) -> dict[str, Any]:
+        path = Path(connection_uri)
+        if not path.exists():
+            return _connection_status(self.source_type, False, "not_found", f"SQLite 数据库文件不存在: {path}")
+        try:
+            with sqlite3.connect(path) as conn:
+                conn.execute("select 1").fetchone()
+            return _connection_status(self.source_type, True, "ok", "SQLite 数据库连接成功。")
+        except sqlite3.Error as error:
+            return _connection_status(self.source_type, False, "connection_error", str(error))
+
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         with sqlite3.connect(Path(connection_uri)) as conn:
             conn.row_factory = sqlite3.Row
@@ -124,6 +142,20 @@ class SQLiteAdapter:
 class PostgreSQLAdapter:
     source_type = "postgresql"
 
+    def test_connection(self, connection_uri: str) -> dict[str, Any]:
+        try:
+            psycopg = _optional_import("psycopg", "PostgreSQL 接入需要安装 psycopg。")
+        except RuntimeError as error:
+            return _connection_status(self.source_type, False, "driver_missing", str(error))
+        try:
+            with psycopg.connect(connection_uri, connect_timeout=3) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("select 1")
+                    cursor.fetchone()
+            return _connection_status(self.source_type, True, "ok", "PostgreSQL 数据库连接成功。")
+        except Exception as error:
+            return _connection_status(self.source_type, False, "connection_error", str(error))
+
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         psycopg = _optional_import("psycopg", "PostgreSQL 接入需要安装 psycopg。")
         with psycopg.connect(connection_uri, row_factory=psycopg.rows.dict_row) as conn:
@@ -138,6 +170,22 @@ class PostgreSQLAdapter:
 
 class MySQLAdapter:
     source_type = "mysql"
+
+    def test_connection(self, connection_uri: str) -> dict[str, Any]:
+        try:
+            pymysql = _optional_import("pymysql", "MySQL 接入需要安装 PyMySQL。")
+        except RuntimeError as error:
+            return _connection_status(self.source_type, False, "driver_missing", str(error))
+        try:
+            options = _parse_mysql_uri(connection_uri)
+            options["connect_timeout"] = 3
+            with pymysql.connect(cursorclass=pymysql.cursors.DictCursor, **options) as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("select 1")
+                    cursor.fetchone()
+            return _connection_status(self.source_type, True, "ok", "MySQL 数据库连接成功。")
+        except Exception as error:
+            return _connection_status(self.source_type, False, "connection_error", str(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         pymysql = _optional_import("pymysql", "MySQL 接入需要安装 PyMySQL。")
@@ -435,3 +483,12 @@ def _optional_import(module_name: str, message: str) -> Any:
         return importlib.import_module(module_name)
     except ImportError as error:
         raise RuntimeError(message) from error
+
+
+def _connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
+    return {
+        "sourceType": source_type,
+        "reachable": reachable,
+        "status": status,
+        "message": message,
+    }

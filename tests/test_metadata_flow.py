@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import preflight_operation
 from ontology_platform.database import connect, initialize_platform_db
-from ontology_platform.metadata import list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig
 from ontology_platform.ontology import explain_instance, generate_ontology_draft
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
@@ -75,6 +75,23 @@ def test_scan_records_column_profile(tmp_path: Path) -> None:
     assert status["distinct_count"] == 3
 
 
+def test_data_source_connection_checks_sqlite_file(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+
+    registered = check_data_source_connection(platform_db, data_source_id=source.id)
+    missing = check_data_source_connection(platform_db, source_type="sqlite", connection_uri=str(tmp_path / "missing.sqlite3"))
+
+    assert registered["reachable"] is True
+    assert registered["status"] == "ok"
+    assert missing["reachable"] is False
+    assert missing["status"] == "not_found"
+
+
 def test_database_adapter_registry_supports_common_enterprise_databases(tmp_path: Path) -> None:
     platform_db = tmp_path / "platform.sqlite3"
 
@@ -124,6 +141,21 @@ def test_postgresql_scan_reports_missing_driver_as_actionable_error(tmp_path: Pa
         assert "PostgreSQL 接入需要安装 psycopg" in str(error) or "connection" in str(error).lower()
     else:
         raise AssertionError("测试环境没有真实 PostgreSQL 服务时不应扫描成功")
+
+
+def test_postgresql_connection_test_reports_actionable_status(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+
+    initialize_platform_db(platform_db)
+    result = check_data_source_connection(
+        platform_db,
+        source_type="postgresql",
+        connection_uri="postgresql://user:pass@127.0.0.1:1/app",
+    )
+
+    assert result["reachable"] is False
+    assert result["status"] in {"driver_missing", "connection_error"}
+    assert result["message"]
 
 
 def test_equipment_domain_generates_industry_rules_and_assessment(tmp_path: Path) -> None:

@@ -29,7 +29,9 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 
 - `POST /demo/bootstrap`：创建合同管理样例系统并生成本体草案。
 - `POST /demo/bootstrap/equipment`：创建设备运维样例系统并生成本体草案。
+- `POST /data-sources/test-connection`：登记前测试数据库连接。
 - `POST /data-sources`：登记传统业务系统数据库。
+- `POST /data-sources/{id}/test-connection`：测试已登记数据源连接。
 - `POST /data-sources/{id}/apis`：登记传统业务系统 API 或业务动作。
 - `POST /data-sources/{id}/scan`：扫描数据库元数据。
 - `POST /ontologies/draft`：生成领域本体草案。
@@ -74,8 +76,8 @@ python -m pytest
 接入层已经抽象为数据库适配器：
 
 - `sqlite`：当前完整可运行，用于样例库和本地验证。
-- `postgresql`：适配入口已实现，扫描时需要安装 `psycopg` 并提供 PostgreSQL 连接串。
-- `mysql`：适配入口已实现，扫描时需要安装 `PyMySQL` 并提供 MySQL 连接串。
+- `postgresql`：使用 `psycopg`，支持连接测试、元数据扫描和运行时读取。
+- `mysql`：使用 `PyMySQL`，支持连接测试、元数据扫描和运行时读取。
 
 登记 PostgreSQL 数据源示例：
 
@@ -102,3 +104,14 @@ python -m pytest
 ```
 
 生产接入建议使用只读账号，并先在测试库执行元数据扫描。
+
+登记前连接测试示例：
+
+```bash
+curl -X POST http://127.0.0.1:8000/data-sources/test-connection \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sourceType": "postgresql",
+    "connectionUri": "postgresql://user:password@host:5432/database"
+  }'
+```
