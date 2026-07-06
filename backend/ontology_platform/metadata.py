@@ -139,6 +139,136 @@ def list_source_apis(platform_db: Path | str, data_source_id: int) -> list[dict[
         return [dict(row) for row in rows]
 
 
+def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
+        if source is None:
+            raise ValueError(f"数据源不存在: {data_source_id}")
+        tables = conn.execute("select * from source_table where data_source_id = ?", (data_source_id,)).fetchall()
+        table_ids = [row["id"] for row in tables]
+        columns = conn.execute(
+            """
+            select sc.*
+            from source_column sc
+            join source_table st on st.id = sc.source_table_id
+            where st.data_source_id = ?
+            """,
+            (data_source_id,),
+        ).fetchall()
+        foreign_keys = conn.execute(
+            """
+            select fk.*
+            from source_foreign_key fk
+            join source_table st on st.id = fk.source_table_id
+            where st.data_source_id = ?
+            """,
+            (data_source_id,),
+        ).fetchall()
+        apis = conn.execute("select * from source_api where data_source_id = ?", (data_source_id,)).fetchall()
+        ontology_rows = conn.execute(
+            """
+            select distinct o.id, o.status
+            from ontology o
+            join business_object bo on bo.ontology_id = o.id
+            join source_table st on st.id = bo.source_table_id
+            where st.data_source_id = ?
+            """,
+            (data_source_id,),
+        ).fetchall()
+        mapping_counts = conn.execute(
+            """
+            select sm.status, count(*) as total
+            from semantic_mapping sm
+            join business_object bo on bo.ontology_id = sm.ontology_id
+            join source_table st on st.id = bo.source_table_id
+            where st.data_source_id = ?
+            group by sm.status
+            """,
+            (data_source_id,),
+        ).fetchall()
+
+    checks = [
+        _readiness_check(
+            "connection",
+            "连接配置",
+            True,
+            "已登记数据源连接配置。",
+            "登记数据源连接地址和类型。",
+            10,
+        ),
+        _readiness_check(
+            "metadata_scan",
+            "元数据扫描",
+            len(tables) > 0 and len(columns) > 0,
+            f"已扫描 {len(tables)} 张表、{len(columns)} 个字段。",
+            "执行元数据扫描，获取表、字段、主键和外键。",
+            20,
+        ),
+        _readiness_check(
+            "primary_keys",
+            "实例定位",
+            bool(tables) and all(row["primary_key"] for row in tables),
+            f"{sum(1 for row in tables if row['primary_key'])}/{len(tables)} 张表具备主键。",
+            "为缺少主键的表配置实例标识，否则无法稳定解释单个业务对象实例。",
+            15,
+        ),
+        _readiness_check(
+            "relations",
+            "关系识别",
+            len(foreign_keys) > 0 or len(tables) <= 1,
+            f"识别到 {len(foreign_keys)} 条外键关系。",
+            "补充外键或关系映射，形成业务对象之间的语义关联。",
+            10,
+        ),
+        _readiness_check(
+            "ontology",
+            "本体草案",
+            len(ontology_rows) > 0,
+            f"已有 {len(ontology_rows)} 个关联本体版本。",
+            "基于扫描结果和行业蓝图生成本体草案。",
+            15,
+        ),
+        _readiness_check(
+            "mapping_governance",
+            "映射治理",
+            _mapping_count(mapping_counts, "confirmed") > 0,
+            f"已确认 {_mapping_count(mapping_counts, 'confirmed')} 条映射，待审核 {_mapping_count(mapping_counts, 'pending')} 条。",
+            "组织业务专家审核语义映射，至少确认关键对象和关键字段。",
+            15,
+        ),
+        _readiness_check(
+            "business_apis",
+            "业务 API",
+            len(apis) > 0 and all(row["semantic_action"] for row in apis),
+            f"已登记 {len(apis)} 个业务 API，其中 {sum(1 for row in apis if row['semantic_action'])} 个具备语义动作。",
+            "登记传统业务系统 API，并为每个操作绑定语义动作。",
+            15,
+        ),
+    ]
+    gaps = [item for item in checks if not item["passed"]]
+    score = sum(item["weight"] for item in checks if item["passed"])
+    status = "ready" if not gaps else "partial" if score >= 45 else "blocked"
+    return {
+        "dataSourceId": data_source_id,
+        "name": source["name"],
+        "domain": source["domain"],
+        "score": score,
+        "status": status,
+        "summary": {
+            "tables": len(tables),
+            "columns": len(columns),
+            "foreignKeys": len(foreign_keys),
+            "apis": len(apis),
+            "ontologies": len(ontology_rows),
+            "confirmedMappings": _mapping_count(mapping_counts, "confirmed"),
+            "pendingMappings": _mapping_count(mapping_counts, "pending"),
+        },
+        "checks": checks,
+        "gaps": gaps,
+        "nextActions": [item["remediation"] for item in gaps],
+    }
+
+
 def check_data_source_connection(
     platform_db: Path | str,
     source_type: str | None = None,
@@ -223,6 +353,24 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
         "createdAt": row["created_at"],
         "created_at": row["created_at"],
     }
+
+
+def _readiness_check(code: str, name: str, passed: bool, evidence: str, remediation: str, weight: int) -> dict[str, Any]:
+    return {
+        "code": code,
+        "name": name,
+        "passed": passed,
+        "evidence": evidence,
+        "remediation": remediation,
+        "weight": weight,
+    }
+
+
+def _mapping_count(rows: list[sqlite3.Row], status: str) -> int:
+    for row in rows:
+        if row["status"] == status:
+            return int(row["total"])
+    return 0
 
 
 def _row_to_source_api(row: sqlite3.Row) -> SourceApi:

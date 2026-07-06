@@ -49,6 +49,35 @@ export interface SourceTable {
   scannedAt: string;
 }
 
+export interface ReadinessCheck {
+  code: string;
+  name: string;
+  passed: boolean;
+  evidence: string;
+  remediation: string;
+  weight: number;
+}
+
+export interface DataSourceReadiness {
+  dataSourceId: number;
+  name: string;
+  domain: string;
+  score: number;
+  status: 'ready' | 'partial' | 'blocked';
+  summary: {
+    tables: number;
+    columns: number;
+    foreignKeys: number;
+    apis: number;
+    ontologies: number;
+    confirmedMappings: number;
+    pendingMappings: number;
+  };
+  checks: ReadinessCheck[];
+  gaps: ReadinessCheck[];
+  nextActions: string[];
+}
+
 // 元数据相关类型
 export interface ScanResult {
   tables: number;

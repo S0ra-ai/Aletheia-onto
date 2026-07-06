@@ -5,6 +5,7 @@ import type {
   SourceApi,
   SourceApiCreate,
   SourceTable,
+  DataSourceReadiness,
   OntologyDraftCreate,
   OntologyDetail,
   DemoBootstrapResult,
@@ -97,6 +98,11 @@ export const dataSourceApi = {
   getApis: async (id: number): Promise<SourceApi[]> => {
     const { data } = await api.get(`/data-sources/${id}/apis`);
     return ((data as { apis: unknown[] }).apis || []).map(normalizeSourceApi);
+  },
+
+  getReadiness: async (id: number): Promise<DataSourceReadiness> => {
+    const { data } = await api.get(`/data-sources/${id}/readiness`);
+    return data as DataSourceReadiness;
   },
 
   createApi: async (dataSourceId: number, payload: SourceApiCreate): Promise<SourceApi> => {

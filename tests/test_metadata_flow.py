@@ -21,7 +21,7 @@ from ontology_platform.governance import (
     upsert_business_rule,
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
-from ontology_platform.metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
@@ -98,6 +98,39 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
             "select count(*) from audit_log where action = 'execute_operation'"
         ).fetchone()[0]
     assert audit_count == 2
+
+
+def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+
+    initial = assess_data_source_readiness(platform_db, source.id)
+    assert initial["status"] == "blocked"
+    assert initial["summary"]["tables"] == 0
+    assert {"metadata_scan", "ontology", "business_apis"}.issubset({item["code"] for item in initial["gaps"]})
+
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+    reviewed = assess_data_source_readiness(platform_db, source.id)
+
+    assert reviewed["score"] >= 65
+    assert reviewed["status"] == "partial"
+    assert reviewed["summary"]["tables"] == 4
+    assert reviewed["summary"]["apis"] == 1
+    assert reviewed["summary"]["ontologies"] == 1
+    assert reviewed["summary"]["pendingMappings"] > 0
+    assert any(item["code"] == "mapping_governance" for item in reviewed["gaps"])
+
+    bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "接入准备度验证")
+    ready = assess_data_source_readiness(platform_db, source.id)
+    assert ready["score"] == 100
+    assert ready["status"] == "ready"
+    assert ready["gaps"] == []
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

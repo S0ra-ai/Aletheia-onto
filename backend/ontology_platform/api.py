@@ -19,7 +19,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .industry_blueprints import list_industry_blueprints
-from .metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from .metadata import assess_data_source_readiness, check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import (
     OpenRouterClient,
     OpenRouterConfig,
@@ -239,6 +239,14 @@ def create_source_api(data_source_id: int, payload: SourceApiCreate) -> dict[str
 @app.get("/data-sources/{data_source_id}/apis")
 def get_source_apis(data_source_id: int) -> dict[str, object]:
     return {"apis": list_source_apis(DEFAULT_PLATFORM_DB, data_source_id)}
+
+
+@app.get("/data-sources/{data_source_id}/readiness")
+def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
+    try:
+        return assess_data_source_readiness(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/data-sources/{data_source_id}/scan")

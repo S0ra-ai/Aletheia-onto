@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin } from 'antd';
+import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert } from 'antd';
 import { ArrowLeftOutlined, ScanOutlined, PlusOutlined } from '@ant-design/icons';
 import { dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi } from '../../types';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -14,6 +14,7 @@ const DataSourceDetail: React.FC = () => {
   const [dataSource, setDataSource] = useState<DataSource | null>(null);
   const [tables, setTables] = useState<SourceTable[]>([]);
   const [apis, setApis] = useState<SourceApi[]>([]);
+  const [readiness, setReadiness] = useState<DataSourceReadiness | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
 
@@ -21,12 +22,14 @@ const DataSourceDetail: React.FC = () => {
     if (!id) return;
     setLoading(true);
     try {
-      const [tablesData, apisData] = await Promise.all([
+      const [tablesData, apisData, readinessData] = await Promise.all([
         dataSourceApi.getTables(parseInt(id)),
         dataSourceApi.getApis(parseInt(id)),
+        dataSourceApi.getReadiness(parseInt(id)),
       ]);
       setTables(tablesData);
       setApis(apisData);
+      setReadiness(readinessData);
       // 获取数据源基本信息（从列表中获取）
       const sources = await dataSourceApi.list();
       const source = sources.find(s => s.id === parseInt(id));
@@ -114,6 +117,42 @@ const DataSourceDetail: React.FC = () => {
     },
   ];
 
+  const readinessColumns = [
+    {
+      title: '检查项',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: '状态',
+      dataIndex: 'passed',
+      key: 'passed',
+      render: (passed: boolean) => <Tag color={passed ? 'green' : 'orange'}>{passed ? '通过' : '待处理'}</Tag>,
+    },
+    {
+      title: '证据',
+      dataIndex: 'evidence',
+      key: 'evidence',
+    },
+    {
+      title: '建议动作',
+      dataIndex: 'remediation',
+      key: 'remediation',
+    },
+    {
+      title: '权重',
+      dataIndex: 'weight',
+      key: 'weight',
+      width: 80,
+    },
+  ];
+
+  const readinessColor = (status?: string) => {
+    if (status === 'ready') return 'green';
+    if (status === 'partial') return 'orange';
+    return 'red';
+  };
+
   if (loading) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   }
@@ -146,6 +185,40 @@ const DataSourceDetail: React.FC = () => {
         </Card>
       )}
 
+      {readiness && (
+        <Card style={{ marginBottom: 16 }} title="接入准备度">
+          <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ minWidth: 220 }}>
+              <Progress
+                type="circle"
+                percent={readiness.score}
+                strokeColor={readinessColor(readiness.status)}
+              />
+            </div>
+            <Descriptions column={4} style={{ flex: 1 }}>
+              <Descriptions.Item label="状态">
+                <Tag color={readinessColor(readiness.status)}>{readiness.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="表">{readiness.summary.tables}</Descriptions.Item>
+              <Descriptions.Item label="字段">{readiness.summary.columns}</Descriptions.Item>
+              <Descriptions.Item label="外键">{readiness.summary.foreignKeys}</Descriptions.Item>
+              <Descriptions.Item label="API">{readiness.summary.apis}</Descriptions.Item>
+              <Descriptions.Item label="本体">{readiness.summary.ontologies}</Descriptions.Item>
+              <Descriptions.Item label="已确认映射">{readiness.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label="待审核映射">{readiness.summary.pendingMappings}</Descriptions.Item>
+            </Descriptions>
+          </Space>
+          {readiness.nextActions.length > 0 && (
+            <Alert
+              style={{ marginTop: 16 }}
+              type={readiness.status === 'blocked' ? 'error' : 'warning'}
+              message="下一步动作"
+              description={readiness.nextActions.join('；')}
+            />
+          )}
+        </Card>
+      )}
+
       <Card>
         <Tabs defaultActiveKey="tables">
           <TabPane tab={`已扫描表 (${tables.length})`} key="tables">
@@ -175,6 +248,14 @@ const DataSourceDetail: React.FC = () => {
               columns={apiColumns}
               dataSource={apis}
               rowKey="id"
+            />
+          </TabPane>
+          <TabPane tab="接入检查" key="readiness">
+            <Table
+              columns={readinessColumns}
+              dataSource={readiness?.checks || []}
+              rowKey="code"
+              pagination={false}
             />
           </TabPane>
         </Tabs>
