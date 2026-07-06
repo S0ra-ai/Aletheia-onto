@@ -15,12 +15,13 @@ def run_onboarding_pipeline(
     domain: str = "",
     system_category: str = "database",
     capabilities: list[str] | None = None,
+    api_base_url: str = "",
     blueprint_id: str | None = None,
     ontology_name: str | None = None,
     generate_ontology: bool = True,
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
-    source = register_data_source(platform_db, name, source_type, connection_uri, domain, system_category, capabilities)
+    source = register_data_source(platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url)
     steps.append(_step("register_data_source", "completed", f"数据源已登记: {source.id}", {"dataSourceId": source.id}))
 
     connection = check_data_source_connection(platform_db, data_source_id=source.id)

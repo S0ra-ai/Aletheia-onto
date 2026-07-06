@@ -94,7 +94,7 @@ const DataSourceList: React.FC = () => {
 
   const handleOnboarding = async () => {
     try {
-      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'domain', 'systemCategory', 'blueprintId']);
+      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'domain', 'systemCategory', 'blueprintId']);
       setOnboardingLoading(true);
       const result = await onboardingApi.run({ ...values, generateOntology: true });
       setOnboardingResult(result);
@@ -236,6 +236,12 @@ const DataSourceList: React.FC = () => {
             rules={[{ required: true, message: '请输入连接地址' }]}
           >
             <Input placeholder="例如：/path/to/database.sqlite3" />
+          </Form.Item>
+          <Form.Item
+            name="apiBaseUrl"
+            label="业务 API 基址"
+          >
+            <Input placeholder="例如：https://legacy.example/api" />
           </Form.Item>
           <Form.Item>
             <Button

@@ -41,6 +41,7 @@ def build_kernel_package(platform_db: Path | str, data_source_id: int, base_url:
             "domain": source["domain"],
             "systemCategory": source["system_category"],
             "sourceType": source["source_type"],
+            "apiBaseUrl": source["api_base_url"],
             "capabilities": json.loads(source["capabilities"] or "[]"),
         },
         "readiness": readiness,

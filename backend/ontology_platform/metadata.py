@@ -18,6 +18,7 @@ class DataSource:
     system_category: str
     source_type: str
     connection_uri: str
+    api_base_url: str
     capabilities: list[str]
 
 
@@ -40,6 +41,7 @@ def register_data_source(
     domain: str = "",
     system_category: str = "database",
     capabilities: list[str] | None = None,
+    api_base_url: str = "",
 ) -> DataSource:
     get_adapter(source_type)
 
@@ -47,19 +49,20 @@ def register_data_source(
     with connect(platform_db) as conn:
         conn.execute(
             """
-            insert into data_source (name, domain, system_category, source_type, connection_uri, capabilities)
-            values (?, ?, ?, ?, ?, ?)
+            insert into data_source (name, domain, system_category, source_type, connection_uri, api_base_url, capabilities)
+            values (?, ?, ?, ?, ?, ?, ?)
             on conflict(name) do update set
                 domain = excluded.domain,
                 system_category = excluded.system_category,
                 source_type = excluded.source_type,
                 connection_uri = excluded.connection_uri,
+                api_base_url = excluded.api_base_url,
                 capabilities = excluded.capabilities
             """,
-            (name, domain, system_category, source_type, connection_uri, json.dumps(capability_values, ensure_ascii=False)),
+            (name, domain, system_category, source_type, connection_uri, api_base_url, json.dumps(capability_values, ensure_ascii=False)),
         )
         row = conn.execute(
-            "select id, name, domain, system_category, source_type, connection_uri, capabilities from data_source where name = ?",
+            "select id, name, domain, system_category, source_type, connection_uri, api_base_url, capabilities from data_source where name = ?",
             (name,),
         ).fetchone()
         return _row_to_data_source(row)
@@ -69,7 +72,7 @@ def list_data_sources(platform_db: Path | str) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
-            select id, name, domain, system_category, source_type, connection_uri,
+            select id, name, domain, system_category, source_type, connection_uri, api_base_url,
                    capabilities, created_at
             from data_source
             order by id
@@ -449,6 +452,7 @@ def _row_to_data_source(row: sqlite3.Row) -> DataSource:
         system_category=row["system_category"],
         source_type=row["source_type"],
         connection_uri=row["connection_uri"],
+        api_base_url=row["api_base_url"],
         capabilities=json.loads(row["capabilities"] or "[]"),
     )
 
@@ -464,6 +468,8 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
         "source_type": row["source_type"],
         "connectionUri": row["connection_uri"],
         "connection_uri": row["connection_uri"],
+        "apiBaseUrl": row["api_base_url"],
+        "api_base_url": row["api_base_url"],
         "capabilities": json.loads(row["capabilities"] or "[]"),
         "createdAt": row["created_at"],
         "created_at": row["created_at"],

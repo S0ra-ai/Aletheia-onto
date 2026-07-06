@@ -144,11 +144,13 @@ def execute_operation(
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
             raise ValueError(f"数据源不存在: {data_source_id}")
-        connection_uri = source["connection_uri"]
-    if not connection_uri.lower().startswith(("http://", "https://")):
-        raise ValueError("真实执行仅支持 HTTP/HTTPS 业务系统连接；数据库类系统请使用 dryRun 或配置业务 API 网关地址")
+        api_base_url = source["api_base_url"]
+    if not api_base_url:
+        raise ValueError("真实执行需要配置业务 API 基址 apiBaseUrl；数据库连接地址仅用于元数据和实例读取。")
+    if not api_base_url.lower().startswith(("http://", "https://")):
+        raise ValueError("业务 API 基址必须是 HTTP/HTTPS 地址。")
 
-    remote = _invoke_http_operation(connection_uri, execution_plan, timeout_seconds)
+    remote = _invoke_http_operation(api_base_url, execution_plan, timeout_seconds)
     result = {
         "executed": True,
         "status": "executed",

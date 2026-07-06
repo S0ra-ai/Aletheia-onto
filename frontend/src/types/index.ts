@@ -4,6 +4,7 @@ export interface DataSource {
   name: string;
   sourceType: string;
   connectionUri: string;
+  apiBaseUrl: string;
   domain: string;
   systemCategory: string;
   capabilities: string[];
@@ -14,6 +15,7 @@ export interface DataSourceCreate {
   name: string;
   sourceType?: string;
   connectionUri: string;
+  apiBaseUrl?: string;
   domain?: string;
   systemCategory?: string;
   capabilities?: string[];

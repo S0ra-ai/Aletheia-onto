@@ -527,6 +527,9 @@ const DataSourceDetail: React.FC = () => {
             <Descriptions.Item label="连接地址">
               <code>{dataSource.connectionUri}</code>
             </Descriptions.Item>
+            <Descriptions.Item label="业务 API 基址">
+              {dataSource.apiBaseUrl ? <code>{dataSource.apiBaseUrl}</code> : '-'}
+            </Descriptions.Item>
           </Descriptions>
         </Card>
       )}

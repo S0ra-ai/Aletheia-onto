@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.adapters import get_adapter
+import ontology_platform.automation as automation_module
 from ontology_platform.automation import execute_operation, preflight_operation
 from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
@@ -114,6 +115,55 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     assert decision_types.count("instance_assessment") == 2
     assert decision_types.count("operation_preflight") == 2
     assert decision_types.count("operation_execution") == 2
+
+
+def test_real_operation_execution_uses_business_api_base_url(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(
+        platform_db,
+        "合同管理样例系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_base_url="https://legacy.example/api",
+    )
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+    calls: list[dict[str, object]] = []
+
+    def fake_invoke(base_url: str, execution_plan: dict[str, object], timeout_seconds: float) -> dict[str, object]:
+        calls.append({"baseUrl": base_url, "plan": execution_plan, "timeout": timeout_seconds})
+        return {"statusCode": 200, "body": {"accepted": True}}
+
+    original_invoke = automation_module._invoke_http_operation
+    automation_module._invoke_http_operation = fake_invoke
+    try:
+        result = execute_operation(
+            platform_db,
+            ontology["id"],
+            source.id,
+            "submit_contract",
+            "1",
+            payload={"comment": "自动提交"},
+            actor="测试用户",
+            dry_run=False,
+            timeout_seconds=7,
+        )
+    finally:
+        automation_module._invoke_http_operation = original_invoke
+
+    assert result["status"] == "executed"
+    assert result["executed"] is True
+    assert calls[0]["baseUrl"] == "https://legacy.example/api"
+    assert calls[0]["timeout"] == 7
+    assert calls[0]["plan"]["path"] == "/contracts/1/submit"
+    assert result["execution"]["remote"]["body"] == {"accepted": True}
 
 
 def test_decision_consistency_batch_assesses_samples_and_reports_rule_distribution(tmp_path: Path) -> None:
@@ -680,6 +730,8 @@ def test_platform_lists_data_sources_and_ontologies_for_control_plane(tmp_path: 
     assert data_sources[0]["source_type"] == "sqlite"
     assert data_sources[0]["connectionUri"] == str(legacy_db)
     assert data_sources[0]["connection_uri"] == str(legacy_db)
+    assert data_sources[0]["apiBaseUrl"] == ""
+    assert data_sources[0]["api_base_url"] == ""
     assert data_sources[0]["capabilities"] == ["metadata_scan", "semantic_mapping"]
     assert data_sources[0]["createdAt"]
     assert ontologies[0]["id"] == ontology["id"]
