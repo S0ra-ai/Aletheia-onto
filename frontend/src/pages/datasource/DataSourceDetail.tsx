@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
-import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined } from '@ant-design/icons';
 import { dataSourceApi } from '../../api';
 import type { DataSource, SourceTable, SourceApi, DataSourceReadiness } from '../../types';
 
@@ -184,6 +184,14 @@ const DataSourceDetail: React.FC = () => {
           返回
         </Button>
         <Title level={3} style={{ margin: 0 }}>数据源详情</Title>
+        {id && (
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() => window.open(dataSourceApi.kernelPackageUrl(parseInt(id)), '_blank')}
+          >
+            下载语义内核包
+          </Button>
+        )}
       </Space>
 
       {dataSource && (

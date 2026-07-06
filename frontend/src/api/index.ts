@@ -121,6 +121,8 @@ export const dataSourceApi = {
       count: data.count || 0,
     };
   },
+
+  kernelPackageUrl: (dataSourceId: number): string => `/api/data-sources/${dataSourceId}/kernel-package/download`,
 };
 
 export const onboardingApi = {

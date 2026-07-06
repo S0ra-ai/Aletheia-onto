@@ -20,6 +20,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .industry_blueprints import list_industry_blueprints
+from .kernel_package import build_kernel_package, export_kernel_package
 from .metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import (
     OpenRouterClient,
@@ -286,6 +287,27 @@ def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
         return assess_data_source_readiness(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/kernel-package")
+def get_kernel_package(data_source_id: int) -> dict[str, object]:
+    try:
+        return build_kernel_package(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/kernel-package/download")
+def download_kernel_package(data_source_id: int) -> Response:
+    try:
+        asset = export_kernel_package(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return Response(
+        content=asset["content"],
+        media_type=asset["mediaType"],
+        headers={"Content-Disposition": f"attachment; filename={asset['filename']}"},
+    )
 
 
 @app.post("/data-sources/{data_source_id}/scan")

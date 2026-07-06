@@ -22,6 +22,7 @@ from ontology_platform.governance import (
     upsert_business_rule,
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
+from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
 from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
@@ -241,6 +242,34 @@ def test_openapi_import_registers_business_operations(tmp_path: Path) -> None:
 
     readiness = assess_data_source_readiness(platform_db, source.id)
     assert readiness["summary"]["apis"] == 2
+
+
+def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理语义内核系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    package = build_kernel_package(platform_db, source.id, "https://kernel.example/api")
+    asset = export_kernel_package(platform_db, source.id, "https://kernel.example/api")
+
+    assert package["packageType"] == "ontology-semantic-kernel"
+    assert package["dataSource"]["id"] == source.id
+    assert package["readiness"]["summary"]["tables"] == 4
+    assert package["ontologies"][0]["id"] == ontology["id"]
+    assert any(item["code"] == "contract" for item in package["ontologies"][0]["objects"])
+    assert any(rule["code"] == "blacklist_customer_warning" for rule in package["ontologies"][0]["rules"])
+    assert package["operations"][0]["operationCode"] == "submit_contract"
+    assert package["operations"][0]["requiresPreflight"] is True
+    assert package["runtimeEndpoints"]["execute"] == "https://kernel.example/api/automation/operations/{operationCode}/execute"
+    assert package["governanceGates"]["executionRequiresApprovedDecision"] is True
+    assert asset["filename"] == f"semantic-kernel-datasource-{source.id}.json"
+    assert json.loads(asset["content"])["packageType"] == "ontology-semantic-kernel"
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:
