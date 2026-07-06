@@ -175,6 +175,57 @@ def generate_semantic_suggestions(
         }
 
 
+def generate_blueprint_draft(
+    platform_db: Path | str,
+    data_source_id: int,
+    client: OpenRouterClient | None = None,
+) -> dict[str, Any]:
+    metadata = _metadata_prompt_payload(platform_db, data_source_id)
+    model_client = client or OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
+    local = _local_blueprint_draft(metadata)
+    if not model_client.configured:
+        return {
+            "provider": "local-heuristic",
+            "model": "metadata-profile",
+            "usedRemoteModel": False,
+            "blueprint": local,
+            "openrouter": model_client.status(),
+        }
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是企业本体工程师。请基于传统业务系统元数据生成一个可导入的行业蓝图 JSON。"
+                "必须只输出 JSON 对象，字段包括 id,name,domain,description,objectHints,attributeHints,rules,tableKeywords,capabilityTags。"
+                "rules 的元素必须包含 code,name,rule_type,scope_object_code,expression,severity,natural_language。"
+            ),
+        },
+        {"role": "user", "content": json.dumps(metadata, ensure_ascii=False)},
+    ]
+    try:
+        result = model_client.chat(messages, purpose="blueprint_draft", session_id=f"blueprint-{data_source_id}")
+        _record_model_invocation(platform_db, result, "blueprint_draft", "success")
+        parsed = _extract_json_object(result.content)
+        return {
+            "provider": result.provider,
+            "model": result.model,
+            "usedRemoteModel": result.used_remote_model,
+            "blueprint": _normalize_blueprint(parsed, local),
+            "openrouter": model_client.status(),
+        }
+    except Exception as error:
+        _record_model_invocation(platform_db, None, "blueprint_draft", "error", str(error), model_client)
+        return {
+            "provider": "local-heuristic",
+            "model": "metadata-profile",
+            "usedRemoteModel": False,
+            "blueprint": local,
+            "openrouter": model_client.status(),
+            "remoteError": str(error),
+        }
+
+
 def get_model_config(platform_db: Path | str) -> dict[str, Any]:
     config = OpenRouterConfig.from_db_or_env(platform_db)
     source = _model_config_source(platform_db)
@@ -353,6 +404,79 @@ def _local_suggestions(metadata: dict[str, Any]) -> dict[str, Any]:
             "字段样例可能包含敏感信息，接入生产库前应启用脱敏策略。",
         ],
     }
+
+
+def _local_blueprint_draft(metadata: dict[str, Any]) -> dict[str, Any]:
+    domain = metadata["dataSource"].get("domain") or metadata["dataSource"]["name"] or "通用业务"
+    slug = _slug(domain or metadata["dataSource"]["name"])
+    object_hints = {table["table"]: table["table"].replace("_", " ").title() for table in metadata["tables"]}
+    attribute_hints: dict[str, str] = {}
+    rules = []
+    table_keywords = []
+    for table in metadata["tables"]:
+        table_keywords.append(table["table"])
+        for column in table["columns"]:
+            column_name = column["column_name"]
+            attribute_hints.setdefault(column_name, column_name.replace("_", " ").title())
+            if column["nullable"] == 0 and column_name != table["primaryKey"]:
+                rules.append(
+                    {
+                        "code": f"{table['table']}_{column_name}_required",
+                        "name": f"{attribute_hints[column_name]}必填",
+                        "rule_type": "validation",
+                        "scope_object_code": table["table"],
+                        "expression": f"{column_name} != null",
+                        "severity": "blocking",
+                        "natural_language": f"{object_hints[table['table']]}的{attribute_hints[column_name]}不能为空。",
+                    }
+                )
+    return {
+        "id": f"{slug}-draft",
+        "name": f"{domain}蓝图草案",
+        "domain": domain,
+        "description": "由数据源元数据自动生成的行业蓝图草案，导入前建议由业务专家复核。",
+        "objectHints": object_hints,
+        "attributeHints": attribute_hints,
+        "rules": rules[:20],
+        "tableKeywords": table_keywords[:20],
+        "capabilityTags": ["metadata-derived", "semantic-onboarding"],
+    }
+
+
+def _extract_json_object(content: str) -> dict[str, Any]:
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`")
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("模型未返回 JSON 对象")
+    return json.loads(stripped[start : end + 1])
+
+
+def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    result = dict(fallback)
+    for key in ("id", "name", "domain", "description", "objectHints", "attributeHints", "rules", "tableKeywords", "capabilityTags"):
+        if key in parsed and parsed[key] not in (None, "", [], {}):
+            result[key] = parsed[key]
+    result["id"] = _slug(str(result["id"]))
+    result["objectHints"] = {str(key).split(".")[-1]: str(value) for key, value in dict(result.get("objectHints") or {}).items()}
+    attribute_hints = {str(key): str(value) for key, value in dict(result.get("attributeHints") or {}).items()}
+    for key, value in list(attribute_hints.items()):
+        if "." in key:
+            attribute_hints.setdefault(key.split(".")[-1], value)
+    result["attributeHints"] = attribute_hints
+    result["tableKeywords"] = [str(item) for item in result.get("tableKeywords") or []]
+    result["capabilityTags"] = [str(item) for item in result.get("capabilityTags") or []]
+    return result
+
+
+def _slug(value: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else "-" for char in value)
+    normalized = "-".join(part for part in normalized.split("-") if part)
+    return normalized or "industry"
 
 
 def _record_model_invocation(

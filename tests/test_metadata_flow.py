@@ -24,7 +24,7 @@ from ontology_platform.governance import (
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
 from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
-from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
+from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
@@ -776,6 +776,63 @@ def test_openrouter_client_uses_subscription_key_shape() -> None:
     assert payload["model"] == "openai/test-model"
     assert payload["service_tier"] == "auto"
     assert payload["session_id"] == "session-1"
+
+
+def test_blueprint_draft_uses_local_fallback_and_openrouter_shape(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+
+    local = generate_blueprint_draft(platform_db, source.id, OpenRouterClient(OpenRouterConfig("", "test", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10)))
+    assert local["usedRemoteModel"] is False
+    assert local["blueprint"]["domain"] == "合同管理"
+    assert "contract" in local["blueprint"]["objectHints"]
+
+    calls: list[dict[str, object]] = []
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float) -> dict[str, object]:
+        calls.append({"url": url, "headers": headers, "payload": payload, "timeout": timeout_seconds})
+        return {
+            "model": "openai/test-model",
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "id": 123,
+                                "name": "AI 合同蓝图",
+                                "domain": "合同管理",
+                                "description": "AI 生成",
+                                "objectHints": {"contract": "合同"},
+                                "attributeHints": {"contract.contract_no": "合同编号"},
+                                "rules": [],
+                                "tableKeywords": ["contract"],
+                                "capabilityTags": ["ai-generated"],
+                            },
+                            ensure_ascii=False,
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+
+    remote = generate_blueprint_draft(
+        platform_db,
+        source.id,
+        OpenRouterClient(
+            OpenRouterConfig("or-test-key", "openai/test-model", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10),
+            transport=fake_transport,
+        ),
+    )
+    assert remote["usedRemoteModel"] is True
+    assert remote["blueprint"]["id"] == "123"
+    assert remote["blueprint"]["attributeHints"]["contract_no"] == "合同编号"
+    assert calls[0]["payload"]["service_tier"] == "auto"
 
 
 def test_api_module_imports_on_supported_python() -> None:

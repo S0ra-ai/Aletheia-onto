@@ -25,6 +25,7 @@ from .metadata import assess_data_source_readiness, check_data_source_connection
 from .model_client import (
     OpenRouterClient,
     OpenRouterConfig,
+    generate_blueprint_draft,
     generate_semantic_suggestions,
     get_model_config,
     reset_model_config,
@@ -536,6 +537,14 @@ def test_openrouter_config() -> dict[str, object]:
 def ai_ontology_suggestions(data_source_id: int) -> dict[str, object]:
     try:
         return generate_semantic_suggestions(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/ai/data-sources/{data_source_id}/blueprint-draft")
+def ai_blueprint_draft(data_source_id: int) -> dict[str, object]:
+    try:
+        return generate_blueprint_draft(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

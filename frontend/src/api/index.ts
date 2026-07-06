@@ -345,6 +345,11 @@ export const aiApi = {
     const { data } = await api.post(`/ai/data-sources/${dataSourceId}/ontology-suggestions`);
     return data;
   },
+
+  getBlueprintDraft: async (dataSourceId: number): Promise<{ blueprint: IndustryBlueprint; usedRemoteModel: boolean; provider: string; model: string; remoteError?: string }> => {
+    const { data } = await api.post(`/ai/data-sources/${dataSourceId}/blueprint-draft`);
+    return data as { blueprint: IndustryBlueprint; usedRemoteModel: boolean; provider: string; model: string; remoteError?: string };
+  },
 };
 
 export default api;

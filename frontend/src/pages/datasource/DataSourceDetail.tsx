@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
-import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined } from '@ant-design/icons';
-import { dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness } from '../../types';
+import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined } from '@ant-design/icons';
+import { aiApi, dataSourceApi } from '../../api';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -19,6 +19,9 @@ const DataSourceDetail: React.FC = () => {
   const [scanLoading, setScanLoading] = useState(false);
   const [openApiModalVisible, setOpenApiModalVisible] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [blueprintDraftVisible, setBlueprintDraftVisible] = useState(false);
+  const [blueprintDraftLoading, setBlueprintDraftLoading] = useState(false);
+  const [blueprintDraft, setBlueprintDraft] = useState<IndustryBlueprint | null>(null);
   const [openApiForm] = Form.useForm();
 
   const fetchData = async () => {
@@ -76,6 +79,21 @@ const DataSourceDetail: React.FC = () => {
       message.error(error instanceof SyntaxError ? 'OpenAPI JSON 格式不正确' : 'OpenAPI 导入失败');
     } finally {
       setImportLoading(false);
+    }
+  };
+
+  const handleGenerateBlueprintDraft = async () => {
+    if (!id) return;
+    setBlueprintDraftLoading(true);
+    try {
+      const result = await aiApi.getBlueprintDraft(parseInt(id));
+      setBlueprintDraft(result.blueprint);
+      setBlueprintDraftVisible(true);
+      message.success(result.usedRemoteModel ? '已由 OpenRouter 生成蓝图草案' : '已生成本地蓝图草案');
+    } catch {
+      message.error('生成蓝图草案失败');
+    } finally {
+      setBlueprintDraftLoading(false);
     }
   };
 
@@ -190,6 +208,15 @@ const DataSourceDetail: React.FC = () => {
             onClick={() => window.open(dataSourceApi.kernelPackageUrl(parseInt(id)), '_blank')}
           >
             下载语义内核包
+          </Button>
+        )}
+        {id && (
+          <Button
+            icon={<BulbOutlined />}
+            loading={blueprintDraftLoading}
+            onClick={handleGenerateBlueprintDraft}
+          >
+            生成蓝图草案
           </Button>
         )}
       </Space>
@@ -319,6 +346,20 @@ const DataSourceDetail: React.FC = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="行业蓝图草案"
+        open={blueprintDraftVisible}
+        onCancel={() => setBlueprintDraftVisible(false)}
+        footer={null}
+        width={760}
+      >
+        <Input.TextArea
+          rows={16}
+          value={blueprintDraft ? JSON.stringify(blueprintDraft, null, 2) : ''}
+          readOnly
+        />
       </Modal>
     </div>
   );
