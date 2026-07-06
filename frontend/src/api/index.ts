@@ -43,6 +43,8 @@ const normalizeDataSource = (item: any): DataSource => ({
   sourceType: item.sourceType ?? item.source_type,
   connectionUri: item.connectionUri ?? item.connection_uri,
   apiBaseUrl: item.apiBaseUrl ?? item.api_base_url ?? '',
+  apiHeadersConfigured: item.apiHeadersConfigured ?? item.api_headers_configured ?? false,
+  apiHeaderNames: item.apiHeaderNames ?? item.api_header_names ?? [],
   domain: item.domain ?? '',
   systemCategory: item.systemCategory ?? item.system_category ?? 'database',
   capabilities: item.capabilities ?? [],

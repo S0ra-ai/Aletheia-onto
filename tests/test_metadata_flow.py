@@ -133,14 +133,15 @@ def test_real_operation_execution_uses_business_api_base_url(tmp_path: Path) -> 
         domain="合同管理",
         system_category="database+api",
         api_base_url="https://legacy.example/api",
+        api_headers={"Authorization": "Bearer legacy-token", "X-Tenant": "contract"},
     )
     register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
     calls: list[dict[str, object]] = []
 
-    def fake_invoke(base_url: str, execution_plan: dict[str, object], timeout_seconds: float) -> dict[str, object]:
-        calls.append({"baseUrl": base_url, "plan": execution_plan, "timeout": timeout_seconds})
+    def fake_invoke(base_url: str, execution_plan: dict[str, object], timeout_seconds: float, headers: dict[str, str] | None = None) -> dict[str, object]:
+        calls.append({"baseUrl": base_url, "plan": execution_plan, "timeout": timeout_seconds, "headers": headers})
         return {"statusCode": 200, "body": {"accepted": True}}
 
     original_invoke = automation_module._invoke_http_operation
@@ -164,6 +165,7 @@ def test_real_operation_execution_uses_business_api_base_url(tmp_path: Path) -> 
     assert result["executed"] is True
     assert calls[0]["baseUrl"] == "https://legacy.example/api"
     assert calls[0]["timeout"] == 7
+    assert calls[0]["headers"] == {"Authorization": "Bearer legacy-token", "X-Tenant": "contract"}
     assert calls[0]["plan"]["path"] == "/contracts/1/submit"
     assert result["execution"]["remote"]["body"] == {"accepted": True}
 
@@ -385,7 +387,15 @@ def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: P
 
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
-    source = register_data_source(platform_db, "合同管理语义内核系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+    source = register_data_source(
+        platform_db,
+        "合同管理语义内核系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_headers={"Authorization": "Bearer legacy-token"},
+    )
     register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
@@ -395,6 +405,8 @@ def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: P
 
     assert package["packageType"] == "ontology-semantic-kernel"
     assert package["dataSource"]["id"] == source.id
+    assert package["dataSource"]["apiHeadersConfigured"] is True
+    assert package["dataSource"]["apiHeaderNames"] == ["Authorization"]
     assert package["readiness"]["summary"]["tables"] == 4
     assert package["ontologies"][0]["id"] == ontology["id"]
     assert any(item["code"] == "contract" for item in package["ontologies"][0]["objects"])
@@ -838,6 +850,8 @@ def test_platform_lists_data_sources_and_ontologies_for_control_plane(tmp_path: 
     assert data_sources[0]["connection_uri"] == str(legacy_db)
     assert data_sources[0]["apiBaseUrl"] == ""
     assert data_sources[0]["api_base_url"] == ""
+    assert data_sources[0]["apiHeadersConfigured"] is False
+    assert data_sources[0]["apiHeaderNames"] == []
     assert data_sources[0]["capabilities"] == ["metadata_scan", "semantic_mapping"]
     assert data_sources[0]["createdAt"]
     assert ontologies[0]["id"] == ontology["id"]

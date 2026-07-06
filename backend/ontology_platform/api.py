@@ -66,6 +66,7 @@ class DataSourceCreate(BaseModel):
     sourceType: str = "sqlite"
     connectionUri: str
     apiBaseUrl: str = ""
+    apiHeaders: dict[str, str] = Field(default_factory=dict)
     domain: str = ""
     systemCategory: str = "database"
     capabilities: list[str] = Field(default_factory=lambda: ["metadata_scan", "semantic_mapping"])
@@ -233,6 +234,7 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
             payload.systemCategory,
             payload.capabilities,
             payload.apiBaseUrl,
+            payload.apiHeaders,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -251,6 +253,7 @@ def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
             payload.systemCategory,
             payload.capabilities,
             payload.apiBaseUrl,
+            payload.apiHeaders,
             payload.blueprintId,
             payload.ontologyName,
             payload.generateOntology,

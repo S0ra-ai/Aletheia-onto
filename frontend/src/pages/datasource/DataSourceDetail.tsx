@@ -558,6 +558,9 @@ const DataSourceDetail: React.FC = () => {
             <Descriptions.Item label="业务 API 基址">
               {dataSource.apiBaseUrl ? <code>{dataSource.apiBaseUrl}</code> : '-'}
             </Descriptions.Item>
+            <Descriptions.Item label="业务 API 请求头">
+              {dataSource.apiHeadersConfigured ? dataSource.apiHeaderNames.join(', ') : '-'}
+            </Descriptions.Item>
           </Descriptions>
         </Card>
       )}

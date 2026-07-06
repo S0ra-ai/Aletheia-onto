@@ -19,6 +19,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         source_type text not null,
         connection_uri text not null,
         api_base_url text not null default '',
+        api_headers text not null default '{}',
         capabilities text not null default '[]',
         created_at text not null default current_timestamp
     )
@@ -258,6 +259,7 @@ MIGRATION_STATEMENTS: tuple[str, ...] = (
     "alter table data_source add column system_category text not null default 'database'",
     "alter table data_source add column capabilities text not null default '[]'",
     "alter table data_source add column api_base_url text not null default ''",
+    "alter table data_source add column api_headers text not null default '{}'",
     "alter table ontology add column published_at text",
     "alter table semantic_mapping add column reviewer text not null default ''",
     "alter table semantic_mapping add column reviewed_at text",

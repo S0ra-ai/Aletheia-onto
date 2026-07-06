@@ -32,6 +32,7 @@ def build_kernel_package(platform_db: Path | str, data_source_id: int, base_url:
     readiness = assess_data_source_readiness(platform_db, data_source_id)
     apis = list_source_apis(platform_db, data_source_id)
     normalized_base = base_url.rstrip("/")
+    api_headers = _load_api_headers(source["api_headers"])
     package = {
         "packageType": "ontology-semantic-kernel",
         "version": "0.1.0",
@@ -42,6 +43,8 @@ def build_kernel_package(platform_db: Path | str, data_source_id: int, base_url:
             "systemCategory": source["system_category"],
             "sourceType": source["source_type"],
             "apiBaseUrl": source["api_base_url"],
+            "apiHeadersConfigured": bool(api_headers),
+            "apiHeaderNames": sorted(api_headers.keys()),
             "capabilities": json.loads(source["capabilities"] or "[]"),
         },
         "readiness": readiness,
@@ -111,6 +114,16 @@ def _compact_ontology(ontology: dict[str, Any]) -> dict[str, Any]:
         ],
         "mappingCounts": _mapping_counts(ontology["mappings"]),
     }
+
+
+def _load_api_headers(value: str | None) -> dict[str, str]:
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
 
 
 def _operation_descriptor(api: dict[str, Any]) -> dict[str, Any]:

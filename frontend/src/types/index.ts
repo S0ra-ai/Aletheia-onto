@@ -5,6 +5,8 @@ export interface DataSource {
   sourceType: string;
   connectionUri: string;
   apiBaseUrl: string;
+  apiHeadersConfigured: boolean;
+  apiHeaderNames: string[];
   domain: string;
   systemCategory: string;
   capabilities: string[];
@@ -16,6 +18,7 @@ export interface DataSourceCreate {
   sourceType?: string;
   connectionUri: string;
   apiBaseUrl?: string;
+  apiHeaders?: Record<string, string>;
   domain?: string;
   systemCategory?: string;
   capabilities?: string[];

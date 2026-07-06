@@ -145,12 +145,13 @@ def execute_operation(
         if source is None:
             raise ValueError(f"数据源不存在: {data_source_id}")
         api_base_url = source["api_base_url"]
+        api_headers = _load_api_headers(source["api_headers"])
     if not api_base_url:
         raise ValueError("真实执行需要配置业务 API 基址 apiBaseUrl；数据库连接地址仅用于元数据和实例读取。")
     if not api_base_url.lower().startswith(("http://", "https://")):
         raise ValueError("业务 API 基址必须是 HTTP/HTTPS 地址。")
 
-    remote = _invoke_http_operation(api_base_url, execution_plan, timeout_seconds)
+    remote = _invoke_http_operation(api_base_url, execution_plan, timeout_seconds, api_headers)
     result = {
         "executed": True,
         "status": "executed",
@@ -186,14 +187,15 @@ def _render_operation_path(path: str, instance_id: str, payload: dict[str, Any])
     return rendered
 
 
-def _invoke_http_operation(base_url: str, execution_plan: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
+def _invoke_http_operation(base_url: str, execution_plan: dict[str, Any], timeout_seconds: float, headers: dict[str, str] | None = None) -> dict[str, Any]:
     url = urljoin(base_url.rstrip("/") + "/", execution_plan["path"].lstrip("/"))
     body = json.dumps(execution_plan["payload"], ensure_ascii=False).encode("utf-8")
+    request_headers = {"Content-Type": "application/json", **(headers or {})}
     request = urllib.request.Request(
         url,
         data=body if execution_plan["method"] not in {"GET", "DELETE"} else None,
         method=execution_plan["method"],
-        headers={"Content-Type": "application/json"},
+        headers=request_headers,
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
@@ -222,6 +224,16 @@ def _parse_json_or_text(content: str) -> Any:
         return json.loads(content)
     except json.JSONDecodeError:
         return content
+
+
+def _load_api_headers(value: str | None) -> dict[str, str]:
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
 
 
 def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, Any], result: dict[str, Any]) -> None:

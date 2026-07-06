@@ -44,24 +44,27 @@ def register_data_source(
     system_category: str = "database",
     capabilities: list[str] | None = None,
     api_base_url: str = "",
+    api_headers: dict[str, str] | None = None,
 ) -> DataSource:
     get_adapter(source_type)
 
     capability_values = capabilities if capabilities is not None else ["metadata_scan", "semantic_mapping"]
+    header_values = _normalize_api_headers(api_headers)
     with connect(platform_db) as conn:
         conn.execute(
             """
-            insert into data_source (name, domain, system_category, source_type, connection_uri, api_base_url, capabilities)
-            values (?, ?, ?, ?, ?, ?, ?)
+            insert into data_source (name, domain, system_category, source_type, connection_uri, api_base_url, api_headers, capabilities)
+            values (?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(name) do update set
                 domain = excluded.domain,
                 system_category = excluded.system_category,
                 source_type = excluded.source_type,
                 connection_uri = excluded.connection_uri,
                 api_base_url = excluded.api_base_url,
+                api_headers = excluded.api_headers,
                 capabilities = excluded.capabilities
             """,
-            (name, domain, system_category, source_type, connection_uri, api_base_url, json.dumps(capability_values, ensure_ascii=False)),
+            (name, domain, system_category, source_type, connection_uri, api_base_url, json.dumps(header_values, ensure_ascii=False), json.dumps(capability_values, ensure_ascii=False)),
         )
         row = conn.execute(
             "select id, name, domain, system_category, source_type, connection_uri, api_base_url, capabilities from data_source where name = ?",
@@ -74,7 +77,7 @@ def list_data_sources(platform_db: Path | str) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
-            select id, name, domain, system_category, source_type, connection_uri, api_base_url,
+            select id, name, domain, system_category, source_type, connection_uri, api_base_url, api_headers,
                    capabilities, created_at
             from data_source
             order by id
@@ -547,6 +550,8 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
         "connection_uri": row["connection_uri"],
         "apiBaseUrl": row["api_base_url"],
         "api_base_url": row["api_base_url"],
+        "apiHeadersConfigured": bool(_load_api_headers(row["api_headers"])),
+        "apiHeaderNames": sorted(_load_api_headers(row["api_headers"]).keys()),
         "capabilities": json.loads(row["capabilities"] or "[]"),
         "createdAt": row["created_at"],
         "created_at": row["created_at"],
@@ -573,6 +578,22 @@ def _mapping_count(rows: list[sqlite3.Row], status: str) -> int:
 
 def _is_http_url(value: str) -> bool:
     return value.lower().startswith(("http://", "https://"))
+
+
+def _load_api_headers(value: str | None) -> dict[str, str]:
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
+
+
+def _normalize_api_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    if not headers:
+        return {}
+    return {str(key).strip(): str(value) for key, value in headers.items() if str(key).strip() and value is not None}
 
 
 def _stored_schema(platform: sqlite3.Connection, data_source_id: int) -> dict[str, dict[str, Any]]:

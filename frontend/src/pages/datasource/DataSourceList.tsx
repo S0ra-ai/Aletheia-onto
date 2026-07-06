@@ -37,15 +37,29 @@ const DataSourceList: React.FC = () => {
     industryBlueprintApi.list().then(setBlueprints).catch(() => undefined);
   }, []);
 
-  const handleCreate = async (values: DataSourceCreate) => {
+  const parseApiHeaders = (value?: string): Record<string, string> => {
+    if (!value?.trim()) return {};
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('业务 API 请求头必须是 JSON 对象');
+    }
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([key, headerValue]) => key.trim() && headerValue !== null && headerValue !== undefined)
+        .map(([key, headerValue]) => [key.trim(), String(headerValue)])
+    );
+  };
+
+  const handleCreate = async (values: DataSourceCreate & { apiHeadersJson?: string }) => {
     try {
-      await dataSourceApi.create(values);
+      const { apiHeadersJson, ...payload } = values;
+      await dataSourceApi.create({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson) });
       message.success('数据源创建成功');
       setModalVisible(false);
       form.resetFields();
       fetchDataSources();
     } catch (error) {
-      message.error('创建失败');
+      message.error(error instanceof Error ? error.message : '创建失败');
     }
   };
 
@@ -94,9 +108,10 @@ const DataSourceList: React.FC = () => {
 
   const handleOnboarding = async () => {
     try {
-      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'domain', 'systemCategory', 'blueprintId']);
+      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'apiHeadersJson', 'domain', 'systemCategory', 'blueprintId']);
       setOnboardingLoading(true);
-      const result = await onboardingApi.run({ ...values, generateOntology: true });
+      const { apiHeadersJson, ...payload } = values;
+      const result = await onboardingApi.run({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson), generateOntology: true });
       setOnboardingResult(result);
       if (result.status === 'blocked') {
         message.warning('一键接入未完成，请查看步骤详情');
@@ -105,9 +120,7 @@ const DataSourceList: React.FC = () => {
         fetchDataSources();
       }
     } catch (error) {
-      if (!(error instanceof Error)) {
-        message.error('一键接入失败');
-      }
+      message.error(error instanceof Error ? error.message : '一键接入失败');
     } finally {
       setOnboardingLoading(false);
     }
@@ -242,6 +255,15 @@ const DataSourceList: React.FC = () => {
             label="业务 API 基址"
           >
             <Input placeholder="例如：https://legacy.example/api" />
+          </Form.Item>
+          <Form.Item
+            name="apiHeadersJson"
+            label="业务 API 请求头"
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder={'例如：{"Authorization":"Bearer token","X-Tenant":"demo"}'}
+            />
           </Form.Item>
           <Form.Item>
             <Button
