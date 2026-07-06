@@ -30,7 +30,7 @@ from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, g
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
-from ontology_platform.semantic_kernel import assess_instance
+from ontology_platform.semantic_kernel import assess_decision_consistency, assess_instance, list_instance_ids
 
 
 def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
@@ -112,6 +112,43 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     assert decision_types.count("instance_assessment") == 2
     assert decision_types.count("operation_preflight") == 2
     assert decision_types.count("operation_execution") == 2
+
+
+def test_decision_consistency_batch_assesses_samples_and_reports_rule_distribution(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    instance_ids = list_instance_ids(platform_db, ontology["id"], "contract", 2)
+    assert [str(item) for item in instance_ids] == ["1", "2"]
+
+    report = assess_decision_consistency(platform_db, ontology["id"], "contract", limit=3)
+
+    assert report["objectCode"] == "contract"
+    assert report["sampleSize"] == 3
+    assert report["assessed"] == 3
+    assert report["summary"]["approved"] == 2
+    assert report["summary"]["review"] == 1
+    assert report["status"] == "mixed"
+    assert {item["instanceId"] for item in report["items"]} == {"1", "2", "3"}
+    assert report["ruleFailures"][0]["ruleCode"] in {"blacklist_customer_warning", "payment_plan_amount_match"}
+    assert report["nextActions"]
+
+    explicit = assess_decision_consistency(platform_db, ontology["id"], "contract", ["1", "missing"], 10)
+    assert explicit["assessed"] == 1
+    assert explicit["errorCount"] == 1
+    assert explicit["status"] == "incomplete"
+
+    with connect(platform_db) as conn:
+        audit_count = conn.execute(
+            "select count(*) from audit_log where action = 'assess_decision_consistency'"
+        ).fetchone()[0]
+    assert audit_count == 2
 
 
 def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> None:

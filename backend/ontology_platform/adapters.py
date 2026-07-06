@@ -59,6 +59,9 @@ class DatabaseAdapter(Protocol):
 
 
 class RuntimeDatabase(Protocol):
+    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
+        ...
+
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         ...
 
@@ -90,6 +93,13 @@ def test_connection(source_type: str, connection_uri: str) -> dict[str, Any]:
 class SQLiteRuntime:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+
+    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
+        rows = self.conn.execute(
+            f'select "{primary_key}" as instance_id from "{table_name}" order by "{primary_key}" limit ?',
+            (limit,),
+        ).fetchall()
+        return [row["instance_id"] for row in rows]
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -205,6 +215,13 @@ class SQLRuntime:
     def __init__(self, conn: Any, dialect: str):
         self.conn = conn
         self.dialect = dialect
+
+    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
+        rows = self._fetch_all(
+            f"select {_quote_identifier(primary_key, self.dialect)} as instance_id from {_quote_identifier(table_name, self.dialect)} order by {_quote_identifier(primary_key, self.dialect)} limit %s",
+            (limit,),
+        )
+        return [row["instance_id"] for row in rows]
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s", (instance_id,))

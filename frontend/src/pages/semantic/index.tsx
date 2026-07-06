@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch } from 'antd';
-import { SearchOutlined, BugOutlined, RocketOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table } from 'antd';
+import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined } from '@ant-design/icons';
 import { semanticApi, automationApi } from '../../api';
-import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult } from '../../types';
+import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -10,6 +10,7 @@ const { TabPane } = Tabs;
 const SemanticService: React.FC = () => {
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);
   const [assessResult, setAssessResult] = useState<InstanceAssessResult | null>(null);
+  const [consistencyResult, setConsistencyResult] = useState<DecisionConsistencyResult | null>(null);
   const [preflightResult, setPreflightResult] = useState<OperationPreflightResult | null>(null);
   const [executeResult, setExecuteResult] = useState<OperationExecuteResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,25 @@ const SemanticService: React.FC = () => {
     }
   };
 
+  const handleConsistency = async (values: { objectCode: string; ontologyId: number; instanceIds?: string; limit?: number }) => {
+    setLoading(true);
+    try {
+      const instanceIds = values.instanceIds
+        ? values.instanceIds.split(/[\n,，\s]+/).map(item => item.trim()).filter(Boolean)
+        : undefined;
+      const result = await semanticApi.consistency(values.objectCode, {
+        ontologyId: Number(values.ontologyId),
+        instanceIds,
+        limit: Number(values.limit || 50),
+      });
+      setConsistencyResult(result);
+    } catch {
+      message.error('决策一致性评估失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePreflight = async (values: { operationCode: string; ontologyId: number; dataSourceId: number; instanceId: string; objectCode?: string }) => {
     setLoading(true);
     try {
@@ -55,6 +75,49 @@ const SemanticService: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const decisionColor = (decision: string) => {
+    if (decision === 'approved') return 'green';
+    if (decision === 'review') return 'orange';
+    return 'red';
+  };
+
+  const consistencyColor = (status: string) => {
+    if (status === 'consistent') return 'green';
+    if (status === 'mixed') return 'orange';
+    return 'red';
+  };
+
+  const consistencyColumns = [
+    {
+      title: '实例ID',
+      dataIndex: 'instanceId',
+      key: 'instanceId',
+    },
+    {
+      title: '决策',
+      dataIndex: 'decision',
+      key: 'decision',
+      render: (decision: string) => <Tag color={decisionColor(decision)}>{decision}</Tag>,
+    },
+    {
+      title: '失败规则数',
+      dataIndex: 'failedRuleCount',
+      key: 'failedRuleCount',
+      width: 110,
+    },
+    {
+      title: '失败规则',
+      dataIndex: 'failedRules',
+      key: 'failedRules',
+      render: (rules: string[]) => rules.length ? rules.map(rule => <Tag color="red" key={rule}>{rule}</Tag>) : '-',
+    },
+    {
+      title: '决策ID',
+      dataIndex: 'decisionId',
+      key: 'decisionId',
+    },
+  ];
 
   const handleExecute = async () => {
     const values = await operationForm.validateFields();
@@ -169,6 +232,83 @@ const SemanticService: React.FC = () => {
                 <Divider />
                 <Title level={5}>解释</Title>
                 <Alert message={assessResult.explanation} type={assessResult.decision === 'approved' ? 'success' : assessResult.decision === 'review' ? 'warning' : 'error'} />
+              </Card>
+            )}
+          </Card>
+        </TabPane>
+
+        <TabPane tab="决策一致性" key="consistency">
+          <Card>
+            <Form layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
+              <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
+                <Input placeholder="例如：contract" />
+              </Form.Item>
+              <Form.Item name="ontologyId" label="本体ID" rules={[{ required: true }]}>
+                <Input placeholder="例如：1" type="number" />
+              </Form.Item>
+              <Form.Item name="limit" label="抽样上限">
+                <Input placeholder="默认 50，最大 200" type="number" />
+              </Form.Item>
+              <Form.Item name="instanceIds" label="指定实例ID">
+                <Input.TextArea rows={3} placeholder="可选。多个实例可用逗号、空格或换行分隔，例如：1,2,3" />
+              </Form.Item>
+              <Form.Item>
+                <Button type="primary" icon={<AuditOutlined />} htmlType="submit" loading={loading}>
+                  批量评估
+                </Button>
+              </Form.Item>
+            </Form>
+
+            {consistencyResult && (
+              <Card style={{ marginTop: 16 }} type="inner" title="一致性评估结果">
+                <Descriptions column={4}>
+                  <Descriptions.Item label="业务对象">{consistencyResult.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label="样本数">{consistencyResult.sampleSize}</Descriptions.Item>
+                  <Descriptions.Item label="已评估">{consistencyResult.assessed}</Descriptions.Item>
+                  <Descriptions.Item label="状态">
+                    <Tag color={consistencyColor(consistencyResult.status)}>{consistencyResult.status}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="通过">{consistencyResult.summary.approved}</Descriptions.Item>
+                  <Descriptions.Item label="复核">{consistencyResult.summary.review}</Descriptions.Item>
+                  <Descriptions.Item label="阻断">{consistencyResult.summary.blocked}</Descriptions.Item>
+                  <Descriptions.Item label="错误">{consistencyResult.summary.errors}</Descriptions.Item>
+                </Descriptions>
+                {consistencyResult.nextActions.length > 0 && (
+                  <>
+                    <Divider />
+                    <Alert
+                      message="治理建议"
+                      description={consistencyResult.nextActions.join('；')}
+                      type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
+                    />
+                  </>
+                )}
+                {consistencyResult.ruleFailures.length > 0 && (
+                  <>
+                    <Divider />
+                    <Title level={5}>规则失败分布</Title>
+                    {consistencyResult.ruleFailures.map(item => (
+                      <Tag color="red" key={item.ruleCode}>{item.ruleCode}: {item.failures}</Tag>
+                    ))}
+                  </>
+                )}
+                <Divider />
+                <Table
+                  columns={consistencyColumns}
+                  dataSource={consistencyResult.items}
+                  rowKey="instanceId"
+                  pagination={false}
+                />
+                {consistencyResult.errors.length > 0 && (
+                  <>
+                    <Divider />
+                    <Alert
+                      message="评估错误"
+                      description={consistencyResult.errors.map(item => `${item.instanceId}: ${item.error}`).join('；')}
+                      type="error"
+                    />
+                  </>
+                )}
               </Card>
             )}
           </Card>

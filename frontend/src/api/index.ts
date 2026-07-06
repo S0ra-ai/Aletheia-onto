@@ -15,6 +15,7 @@ import type {
   DemoBootstrapResult,
   InstanceExplainResult,
   InstanceAssessResult,
+  DecisionConsistencyResult,
   OperationPreflightResult,
   OperationExecuteResult,
   DecisionRecordItem,
@@ -227,6 +228,14 @@ export const semanticApi = {
       })),
       explanation: data.decision?.recommendation ?? '',
     };
+  },
+
+  consistency: async (
+    objectCode: string,
+    payload: { ontologyId: number; instanceIds?: string[]; limit?: number }
+  ): Promise<DecisionConsistencyResult> => {
+    const { data } = await api.post(`/semantic/objects/${objectCode}/consistency`, payload);
+    return data as DecisionConsistencyResult;
   },
 };
 

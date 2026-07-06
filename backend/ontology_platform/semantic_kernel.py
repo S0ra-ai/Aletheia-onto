@@ -217,6 +217,92 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
         }
 
 
+def assess_decision_consistency(
+    platform_db: Path | str,
+    ontology_id: int,
+    object_code: str,
+    instance_ids: list[str] | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    resolved_limit = max(1, min(int(limit), 200))
+    ids = [str(item) for item in instance_ids or [] if str(item).strip()]
+    if not ids:
+        ids = [str(item) for item in list_instance_ids(platform_db, ontology_id, object_code, resolved_limit)]
+    else:
+        ids = ids[:resolved_limit]
+
+    assessments: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    for instance_id in ids:
+        try:
+            assessment = assess_instance(platform_db, ontology_id, object_code, instance_id)
+            failed_rules = [rule for rule in assessment["ruleResults"] if not rule["passed"]]
+            assessments.append(
+                {
+                    "instanceId": instance_id,
+                    "decision": assessment["decision"]["status"],
+                    "recommendation": assessment["decision"]["recommendation"],
+                    "decisionId": assessment["decision"]["decisionId"],
+                    "failedRules": [rule["ruleCode"] for rule in failed_rules],
+                    "failedRuleCount": len(failed_rules),
+                }
+            )
+        except ValueError as error:
+            errors.append({"instanceId": instance_id, "error": str(error)})
+
+    status_counts = _status_counts(assessments)
+    failed_rule_counts = _failed_rule_counts(assessments)
+    report_status = _consistency_status(status_counts, errors)
+    report = {
+        "ontologyId": ontology_id,
+        "objectCode": object_code,
+        "sampleSize": len(ids),
+        "assessed": len(assessments),
+        "errorCount": len(errors),
+        "status": report_status,
+        "summary": {
+            "approved": status_counts.get("approved", 0),
+            "review": status_counts.get("review", 0),
+            "blocked": status_counts.get("blocked", 0),
+            "errors": len(errors),
+            "uniqueDecisionStatuses": len([value for value in status_counts.values() if value > 0]),
+        },
+        "ruleFailures": failed_rule_counts,
+        "items": assessments,
+        "errors": errors,
+        "nextActions": _consistency_next_actions(report_status, status_counts, failed_rule_counts, errors),
+    }
+    with connect(platform_db) as conn:
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                "semantic_kernel",
+                "assess_decision_consistency",
+                object_code,
+                str(ontology_id),
+                json.dumps(
+                    {
+                        "sampleSize": report["sampleSize"],
+                        "assessed": report["assessed"],
+                        "status": report["status"],
+                        "summary": report["summary"],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+    return report
+
+
+def list_instance_ids(platform_db: Path | str, ontology_id: int, object_code: str, limit: int = 50) -> list[Any]:
+    resolved_limit = max(1, min(int(limit), 200))
+    with connect(platform_db) as platform:
+        runtime = _runtime_target(platform, ontology_id, object_code)
+        adapter = get_adapter(runtime["source_type"])
+        with adapter.runtime(runtime["connection_uri"]) as database:
+            return database.fetch_primary_keys(runtime["table_name"], runtime["primary_key"], resolved_limit)
+
+
 def build_runtime(platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str) -> SemanticRuntime:
     ontology = platform.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
     if ontology is None:
@@ -405,3 +491,83 @@ def _decision_from_results(failed: list[dict[str, Any]]) -> dict[str, Any]:
         "status": "approved",
         "recommendation": "未发现阻断或风险规则，允许进入后续自动化流程。",
     }
+
+
+def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code: str) -> dict[str, Any]:
+    business_object = platform.execute(
+        "select * from business_object where ontology_id = ? and code = ?",
+        (ontology_id, object_code),
+    ).fetchone()
+    if business_object is None:
+        raise ValueError(f"业务对象不存在: {object_code}")
+    source_table = platform.execute("select * from source_table where id = ?", (business_object["source_table_id"],)).fetchone()
+    if source_table is None:
+        raise ValueError(f"业务对象未绑定来源表: {object_code}")
+    primary_key = source_table["primary_key"] or "id"
+    if "," in primary_key:
+        raise ValueError("当前原型不支持复合主键批量一致性评估")
+    data_source = platform.execute(
+        "select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?",
+        (source_table["id"],),
+    ).fetchone()
+    return {
+        "source_type": data_source["source_type"],
+        "connection_uri": data_source["connection_uri"],
+        "table_name": source_table["table_name"],
+        "primary_key": primary_key,
+    }
+
+
+def _status_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"approved": 0, "review": 0, "blocked": 0}
+    for item in items:
+        counts[item["decision"]] = counts.get(item["decision"], 0) + 1
+    return counts
+
+
+def _failed_rule_counts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for item in items:
+        for rule_code in item["failedRules"]:
+            counts[rule_code] = counts.get(rule_code, 0) + 1
+    return [
+        {"ruleCode": rule_code, "failures": failures}
+        for rule_code, failures in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+    ]
+
+
+def _consistency_status(status_counts: dict[str, int], errors: list[dict[str, str]]) -> str:
+    if errors:
+        return "incomplete"
+    active_statuses = [status for status, count in status_counts.items() if count > 0]
+    if not active_statuses:
+        return "empty"
+    if len(active_statuses) <= 1:
+        return "consistent"
+    if status_counts.get("blocked", 0):
+        return "mixed_with_blockers"
+    return "mixed"
+
+
+def _consistency_next_actions(
+    status: str,
+    status_counts: dict[str, int],
+    failed_rule_counts: list[dict[str, Any]],
+    errors: list[dict[str, str]],
+) -> list[str]:
+    if status == "empty":
+        return ["没有可评估实例，请检查来源表数据或显式传入实例 ID。"]
+    if status == "consistent" and status_counts.get("approved", 0):
+        return ["样本决策全部通过，可继续扩大批量验证范围。"]
+    if status == "consistent":
+        return ["样本决策结果一致但未全部通过，应确认该业务对象当前规则阈值是否符合预期。"]
+    actions: list[str] = []
+    if errors:
+        actions.append("先处理批量评估中的实例读取或规则执行错误。")
+    if failed_rule_counts:
+        actions.append(f"优先复核失败次数最高的规则：{failed_rule_counts[0]['ruleCode']}。")
+    if status_counts.get("blocked", 0):
+        actions.append("存在阻断级决策，自动化执行前必须完成规则或数据治理。")
+    if not actions:
+        actions.append("决策结果存在分化，建议扩大样本并复核规则分层。")
+    return actions

@@ -46,7 +46,7 @@ from .model_client import (
 from .onboarding import run_onboarding_pipeline
 from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
-from .semantic_kernel import assess_instance
+from .semantic_kernel import assess_decision_consistency, assess_instance
 
 
 @asynccontextmanager
@@ -126,6 +126,12 @@ class OperationPreflightCreate(BaseModel):
     dataSourceId: int
     instanceId: str
     objectCode: Optional[str] = None
+
+
+class DecisionConsistencyCreate(BaseModel):
+    ontologyId: int
+    instanceIds: list[str] = Field(default_factory=list)
+    limit: int = 50
 
 
 class OperationExecuteCreate(OperationPreflightCreate):
@@ -497,6 +503,20 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: int 
 def assess_object_instance(object_code: str, instance_id: str, ontologyId: int = 1) -> dict[str, object]:
     try:
         return assess_instance(DEFAULT_PLATFORM_DB, ontologyId, object_code, instance_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/semantic/objects/{object_code}/consistency")
+def assess_object_decision_consistency(object_code: str, payload: DecisionConsistencyCreate) -> dict[str, object]:
+    try:
+        return assess_decision_consistency(
+            DEFAULT_PLATFORM_DB,
+            payload.ontologyId,
+            object_code,
+            payload.instanceIds,
+            payload.limit,
+        )
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

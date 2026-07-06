@@ -54,6 +54,7 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /ontologies/{id}/rules`：登记或更新业务规则。
 - `GET /semantic/objects/{objectCode}/instances/{id}/explain`：解释业务实例。
 - `POST /semantic/objects/{objectCode}/instances/{id}/assess`：执行业务规则研判。
+- `POST /semantic/objects/{objectCode}/consistency`：批量评估业务对象实例，验证决策一致性和规则失败分布。
 - `POST /automation/operations/{operationCode}/preflight`：对传统业务系统操作执行语义预检，判断是否允许自动化。
 - `POST /automation/operations/{operationCode}/execute`：在语义预检通过后生成执行计划，或调用 HTTP/HTTPS 传统业务系统 API。
 - `POST /ai/data-sources/{id}/ontology-suggestions`：生成 AI 本体建议。

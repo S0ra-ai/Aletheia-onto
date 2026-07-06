@@ -368,6 +368,41 @@ export interface InstanceAssessResult {
   explanation: string;
 }
 
+export interface DecisionConsistencyItem {
+  instanceId: string;
+  decision: 'approved' | 'review' | 'blocked';
+  recommendation: string;
+  decisionId: string;
+  failedRules: string[];
+  failedRuleCount: number;
+}
+
+export interface DecisionConsistencyResult {
+  ontologyId: number;
+  objectCode: string;
+  sampleSize: number;
+  assessed: number;
+  errorCount: number;
+  status: 'consistent' | 'mixed' | 'mixed_with_blockers' | 'incomplete' | 'empty';
+  summary: {
+    approved: number;
+    review: number;
+    blocked: number;
+    errors: number;
+    uniqueDecisionStatuses: number;
+  };
+  ruleFailures: Array<{
+    ruleCode: string;
+    failures: number;
+  }>;
+  items: DecisionConsistencyItem[];
+  errors: Array<{
+    instanceId: string;
+    error: string;
+  }>;
+  nextActions: string[];
+}
+
 export interface RuleHit {
   ruleCode: string;
   ruleName: string;
