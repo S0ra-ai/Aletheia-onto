@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { ontologyApi, dataSourceApi } from '../../api';
-import type { Ontology, DataSource, OntologyDraftCreate } from '../../types';
+import { ontologyApi, dataSourceApi, industryBlueprintApi } from '../../api';
+import type { Ontology, DataSource, OntologyDraftCreate, IndustryBlueprint } from '../../types';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -12,6 +12,7 @@ const OntologyList: React.FC = () => {
   const navigate = useNavigate();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [blueprints, setBlueprints] = useState<IndustryBlueprint[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
@@ -21,6 +22,7 @@ const OntologyList: React.FC = () => {
     try {
       const sources = await dataSourceApi.list();
       setDataSources(sources);
+      setBlueprints(await industryBlueprintApi.list());
       const allOntologies = await ontologyApi.list();
       setOntologies(allOntologies as Ontology[]);
     } catch (error) {
@@ -157,6 +159,18 @@ const OntologyList: React.FC = () => {
               {dataSources.map(source => (
                 <Option key={source.id} value={source.id}>
                   {source.name} ({source.sourceType})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item
+            name="blueprintId"
+            label="行业蓝图"
+          >
+            <Select placeholder="自动推断行业蓝图" allowClear>
+              {blueprints.map(blueprint => (
+                <Option key={blueprint.id} value={blueprint.id}>
+                  {blueprint.name} ({blueprint.domain})
                 </Option>
               ))}
             </Select>

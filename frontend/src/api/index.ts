@@ -16,6 +16,7 @@ import type {
   ModelStatus,
   ModelConfig,
   ModelConfigUpdate,
+  IndustryBlueprint,
 } from '../types';
 
 const api = axios.create({
@@ -146,6 +147,13 @@ export const ontologyApi = {
   },
 
   exportUrl: (ontologyId: number, format: 'jsonld' | 'turtle'): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
+};
+
+export const industryBlueprintApi = {
+  list: async (): Promise<IndustryBlueprint[]> => {
+    const { data } = await api.get('/industry-blueprints');
+    return (data.items || []) as IndustryBlueprint[];
+  },
 };
 
 // 语义服务 API

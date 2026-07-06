@@ -8,6 +8,7 @@ from typing import Any
 
 from .adapters import get_adapter
 from .database import connect
+from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 
 
 NAME_HINTS = {
@@ -61,25 +62,33 @@ ATTRIBUTE_HINTS = {
 }
 
 
-def generate_ontology_draft(platform_db: Path | str, data_source_id: int, name: str | None = None, domain: str | None = None) -> dict[str, Any]:
+def generate_ontology_draft(
+    platform_db: Path | str,
+    data_source_id: int,
+    name: str | None = None,
+    domain: str | None = None,
+    blueprint_id: str | None = None,
+) -> dict[str, Any]:
     with connect(platform_db) as conn:
         data_source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if data_source is None:
             raise ValueError(f"数据源不存在: {data_source_id}")
-        resolved_domain = domain or data_source["domain"] or "通用业务"
+        tables = conn.execute("select * from source_table where data_source_id = ? order by table_name", (data_source_id,)).fetchall()
+        table_names = [table["table_name"] for table in tables]
+        blueprint = get_industry_blueprint(blueprint_id, domain or data_source["domain"]) if blueprint_id else infer_industry_blueprint(table_names, domain or data_source["domain"])
+        resolved_domain = domain or data_source["domain"] or blueprint.domain
         resolved_name = name or f"{resolved_domain}本体"
         ontology_id = _create_ontology(conn, resolved_name, resolved_domain)
-        tables = conn.execute("select * from source_table where data_source_id = ? order by table_name", (data_source_id,)).fetchall()
         object_ids: dict[int, int] = {}
 
         for table in tables:
-            object_id = _create_business_object(conn, ontology_id, table)
+            object_id = _create_business_object(conn, ontology_id, table, blueprint)
             object_ids[table["id"]] = object_id
-            _create_table_mapping(conn, ontology_id, table, object_id)
+            _create_table_mapping(conn, ontology_id, table, object_id, blueprint)
             columns = conn.execute("select * from source_column where source_table_id = ? order by ordinal", (table["id"],)).fetchall()
             for column in columns:
-                attribute_id = _create_attribute(conn, object_id, column)
-                _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id)
+                attribute_id = _create_attribute(conn, object_id, column, blueprint)
+                _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id, blueprint)
 
         foreign_keys = conn.execute(
             """
@@ -94,12 +103,20 @@ def generate_ontology_draft(platform_db: Path | str, data_source_id: int, name: 
             _create_relation_from_foreign_key(conn, ontology_id, foreign_key)
 
         _create_generic_rules(conn, ontology_id)
-        _create_domain_rules(conn, ontology_id)
+        _create_blueprint_rules(conn, ontology_id, blueprint)
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "generate_ontology_draft", "ontology", str(ontology_id), json.dumps({"dataSourceId": data_source_id}, ensure_ascii=False)),
+            (
+                "system",
+                "generate_ontology_draft",
+                "ontology",
+                str(ontology_id),
+                json.dumps({"dataSourceId": data_source_id, "blueprintId": blueprint.id, "blueprintName": blueprint.name}, ensure_ascii=False),
+            ),
         )
-        return summarize_ontology(conn, ontology_id)
+        summary = summarize_ontology(conn, ontology_id)
+        summary["blueprint"] = blueprint.to_dict()
+        return summary
 
 
 def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
@@ -468,9 +485,9 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
     return int(conn.execute("select last_insert_rowid()").fetchone()[0])
 
 
-def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row) -> int:
+def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
     code = _to_code(table["table_name"])
-    name = NAME_HINTS.get(table["table_name"], _humanize(table["table_name"]))
+    name = blueprint.object_hints.get(table["table_name"]) or NAME_HINTS.get(table["table_name"], _humanize(table["table_name"]))
     conn.execute(
         """
         insert into business_object (ontology_id, code, name, description, source_table_id)
@@ -481,9 +498,9 @@ def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: s
     return int(conn.execute("select last_insert_rowid()").fetchone()[0])
 
 
-def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.Row) -> int:
+def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
     code = _to_code(column["column_name"])
-    name = ATTRIBUTE_HINTS.get(column["column_name"], _humanize(column["column_name"]))
+    name = blueprint.attribute_hints.get(column["column_name"]) or ATTRIBUTE_HINTS.get(column["column_name"], _humanize(column["column_name"]))
     conn.execute(
         """
         insert into business_attribute (object_id, code, name, data_type, required, source_column_id)
@@ -527,18 +544,27 @@ def _create_relation_from_foreign_key(conn: sqlite3.Connection, ontology_id: int
     )
 
 
-def _create_table_mapping(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, object_id: int) -> None:
+def _create_table_mapping(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, object_id: int, blueprint: IndustryBlueprint) -> None:
+    confidence = 0.92 if table["table_name"] in blueprint.object_hints else 0.85
     conn.execute(
         """
         insert into semantic_mapping (ontology_id, mapping_type, source_ref, target_ref, confidence, status, evidence)
         values (?, ?, ?, ?, ?, ?, ?)
         """,
-        (ontology_id, "table_to_object", f"table:{table['table_name']}", f"business_object:{object_id}", 0.85, "pending", "由表名和主键结构自动生成"),
+        (ontology_id, "table_to_object", f"table:{table['table_name']}", f"business_object:{object_id}", confidence, "pending", f"由{blueprint.name}、表名和主键结构自动生成"),
     )
 
 
-def _create_column_mapping(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, column: sqlite3.Row, object_id: int, attribute_id: int) -> None:
-    confidence = 0.9 if column["column_name"] in ATTRIBUTE_HINTS else 0.7
+def _create_column_mapping(
+    conn: sqlite3.Connection,
+    ontology_id: int,
+    table: sqlite3.Row,
+    column: sqlite3.Row,
+    object_id: int,
+    attribute_id: int,
+    blueprint: IndustryBlueprint,
+) -> None:
+    confidence = 0.92 if column["column_name"] in blueprint.attribute_hints else 0.9 if column["column_name"] in ATTRIBUTE_HINTS else 0.7
     conn.execute(
         """
         insert into semantic_mapping (ontology_id, mapping_type, source_ref, target_ref, confidence, status, evidence)
@@ -551,7 +577,7 @@ def _create_column_mapping(conn: sqlite3.Connection, ontology_id: int, table: sq
             f"business_object:{object_id}.attribute:{attribute_id}",
             confidence,
             "pending",
-            "由字段名、字段类型和样例值自动生成",
+            f"由{blueprint.name}、字段名、字段类型和样例值自动生成",
         ),
     )
 
@@ -587,42 +613,24 @@ def _create_generic_rules(conn: sqlite3.Connection, ontology_id: int) -> None:
         )
 
 
-def _create_domain_rules(conn: sqlite3.Connection, ontology_id: int) -> None:
-    object_codes = {
-        row["code"]
-        for row in conn.execute("select code from business_object where ontology_id = ?", (ontology_id,)).fetchall()
-    }
-    if {"contract", "customer"}.issubset(object_codes):
-        _create_contract_rules(conn, ontology_id)
-    if {"equipment", "work_order"}.issubset(object_codes):
-        _create_equipment_rules(conn, ontology_id)
-
-
-def _create_contract_rules(conn: sqlite3.Connection, ontology_id: int) -> None:
-    rules = (
-        ("contract_amount_positive", "合同金额必须大于 0", "validation", "contract", "amount > 0", "blocking", "合同金额必须大于 0。"),
-        ("effective_contract_signed", "已生效合同必须有签订日期", "validation", "contract", "status != 'effective' or signed_date != null", "blocking", "当合同状态为已生效时，签订日期不能为空。"),
-        ("blacklist_customer_warning", "黑名单客户合同风险", "risk", "contract", "customer.credit_status != 'blacklist'", "warning", "客户为黑名单时，新签或存量合同需要风险复核。"),
-        ("payment_plan_amount_match", "付款计划总额应等于合同金额", "validation", "contract", "sum(payment_plan.planned_amount) == amount", "warning", "付款计划总额应等于合同金额。"),
-        ("overdue_payment_warning", "逾期付款风险", "risk", "payment_plan", "status != 'overdue'", "warning", "付款计划已逾期，需提示履约风险。"),
-    )
-    for code, name, rule_type, scope, expression, severity, natural_language in rules:
-        _insert_rule(conn, ontology_id, code, name, rule_type, scope, expression, severity, natural_language)
-
-
-def _create_equipment_rules(conn: sqlite3.Connection, ontology_id: int) -> None:
-    rules = (
-        ("critical_equipment_open_fault", "重要设备存在未关闭工单风险", "risk", "equipment", "criticality != 'high' or count(work_order.status == 'open') == 0", "warning", "重要设备存在未关闭工单时，需要优先处理。"),
-        ("closed_work_order_has_closed_at", "已关闭工单必须有关闭时间", "validation", "work_order", "status != 'closed' or closed_at != null", "blocking", "工单关闭时必须记录关闭时间。"),
-        ("spare_part_stock_floor", "备件库存不能低于最低库存", "risk", "spare_part", "stock_quantity >= minimum_quantity", "warning", "备件库存低于最低库存时，需要补货。"),
-    )
+def _create_blueprint_rules(conn: sqlite3.Connection, ontology_id: int, blueprint: IndustryBlueprint) -> None:
     existing_scopes = {
         row["code"]
         for row in conn.execute("select code from business_object where ontology_id = ?", (ontology_id,)).fetchall()
     }
-    for code, name, rule_type, scope, expression, severity, natural_language in rules:
-        if scope in existing_scopes:
-            _insert_rule(conn, ontology_id, code, name, rule_type, scope, expression, severity, natural_language)
+    for template in blueprint.rule_templates:
+        if template.scope_object_code in existing_scopes:
+            _insert_rule(
+                conn,
+                ontology_id,
+                template.code,
+                template.name,
+                template.rule_type,
+                template.scope_object_code,
+                template.expression,
+                template.severity,
+                template.natural_language,
+            )
 
 
 def _insert_rule(

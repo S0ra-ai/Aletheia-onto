@@ -18,6 +18,7 @@ from .governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
+from .industry_blueprints import list_industry_blueprints
 from .metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import (
     OpenRouterClient,
@@ -80,6 +81,7 @@ class OntologyDraftCreate(BaseModel):
     dataSourceId: int
     name: Optional[str] = None
     domain: Optional[str] = None
+    blueprintId: Optional[str] = None
 
 
 class OperationPreflightCreate(BaseModel):
@@ -253,9 +255,14 @@ def list_source_tables(data_source_id: int) -> dict[str, object]:
 @app.post("/ontologies/draft")
 def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
     try:
-        return generate_ontology_draft(DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain)
+        return generate_ontology_draft(DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain, payload.blueprintId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/industry-blueprints")
+def get_industry_blueprints() -> dict[str, object]:
+    return {"items": list_industry_blueprints()}
 
 
 @app.get("/ontologies")

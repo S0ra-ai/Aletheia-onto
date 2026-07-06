@@ -72,6 +72,27 @@ export interface OntologyDraftCreate {
   dataSourceId: number;
   name?: string;
   domain?: string;
+  blueprintId?: string;
+}
+
+export interface IndustryBlueprint {
+  id: string;
+  name: string;
+  domain: string;
+  description: string;
+  objectHints: Record<string, string>;
+  attributeHints: Record<string, string>;
+  rules: Array<{
+    code: string;
+    name: string;
+    rule_type: string;
+    scope_object_code: string;
+    expression: string;
+    severity: string;
+    natural_language: string;
+  }>;
+  tableKeywords: string[];
+  capabilityTags: string[];
 }
 
 export interface BusinessObject {

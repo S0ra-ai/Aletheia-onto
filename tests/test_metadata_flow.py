@@ -20,6 +20,7 @@ from ontology_platform.governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
+from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
 from ontology_platform.metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
@@ -59,6 +60,34 @@ def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
     preflight = preflight_operation(platform_db, ontology["id"], source.id, "submit_contract", "3")
     assert preflight["allowed"] is False
     assert preflight["nextAction"] == "route_to_human_review"
+
+
+def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_equipment.sqlite3"
+
+    blueprints = list_industry_blueprints()
+    assert {item["id"] for item in blueprints}.issuperset({"contract-management", "equipment-maintenance", "generic-enterprise"})
+    assert infer_industry_blueprint(["equipment", "work_order"]).id == "equipment-maintenance"
+
+    initialize_platform_db(platform_db)
+    create_equipment_sample_db(legacy_db)
+    source = register_data_source(platform_db, "设备运维生产系统", "sqlite", str(legacy_db), domain="设备运维")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="equipment-maintenance")
+
+    assert ontology["blueprint"]["id"] == "equipment-maintenance"
+    assert any(item["code"] == "equipment" and item["name"] == "设备" for item in ontology["objects"])
+    assert any(item["code"] == "criticality" and item["name"] == "重要等级" for item in ontology["attributes"])
+    assert any(rule["code"] == "critical_equipment_open_fault" for rule in ontology["rules"])
+    assert any("设备运维蓝图" in mapping["evidence"] and mapping["confidence"] >= 0.92 for mapping in ontology["mappings"])
+
+    try:
+        generate_ontology_draft(platform_db, source.id, name="不存在蓝图本体", blueprint_id="missing-blueprint")
+    except ValueError as error:
+        assert "行业蓝图不存在" in str(error)
+    else:
+        raise AssertionError("不存在的行业蓝图应被拒绝")
 
 
 def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
