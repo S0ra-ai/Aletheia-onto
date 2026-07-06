@@ -243,6 +243,23 @@ export interface OperationExecuteResult {
   rulesHit: RuleHit[];
 }
 
+export interface DecisionRecordItem {
+  id: number;
+  decisionId: string;
+  decisionType: string;
+  ontologyId?: number;
+  objectCode: string;
+  instanceId: string;
+  operationCode: string;
+  status: string;
+  recommendation: string;
+  inputRef: Record<string, unknown>;
+  ruleResults: unknown[];
+  evidence: Record<string, unknown>;
+  actor: string;
+  createdAt: string;
+}
+
 // 治理审计相关类型
 export interface AuditLogItem {
   actor: string;

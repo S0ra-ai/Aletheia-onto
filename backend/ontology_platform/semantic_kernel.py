@@ -10,6 +10,7 @@ from typing import Any
 
 from .adapters import RuntimeDatabase, get_adapter
 from .database import connect
+from .decisions import record_decision_in_connection
 from .ontology import explain_instance
 
 
@@ -177,6 +178,20 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
 
         failed = [result for result in results if not result["passed"]]
         decision = _decision_from_results(failed)
+        decision_record = record_decision_in_connection(
+            platform,
+            "instance_assessment",
+            decision["status"],
+            decision["recommendation"],
+            ontology_id=ontology_id,
+            object_code=object_code,
+            instance_id=instance_id,
+            input_ref={"objectCode": object_code, "instanceId": instance_id},
+            rule_results=results,
+            evidence={"failedRules": [item["ruleCode"] for item in failed], "ontologyVersion": runtime.ontology_version},
+            actor="semantic_kernel",
+        )
+        decision["decisionId"] = decision_record["decisionId"]
         platform.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
             (
@@ -184,7 +199,7 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "assess_instance",
                 object_code,
                 instance_id,
-                json.dumps({"ontologyId": ontology_id, "decision": decision["status"], "failedRules": len(failed)}, ensure_ascii=False),
+                json.dumps({"ontologyId": ontology_id, "decision": decision["status"], "decisionId": decision["decisionId"], "failedRules": len(failed)}, ensure_ascii=False),
             ),
         )
         explanation = explain_instance(platform_db, ontology_id, object_code, instance_id)

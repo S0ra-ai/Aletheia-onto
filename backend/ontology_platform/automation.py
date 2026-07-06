@@ -8,6 +8,7 @@ import urllib.request
 from urllib.parse import urljoin
 
 from .database import connect
+from .decisions import record_decision
 from .semantic_kernel import assess_instance
 
 
@@ -55,6 +56,22 @@ def preflight_operation(
         "ruleResults": assessment["ruleResults"],
         "nextAction": _next_action(allowed, decision_status),
     }
+    decision_record = record_decision(
+        platform_db,
+        "operation_preflight",
+        decision_status,
+        assessment["decision"]["recommendation"],
+        ontology_id=ontology_id,
+        object_code=resolved_object_code,
+        instance_id=instance_id,
+        operation_code=operation_code,
+        input_ref={"dataSourceId": data_source_id, "operationCode": operation_code, "instanceId": instance_id},
+        rule_results=assessment["ruleResults"],
+        evidence={"allowed": allowed, "nextAction": preflight["nextAction"], "assessmentDecisionId": assessment["decision"].get("decisionId")},
+        actor="semantic_kernel",
+    )
+    preflight["decisionRecord"] = decision_record
+    preflight["decision"]["decisionId"] = decision_record["decisionId"]
     with connect(platform_db) as conn:
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
@@ -100,6 +117,7 @@ def execute_operation(
             "execution": None,
             "message": "业务语义内核已拦截该操作，需按预检建议处理。",
         }
+        result["decisionRecord"] = _record_execution_decision(platform_db, actor, operation_code, preflight, result)
         _audit_execution(platform_db, actor, operation, result)
         return result
 
@@ -118,6 +136,7 @@ def execute_operation(
             "execution": execution_plan,
             "message": "预检通过，已生成可执行计划。关闭 dryRun 后可调用传统业务系统。",
         }
+        result["decisionRecord"] = _record_execution_decision(platform_db, actor, operation_code, preflight, result)
         _audit_execution(platform_db, actor, operation, result)
         return result
 
@@ -137,6 +156,7 @@ def execute_operation(
         "execution": {**execution_plan, "remote": remote},
         "message": "预检通过，传统业务系统操作已执行。",
     }
+    result["decisionRecord"] = _record_execution_decision(platform_db, actor, operation_code, preflight, result)
     _audit_execution(platform_db, actor, operation, result)
     return result
 
@@ -215,6 +235,7 @@ def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, A
                     {
                         "status": result["status"],
                         "executed": result["executed"],
+                        "decisionId": result.get("decisionRecord", {}).get("decisionId"),
                         "decision": result["preflight"]["decision"]["status"],
                         "nextAction": result["preflight"]["nextAction"],
                     },
@@ -222,3 +243,34 @@ def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, A
                 ),
             ),
         )
+
+
+def _record_execution_decision(
+    platform_db: Path | str,
+    actor: str,
+    operation_code: str,
+    preflight: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    return record_decision(
+        platform_db,
+        "operation_execution",
+        result["status"],
+        result["message"],
+        ontology_id=preflight["target"]["ontologyId"],
+        object_code=preflight["target"]["objectCode"],
+        instance_id=preflight["target"]["instanceId"],
+        operation_code=operation_code,
+        input_ref={
+            "operationCode": operation_code,
+            "preflightDecisionId": preflight["decision"].get("decisionId"),
+        },
+        rule_results=preflight["ruleResults"],
+        evidence={
+            "executed": result["executed"],
+            "allowed": preflight["allowed"],
+            "nextAction": preflight["nextAction"],
+            "execution": result.get("execution"),
+        },
+        actor=actor,
+    )

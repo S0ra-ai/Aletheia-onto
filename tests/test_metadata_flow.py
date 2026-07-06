@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import execute_operation, preflight_operation
 from ontology_platform.database import connect, initialize_platform_db
+from ontology_platform.decisions import list_decisions
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,
     derive_ontology_version,
@@ -85,6 +86,8 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     assert ready["status"] == "ready_for_execution"
     assert ready["executed"] is False
     assert ready["preflight"]["allowed"] is True
+    assert ready["preflight"]["decision"]["decisionId"].startswith("DR-")
+    assert ready["decisionRecord"]["decisionId"].startswith("DR-")
     assert ready["execution"]["path"] == "/contracts/1/submit"
     assert ready["execution"]["payload"] == {"comment": "自动提交"}
 
@@ -92,12 +95,19 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     assert blocked["status"] == "blocked_by_semantic_kernel"
     assert blocked["executed"] is False
     assert blocked["preflight"]["allowed"] is False
+    assert blocked["decisionRecord"]["decisionType"] == "operation_execution"
 
     with connect(platform_db) as conn:
         audit_count = conn.execute(
             "select count(*) from audit_log where action = 'execute_operation'"
         ).fetchone()[0]
     assert audit_count == 2
+
+    decisions = list_decisions(platform_db, 10)
+    decision_types = [item["decisionType"] for item in decisions]
+    assert decision_types.count("instance_assessment") == 2
+    assert decision_types.count("operation_preflight") == 2
+    assert decision_types.count("operation_execution") == 2
 
 
 def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> None:

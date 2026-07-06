@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from .automation import execute_operation, preflight_operation
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
+from .decisions import list_decisions
 from .governance import (
     bulk_review_semantic_mappings,
     derive_ontology_version,
@@ -487,6 +488,11 @@ def model_invocations(limit: int = 50) -> dict[str, object]:
             (limit,),
         ).fetchall()
         return {"items": [dict(row) for row in rows]}
+
+
+@app.get("/governance/decisions")
+def decisions(limit: int = 50) -> dict[str, object]:
+    return {"items": list_decisions(DEFAULT_PLATFORM_DB, limit)}
 
 
 @app.get("/files")

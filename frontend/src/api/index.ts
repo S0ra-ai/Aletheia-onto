@@ -13,6 +13,7 @@ import type {
   InstanceAssessResult,
   OperationPreflightResult,
   OperationExecuteResult,
+  DecisionRecordItem,
   AuditLogItem,
   ModelInvocationItem,
   ModelStatus,
@@ -273,6 +274,12 @@ export const governanceApi = {
     const params = limit ? { limit } : {};
     const { data } = await api.get('/governance/model-invocations', { params });
     return (data as { items: ModelInvocationItem[] }).items || [];
+  },
+
+  getDecisions: async (limit?: number): Promise<DecisionRecordItem[]> => {
+    const params = limit ? { limit } : {};
+    const { data } = await api.get('/governance/decisions', { params });
+    return (data as { items: DecisionRecordItem[] }).items || [];
   },
 };
 

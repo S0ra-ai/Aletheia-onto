@@ -202,6 +202,24 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     )
     """,
     """
+    create table if not exists decision_record (
+        id integer primary key autoincrement,
+        decision_id text not null unique,
+        decision_type text not null,
+        ontology_id integer,
+        object_code text not null default '',
+        instance_id text not null default '',
+        operation_code text not null default '',
+        status text not null,
+        recommendation text not null default '',
+        input_ref text not null default '{}',
+        rule_results text not null default '[]',
+        evidence text not null default '{}',
+        actor text not null default 'semantic_kernel',
+        created_at text not null default current_timestamp
+    )
+    """,
+    """
     create table if not exists model_config (
         id integer primary key check (id = 1),
         provider text not null default 'openrouter',
