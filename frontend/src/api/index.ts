@@ -8,6 +8,7 @@ import type {
   SourceApiCreate,
   SourceTable,
   DataSourceReadiness,
+  SchemaDriftResult,
   OntologyDraftCreate,
   OntologyDetail,
   DemoBootstrapResult,
@@ -106,6 +107,11 @@ export const dataSourceApi = {
   getReadiness: async (id: number): Promise<DataSourceReadiness> => {
     const { data } = await api.get(`/data-sources/${id}/readiness`);
     return data as DataSourceReadiness;
+  },
+
+  getSchemaDrift: async (id: number): Promise<SchemaDriftResult> => {
+    const { data } = await api.get(`/data-sources/${id}/schema-drift`);
+    return data as SchemaDriftResult;
   },
 
   createApi: async (dataSourceId: number, payload: SourceApiCreate): Promise<SourceApi> => {

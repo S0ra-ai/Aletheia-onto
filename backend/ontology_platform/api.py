@@ -21,7 +21,17 @@ from .governance import (
 )
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .kernel_package import build_kernel_package, export_kernel_package
-from .metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from .metadata import (
+    analyze_schema_drift,
+    assess_data_source_readiness,
+    check_data_source_connection,
+    import_openapi_operations,
+    list_data_sources,
+    list_source_apis,
+    register_data_source,
+    register_source_api,
+    scan_data_source,
+)
 from .model_client import (
     OpenRouterClient,
     OpenRouterConfig,
@@ -298,6 +308,14 @@ def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> di
 def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
     try:
         return assess_data_source_readiness(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/schema-drift")
+def get_data_source_schema_drift(data_source_id: int) -> dict[str, object]:
+    try:
+        return analyze_schema_drift(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

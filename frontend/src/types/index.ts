@@ -101,6 +101,85 @@ export interface DataSourceReadiness {
   nextActions: string[];
 }
 
+export interface SchemaDriftSummary {
+  addedTables: number;
+  removedTables: number;
+  changedTables: number;
+  addedColumns: number;
+  removedColumns: number;
+  changedColumns: number;
+  impactedObjects: number;
+  impactedMappings: number;
+  impactedRules: number;
+}
+
+export interface SchemaDriftColumn {
+  columnName: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+  ordinal: number;
+}
+
+export interface SchemaDriftColumnChange {
+  columnName: string;
+  changes: Record<string, { old: unknown; new: unknown }>;
+  old: SchemaDriftColumn;
+  new: SchemaDriftColumn;
+}
+
+export interface SchemaDriftTableChange {
+  tableName: string;
+  primaryKeyChanged: boolean;
+  oldPrimaryKey?: string | null;
+  newPrimaryKey?: string | null;
+  rowCountChanged: boolean;
+  oldRowCount: number;
+  newRowCount: number;
+  addedColumns: SchemaDriftColumn[];
+  removedColumns: SchemaDriftColumn[];
+  changedColumns: SchemaDriftColumnChange[];
+}
+
+export interface SchemaDriftImpactItem {
+  id: number;
+  ontologyId: number;
+  code?: string;
+  name?: string;
+  sourceTable?: string;
+  mappingType?: string;
+  sourceRef?: string;
+  targetRef?: string;
+  scopeObjectCode?: string;
+  status?: string;
+  impactReason: string;
+}
+
+export interface SchemaDriftResult {
+  dataSourceId: number;
+  status: 'not_scanned' | 'no_drift' | 'drift_detected';
+  summary: SchemaDriftSummary;
+  addedTables: Array<{
+    tableName: string;
+    rowCount: number;
+    primaryKey?: string | null;
+    columns: SchemaDriftColumn[];
+  }>;
+  removedTables: Array<{
+    tableName: string;
+    rowCount: number;
+    primaryKey?: string | null;
+    columns: SchemaDriftColumn[];
+  }>;
+  changedTables: SchemaDriftTableChange[];
+  impacts: {
+    objects: SchemaDriftImpactItem[];
+    mappings: SchemaDriftImpactItem[];
+    rules: SchemaDriftImpactItem[];
+  };
+  nextActions: string[];
+}
+
 // 元数据相关类型
 export interface ScanResult {
   tables: number;

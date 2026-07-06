@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 import importlib
 import sys
@@ -23,7 +24,7 @@ from ontology_platform.governance import (
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
-from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
@@ -478,6 +479,52 @@ def test_scan_records_column_profile(tmp_path: Path) -> None:
     assert status is not None
     assert status["enum_candidate"] == 1
     assert status["distinct_count"] == 3
+
+
+def test_schema_drift_analysis_compares_live_database_with_scanned_baseline(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+
+    not_scanned = analyze_schema_drift(platform_db, source.id)
+    assert not_scanned["status"] == "not_scanned"
+    assert not_scanned["nextActions"]
+
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    stable = analyze_schema_drift(platform_db, source.id)
+    assert stable["status"] == "no_drift"
+    assert stable["summary"]["changedTables"] == 0
+
+    with sqlite3.connect(legacy_db) as conn:
+        conn.execute("alter table contract add column risk_level text")
+        conn.execute(
+            """
+            create table contract_attachment (
+                id integer primary key,
+                contract_id integer not null,
+                file_name text not null,
+                foreign key(contract_id) references contract(id)
+            )
+            """
+        )
+
+    drift = analyze_schema_drift(platform_db, source.id)
+
+    assert drift["status"] == "drift_detected"
+    assert drift["summary"]["addedTables"] == 1
+    assert drift["summary"]["changedTables"] == 1
+    assert drift["summary"]["addedColumns"] == 1
+    assert drift["summary"]["impactedObjects"] >= 1
+    assert {item["tableName"] for item in drift["addedTables"]} == {"contract_attachment"}
+    contract_change = next(item for item in drift["changedTables"] if item["tableName"] == "contract")
+    assert [item["columnName"] for item in contract_change["addedColumns"]] == ["risk_level"]
+    assert any(item["ontologyId"] == ontology["id"] and item["code"] == "contract" for item in drift["impacts"]["objects"])
+    assert any("重新扫描" in action or "本体" in action for action in drift["nextActions"])
 
 
 def test_data_source_connection_checks_sqlite_file(tmp_path: Path) -> None:

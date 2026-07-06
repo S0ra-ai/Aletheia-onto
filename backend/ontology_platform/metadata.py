@@ -369,6 +369,78 @@ def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, 
         return {"dataSourceId": data_source_id, "tables": scanned_tables}
 
 
+def analyze_schema_drift(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+    with connect(platform_db) as platform:
+        source = platform.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
+        if source is None:
+            raise ValueError(f"数据源不存在: {data_source_id}")
+
+        stored_tables = _stored_schema(platform, data_source_id)
+        if not stored_tables:
+            return {
+                "dataSourceId": data_source_id,
+                "status": "not_scanned",
+                "summary": _drift_summary(),
+                "addedTables": [],
+                "removedTables": [],
+                "changedTables": [],
+                "impacts": {"objects": [], "mappings": [], "rules": []},
+                "nextActions": ["先执行元数据扫描，建立传统系统结构基线。"],
+            }
+
+        adapter = get_adapter(source["source_type"])
+        try:
+            live_tables = adapter.scan(source["connection_uri"])
+        except Exception as error:
+            raise ValueError(f"结构漂移分析失败: {error}") from error
+
+        live_schema = {table.name: table for table in live_tables}
+        added_tables = [_table_snapshot(table) for name, table in sorted(live_schema.items()) if name not in stored_tables]
+        removed_tables = [
+            _stored_table_snapshot(table)
+            for name, table in sorted(stored_tables.items())
+            if name not in live_schema
+        ]
+        changed_tables = [
+            change
+            for name in sorted(set(stored_tables).intersection(live_schema))
+            if (change := _compare_table(stored_tables[name], live_schema[name]))
+        ]
+
+        affected_tables = {item["tableName"] for item in removed_tables}
+        affected_tables.update(item["tableName"] for item in changed_tables)
+        affected_columns = {
+            (change["tableName"], column["columnName"])
+            for change in changed_tables
+            for group in ("removedColumns", "changedColumns")
+            for column in change[group]
+        }
+        impacts = _schema_drift_impacts(platform, data_source_id, affected_tables, affected_columns)
+        summary = _drift_summary(
+            added_tables=len(added_tables),
+            removed_tables=len(removed_tables),
+            changed_tables=len(changed_tables),
+            added_columns=sum(len(item["addedColumns"]) for item in changed_tables),
+            removed_columns=sum(len(item["removedColumns"]) for item in changed_tables),
+            changed_columns=sum(len(item["changedColumns"]) for item in changed_tables),
+            impacted_objects=len(impacts["objects"]),
+            impacted_mappings=len(impacts["mappings"]),
+            impacted_rules=len(impacts["rules"]),
+        )
+        has_drift = any(summary[key] for key in ("addedTables", "removedTables", "changedTables"))
+
+        return {
+            "dataSourceId": data_source_id,
+            "status": "drift_detected" if has_drift else "no_drift",
+            "summary": summary,
+            "addedTables": added_tables,
+            "removedTables": removed_tables,
+            "changedTables": changed_tables,
+            "impacts": impacts,
+            "nextActions": _schema_drift_next_actions(summary, impacts),
+        }
+
+
 def _row_to_data_source(row: sqlite3.Row) -> DataSource:
     return DataSource(
         id=row["id"],
@@ -414,6 +486,261 @@ def _mapping_count(rows: list[sqlite3.Row], status: str) -> int:
         if row["status"] == status:
             return int(row["total"])
     return 0
+
+
+def _stored_schema(platform: sqlite3.Connection, data_source_id: int) -> dict[str, dict[str, Any]]:
+    tables = platform.execute(
+        "select * from source_table where data_source_id = ? order by table_name",
+        (data_source_id,),
+    ).fetchall()
+    result: dict[str, dict[str, Any]] = {}
+    for table in tables:
+        columns = platform.execute(
+            "select * from source_column where source_table_id = ? order by ordinal",
+            (table["id"],),
+        ).fetchall()
+        result[table["table_name"]] = {"table": table, "columns": {column["column_name"]: column for column in columns}}
+    return result
+
+
+def _table_snapshot(table: SourceTableInfo) -> dict[str, Any]:
+    return {
+        "tableName": table.name,
+        "rowCount": table.row_count,
+        "primaryKey": table.primary_key,
+        "columns": [_column_snapshot(column) for column in table.columns],
+    }
+
+
+def _stored_table_snapshot(item: dict[str, Any]) -> dict[str, Any]:
+    table = item["table"]
+    return {
+        "tableName": table["table_name"],
+        "rowCount": table["row_count"],
+        "primaryKey": table["primary_key"],
+        "columns": [_stored_column_snapshot(column) for column in item["columns"].values()],
+    }
+
+
+def _column_snapshot(column: SourceColumnInfo) -> dict[str, Any]:
+    return {
+        "columnName": column.name,
+        "dataType": column.data_type,
+        "nullable": column.nullable,
+        "isPrimaryKey": column.is_primary_key,
+        "ordinal": column.ordinal,
+    }
+
+
+def _stored_column_snapshot(column: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "columnName": column["column_name"],
+        "dataType": column["data_type"],
+        "nullable": bool(column["nullable"]),
+        "isPrimaryKey": bool(column["is_primary_key"]),
+        "ordinal": column["ordinal"],
+    }
+
+
+def _compare_table(stored: dict[str, Any], live: SourceTableInfo) -> dict[str, Any] | None:
+    stored_table = stored["table"]
+    stored_columns = stored["columns"]
+    live_columns = {column.name: column for column in live.columns}
+    added_columns = [
+        _column_snapshot(column)
+        for name, column in sorted(live_columns.items())
+        if name not in stored_columns
+    ]
+    removed_columns = [
+        _stored_column_snapshot(column)
+        for name, column in sorted(stored_columns.items())
+        if name not in live_columns
+    ]
+    changed_columns = [
+        change
+        for name in sorted(set(stored_columns).intersection(live_columns))
+        if (change := _compare_column(stored_columns[name], live_columns[name]))
+    ]
+    primary_key_changed = (stored_table["primary_key"] or "") != (live.primary_key or "")
+    row_count_changed = stored_table["row_count"] != live.row_count
+    if not (added_columns or removed_columns or changed_columns or primary_key_changed or row_count_changed):
+        return None
+    return {
+        "tableName": live.name,
+        "primaryKeyChanged": primary_key_changed,
+        "oldPrimaryKey": stored_table["primary_key"],
+        "newPrimaryKey": live.primary_key,
+        "rowCountChanged": row_count_changed,
+        "oldRowCount": stored_table["row_count"],
+        "newRowCount": live.row_count,
+        "addedColumns": added_columns,
+        "removedColumns": removed_columns,
+        "changedColumns": changed_columns,
+    }
+
+
+def _compare_column(stored: sqlite3.Row, live: SourceColumnInfo) -> dict[str, Any] | None:
+    changes: dict[str, dict[str, Any]] = {}
+    comparisons = {
+        "dataType": (stored["data_type"], live.data_type),
+        "nullable": (bool(stored["nullable"]), live.nullable),
+        "isPrimaryKey": (bool(stored["is_primary_key"]), live.is_primary_key),
+    }
+    for field, (old_value, new_value) in comparisons.items():
+        if old_value != new_value:
+            changes[field] = {"old": old_value, "new": new_value}
+    if not changes:
+        return None
+    return {
+        "columnName": live.name,
+        "changes": changes,
+        "old": _stored_column_snapshot(stored),
+        "new": _column_snapshot(live),
+    }
+
+
+def _schema_drift_impacts(
+    platform: sqlite3.Connection,
+    data_source_id: int,
+    affected_tables: set[str],
+    affected_columns: set[tuple[str, str]],
+) -> dict[str, list[dict[str, Any]]]:
+    if not affected_tables:
+        return {"objects": [], "mappings": [], "rules": []}
+
+    objects = platform.execute(
+        """
+        select bo.id, bo.ontology_id, bo.code, bo.name, st.table_name
+        from business_object bo
+        join source_table st on st.id = bo.source_table_id
+        where st.data_source_id = ?
+        order by bo.id
+        """,
+        (data_source_id,),
+    ).fetchall()
+    impacted_objects = [
+        {
+            "id": row["id"],
+            "ontologyId": row["ontology_id"],
+            "code": row["code"],
+            "name": row["name"],
+            "sourceTable": row["table_name"],
+            "impactReason": "source_table_changed",
+        }
+        for row in objects
+        if row["table_name"] in affected_tables
+    ]
+
+    mappings = platform.execute(
+        """
+        select distinct sm.id, sm.ontology_id, sm.mapping_type, sm.source_ref, sm.target_ref, sm.status
+        from semantic_mapping sm
+        join business_object bo on bo.ontology_id = sm.ontology_id
+        join source_table st on st.id = bo.source_table_id
+        where st.data_source_id = ?
+        order by sm.id
+        """,
+        (data_source_id,),
+    ).fetchall()
+    impacted_mappings = []
+    for row in mappings:
+        table_name, column_name = _parse_mapping_source_ref(row["source_ref"])
+        if table_name in affected_tables and (column_name is None or not affected_columns or (table_name, column_name) in affected_columns):
+            impacted_mappings.append(
+                {
+                    "id": row["id"],
+                    "ontologyId": row["ontology_id"],
+                    "mappingType": row["mapping_type"],
+                    "sourceRef": row["source_ref"],
+                    "targetRef": row["target_ref"],
+                    "status": row["status"],
+                    "impactReason": "source_mapping_changed",
+                }
+            )
+
+    impacted_object_codes = {item["code"] for item in impacted_objects}
+    column_names = {column for _, column in affected_columns}
+    rules = platform.execute(
+        """
+        select br.id, br.ontology_id, br.code, br.name, br.scope_object_code, br.expression, br.status
+        from business_rule br
+        join business_object bo on bo.ontology_id = br.ontology_id
+        join source_table st on st.id = bo.source_table_id
+        where st.data_source_id = ?
+        order by br.id
+        """,
+        (data_source_id,),
+    ).fetchall()
+    impacted_rules = []
+    seen_rule_ids: set[int] = set()
+    for row in rules:
+        reason = ""
+        if row["scope_object_code"] in impacted_object_codes:
+            reason = "scope_object_changed"
+        elif any(column and column in row["expression"] for column in column_names):
+            reason = "rule_expression_references_changed_column"
+        if reason and row["id"] not in seen_rule_ids:
+            impacted_rules.append(
+                {
+                    "id": row["id"],
+                    "ontologyId": row["ontology_id"],
+                    "code": row["code"],
+                    "name": row["name"],
+                    "scopeObjectCode": row["scope_object_code"],
+                    "status": row["status"],
+                    "impactReason": reason,
+                }
+            )
+            seen_rule_ids.add(row["id"])
+
+    return {"objects": impacted_objects, "mappings": impacted_mappings, "rules": impacted_rules}
+
+
+def _parse_mapping_source_ref(source_ref: str) -> tuple[str, str | None]:
+    if not source_ref.startswith("table:"):
+        return source_ref, None
+    value = source_ref.removeprefix("table:")
+    if ".column:" not in value:
+        return value, None
+    table_name, column_name = value.split(".column:", 1)
+    return table_name, column_name
+
+
+def _drift_summary(
+    added_tables: int = 0,
+    removed_tables: int = 0,
+    changed_tables: int = 0,
+    added_columns: int = 0,
+    removed_columns: int = 0,
+    changed_columns: int = 0,
+    impacted_objects: int = 0,
+    impacted_mappings: int = 0,
+    impacted_rules: int = 0,
+) -> dict[str, int]:
+    return {
+        "addedTables": added_tables,
+        "removedTables": removed_tables,
+        "changedTables": changed_tables,
+        "addedColumns": added_columns,
+        "removedColumns": removed_columns,
+        "changedColumns": changed_columns,
+        "impactedObjects": impacted_objects,
+        "impactedMappings": impacted_mappings,
+        "impactedRules": impacted_rules,
+    }
+
+
+def _schema_drift_next_actions(summary: dict[str, int], impacts: dict[str, list[dict[str, Any]]]) -> list[str]:
+    if not any(summary.values()):
+        return ["当前业务系统结构与最近一次扫描基线一致。"]
+    actions = ["评估漂移影响后再执行重新扫描，避免直接覆盖可追溯基线。"]
+    if summary["removedTables"] or summary["removedColumns"] or summary["changedColumns"]:
+        actions.append("对受影响对象、映射和规则发起业务专家复核。")
+    if impacts["objects"] or impacts["mappings"] or impacts["rules"]:
+        actions.append("派生新本体版本并重新确认关键语义映射。")
+    if summary["addedTables"] or summary["addedColumns"]:
+        actions.append("将新增表字段纳入行业蓝图或本体草案增量建模。")
+    return actions
 
 
 def _operation_code(path: str, method: str, operation: dict[str, Any]) -> str:

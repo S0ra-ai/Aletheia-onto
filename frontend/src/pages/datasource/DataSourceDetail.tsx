@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
-import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint } from '../../types';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -15,8 +15,10 @@ const DataSourceDetail: React.FC = () => {
   const [tables, setTables] = useState<SourceTable[]>([]);
   const [apis, setApis] = useState<SourceApi[]>([]);
   const [readiness, setReadiness] = useState<DataSourceReadiness | null>(null);
+  const [schemaDrift, setSchemaDrift] = useState<SchemaDriftResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
+  const [driftLoading, setDriftLoading] = useState(false);
   const [openApiModalVisible, setOpenApiModalVisible] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [blueprintDraftVisible, setBlueprintDraftVisible] = useState(false);
@@ -57,6 +59,7 @@ const DataSourceDetail: React.FC = () => {
     try {
       await dataSourceApi.scan(parseInt(id));
       message.success('扫描完成');
+      setSchemaDrift(null);
       fetchData();
     } catch (error) {
       message.error('扫描失败');
@@ -79,6 +82,26 @@ const DataSourceDetail: React.FC = () => {
       message.error(error instanceof SyntaxError ? 'OpenAPI JSON 格式不正确' : 'OpenAPI 导入失败');
     } finally {
       setImportLoading(false);
+    }
+  };
+
+  const handleAnalyzeDrift = async () => {
+    if (!id) return;
+    setDriftLoading(true);
+    try {
+      const result = await dataSourceApi.getSchemaDrift(parseInt(id));
+      setSchemaDrift(result);
+      if (result.status === 'drift_detected') {
+        message.warning('检测到结构漂移，请先评估影响再重新扫描');
+      } else if (result.status === 'not_scanned') {
+        message.info('当前数据源还没有扫描基线');
+      } else {
+        message.success('未发现结构漂移');
+      }
+    } catch {
+      message.error('结构漂移分析失败');
+    } finally {
+      setDriftLoading(false);
     }
   };
 
@@ -191,6 +214,117 @@ const DataSourceDetail: React.FC = () => {
     return 'red';
   };
 
+  const driftStatusColor = (status?: string) => {
+    if (status === 'no_drift') return 'green';
+    if (status === 'drift_detected') return 'orange';
+    return 'red';
+  };
+
+  const driftTableColumns = [
+    {
+      title: '表名',
+      dataIndex: 'tableName',
+      key: 'tableName',
+    },
+    {
+      title: '行数',
+      key: 'rowCount',
+      render: (_: unknown, record: SchemaDriftTableChange) => (
+        record.rowCountChanged ? `${record.oldRowCount} -> ${record.newRowCount}` : record.newRowCount
+      ),
+    },
+    {
+      title: '主键',
+      key: 'primaryKey',
+      render: (_: unknown, record: SchemaDriftTableChange) => (
+        record.primaryKeyChanged ? `${record.oldPrimaryKey || '-'} -> ${record.newPrimaryKey || '-'}` : (record.newPrimaryKey || '-')
+      ),
+    },
+    {
+      title: '新增字段',
+      key: 'addedColumns',
+      render: (_: unknown, record: SchemaDriftTableChange) => record.addedColumns.map(item => <Tag color="green" key={item.columnName}>{item.columnName}</Tag>),
+    },
+    {
+      title: '删除字段',
+      key: 'removedColumns',
+      render: (_: unknown, record: SchemaDriftTableChange) => record.removedColumns.map(item => <Tag color="red" key={item.columnName}>{item.columnName}</Tag>),
+    },
+    {
+      title: '变更字段',
+      key: 'changedColumns',
+      render: (_: unknown, record: SchemaDriftTableChange) => record.changedColumns.map(item => <Tag color="orange" key={item.columnName}>{item.columnName}</Tag>),
+    },
+  ];
+
+  const renderSchemaDrift = () => {
+    if (!schemaDrift) return null;
+    const summary = schemaDrift.summary;
+    const changeRows = [
+      ...schemaDrift.changedTables,
+      ...schemaDrift.addedTables.map(table => ({
+        tableName: table.tableName,
+        primaryKeyChanged: false,
+        oldPrimaryKey: null,
+        newPrimaryKey: table.primaryKey,
+        rowCountChanged: false,
+        oldRowCount: 0,
+        newRowCount: table.rowCount,
+        addedColumns: table.columns,
+        removedColumns: [],
+        changedColumns: [],
+      })),
+      ...schemaDrift.removedTables.map(table => ({
+        tableName: table.tableName,
+        primaryKeyChanged: false,
+        oldPrimaryKey: table.primaryKey,
+        newPrimaryKey: null,
+        rowCountChanged: false,
+        oldRowCount: table.rowCount,
+        newRowCount: 0,
+        addedColumns: [],
+        removedColumns: table.columns,
+        changedColumns: [],
+      })),
+    ];
+
+    return (
+      <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Typography.Text strong>结构漂移影响分析</Typography.Text>
+          <Descriptions column={4}>
+            <Descriptions.Item label="状态">
+              <Tag color={driftStatusColor(schemaDrift.status)}>{schemaDrift.status}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="新增表">{summary.addedTables}</Descriptions.Item>
+            <Descriptions.Item label="删除表">{summary.removedTables}</Descriptions.Item>
+            <Descriptions.Item label="变更表">{summary.changedTables}</Descriptions.Item>
+            <Descriptions.Item label="新增字段">{summary.addedColumns}</Descriptions.Item>
+            <Descriptions.Item label="删除字段">{summary.removedColumns}</Descriptions.Item>
+            <Descriptions.Item label="变更字段">{summary.changedColumns}</Descriptions.Item>
+            <Descriptions.Item label="影响对象">{summary.impactedObjects}</Descriptions.Item>
+            <Descriptions.Item label="影响映射">{summary.impactedMappings}</Descriptions.Item>
+            <Descriptions.Item label="影响规则">{summary.impactedRules}</Descriptions.Item>
+          </Descriptions>
+          {schemaDrift.nextActions.length > 0 && (
+            <Alert
+              type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
+              message="建议动作"
+              description={schemaDrift.nextActions.join('；')}
+            />
+          )}
+          <Table
+            size="small"
+            columns={driftTableColumns}
+            dataSource={changeRows}
+            rowKey="tableName"
+            pagination={false}
+          />
+        </Space>
+      </div>
+    );
+  };
+
   if (loading) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   }
@@ -278,15 +412,25 @@ const DataSourceDetail: React.FC = () => {
         <Tabs defaultActiveKey="tables">
           <TabPane tab={`已扫描表 (${tables.length})`} key="tables">
             <div style={{ marginBottom: 16 }}>
-              <Button
-                type="primary"
-                icon={<ScanOutlined />}
-                loading={scanLoading}
-                onClick={handleScan}
-              >
-                重新扫描
-              </Button>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<ScanOutlined />}
+                  loading={scanLoading}
+                  onClick={handleScan}
+                >
+                  重新扫描
+                </Button>
+                <Button
+                  icon={<BranchesOutlined />}
+                  loading={driftLoading}
+                  onClick={handleAnalyzeDrift}
+                >
+                  分析结构漂移
+                </Button>
+              </Space>
             </div>
+            {renderSchemaDrift()}
             <Table
               columns={tableColumns}
               dataSource={tables}
