@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message } from 'antd';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { dataSourceApi } from '../../api';
-import type { DataSource, DataSourceCreate } from '../../types';
+import { dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
+import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult } from '../../types';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -15,6 +15,9 @@ const DataSourceList: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ reachable: boolean; status: string; message: string } | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [blueprints, setBlueprints] = useState<IndustryBlueprint[]>([]);
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [form] = Form.useForm();
 
   const fetchDataSources = async () => {
@@ -31,6 +34,7 @@ const DataSourceList: React.FC = () => {
 
   useEffect(() => {
     fetchDataSources();
+    industryBlueprintApi.list().then(setBlueprints).catch(() => undefined);
   }, []);
 
   const handleCreate = async (values: DataSourceCreate) => {
@@ -85,6 +89,27 @@ const DataSourceList: React.FC = () => {
       fetchDataSources();
     } catch (error) {
       message.error('扫描失败');
+    }
+  };
+
+  const handleOnboarding = async () => {
+    try {
+      const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'domain', 'systemCategory', 'blueprintId']);
+      setOnboardingLoading(true);
+      const result = await onboardingApi.run({ ...values, generateOntology: true });
+      setOnboardingResult(result);
+      if (result.status === 'blocked') {
+        message.warning('一键接入未完成，请查看步骤详情');
+      } else {
+        message.success('一键接入流水线完成');
+        fetchDataSources();
+      }
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        message.error('一键接入失败');
+      }
+    } finally {
+      setOnboardingLoading(false);
     }
   };
 
@@ -177,6 +202,7 @@ const DataSourceList: React.FC = () => {
         onCancel={() => {
           setModalVisible(false);
           setConnectionResult(null);
+          setOnboardingResult(null);
           form.resetFields();
         }}
         onOk={() => form.submit()}
@@ -246,6 +272,41 @@ const DataSourceList: React.FC = () => {
               <Option value="database+api">数据库+API</Option>
             </Select>
           </Form.Item>
+          <Form.Item
+            name="blueprintId"
+            label="行业蓝图"
+          >
+            <Select placeholder="自动推断或手动选择" allowClear>
+              {blueprints.map(blueprint => (
+                <Option key={blueprint.id} value={blueprint.id}>
+                  {blueprint.name} ({blueprint.domain})
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item>
+            <Button
+              type="primary"
+              icon={<ScanOutlined />}
+              loading={onboardingLoading}
+              onClick={handleOnboarding}
+            >
+              一键接入并生成本体
+            </Button>
+          </Form.Item>
+          {onboardingResult && (
+            <Card size="small" title={`接入结果：${onboardingResult.status}`} style={{ marginBottom: 16 }}>
+              <Steps
+                direction="vertical"
+                size="small"
+                items={onboardingResult.steps.map(step => ({
+                  title: step.code,
+                  description: step.message,
+                  status: step.status === 'completed' ? 'finish' : step.status === 'failed' ? 'error' : 'wait',
+                }))}
+              />
+            </Card>
+          )}
         </Form>
       </Modal>
     </div>

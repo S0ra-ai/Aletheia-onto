@@ -2,6 +2,8 @@ import axios from 'axios';
 import type {
   DataSource,
   DataSourceCreate,
+  OnboardingRunCreate,
+  OnboardingResult,
   SourceApi,
   SourceApiCreate,
   SourceTable,
@@ -109,6 +111,16 @@ export const dataSourceApi = {
   createApi: async (dataSourceId: number, payload: SourceApiCreate): Promise<SourceApi> => {
     const { data } = await api.post(`/data-sources/${dataSourceId}/apis`, payload);
     return normalizeSourceApi(data);
+  },
+};
+
+export const onboardingApi = {
+  run: async (payload: OnboardingRunCreate): Promise<OnboardingResult> => {
+    const { data } = await api.post('/onboarding/run', payload);
+    return {
+      ...data,
+      dataSource: normalizeDataSource(data.dataSource),
+    } as OnboardingResult;
   },
 };
 

@@ -19,6 +19,29 @@ export interface DataSourceCreate {
   capabilities?: string[];
 }
 
+export interface OnboardingRunCreate extends DataSourceCreate {
+  blueprintId?: string;
+  ontologyName?: string;
+  generateOntology?: boolean;
+}
+
+export interface OnboardingStep {
+  code: string;
+  status: string;
+  message: string;
+  detail: Record<string, unknown>;
+}
+
+export interface OnboardingResult {
+  dataSource: DataSource;
+  connection: { reachable: boolean; status: string; message: string };
+  scan?: unknown;
+  ontology?: OntologyDetail | null;
+  readiness: DataSourceReadiness;
+  steps: OnboardingStep[];
+  status: string;
+}
+
 export interface SourceApi {
   id: number;
   dataSourceId: number;

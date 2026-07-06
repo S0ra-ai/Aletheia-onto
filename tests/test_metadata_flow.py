@@ -24,6 +24,7 @@ from ontology_platform.governance import (
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints
 from ontology_platform.metadata import assess_data_source_readiness, check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
+from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_instance
@@ -141,6 +142,56 @@ def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> Non
     assert ready["score"] == 100
     assert ready["status"] == "ready"
     assert ready["gaps"] == []
+
+
+def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_readiness(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+
+    result = run_onboarding_pipeline(
+        platform_db,
+        "合同管理一键接入",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        blueprint_id="contract-management",
+    )
+
+    assert result["connection"]["reachable"] is True
+    assert result["scan"]["tables"]
+    assert result["ontology"]["blueprint"]["id"] == "contract-management"
+    assert result["readiness"]["summary"]["tables"] == 4
+    assert result["status"] == "partial"
+    assert [step["code"] for step in result["steps"]] == [
+        "register_data_source",
+        "test_connection",
+        "scan_metadata",
+        "generate_ontology",
+        "assess_readiness",
+    ]
+
+
+def test_onboarding_pipeline_stops_when_connection_fails(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+
+    initialize_platform_db(platform_db)
+    result = run_onboarding_pipeline(
+        platform_db,
+        "不存在的传统系统",
+        "sqlite",
+        str(tmp_path / "missing.sqlite3"),
+        domain="通用业务",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["connection"]["reachable"] is False
+    assert result["scan"] is None
+    assert result["ontology"] is None
+    assert [step["code"] for step in result["steps"]] == ["register_data_source", "test_connection"]
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

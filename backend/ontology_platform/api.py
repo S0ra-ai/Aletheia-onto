@@ -30,6 +30,7 @@ from .model_client import (
     test_model_config,
     update_model_config,
 )
+from .onboarding import run_onboarding_pipeline
 from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
 from .semantic_kernel import assess_instance
@@ -56,6 +57,12 @@ class DataSourceCreate(BaseModel):
 class DataSourceConnectionTest(BaseModel):
     sourceType: str
     connectionUri: str
+
+
+class OnboardingRunCreate(DataSourceCreate):
+    blueprintId: Optional[str] = None
+    ontologyName: Optional[str] = None
+    generateOntology: bool = True
 
 
 class ModelConfigUpdate(BaseModel):
@@ -190,6 +197,25 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return source.__dict__
+
+
+@app.post("/onboarding/run")
+def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
+    try:
+        return run_onboarding_pipeline(
+            DEFAULT_PLATFORM_DB,
+            payload.name,
+            payload.sourceType,
+            payload.connectionUri,
+            payload.domain,
+            payload.systemCategory,
+            payload.capabilities,
+            payload.blueprintId,
+            payload.ontologyName,
+            payload.generateOntology,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/data-sources")
