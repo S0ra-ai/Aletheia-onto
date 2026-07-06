@@ -144,6 +144,8 @@ export const ontologyApi = {
     const { data } = await api.get(`/ontologies/${ontologyId}/rules`);
     return data.items || [];
   },
+
+  exportUrl: (ontologyId: number, format: 'jsonld' | 'turtle'): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
 };
 
 // 语义服务 API

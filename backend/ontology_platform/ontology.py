@@ -239,6 +239,215 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
     }
 
 
+def export_ontology_asset(platform_db: Path | str, ontology_id: int, export_format: str = "jsonld") -> dict[str, str]:
+    export_format = export_format.lower()
+    if export_format not in {"jsonld", "turtle", "ttl"}:
+        raise ValueError("仅支持 jsonld 或 turtle 导出格式")
+    with connect(platform_db) as conn:
+        detail = summarize_ontology(conn, ontology_id)
+    if export_format == "jsonld":
+        content = _export_jsonld(detail)
+        extension = "jsonld"
+        media_type = "application/ld+json"
+    else:
+        content = _export_turtle(detail)
+        extension = "ttl"
+        media_type = "text/turtle"
+    filename = f"ontology-{ontology_id}-v{detail['version']}.{extension}"
+    return {"content": content, "mediaType": media_type, "filename": filename}
+
+
+def _export_jsonld(detail: dict[str, Any]) -> str:
+    ontology = detail["ontology"]
+    base = _ontology_base_uri(ontology)
+    object_by_id = {item["id"]: item for item in detail["objects"]}
+    attribute_by_id = {item["id"]: item for item in detail["attributes"]}
+    graph: list[dict[str, Any]] = [
+        {
+            "@id": base.rstrip("/"),
+            "@type": "ont:Ontology",
+            "name": ontology["name"],
+            "domain": ontology["domain"],
+            "version": ontology["version"],
+            "status": ontology["status"],
+        }
+    ]
+
+    for item in detail["objects"]:
+        graph.append(
+            {
+                "@id": f"{base}object/{_uri_part(item['code'])}",
+                "@type": "ont:BusinessObject",
+                "code": item["code"],
+                "name": item["name"],
+                "description": item["description"],
+                "sourceTable": item["sourceTable"],
+                "definedBy": {"@id": base.rstrip("/")},
+            }
+        )
+    for item in detail["attributes"]:
+        object_item = object_by_id.get(item["objectId"])
+        graph.append(
+            {
+                "@id": f"{base}object/{_uri_part(item['objectCode'])}/attribute/{_uri_part(item['code'])}",
+                "@type": "ont:BusinessAttribute",
+                "code": item["code"],
+                "name": item["name"],
+                "dataType": item["dataType"],
+                "required": item["required"],
+                "sourceColumn": item["sourceColumn"],
+                "belongsTo": {"@id": f"{base}object/{_uri_part(object_item['code'])}"} if object_item else None,
+            }
+        )
+    for item in detail["relations"]:
+        graph.append(
+            {
+                "@id": f"{base}relation/{_uri_part(item['code'])}",
+                "@type": "ont:BusinessRelation",
+                "code": item["code"],
+                "name": item["name"],
+                "relationType": item["relationType"],
+                "sourceObject": {"@id": f"{base}object/{_uri_part(item['sourceCode'])}"},
+                "targetObject": {"@id": f"{base}object/{_uri_part(item['targetCode'])}"},
+                "sourceForeignKey": item["sourceForeignKey"],
+            }
+        )
+    for item in detail["rules"]:
+        graph.append(
+            {
+                "@id": f"{base}rule/{_uri_part(item['code'])}",
+                "@type": "ont:BusinessRule",
+                "code": item["code"],
+                "name": item["name"],
+                "ruleType": item["ruleType"],
+                "scopeObject": {"@id": f"{base}object/{_uri_part(item['scopeObjectCode'])}"},
+                "expression": item["expression"],
+                "severity": item["severity"],
+                "naturalLanguage": item["naturalLanguage"],
+                "status": item["status"],
+            }
+        )
+    for item in detail["mappings"]:
+        graph.append(
+            {
+                "@id": f"{base}mapping/{item['id']}",
+                "@type": "ont:SemanticMapping",
+                "mappingType": item["mappingType"],
+                "sourceRef": item["sourceRef"],
+                "targetRef": item["targetRef"],
+                "confidence": item["confidence"],
+                "status": item["status"],
+                "evidence": item["evidence"],
+            }
+        )
+    document = {
+        "@context": {
+            "ont": "https://ontology-platform.local/vocab#",
+            "name": "ont:name",
+            "code": "ont:code",
+            "domain": "ont:domain",
+            "version": "ont:version",
+            "status": "ont:status",
+            "description": "ont:description",
+            "sourceTable": "ont:sourceTable",
+            "sourceColumn": "ont:sourceColumn",
+            "dataType": "ont:dataType",
+            "required": "ont:required",
+            "definedBy": {"@id": "ont:definedBy", "@type": "@id"},
+            "belongsTo": {"@id": "ont:belongsTo", "@type": "@id"},
+            "sourceObject": {"@id": "ont:sourceObject", "@type": "@id"},
+            "targetObject": {"@id": "ont:targetObject", "@type": "@id"},
+            "scopeObject": {"@id": "ont:scopeObject", "@type": "@id"},
+        },
+        "@graph": [_drop_none(node) for node in graph],
+    }
+    return json.dumps(document, ensure_ascii=False, indent=2)
+
+
+def _export_turtle(detail: dict[str, Any]) -> str:
+    ontology = detail["ontology"]
+    base = _ontology_base_uri(ontology)
+    lines = [
+        "@prefix ont: <https://ontology-platform.local/vocab#> .",
+        f"@prefix bp: <{base}> .",
+        "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+        "",
+        "bp: a ont:Ontology ;",
+        f"  ont:name {_ttl_literal(ontology['name'])} ;",
+        f"  ont:domain {_ttl_literal(ontology['domain'])} ;",
+        f"  ont:version {_ttl_literal(ontology['version'])} ;",
+        f"  ont:status {_ttl_literal(ontology['status'])} .",
+        "",
+    ]
+    for item in detail["objects"]:
+        lines.extend(
+            [
+                f"bp:object/{_uri_part(item['code'])} a ont:BusinessObject ;",
+                f"  ont:code {_ttl_literal(item['code'])} ;",
+                f"  ont:name {_ttl_literal(item['name'])} ;",
+                f"  ont:description {_ttl_literal(item['description'])} ;",
+                f"  ont:sourceTable {_ttl_literal(item['sourceTable'])} ;",
+                "  ont:definedBy bp: .",
+                "",
+            ]
+        )
+    for item in detail["attributes"]:
+        lines.extend(
+            [
+                f"bp:object/{_uri_part(item['objectCode'])}/attribute/{_uri_part(item['code'])} a ont:BusinessAttribute ;",
+                f"  ont:code {_ttl_literal(item['code'])} ;",
+                f"  ont:name {_ttl_literal(item['name'])} ;",
+                f"  ont:dataType {_ttl_literal(item['dataType'])} ;",
+                f"  ont:required {_ttl_bool(item['required'])} ;",
+                f"  ont:sourceColumn {_ttl_literal(item['sourceColumn'])} ;",
+                f"  ont:belongsTo bp:object/{_uri_part(item['objectCode'])} .",
+                "",
+            ]
+        )
+    for item in detail["relations"]:
+        lines.extend(
+            [
+                f"bp:relation/{_uri_part(item['code'])} a ont:BusinessRelation ;",
+                f"  ont:code {_ttl_literal(item['code'])} ;",
+                f"  ont:name {_ttl_literal(item['name'])} ;",
+                f"  ont:relationType {_ttl_literal(item['relationType'])} ;",
+                f"  ont:sourceObject bp:object/{_uri_part(item['sourceCode'])} ;",
+                f"  ont:targetObject bp:object/{_uri_part(item['targetCode'])} ;",
+                f"  ont:sourceForeignKey {_ttl_literal(item['sourceForeignKey'])} .",
+                "",
+            ]
+        )
+    for item in detail["rules"]:
+        lines.extend(
+            [
+                f"bp:rule/{_uri_part(item['code'])} a ont:BusinessRule ;",
+                f"  ont:code {_ttl_literal(item['code'])} ;",
+                f"  ont:name {_ttl_literal(item['name'])} ;",
+                f"  ont:ruleType {_ttl_literal(item['ruleType'])} ;",
+                f"  ont:scopeObject bp:object/{_uri_part(item['scopeObjectCode'])} ;",
+                f"  ont:expression {_ttl_literal(item['expression'])} ;",
+                f"  ont:severity {_ttl_literal(item['severity'])} ;",
+                f"  ont:naturalLanguage {_ttl_literal(item['naturalLanguage'])} ;",
+                f"  ont:status {_ttl_literal(item['status'])} .",
+                "",
+            ]
+        )
+    for item in detail["mappings"]:
+        lines.extend(
+            [
+                f"bp:mapping/{item['id']} a ont:SemanticMapping ;",
+                f"  ont:mappingType {_ttl_literal(item['mappingType'])} ;",
+                f"  ont:sourceRef {_ttl_literal(item['sourceRef'])} ;",
+                f"  ont:targetRef {_ttl_literal(item['targetRef'])} ;",
+                f"  ont:confidence {item['confidence']} ;",
+                f"  ont:status {_ttl_literal(item['status'])} ;",
+                f"  ont:evidence {_ttl_literal(item['evidence'])} .",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
 def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
     existing = conn.execute("select id, status from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
     if existing:
@@ -464,6 +673,28 @@ def _map_data_type(sql_type: str) -> str:
     if "date" in normalized or "time" in normalized:
         return "date"
     return "text"
+
+
+def _ontology_base_uri(ontology: dict[str, Any]) -> str:
+    return f"https://ontology-platform.local/ontology/{ontology['id']}/v/{_uri_part(str(ontology['version']))}/"
+
+
+def _uri_part(value: str) -> str:
+    normalized = re.sub(r"[^0-9a-zA-Z_.-]+", "-", value.strip())
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+    return normalized or "item"
+
+
+def _ttl_literal(value: object) -> str:
+    return json.dumps("" if value is None else str(value), ensure_ascii=False)
+
+
+def _ttl_bool(value: object) -> str:
+    return "true" if bool(value) else "false"
+
+
+def _drop_none(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: item for key, item in value.items() if item is not None}
 
 
 def _ontology_summary_row(row: sqlite3.Row) -> dict[str, Any]:

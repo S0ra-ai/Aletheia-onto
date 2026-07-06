@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import importlib
 import sys
@@ -21,7 +22,7 @@ from ontology_platform.governance import (
 )
 from ontology_platform.metadata import check_data_source_connection, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, get_model_config, reset_model_config, update_model_config
-from ontology_platform.ontology import explain_instance, generate_ontology_draft, list_ontologies
+from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_instance
 
@@ -243,6 +244,43 @@ def test_platform_lists_data_sources_and_ontologies_for_control_plane(tmp_path: 
     assert ontologies[0]["domain"] == "合同管理"
     assert ontologies[0]["version"] == "0.1.0"
     assert ontologies[0]["status"] == "draft"
+
+
+def test_ontology_exports_jsonld_and_turtle_assets(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id)
+
+    jsonld = export_ontology_asset(platform_db, ontology["id"], "jsonld")
+    document = json.loads(jsonld["content"])
+    graph_types = {node["@type"] for node in document["@graph"]}
+
+    assert jsonld["mediaType"] == "application/ld+json"
+    assert jsonld["filename"].endswith(".jsonld")
+    assert "ont:Ontology" in graph_types
+    assert "ont:BusinessObject" in graph_types
+    assert "ont:BusinessAttribute" in graph_types
+    assert "ont:BusinessRule" in graph_types
+    assert any(node.get("code") == "contract" for node in document["@graph"])
+
+    turtle = export_ontology_asset(platform_db, ontology["id"], "turtle")
+    assert turtle["mediaType"] == "text/turtle"
+    assert turtle["filename"].endswith(".ttl")
+    assert "@prefix ont:" in turtle["content"]
+    assert "ont:BusinessObject" in turtle["content"]
+    assert "bp:object/contract" in turtle["content"]
+
+    try:
+        export_ontology_asset(platform_db, ontology["id"], "xml")
+    except ValueError as error:
+        assert "jsonld" in str(error)
+    else:
+        raise AssertionError("不支持的本体导出格式应被拒绝")
 
 
 def test_model_config_persists_masks_and_resets(tmp_path: Path) -> None:

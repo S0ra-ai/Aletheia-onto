@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .automation import preflight_operation
@@ -28,7 +28,7 @@ from .model_client import (
     test_model_config,
     update_model_config,
 )
-from .ontology import explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
+from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
 from .semantic_kernel import assess_instance
 
@@ -271,6 +271,19 @@ def get_ontology(ontology_id: int) -> dict[str, object]:
             return summarize_ontology(conn, ontology_id)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/export")
+def export_ontology(ontology_id: int, format: str = "jsonld") -> Response:
+    try:
+        asset = export_ontology_asset(DEFAULT_PLATFORM_DB, ontology_id, format)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return Response(
+        content=asset["content"],
+        media_type=asset["mediaType"],
+        headers={"Content-Disposition": f"attachment; filename={asset['filename']}"},
+    )
 
 
 @app.get("/ontologies/{ontology_id}/mappings")

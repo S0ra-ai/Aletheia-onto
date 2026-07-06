@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi } from '../../api';
 import type { OntologyDetail } from '../../types';
 
@@ -85,6 +85,18 @@ const OntologyDetailPage: React.FC = () => {
           返回
         </Button>
         <Title level={3} style={{ margin: 0 }}>本体详情</Title>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'jsonld'), '_blank')}
+        >
+          JSON-LD
+        </Button>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'turtle'), '_blank')}
+        >
+          Turtle
+        </Button>
       </Space>
 
       <Card style={{ marginBottom: 16 }}>
