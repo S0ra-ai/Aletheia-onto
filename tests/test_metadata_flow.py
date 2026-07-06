@@ -28,7 +28,7 @@ from ontology_platform.governance import (
 )
 from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
-from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
+from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, import_openapi_operations_from_url, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.operation_bindings import assess_operation_bindings
@@ -379,6 +379,67 @@ def test_openapi_import_registers_business_operations(tmp_path: Path) -> None:
 
     readiness = assess_data_source_readiness(platform_db, source.id)
     assert readiness["summary"]["apis"] == 2
+
+
+def test_openapi_import_from_url_uses_business_api_headers(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+    seen_headers: dict[str, str] = {}
+    spec = {
+        "openapi": "3.0.0",
+        "paths": {
+            "/contracts/{id}/submit": {
+                "post": {
+                    "operationId": "submit_contract",
+                    "summary": "提交合同审批",
+                    "x-semantic-action": "contract.submit_for_approval",
+                    "responses": {"200": {"description": "ok"}},
+                }
+            }
+        },
+    }
+
+    class OpenApiHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            seen_headers["Authorization"] = self.headers.get("Authorization", "")
+            seen_headers["X-Tenant"] = self.headers.get("X-Tenant", "")
+            body = json.dumps(spec).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(
+        platform_db,
+        "合同 API 系统",
+        "sqlite",
+        str(legacy_db),
+        domain="合同管理",
+        system_category="database+api",
+        api_headers={"Authorization": "Bearer openapi-token", "X-Tenant": "contract"},
+    )
+    server = HTTPServer(("127.0.0.1", 0), OpenApiHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/openapi.json"
+        result = import_openapi_operations_from_url(platform_db, source.id, url)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert result["sourceUrl"] == url
+    assert result["count"] == 1
+    assert seen_headers["Authorization"] == "Bearer openapi-token"
+    assert seen_headers["X-Tenant"] == "contract"
+    assert list_source_apis(platform_db, source.id)[0]["operation_code"] == "submit_contract"
 
 
 def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: Path) -> None:

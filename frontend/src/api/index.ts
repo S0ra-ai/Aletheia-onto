@@ -150,6 +150,16 @@ export const dataSourceApi = {
     };
   },
 
+  importOpenApiUrl: async (dataSourceId: number, url: string): Promise<{ imported: SourceApi[]; skipped: unknown[]; count: number; sourceUrl?: string }> => {
+    const { data } = await api.post(`/data-sources/${dataSourceId}/apis/import-openapi-url`, { url });
+    return {
+      imported: (data.imported || []).map(normalizeSourceApi),
+      skipped: data.skipped || [],
+      count: data.count || 0,
+      sourceUrl: data.sourceUrl,
+    };
+  },
+
   kernelPackageUrl: (dataSourceId: number): string => `/api/data-sources/${dataSourceId}/kernel-package/download`,
 };
 

@@ -75,12 +75,14 @@ const DataSourceDetail: React.FC = () => {
     }
   };
 
-  const handleImportOpenApi = async (values: { specJson: string }) => {
+  const handleImportOpenApi = async (values: { specJson?: string; specUrl?: string }) => {
     if (!id) return;
     setImportLoading(true);
     try {
-      const spec = JSON.parse(values.specJson);
-      const result = await dataSourceApi.importOpenApi(parseInt(id), spec);
+      const specUrl = values.specUrl?.trim();
+      const result = specUrl
+        ? await dataSourceApi.importOpenApiUrl(parseInt(id), specUrl)
+        : await dataSourceApi.importOpenApi(parseInt(id), JSON.parse(values.specJson || ''));
       message.success(`已导入 ${result.count} 个业务 API`);
       setOpenApiModalVisible(false);
       openApiForm.resetFields();
@@ -696,13 +698,23 @@ const DataSourceDetail: React.FC = () => {
         width={760}
       >
         <Form form={openApiForm} layout="vertical" onFinish={handleImportOpenApi}>
+          <Form.Item name="specUrl" label="OpenAPI URL">
+            <Input placeholder="例如：https://legacy.example/openapi.json" />
+          </Form.Item>
           <Form.Item
             name="specJson"
             label="OpenAPI JSON"
-            rules={[{ required: true, message: '请粘贴 OpenAPI JSON 文档' }]}
+            rules={[
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (getFieldValue('specUrl')?.trim() || value?.trim()) return Promise.resolve();
+                  return Promise.reject(new Error('请填写 OpenAPI URL 或粘贴 OpenAPI JSON 文档'));
+                },
+              }),
+            ]}
           >
             <Input.TextArea
-              rows={14}
+              rows={12}
               placeholder='{"openapi":"3.0.0","paths":{"/contracts/{id}/submit":{"post":{"operationId":"submit_contract","summary":"提交合同审批"}}}}'
             />
           </Form.Item>

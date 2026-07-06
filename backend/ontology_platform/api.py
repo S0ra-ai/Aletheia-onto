@@ -28,6 +28,7 @@ from .metadata import (
     check_business_api_gateway,
     check_data_source_connection,
     import_openapi_operations,
+    import_openapi_operations_from_url,
     list_data_sources,
     list_source_apis,
     register_data_source,
@@ -105,6 +106,11 @@ class SourceApiCreate(BaseModel):
 
 class OpenApiImportCreate(BaseModel):
     spec: dict[str, object]
+
+
+class OpenApiUrlImportCreate(BaseModel):
+    url: str
+    timeoutSeconds: float = 10
 
 
 class OntologyDraftCreate(BaseModel):
@@ -324,6 +330,14 @@ def get_source_apis(data_source_id: int) -> dict[str, object]:
 def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> dict[str, object]:
     try:
         return import_openapi_operations(DEFAULT_PLATFORM_DB, data_source_id, payload.spec)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/data-sources/{data_source_id}/apis/import-openapi-url")
+def import_openapi_apis_from_url(data_source_id: int, payload: OpenApiUrlImportCreate) -> dict[str, object]:
+    try:
+        return import_openapi_operations_from_url(DEFAULT_PLATFORM_DB, data_source_id, payload.url, payload.timeoutSeconds)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

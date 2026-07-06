@@ -190,6 +190,37 @@ def import_openapi_operations(platform_db: Path | str, data_source_id: int, spec
     return {"imported": imported, "skipped": skipped, "count": len(imported)}
 
 
+def import_openapi_operations_from_url(
+    platform_db: Path | str,
+    data_source_id: int,
+    url: str,
+    timeout_seconds: float = 10,
+) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
+        if source is None:
+            raise ValueError(f"数据源不存在: {data_source_id}")
+        headers = _load_api_headers(source["api_headers"])
+
+    if not _is_http_url(url):
+        raise ValueError("OpenAPI URL 必须是 HTTP/HTTPS 地址")
+    request = urllib.request.Request(url, method="GET", headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            content = response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        raise ValueError(f"OpenAPI 文档读取失败: HTTP {error.code}") from error
+    except urllib.error.URLError as error:
+        raise ValueError(f"OpenAPI 文档读取失败: {error.reason}") from error
+    try:
+        spec = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError("OpenAPI URL 返回内容不是有效 JSON") from error
+    result = import_openapi_operations(platform_db, data_source_id, spec)
+    result["sourceUrl"] = url
+    return result
+
+
 def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
