@@ -8,7 +8,9 @@
 4. 生成领域本体草案。
 5. 建立基础语义映射。
 6. 对业务记录输出语义解释与语义研判。
-7. 通过 OpenRouter 兼容模型层生成本体与规则建议。
+7. 对传统业务系统 API 做语义预检、自动化执行计划和决策留痕。
+8. 通过 OpenRouter 兼容模型层生成本体、规则和行业蓝图建议。
+9. 输出语义覆盖度、结构漂移影响和可安装语义内核包。
 
 ## 快速开始
 
@@ -33,8 +35,16 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /data-sources`：登记传统业务系统数据库。
 - `POST /data-sources/{id}/test-connection`：测试已登记数据源连接。
 - `POST /data-sources/{id}/apis`：登记传统业务系统 API 或业务动作。
+- `POST /data-sources/{id}/apis/import-openapi`：从 OpenAPI 文档批量导入业务 API。
 - `POST /data-sources/{id}/scan`：扫描数据库元数据。
+- `GET /data-sources/{id}/readiness`：查看数据源接入准备度。
+- `GET /data-sources/{id}/semantic-coverage`：查看业务对象、映射、规则和 API 的语义覆盖度。
+- `GET /data-sources/{id}/schema-drift`：对比实时数据库结构与最近扫描基线，分析结构漂移影响。
+- `GET /data-sources/{id}/kernel-package/download`：导出可安装的业务语义内核包。
+- `GET /industry-blueprints`：查看内置和自定义行业蓝图。
+- `POST /industry-blueprints`：导入或更新行业蓝图。
 - `POST /ontologies/draft`：生成领域本体草案。
+- `GET /ontologies/{id}/export`：导出 JSON-LD 或 Turtle 语义资产。
 - `GET /ontologies/{id}/mappings`：查看语义映射候选。
 - `POST /semantic-mappings/{id}/review`：审核单条语义映射。
 - `POST /ontologies/{id}/mappings/review`：批量审核语义映射。
@@ -45,13 +55,17 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `GET /semantic/objects/{objectCode}/instances/{id}/explain`：解释业务实例。
 - `POST /semantic/objects/{objectCode}/instances/{id}/assess`：执行业务规则研判。
 - `POST /automation/operations/{operationCode}/preflight`：对传统业务系统操作执行语义预检，判断是否允许自动化。
+- `POST /automation/operations/{operationCode}/execute`：在语义预检通过后生成执行计划，或调用 HTTP/HTTPS 传统业务系统 API。
 - `POST /ai/data-sources/{id}/ontology-suggestions`：生成 AI 本体建议。
+- `POST /ai/data-sources/{id}/blueprint-draft`：生成行业蓝图草案。
 - `GET /model/status`：查看 OpenRouter 模型层配置状态。
+- `GET /model/config` / `POST /model/config` / `DELETE /model/config`：查看、保存或重置 OpenRouter 配置。
 - `GET /governance/audit-log`：查看治理审计记录。
+- `GET /governance/decisions`：查看语义研判、预检和执行的决策记录。
 
 ## OpenRouter 配置
 
-平台模型层兼容 OpenRouter 的 OpenAI 风格 Chat Completions API。密钥只从后端环境变量读取。
+平台模型层兼容 OpenRouter 的 OpenAI 风格 Chat Completions API。可以通过环境变量提供默认值，也可以在平台页面或 `/model/config` API 中保存配置。平台会传递 `service_tier`，可兼容 OpenRouter 的订阅模式、自动路由和额度策略。
 
 ```bash
 export OPENROUTER_API_KEY="你的 OpenRouter API Key"
@@ -61,7 +75,22 @@ export OPENROUTER_APP_TITLE="Ontology Transformation Platform"
 export OPENROUTER_SERVICE_TIER="auto"
 ```
 
-未配置 `OPENROUTER_API_KEY` 时，`/ai/data-sources/{id}/ontology-suggestions` 会回退到本地启发式建议，核心接入、建模、映射和研判流程仍可运行。
+也可以通过 API 持久化配置：
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/config \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "apiKey": "你的 OpenRouter API Key",
+    "model": "~openai/gpt-latest",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "httpReferer": "https://your-company.example",
+    "appTitle": "Ontology Transformation Platform",
+    "serviceTier": "auto"
+  }'
+```
+
+未配置 API Key 时，AI 建模能力会回退到本地启发式建议，核心接入、建模、映射、研判、自动化和治理流程仍可运行。
 
 ## 治理发布流程
 

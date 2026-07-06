@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import execute_operation, preflight_operation
+from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.decisions import list_decisions
 from ontology_platform.governance import (
@@ -271,6 +272,42 @@ def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: P
     assert package["governanceGates"]["executionRequiresApprovedDecision"] is True
     assert asset["filename"] == f"semantic-kernel-datasource-{source.id}.json"
     assert json.loads(asset["content"])["packageType"] == "ontology-semantic-kernel"
+
+
+def test_semantic_coverage_reports_object_rule_mapping_and_operation_readiness(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+
+    not_modeled = build_semantic_coverage(platform_db, source.id)
+    assert not_modeled["status"] == "not_modeled"
+    assert not_modeled["score"] == 0
+
+    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    pending = build_semantic_coverage(platform_db, source.id)
+    contract_pending = next(item for item in pending["objects"] if item["objectCode"] == "contract")
+    assert pending["status"] in {"partial", "blocked"}
+    assert contract_pending["pendingMappings"] > 0
+    assert contract_pending["ruleCount"] > 0
+    assert contract_pending["operationCount"] == 1
+    assert contract_pending["automationReady"] is False
+
+    bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "语义覆盖度验证")
+
+    ready = build_semantic_coverage(platform_db, source.id)
+    contract_ready = next(item for item in ready["objects"] if item["objectCode"] == "contract")
+    assert ready["score"] > pending["score"]
+    assert ready["summary"]["confirmedMappings"] > 0
+    assert ready["summary"]["semanticOperations"] == 1
+    assert ready["summary"]["fullyCoveredObjects"] >= 1
+    assert contract_ready["automationReady"] is True
+    assert any(item["operationCode"] == "submit_contract" for item in contract_ready["operations"])
 
 
 def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Path) -> None:

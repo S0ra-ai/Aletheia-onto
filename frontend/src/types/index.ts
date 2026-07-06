@@ -180,6 +180,64 @@ export interface SchemaDriftResult {
   nextActions: string[];
 }
 
+export interface SemanticCoverageSummary {
+  businessObjects: number;
+  fullyCoveredObjects: number;
+  partialObjects: number;
+  blockedObjects: number;
+  attributes: number;
+  confirmedMappings: number;
+  pendingMappings: number;
+  rules: number;
+  operations: number;
+  semanticOperations: number;
+  executableOperations: number;
+}
+
+export interface SemanticCoverageOperation {
+  operationCode: string;
+  name: string;
+  method: string;
+  path: string;
+  semanticAction: string;
+  objectCode: string;
+  automationReady: boolean;
+}
+
+export interface SemanticCoverageObject {
+  ontologyId: number;
+  ontologyName: string;
+  ontologyVersion: string;
+  ontologyStatus: string;
+  objectId: number;
+  objectCode: string;
+  objectName: string;
+  sourceTable: string;
+  primaryKey?: string | null;
+  attributeCount: number;
+  confirmedMappings: number;
+  pendingMappings: number;
+  rejectedMappings: number;
+  ruleCount: number;
+  operationCount: number;
+  automationReady: boolean;
+  status: 'ready' | 'partial' | 'blocked';
+  gaps: string[];
+  operations: SemanticCoverageOperation[];
+}
+
+export interface SemanticCoverageResult {
+  dataSourceId: number;
+  name: string;
+  domain: string;
+  status: 'not_modeled' | 'ready' | 'partial' | 'blocked';
+  score: number;
+  summary: SemanticCoverageSummary;
+  objects: SemanticCoverageObject[];
+  operations: SemanticCoverageOperation[];
+  nextActions: string[];
+}
+
 // 元数据相关类型
 export interface ScanResult {
   tables: number;

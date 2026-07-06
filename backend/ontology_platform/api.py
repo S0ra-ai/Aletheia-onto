@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .automation import execute_operation, preflight_operation
+from .coverage import build_semantic_coverage
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
 from .decisions import list_decisions
 from .governance import (
@@ -316,6 +317,14 @@ def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
 def get_data_source_schema_drift(data_source_id: int) -> dict[str, object]:
     try:
         return analyze_schema_drift(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/semantic-coverage")
+def get_data_source_semantic_coverage(data_source_id: int) -> dict[str, object]:
+    try:
+        return build_semantic_coverage(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

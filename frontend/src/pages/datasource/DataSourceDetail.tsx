@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
 import { ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange } from '../../types';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -16,6 +16,7 @@ const DataSourceDetail: React.FC = () => {
   const [apis, setApis] = useState<SourceApi[]>([]);
   const [readiness, setReadiness] = useState<DataSourceReadiness | null>(null);
   const [schemaDrift, setSchemaDrift] = useState<SchemaDriftResult | null>(null);
+  const [semanticCoverage, setSemanticCoverage] = useState<SemanticCoverageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [driftLoading, setDriftLoading] = useState(false);
@@ -30,14 +31,16 @@ const DataSourceDetail: React.FC = () => {
     if (!id) return;
     setLoading(true);
     try {
-      const [tablesData, apisData, readinessData] = await Promise.all([
+      const [tablesData, apisData, readinessData, coverageData] = await Promise.all([
         dataSourceApi.getTables(parseInt(id)),
         dataSourceApi.getApis(parseInt(id)),
         dataSourceApi.getReadiness(parseInt(id)),
+        dataSourceApi.getSemanticCoverage(parseInt(id)),
       ]);
       setTables(tablesData);
       setApis(apisData);
       setReadiness(readinessData);
+      setSemanticCoverage(coverageData);
       // 获取数据源基本信息（从列表中获取）
       const sources = await dataSourceApi.list();
       const source = sources.find(s => s.id === parseInt(id));
@@ -214,6 +217,12 @@ const DataSourceDetail: React.FC = () => {
     return 'red';
   };
 
+  const coverageColor = (status?: string) => {
+    if (status === 'ready') return 'green';
+    if (status === 'partial') return 'orange';
+    return 'red';
+  };
+
   const driftStatusColor = (status?: string) => {
     if (status === 'no_drift') return 'green';
     if (status === 'drift_detected') return 'orange';
@@ -256,6 +265,117 @@ const DataSourceDetail: React.FC = () => {
       render: (_: unknown, record: SchemaDriftTableChange) => record.changedColumns.map(item => <Tag color="orange" key={item.columnName}>{item.columnName}</Tag>),
     },
   ];
+
+  const coverageColumns = [
+    {
+      title: '业务对象',
+      key: 'object',
+      render: (_: unknown, record: SemanticCoverageObject) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{record.objectName}</Typography.Text>
+          <Typography.Text type="secondary">{record.objectCode}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '来源表',
+      dataIndex: 'sourceTable',
+      key: 'sourceTable',
+      render: (table: string) => <Tag>{table}</Tag>,
+    },
+    {
+      title: '本体版本',
+      key: 'ontology',
+      render: (_: unknown, record: SemanticCoverageObject) => `${record.ontologyName} ${record.ontologyVersion}`,
+    },
+    {
+      title: '映射',
+      key: 'mappings',
+      render: (_: unknown, record: SemanticCoverageObject) => `${record.confirmedMappings} 已确认 / ${record.pendingMappings} 待审`,
+    },
+    {
+      title: '规则',
+      dataIndex: 'ruleCount',
+      key: 'ruleCount',
+    },
+    {
+      title: 'API',
+      dataIndex: 'operationCount',
+      key: 'operationCount',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => <Tag color={coverageColor(status)}>{status}</Tag>,
+    },
+    {
+      title: '自动化',
+      dataIndex: 'automationReady',
+      key: 'automationReady',
+      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? '就绪' : '待补齐'}</Tag>,
+    },
+  ];
+
+  const renderSemanticCoverage = () => {
+    if (!semanticCoverage) return null;
+    return (
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <div style={{ padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+          <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ minWidth: 220 }}>
+              <Progress
+                type="circle"
+                percent={semanticCoverage.score}
+                strokeColor={coverageColor(semanticCoverage.status)}
+              />
+            </div>
+            <Descriptions column={4} style={{ flex: 1 }}>
+              <Descriptions.Item label="状态">
+                <Tag color={coverageColor(semanticCoverage.status)}>{semanticCoverage.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="业务对象">{semanticCoverage.summary.businessObjects}</Descriptions.Item>
+              <Descriptions.Item label="闭环对象">{semanticCoverage.summary.fullyCoveredObjects}</Descriptions.Item>
+              <Descriptions.Item label="受阻对象">{semanticCoverage.summary.blockedObjects}</Descriptions.Item>
+              <Descriptions.Item label="属性">{semanticCoverage.summary.attributes}</Descriptions.Item>
+              <Descriptions.Item label="确认映射">{semanticCoverage.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label="待审映射">{semanticCoverage.summary.pendingMappings}</Descriptions.Item>
+              <Descriptions.Item label="规则">{semanticCoverage.summary.rules}</Descriptions.Item>
+              <Descriptions.Item label="语义 API">{semanticCoverage.summary.semanticOperations}</Descriptions.Item>
+              <Descriptions.Item label="可执行操作">{semanticCoverage.summary.executableOperations}</Descriptions.Item>
+            </Descriptions>
+          </Space>
+          {semanticCoverage.nextActions.length > 0 && (
+            <Alert
+              style={{ marginTop: 16 }}
+              type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
+              message="治理建议"
+              description={semanticCoverage.nextActions.join('；')}
+            />
+          )}
+        </div>
+        <Table
+          columns={coverageColumns}
+          dataSource={semanticCoverage.objects}
+          rowKey={(record) => `${record.ontologyId}-${record.objectCode}`}
+          expandable={{
+            expandedRowRender: (record) => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {record.gaps.length > 0 && <Alert type="warning" message="缺口" description={record.gaps.join('；')} />}
+                <Table
+                  size="small"
+                  columns={apiColumns}
+                  dataSource={record.operations}
+                  rowKey="operationCode"
+                  pagination={false}
+                />
+              </Space>
+            ),
+          }}
+        />
+      </Space>
+    );
+  };
 
   const renderSchemaDrift = () => {
     if (!schemaDrift) return null;
@@ -455,6 +575,9 @@ const DataSourceDetail: React.FC = () => {
               dataSource={apis}
               rowKey="id"
             />
+          </TabPane>
+          <TabPane tab="语义覆盖" key="coverage">
+            {renderSemanticCoverage()}
           </TabPane>
           <TabPane tab="接入检查" key="readiness">
             <Table

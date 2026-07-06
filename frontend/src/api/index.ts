@@ -9,6 +9,7 @@ import type {
   SourceTable,
   DataSourceReadiness,
   SchemaDriftResult,
+  SemanticCoverageResult,
   OntologyDraftCreate,
   OntologyDetail,
   DemoBootstrapResult,
@@ -112,6 +113,11 @@ export const dataSourceApi = {
   getSchemaDrift: async (id: number): Promise<SchemaDriftResult> => {
     const { data } = await api.get(`/data-sources/${id}/schema-drift`);
     return data as SchemaDriftResult;
+  },
+
+  getSemanticCoverage: async (id: number): Promise<SemanticCoverageResult> => {
+    const { data } = await api.get(`/data-sources/${id}/semantic-coverage`);
+    return data as SemanticCoverageResult;
   },
 
   createApi: async (dataSourceId: number, payload: SourceApiCreate): Promise<SourceApi> => {
