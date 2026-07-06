@@ -35,6 +35,12 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /data-sources/{id}/apis`：登记传统业务系统 API 或业务动作。
 - `POST /data-sources/{id}/scan`：扫描数据库元数据。
 - `POST /ontologies/draft`：生成领域本体草案。
+- `GET /ontologies/{id}/mappings`：查看语义映射候选。
+- `POST /semantic-mappings/{id}/review`：审核单条语义映射。
+- `POST /ontologies/{id}/mappings/review`：批量审核语义映射。
+- `POST /ontologies/{id}/publish`：发布已审核本体版本。
+- `GET /ontologies/{id}/rules`：查看业务规则。
+- `POST /ontologies/{id}/rules`：登记或更新业务规则。
 - `GET /semantic/objects/{objectCode}/instances/{id}/explain`：解释业务实例。
 - `POST /semantic/objects/{objectCode}/instances/{id}/assess`：执行业务规则研判。
 - `POST /automation/operations/{operationCode}/preflight`：对传统业务系统操作执行语义预检，判断是否允许自动化。
@@ -55,6 +61,17 @@ export OPENROUTER_SERVICE_TIER="auto"
 ```
 
 未配置 `OPENROUTER_API_KEY` 时，`/ai/data-sources/{id}/ontology-suggestions` 会回退到本地启发式建议，核心接入、建模、映射和研判流程仍可运行。
+
+## 治理发布流程
+
+平台不会把自动生成的本体草案直接当作生产真值。推荐流程：
+
+1. 扫描传统业务系统数据库。
+2. 生成领域本体草案和语义映射候选。
+3. 业务专家审核语义映射，状态从 `pending` 变为 `confirmed` 或 `rejected`。
+4. 规则管理员补充或调整业务规则。
+5. 所有映射审核完成后发布本体版本。
+6. 已发布本体不可直接修改映射和规则，后续应派生新版本。
 
 ## 测试
 

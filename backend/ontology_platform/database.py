@@ -80,6 +80,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         domain text not null,
         version text not null,
         status text not null,
+        published_at text,
         created_at text not null default current_timestamp,
         unique(name, version)
     )
@@ -130,6 +131,8 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         confidence real not null,
         status text not null,
         evidence text not null default '',
+        reviewer text not null default '',
+        reviewed_at text,
         created_at text not null default current_timestamp
     )
     """,
@@ -205,6 +208,9 @@ MIGRATION_STATEMENTS: tuple[str, ...] = (
     "alter table data_source add column domain text not null default ''",
     "alter table data_source add column system_category text not null default 'database'",
     "alter table data_source add column capabilities text not null default '[]'",
+    "alter table ontology add column published_at text",
+    "alter table semantic_mapping add column reviewer text not null default ''",
+    "alter table semantic_mapping add column reviewed_at text",
 )
 
 

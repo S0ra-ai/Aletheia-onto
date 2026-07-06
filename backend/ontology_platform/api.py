@@ -9,6 +9,14 @@ from pydantic import BaseModel, Field
 
 from .automation import preflight_operation
 from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
+from .governance import (
+    bulk_review_semantic_mappings,
+    list_business_rules,
+    list_semantic_mappings,
+    publish_ontology,
+    review_semantic_mapping,
+    upsert_business_rule,
+)
 from .metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
 from .model_client import OpenRouterClient, generate_semantic_suggestions
 from .ontology import explain_instance, generate_ontology_draft, summarize_ontology
@@ -60,6 +68,34 @@ class OperationPreflightCreate(BaseModel):
     dataSourceId: int
     instanceId: str
     objectCode: Optional[str] = None
+
+
+class MappingReviewCreate(BaseModel):
+    status: str
+    reviewer: str = "system"
+    note: str = ""
+
+
+class BulkMappingReviewCreate(BaseModel):
+    status: str
+    reviewer: str = "system"
+    note: str = ""
+
+
+class OntologyPublishCreate(BaseModel):
+    publisher: str = "system"
+
+
+class BusinessRuleCreate(BaseModel):
+    code: str
+    name: str
+    ruleType: str
+    scopeObjectCode: str
+    expression: str
+    severity: str
+    naturalLanguage: str
+    actor: str = "system"
+    status: str = "published"
 
 
 @app.get("/health")
@@ -199,6 +235,66 @@ def get_ontology(ontology_id: int) -> dict[str, object]:
             return summarize_ontology(conn, ontology_id)
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/mappings")
+def get_ontology_mappings(ontology_id: int, status: Optional[str] = None) -> dict[str, object]:
+    try:
+        return list_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, status)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/semantic-mappings/{mapping_id}/review")
+def review_mapping(mapping_id: int, payload: MappingReviewCreate) -> dict[str, object]:
+    try:
+        return review_semantic_mapping(DEFAULT_PLATFORM_DB, mapping_id, payload.status, payload.reviewer, payload.note)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/mappings/review")
+def review_ontology_mappings(ontology_id: int, payload: BulkMappingReviewCreate) -> dict[str, object]:
+    try:
+        return bulk_review_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, payload.status, payload.reviewer, payload.note)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/publish")
+def publish_ontology_version(ontology_id: int, payload: OntologyPublishCreate) -> dict[str, object]:
+    try:
+        return publish_ontology(DEFAULT_PLATFORM_DB, ontology_id, payload.publisher)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/rules")
+def get_business_rules(ontology_id: int) -> dict[str, object]:
+    try:
+        return list_business_rules(DEFAULT_PLATFORM_DB, ontology_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/rules")
+def create_or_update_business_rule(ontology_id: int, payload: BusinessRuleCreate) -> dict[str, object]:
+    try:
+        return upsert_business_rule(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            payload.code,
+            payload.name,
+            payload.ruleType,
+            payload.scopeObjectCode,
+            payload.expression,
+            payload.severity,
+            payload.naturalLanguage,
+            payload.actor,
+            payload.status,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")

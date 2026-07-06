@@ -10,6 +10,14 @@ sys.path.insert(0, str(ROOT / "backend"))
 from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import preflight_operation
 from ontology_platform.database import connect, initialize_platform_db
+from ontology_platform.governance import (
+    bulk_review_semantic_mappings,
+    list_business_rules,
+    list_semantic_mappings,
+    publish_ontology,
+    review_semantic_mapping,
+    upsert_business_rule,
+)
 from ontology_platform.metadata import check_data_source_connection, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig
 from ontology_platform.ontology import explain_instance, generate_ontology_draft
@@ -49,6 +57,80 @@ def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
     preflight = preflight_operation(platform_db, ontology["id"], source.id, "submit_contract", "3")
     assert preflight["allowed"] is False
     assert preflight["nextAction"] == "route_to_human_review"
+
+
+def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id)
+
+    mappings = list_semantic_mappings(platform_db, ontology["id"])
+    assert mappings["items"]
+    assert {item["status"] for item in mappings["items"]} == {"pending"}
+
+    first_mapping_id = mappings["items"][0]["id"]
+    reviewed = review_semantic_mapping(platform_db, first_mapping_id, "confirmed", "业务专家", "表对象映射正确")
+    assert reviewed["status"] == "confirmed"
+    assert reviewed["reviewer"] == "业务专家"
+
+    try:
+        publish_ontology(platform_db, ontology["id"], "架构师")
+    except ValueError as error:
+        assert "待审核" in str(error)
+    else:
+        raise AssertionError("存在待审核映射时不应发布本体")
+
+    bulk = bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "MVP 批量确认")
+    assert bulk["reviewedCount"] == len(mappings["items"]) - 1
+
+    custom_rule = upsert_business_rule(
+        platform_db,
+        ontology["id"],
+        "contract_title_required",
+        "合同标题不能为空",
+        "validation",
+        "contract",
+        "title != null",
+        "blocking",
+        "合同标题不能为空。",
+        "规则管理员",
+    )
+    assert custom_rule["code"] == "contract_title_required"
+    assert any(rule["code"] == "contract_title_required" for rule in list_business_rules(platform_db, ontology["id"])["items"])
+
+    published = publish_ontology(platform_db, ontology["id"], "架构师")
+    assert published["status"] == "published"
+    assert published["mappingCounts"]["confirmed"] == len(mappings["items"])
+
+    try:
+        review_semantic_mapping(platform_db, first_mapping_id, "rejected", "业务专家", "发布后尝试修改")
+    except ValueError as error:
+        assert "已发布本体" in str(error)
+    else:
+        raise AssertionError("发布后的语义映射不应允许直接修改")
+
+    try:
+        upsert_business_rule(
+            platform_db,
+            ontology["id"],
+            "contract_title_required",
+            "合同标题不能为空",
+            "validation",
+            "contract",
+            "title != null",
+            "blocking",
+            "合同标题不能为空。",
+            "规则管理员",
+        )
+    except ValueError as error:
+        assert "已发布本体" in str(error)
+    else:
+        raise AssertionError("发布后的规则不应允许直接修改")
 
 
 def test_scan_records_column_profile(tmp_path: Path) -> None:
