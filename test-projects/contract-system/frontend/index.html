@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合同管理系统</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>合同管理</h2>
+            </div>
+            <nav class="menu">
+                <a href="#" class="menu-item active" data-page="dashboard">
+                    <span class="icon">📊</span> 工作台
+                </a>
+                <a href="#" class="menu-item" data-page="customers">
+                    <span class="icon">👥</span> 客户管理
+                </a>
+                <a href="#" class="menu-item" data-page="contracts">
+                    <span class="icon">📄</span> 合同管理
+                </a>
+                <a href="#" class="menu-item" data-page="payments">
+                    <span class="icon">💰</span> 付款管理
+                </a>
+                <a href="#" class="menu-item" data-page="invoices">
+                    <span class="icon">🧾</span> 发票管理
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>版本 1.0.0</p>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <header class="header">
+                <h1 id="page-title">工作台</h1>
+                <div class="header-actions">
+                    <span id="current-time"></span>
+                </div>
+            </header>
+
+            <div id="content" class="content">
+                <!-- 内容将通过 JavaScript 动态加载 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 模态框 -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title"></h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

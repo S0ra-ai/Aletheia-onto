@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 data/*.sqlite3
 backend/data/*.sqlite3
+test-projects/contract-system/data/*.sqlite3
