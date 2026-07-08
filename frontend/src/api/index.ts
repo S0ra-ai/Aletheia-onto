@@ -20,6 +20,8 @@ import type {
   DecisionConsistencyResult,
   OperationPreflightResult,
   OperationExecuteResult,
+  NaturalLanguageQueryPayload,
+  NaturalLanguageQueryResult,
   DecisionRecordItem,
   AuditLogItem,
   ModelInvocationItem,
@@ -237,6 +239,11 @@ export const industryBlueprintApi = {
 
 // 语义服务 API
 export const semanticApi = {
+  query: async (payload: NaturalLanguageQueryPayload): Promise<NaturalLanguageQueryResult> => {
+    const { data } = await api.post('/semantic/natural-language/query', payload);
+    return data as NaturalLanguageQueryResult;
+  },
+
   explain: async (objectCode: string, instanceId: string, ontologyId?: number): Promise<InstanceExplainResult> => {
     const params = ontologyId ? { ontologyId } : {};
     const { data } = await api.get(`/semantic/objects/${objectCode}/instances/${instanceId}/explain`, { params });

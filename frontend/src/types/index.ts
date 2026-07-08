@@ -510,6 +510,30 @@ export interface OperationExecuteResult {
   rulesHit: RuleHit[];
 }
 
+export interface NaturalLanguageQueryPayload {
+  question: string;
+  ontologyId?: number;
+  dataSourceId?: number;
+  objectCode?: string;
+  instanceId?: string;
+}
+
+export interface NaturalLanguageQueryResult {
+  question: string;
+  intent: 'compliance_assessment' | 'explain_instance' | 'operation_preflight' | 'decision_consistency' | 'unknown';
+  answer: string;
+  confidence: number;
+  resolved: {
+    ontologyId: number;
+    dataSourceId?: number | null;
+    objectCode: string;
+    instanceId?: string | null;
+    operationCode?: string | null;
+  };
+  evidence: Record<string, unknown>;
+  nextActions: string[];
+}
+
 export interface DecisionRecordItem {
   id: number;
   decisionId: string;

@@ -45,6 +45,7 @@ from .model_client import (
     test_model_config,
     update_model_config,
 )
+from .natural_language import query_natural_language
 from .onboarding import run_onboarding_pipeline
 from .operation_bindings import assess_operation_bindings
 from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
@@ -145,6 +146,14 @@ class DecisionConsistencyCreate(BaseModel):
     ontologyId: int
     instanceIds: list[str] = Field(default_factory=list)
     limit: int = 50
+
+
+class NaturalLanguageQueryCreate(BaseModel):
+    question: str
+    ontologyId: Optional[int] = None
+    dataSourceId: Optional[int] = None
+    objectCode: Optional[str] = None
+    instanceId: Optional[str] = None
 
 
 class OperationExecuteCreate(OperationPreflightCreate):
@@ -570,6 +579,21 @@ def assess_object_decision_consistency(object_code: str, payload: DecisionConsis
         )
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/semantic/natural-language/query")
+def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object]:
+    try:
+        return query_natural_language(
+            DEFAULT_PLATFORM_DB,
+            payload.question,
+            payload.ontologyId,
+            payload.dataSourceId,
+            payload.objectCode,
+            payload.instanceId,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.post("/automation/operations/{operation_code}/preflight")

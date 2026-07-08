@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table } from 'antd';
-import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined } from '@ant-design/icons';
+import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
+import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { semanticApi, automationApi } from '../../api';
-import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult } from '../../types';
+import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -13,8 +13,33 @@ const SemanticService: React.FC = () => {
   const [consistencyResult, setConsistencyResult] = useState<DecisionConsistencyResult | null>(null);
   const [preflightResult, setPreflightResult] = useState<OperationPreflightResult | null>(null);
   const [executeResult, setExecuteResult] = useState<OperationExecuteResult | null>(null);
+  const [naturalLanguageResult, setNaturalLanguageResult] = useState<NaturalLanguageQueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [operationForm] = Form.useForm();
+
+  const handleNaturalLanguageQuery = async (values: {
+    question: string;
+    ontologyId?: number;
+    dataSourceId?: number;
+    objectCode?: string;
+    instanceId?: string;
+  }) => {
+    setLoading(true);
+    try {
+      const result = await semanticApi.query({
+        question: values.question,
+        ontologyId: values.ontologyId ? Number(values.ontologyId) : undefined,
+        dataSourceId: values.dataSourceId ? Number(values.dataSourceId) : undefined,
+        objectCode: values.objectCode,
+        instanceId: values.instanceId,
+      });
+      setNaturalLanguageResult(result);
+    } catch (error) {
+      message.error('自然语言语义问答失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleExplain = async (values: { objectCode: string; instanceId: string; ontologyId?: number }) => {
     setLoading(true);
@@ -148,7 +173,79 @@ const SemanticService: React.FC = () => {
         提供实例解释、风险研判和操作预检能力
       </Paragraph>
 
-      <Tabs defaultActiveKey="explain">
+      <Tabs defaultActiveKey="natural">
+        <TabPane tab="自然语言交互" key="natural">
+          <Card>
+            <Form
+              layout="vertical"
+              onFinish={handleNaturalLanguageQuery}
+              initialValues={{ question: '合同 1 是否合规？', objectCode: 'contract' }}
+            >
+              <Form.Item name="question" label="业务问题" rules={[{ required: true }]}>
+                <Input.TextArea rows={3} placeholder="例如：合同 1 是否合规？HT-2026-003 能提交审批吗？合同整体决策是否一致？" />
+              </Form.Item>
+              <Space wrap align="start">
+                <Form.Item name="ontologyId" label="本体ID">
+                  <Input placeholder="可选" type="number" style={{ width: 140 }} />
+                </Form.Item>
+                <Form.Item name="dataSourceId" label="数据源ID">
+                  <Input placeholder="可选" type="number" style={{ width: 140 }} />
+                </Form.Item>
+                <Form.Item name="objectCode" label="业务对象编码">
+                  <Input placeholder="contract" style={{ width: 180 }} />
+                </Form.Item>
+                <Form.Item name="instanceId" label="实例ID">
+                  <Input placeholder="可选" style={{ width: 140 }} />
+                </Form.Item>
+              </Space>
+              <Form.Item>
+                <Button type="primary" icon={<MessageOutlined />} htmlType="submit" loading={loading}>
+                  询问本体系统
+                </Button>
+              </Form.Item>
+            </Form>
+
+            {naturalLanguageResult && (
+              <Card style={{ marginTop: 16 }} type="inner" title="本体系统回答">
+                <Alert
+                  message={naturalLanguageResult.answer}
+                  type={
+                    naturalLanguageResult.intent === 'operation_preflight' || naturalLanguageResult.intent === 'compliance_assessment'
+                      ? 'info'
+                      : naturalLanguageResult.intent === 'unknown'
+                      ? 'warning'
+                      : 'success'
+                  }
+                />
+                <Divider />
+                <Descriptions column={3}>
+                  <Descriptions.Item label="识别意图">{naturalLanguageResult.intent}</Descriptions.Item>
+                  <Descriptions.Item label="置信度">{Math.round(naturalLanguageResult.confidence * 100)}%</Descriptions.Item>
+                  <Descriptions.Item label="本体ID">{naturalLanguageResult.resolved.ontologyId}</Descriptions.Item>
+                  <Descriptions.Item label="数据源ID">{naturalLanguageResult.resolved.dataSourceId || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="业务对象">{naturalLanguageResult.resolved.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label="实例ID">{naturalLanguageResult.resolved.instanceId || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="操作码">{naturalLanguageResult.resolved.operationCode || '-'}</Descriptions.Item>
+                </Descriptions>
+                {naturalLanguageResult.nextActions.length > 0 && (
+                  <>
+                    <Divider />
+                    <Title level={5}>建议动作</Title>
+                    {naturalLanguageResult.nextActions.map(action => (
+                      <Tag color="blue" key={action}>{action}</Tag>
+                    ))}
+                  </>
+                )}
+                <Divider />
+                <Title level={5}>语义证据</Title>
+                <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, maxHeight: 360, overflow: 'auto' }}>
+                  {JSON.stringify(naturalLanguageResult.evidence, null, 2)}
+                </pre>
+              </Card>
+            )}
+          </Card>
+        </TabPane>
+
         <TabPane tab="实例解释" key="explain">
           <Card>
             <Form layout="inline" onFinish={handleExplain}>
