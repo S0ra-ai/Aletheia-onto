@@ -109,7 +109,7 @@ const OntologyChat: React.FC = () => {
         <div>
           <Title level={3} style={{ marginBottom: 4 }}>本体对话</Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            大模型负责理解和表达，本体规则引擎负责合规结论、操作放行和治理证据。
+            像问业务专家一样直接提问；回答会结合真实数据和已确认的业务规则。
           </Paragraph>
         </div>
         <Space wrap>
@@ -211,7 +211,7 @@ const OntologyChat: React.FC = () => {
               }
             }}
             autoSize={{ minRows: 2, maxRows: 5 }}
-            placeholder="输入业务问题，系统会使用当前数据源的本体关系与规则回答"
+            placeholder="例如：CG-2024-001 这份合同有什么需要注意的？"
             disabled={loading || !dataSourceId || !objectCode}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>

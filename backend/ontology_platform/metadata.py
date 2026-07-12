@@ -1000,7 +1000,7 @@ def _store_columns(platform: sqlite3.Connection, table_id: int, columns: list[So
                 1 if column.nullable else 0,
                 column.ordinal,
                 1 if column.is_primary_key else 0,
-                json.dumps(column.profile.samples, ensure_ascii=False),
+                json.dumps(column.profile.samples, ensure_ascii=False, default=str),
                 column.profile.null_ratio,
                 column.profile.distinct_count,
                 1 if column.profile.enum_candidate else 0,

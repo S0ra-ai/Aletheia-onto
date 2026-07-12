@@ -44,6 +44,10 @@ if [[ ! -x "$ROOT/.venv/bin/python" ]]; then
   exit 1
 fi
 
+CONTRACT_ROOT="${OPENCODE_CONTRACT_ROOT:-/Users/s0ra/code/合同管理}"
+CONTRACT_BACKEND_PORT="${OPENCODE_CONTRACT_BACKEND_PORT:-8010}"
+CONTRACT_FRONTEND_PORT="${OPENCODE_CONTRACT_FRONTEND_PORT:-5174}"
+
 start_if_unavailable \
   "本体平台后端" \
   "http://127.0.0.1:8000/health" \
@@ -58,6 +62,26 @@ start_if_unavailable \
   "$LOG_DIR/contract-gateway.log" \
   "$ROOT/.venv/bin/python" "$ROOT/test-projects/contract-system/backend/main.py"
 
+if [[ -f "$CONTRACT_ROOT/backend/app/main.py" ]]; then
+  start_if_unavailable \
+    "OpenCode合同项目后端" \
+    "http://127.0.0.1:$CONTRACT_BACKEND_PORT/health" \
+    "$RUN_DIR/opencode-contract-backend.pid" \
+    "$LOG_DIR/opencode-contract-backend.log" \
+    python3 -m uvicorn app.main:app --app-dir "$CONTRACT_ROOT/backend" --host 127.0.0.1 --port "$CONTRACT_BACKEND_PORT"
+
+  start_if_unavailable \
+    "OpenCode合同项目前端" \
+    "http://127.0.0.1:$CONTRACT_FRONTEND_PORT/" \
+    "$RUN_DIR/opencode-contract-frontend.pid" \
+    "$LOG_DIR/opencode-contract-frontend.log" \
+    env VITE_API_PROXY_TARGET="http://127.0.0.1:$CONTRACT_BACKEND_PORT" npm --prefix "$CONTRACT_ROOT/frontend" run dev -- --host 127.0.0.1 --port "$CONTRACT_FRONTEND_PORT"
+
+  OPENCODE_CONTRACT_API_URL="http://127.0.0.1:$CONTRACT_BACKEND_PORT" "$ROOT/.venv/bin/python" "$ROOT/scripts/connect_opencode_contracts.py"
+else
+  echo "[warn] 未找到 OpenCode 合同项目: $CONTRACT_ROOT" >&2
+fi
+
 start_if_unavailable \
   "本体平台前端" \
   "http://127.0.0.1:3000/" \
@@ -70,6 +94,7 @@ echo "开发环境已就绪："
 echo "  平台: http://127.0.0.1:3000"
 echo "  后端: http://127.0.0.1:8000"
 echo "  网关: http://127.0.0.1:8001"
+echo "  OpenCode合同项目: http://127.0.0.1:${CONTRACT_FRONTEND_PORT}（API ${CONTRACT_BACKEND_PORT}）"
 echo "停止命令: $ROOT/scripts/stop_dev.sh"
 
 if [[ "${DEV_FOREGROUND:-0}" == "1" && ${#STARTED_PIDS[@]} -gt 0 ]]; then

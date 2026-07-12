@@ -33,8 +33,12 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 
 启动后访问：
 
+- 本体平台：`http://127.0.0.1:3000`
+- OpenCode MySQL+Word 合同测试项目：`http://127.0.0.1:5174`（API：`http://127.0.0.1:8010`）
 - API 文档：`http://127.0.0.1:8000/docs`
 - 健康检查：`http://127.0.0.1:8000/health`
+
+`start_dev.sh` 默认从 `/Users/s0ra/code/合同管理` 加载 OpenCode 项目，并将其 MySQL 表和合同 API 登记到本体知识库。路径或端口可通过 `OPENCODE_CONTRACT_ROOT`、`OPENCODE_CONTRACT_BACKEND_PORT` 和 `OPENCODE_CONTRACT_FRONTEND_PORT` 覆盖。
 
 ## 关键 API
 

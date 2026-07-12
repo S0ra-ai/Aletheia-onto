@@ -425,6 +425,7 @@ def _primary_keys(conn: Any, table_name: str, dialect: str) -> list[str]:
         join information_schema.key_column_usage kcu
           on tc.constraint_name = kcu.constraint_name
          and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
         where tc.constraint_type = 'PRIMARY KEY'
           and tc.table_schema = current_schema()
           and tc.table_name = %s
@@ -437,6 +438,7 @@ def _primary_keys(conn: Any, table_name: str, dialect: str) -> list[str]:
         join information_schema.key_column_usage kcu
           on tc.constraint_name = kcu.constraint_name
          and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
         where tc.constraint_type = 'PRIMARY KEY'
           and tc.table_schema = database()
           and tc.table_name = %s
@@ -487,7 +489,10 @@ def _fetch_dicts(conn: Any, query: str, params: tuple[Any, ...] = ()) -> list[di
     with conn.cursor() as cursor:
         cursor.execute(query, params)
         rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    # MySQL preserves information_schema column labels as upper-case on some
+    # server/driver combinations, while PostgreSQL returns lower-case labels.
+    # Normalize metadata keys so the shared scanner behaves consistently.
+    return [{str(key).lower(): value for key, value in dict(row).items()} for row in rows]
 
 
 def _quote_identifier(identifier: str, dialect: str = "postgresql") -> str:

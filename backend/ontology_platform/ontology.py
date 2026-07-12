@@ -486,8 +486,9 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
 
 
 def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
-    code = _to_code(table["table_name"])
-    name = blueprint.object_hints.get(table["table_name"]) or NAME_HINTS.get(table["table_name"], _humanize(table["table_name"]))
+    table_name = table["table_name"]
+    code = _canonical_object_code(table_name, blueprint)
+    name = blueprint.object_hints.get(code) or blueprint.object_hints.get(table_name) or NAME_HINTS.get(code, _humanize(table_name))
     conn.execute(
         """
         insert into business_object (ontology_id, code, name, description, source_table_id)
@@ -496,6 +497,17 @@ def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: s
         (ontology_id, code, name, f"由传统表 {table['table_name']} 生成的业务对象候选。", table["id"]),
     )
     return last_insert_id(conn)
+
+
+def _canonical_object_code(table_name: str, blueprint: IndustryBlueprint) -> str:
+    """Map conventional plural table names onto blueprint object codes."""
+    code = _to_code(table_name)
+    candidates = []
+    if code.endswith("ies"):
+        candidates.append(f"{code[:-3]}y")
+    if code.endswith("s"):
+        candidates.append(code[:-1])
+    return next((candidate for candidate in candidates if candidate in blueprint.object_hints), code)
 
 
 def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.Row, blueprint: IndustryBlueprint) -> int:

@@ -81,3 +81,33 @@ def test_chat_can_answer_knowledge_base_rule_questions(tmp_path: Path) -> None:
     assert result["intent"] == "knowledge_overview"
     assert "人工复核规则" in result["answer"]
     assert result["resolved"]["dataSourceId"] == source.id
+    assert "scopeObjectCode" not in result["answer"]
+    assert "->" not in result["answer"]
+
+
+def test_plural_contract_table_uses_canonical_contract_object_code(tmp_path: Path) -> None:
+    import sqlite3
+
+    platform_db = tmp_path / "platform.sqlite3"
+    source_db = tmp_path / "plural-contracts.sqlite3"
+    with sqlite3.connect(source_db) as conn:
+        conn.execute("create table contracts (id integer primary key, contract_no text, total_amount real, status text)")
+        conn.execute("insert into contracts values (1, 'CG-2024-001', 120000, 'active')")
+    initialize_platform_db(platform_db)
+    source = register_data_source(platform_db, "复数表合同库", "sqlite", str(source_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    assert any(item["code"] == "contract" and item["sourceTable"] == "contracts" for item in ontology["objects"])
+
+
+def test_local_fallback_answer_uses_business_language(tmp_path: Path) -> None:
+    platform_db, source, ontology = _initialized_source(tmp_path)
+
+    result = query_natural_language(
+        platform_db, "合同 1 是否合规？", ontology["id"], source.id, use_model=False,
+    )
+
+    assert "本体内核" not in result["answer"]
+    assert "当前研判为" not in result["answer"]

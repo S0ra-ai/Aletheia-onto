@@ -84,9 +84,7 @@ def query_natural_language(
         object_rules = [rule for rule in chain.get("rules", []) if rule["scopeObjectCode"] == resolved.object_code]
         related = [relation for relation in chain.get("relations", []) if resolved.object_code in {relation["sourceObject"], relation["targetObject"]}]
         evidence = {"objectCode": resolved.object_code, "rules": object_rules, "relations": related, "reasoningSteps": chain.get("steps", [])}
-        rule_text = "；".join(f"{rule['name']}（{rule['naturalLanguage']}）" for rule in object_rules) or "暂无已定义规则"
-        relation_text = "；".join(f"{relation['sourceObject']} -{relation['name']}-> {relation['targetObject']}" for relation in related) or "暂无已定义关系"
-        answer = f"业务对象 {resolved.object_code} 的规则：{rule_text}。本体关系：{relation_text}。"
+        answer = _answer_knowledge_overview(resolved.object_code, object_rules, related)
     elif intent == INTENT_EXPLAIN:
         if not resolved.instance_id:
             raise ValueError("请在问题中说明要解释的实例，例如：合同 1 是什么？")
@@ -220,7 +218,9 @@ def _summarize_with_model(
             "content": (
                 "你是企业业务语义内核的解释助手。请基于给定 evidence 生成中文业务回答。"
                 "必须忠实于 evidence，不得编造结论；合规、放行、阻断等判断必须以 evidence 中的规则结果为准。"
-                "回答应像业务专家：先给结论，再给关键依据和下一步建议。不要输出 JSON。"
+                "回答应像业务专家在对话：直接回应用户的问题，再用一两个关键事实解释。"
+                "不要按顺序朗读推理步骤、规则编号、字段名或内部状态码；除非用户明确要求查看它们。"
+                "语气自然、简洁，避免模板化的‘当前研判为’、‘本体内核’等系统术语。不要输出 JSON。"
             ),
         },
         {
@@ -464,7 +464,35 @@ def _answer_explain(evidence: dict[str, Any]) -> str:
     for item in attributes[:4]:
         snippets.append(f"{item.get('attributeName') or item.get('attributeCode')}={item.get('value')}")
     suffix = f"主要属性：{'，'.join(snippets)}。" if snippets else ""
-    return f"{object_name} {instance_id} 已映射到传统表 {source.get('table')}，可由本体内核解释和追踪来源。{suffix}"
+    return f"这是{object_name} {instance_id}。{suffix}如果你想继续看它的合规情况，我可以接着帮你检查。"
+
+
+def _answer_knowledge_overview(object_code: str, rules: list[dict[str, Any]], relations: list[dict[str, Any]]) -> str:
+    object_name = _object_label(object_code)
+    if not rules and not relations:
+        return f"目前还没有为{object_name}配置专门的业务规则或关联关系。"
+    parts = []
+    if rules:
+        descriptions = [
+            f"{rule.get('name')}（{rule.get('naturalLanguage')}）" if rule.get("naturalLanguage") else str(rule.get("name"))
+            for rule in rules
+        ]
+        parts.append(f"我会重点检查{'、'.join(descriptions)}")
+    if relations:
+        names = "、".join(str(item.get("name")) for item in relations[:3])
+        parts.append(f"分析时也会结合{names}等关联信息")
+    return f"针对{object_name}，{'；'.join(parts)}。你可以给我一个具体编号，我来帮你看实际情况。"
+
+
+def _friendly_recommendation(recommendation: str) -> str:
+    normalized = str(recommendation or "").strip()
+    if not normalized or normalized.lower() in {"approve", "approved", "allow", "continue"}:
+        return ""
+    if normalized.lower() in {"manual_review", "review", "requires_review"}:
+        return "建议交由业务人员再复核一次。"
+    if normalized.lower() in {"block", "blocked", "reject"}:
+        return "建议先暂停后续流程，处理完问题后再提交。"
+    return normalized if normalized.endswith("。") else f"{normalized}。"
 
 
 def _answer_assessment(evidence: dict[str, Any]) -> str:
@@ -474,19 +502,19 @@ def _answer_assessment(evidence: dict[str, Any]) -> str:
     instance_id = evidence["semanticKernel"]["instanceId"]
     failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
     if not failed:
-        return f"{object_code} {instance_id} 当前研判为 {decision}，未发现未通过的发布规则，可视为合规。{recommendation}"
+        return f"{object_code} {instance_id} 目前没有发现明确的合规问题，可以按正常流程继续。{_friendly_recommendation(recommendation)}"
     rule_text = "；".join(f"{rule['ruleName']}：{rule['explanation']}" for rule in failed[:3])
-    return f"{object_code} {instance_id} 当前研判为 {decision}，不建议直接视为合规。触发问题：{rule_text}。{recommendation}"
+    return f"{object_code} {instance_id} 还不适合直接通过。主要是{rule_text}。{_friendly_recommendation(recommendation)}"
 
 
 def _answer_preflight(evidence: dict[str, Any]) -> str:
     operation = evidence["operation"]["operationCode"]
     instance_id = evidence["target"]["instanceId"]
     if evidence["allowed"]:
-        return f"{operation} 对实例 {instance_id} 的语义预检已放行，可以进入自动化执行。"
+        return f"实例 {instance_id} 已经具备操作条件，可以继续执行。"
     failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
     rule_text = "；".join(f"{rule['ruleName']}：{rule['explanation']}" for rule in failed[:3])
-    return f"{operation} 对实例 {instance_id} 未通过语义预检，不建议自动执行。原因：{rule_text}。下一步：{evidence['nextAction']}。"
+    return f"实例 {instance_id} 现在还不宜执行这项操作，不建议自动执行。需要先处理：{rule_text}。"
 
 
 def _answer_consistency(evidence: dict[str, Any]) -> str:
