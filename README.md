@@ -29,6 +29,11 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 
 ## 关键 API
 
+- `GET /contracts` / `POST /contracts`：查看或上传以 `.docx` 为权威主文档的合同。
+- `POST /contracts/{id}/versions`：增加 Word 合同版本，合同编号必须与原版一致。
+- `GET /contracts/{id}/document`：下载当前或指定版本的 Word 原件。
+- `POST /contracts/{id}/compare`：对同一问题输出传统文本检索与本体语义推理的并列证据。
+
 - `POST /demo/bootstrap`：创建合同管理样例系统并生成本体草案。
 - `POST /demo/bootstrap/equipment`：创建设备运维样例系统并生成本体草案。
 - `POST /data-sources/test-connection`：登记前测试数据库连接。
@@ -155,6 +160,19 @@ python -m pytest
 ```
 
 生产接入建议使用只读账号，并先在测试库执行元数据扫描。
+
+### 使用 MySQL 运行平台与合同中心
+
+合同中心的表会在首次访问时自动创建。MySQL 账号需要对目标库具有建表和读写权限。
+
+```bash
+mysql -u root -p -e 'create database ontology_platform character set utf8mb4 collate utf8mb4_unicode_ci;'
+export ONTOLOGY_PLATFORM_DB_TYPE=mysql
+export ONTOLOGY_PLATFORM_DB_URI='mysql://root:password@127.0.0.1:3306/ontology_platform'
+uvicorn ontology_platform.api:app --reload --app-dir backend
+```
+
+合同只接受 `.docx`。MySQL 保存合同业务索引、文档版本、SHA-256、Word 原件和语义快照；结构化记录不可脱离 Word 主文档独立成为合同。
 
 登记前连接测试示例：
 

@@ -79,7 +79,11 @@ class PlatformConnection:
     def execute(self, sql: str, params: Iterable[object] = ()) -> Any:
         adapted_sql = _adapt_placeholders(sql, self._adapter.db_type)
         adapted_params = tuple(params)
-        return self._conn.execute(adapted_sql, adapted_params)
+        if hasattr(self._conn, "execute"):
+            return self._conn.execute(adapted_sql, adapted_params)
+        cursor = self._conn.cursor()
+        cursor.execute(adapted_sql, adapted_params)
+        return cursor
 
     def executemany(self, sql: str, params: Iterable[Iterable[object]]) -> Any:
         adapted_sql = _adapt_placeholders(sql, self._adapter.db_type)
@@ -124,7 +128,7 @@ class PlatformConnection:
 
 
 def _adapt_placeholders(sql: str, db_type: str) -> str:
-    if db_type in ("postgresql", "postgres"):
+    if db_type in ("postgresql", "postgres", "mysql"):
         return sql.replace("?", "%s")
     return sql
 

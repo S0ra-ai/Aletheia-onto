@@ -642,6 +642,28 @@ export interface RuleWordImportResult {
   errorCount: number;
 }
 
+export interface ManagedContract {
+  id: number;
+  contractNo: string;
+  title: string;
+  partyA: string;
+  partyB: string;
+  amount?: number;
+  currency: string;
+  status: string;
+  currentVersion: number;
+  createdAt: string;
+  document?: { version: number; fileName: string; byteSize: number; sha256: string };
+}
+
+export interface ContractComparison {
+  question: string;
+  contractId: number;
+  rag: { method: string; answer: string; citations: Array<{ documentVersion: number; passage: string }>; limitations: string[] };
+  ontology: { method: string; answer: string; facts: Record<string, unknown>; relations: string[]; evidence: Record<string, unknown> };
+  differences: Array<{ dimension: string; rag: string; ontology: string }>;
+}
+
 export interface DecisionRecordItem {
   id: number;
   decisionId: string;

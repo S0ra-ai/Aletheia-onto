@@ -32,6 +32,8 @@ import type {
   OntologyReasoningChainResult,
   ContractDocumentParseResult,
   RuleWordImportResult,
+  ManagedContract,
+  ContractComparison,
 } from '../types';
 
 const api = axios.create({
@@ -166,6 +168,24 @@ export const dataSourceApi = {
   },
 
   kernelPackageUrl: (dataSourceId: number): string => `/api/data-sources/${dataSourceId}/kernel-package/download`,
+};
+
+export const contractApi = {
+  list: async (): Promise<ManagedContract[]> => {
+    const { data } = await api.get('/contracts');
+    return data.items || [];
+  },
+  upload: async (file: File): Promise<ManagedContract> => {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await api.post('/contracts', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return data;
+  },
+  compare: async (id: number, question: string): Promise<ContractComparison> => {
+    const { data } = await api.post(`/contracts/${id}/compare`, { question });
+    return data;
+  },
+  documentUrl: (id: number, version?: number): string => `/api/contracts/${id}/document${version ? `?version=${version}` : ''}`,
 };
 
 export const onboardingApi = {

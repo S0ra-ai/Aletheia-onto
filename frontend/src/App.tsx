@@ -14,6 +14,7 @@ import Governance from './pages/governance';
 import DemoCenter from './pages/demo/DemoCenter';
 import ModelConfigPage from './pages/model/ModelConfig';
 import OntologyChat from './pages/chat/OntologyChat';
+import ContractCenter from './pages/contracts/ContractCenter';
 
 const App: React.FC = () => {
   return (
@@ -23,6 +24,7 @@ const App: React.FC = () => {
           <Route path="/" element={<MainLayout />}>
             <Route index element={<Navigate to="/chat" replace />} />
             <Route path="chat" element={<OntologyChat />} />
+            <Route path="contracts" element={<ContractCenter />} />
             <Route path="datasource" element={<DataSourceList />} />
             <Route path="datasource/:id" element={<DataSourceDetail />} />
             <Route path="ontology" element={<OntologyList />} />

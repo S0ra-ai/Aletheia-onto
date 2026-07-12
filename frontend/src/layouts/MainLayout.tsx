@@ -4,6 +4,7 @@ import {
   DatabaseOutlined,
   SettingOutlined,
   MessageOutlined,
+  FileWordOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
@@ -19,6 +20,11 @@ const menuItems = [
     key: '/datasource',
     icon: <DatabaseOutlined />,
     label: '数据源管理',
+  },
+  {
+    key: '/contracts',
+    icon: <FileWordOutlined />,
+    label: '合同中心',
   },
   {
     key: '/model',
