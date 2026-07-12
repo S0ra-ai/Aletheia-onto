@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps } from 'antd';
-import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined } from '@ant-design/icons';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider } from 'antd';
+import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
-import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult } from '../../types';
+import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
+import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
 
-const { Title } = Typography;
+const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 
 const DataSourceList: React.FC = () => {
@@ -18,6 +18,10 @@ const DataSourceList: React.FC = () => {
   const [blueprints, setBlueprints] = useState<IndustryBlueprint[]>([]);
   const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
+  const [reasoningVisible, setReasoningVisible] = useState(false);
+  const [reasoningLoading, setReasoningLoading] = useState(false);
+  const [reasoningResult, setReasoningResult] = useState<OntologyReasoningChainResult | null>(null);
+  const [reasoningSource, setReasoningSource] = useState<DataSource | null>(null);
   const [form] = Form.useForm();
 
   const fetchDataSources = async () => {
@@ -120,6 +124,26 @@ const DataSourceList: React.FC = () => {
     }
   };
 
+  const handleReasoningChain = async (record: DataSource) => {
+    setReasoningSource(record);
+    setReasoningResult(null);
+    setReasoningVisible(true);
+    setReasoningLoading(true);
+    try {
+      const result = await aiApi.getOntologyReasoningChain(record.id);
+      setReasoningResult(result);
+      if (result.usedRemoteModel) {
+        message.success('大模型已生成本体推理链');
+      } else {
+        message.warning(result.remoteError ? `已回退到本地推理：${result.remoteError}` : '已使用本地启发式推理');
+      }
+    } catch (error) {
+      message.error('生成本体推理链失败，请先扫描数据源');
+    } finally {
+      setReasoningLoading(false);
+    }
+  };
+
   const handleOnboarding = async () => {
     try {
       const values = await form.validateFields(['name', 'sourceType', 'connectionUri', 'apiBaseUrl', 'apiHeadersJson', 'openApiUrl', 'openApiSpecJson', 'domain', 'systemCategory', 'blueprintId']);
@@ -200,6 +224,13 @@ const DataSourceList: React.FC = () => {
             onClick={() => navigate(`/datasource/${record.id}`)}
           >
             详情
+          </Button>
+          <Button
+            type="link"
+            icon={<BulbOutlined />}
+            onClick={() => handleReasoningChain(record)}
+          >
+            AI推理链
           </Button>
         </Space>
       ),
@@ -370,6 +401,72 @@ const DataSourceList: React.FC = () => {
             </Card>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title={reasoningSource ? `${reasoningSource.name}：本体推理链` : '本体推理链'}
+        open={reasoningVisible}
+        onCancel={() => setReasoningVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setReasoningVisible(false)}>关闭</Button>,
+          <Button key="manual" onClick={() => navigate('/ontology')}>自行构建</Button>,
+          <Button key="auto" type="primary" onClick={() => setModalVisible(true)}>一键接入构建</Button>,
+        ]}
+        width={920}
+      >
+        {reasoningLoading && <Alert type="info" showIcon message="正在让模型读取表结构并构建推理链..." />}
+        {reasoningResult && (
+          <div>
+            <Alert
+              type={reasoningResult.usedRemoteModel ? 'success' : 'warning'}
+              showIcon
+              message={reasoningResult.usedRemoteModel ? '已使用 OpenRouter 大模型推理' : '使用本地启发式推理'}
+              description={reasoningResult.remoteError || `模型：${reasoningResult.model}`}
+              style={{ marginBottom: 16 }}
+            />
+            <Paragraph>{reasoningResult.chain.summary}</Paragraph>
+            <Divider />
+            <Title level={5}>推理步骤</Title>
+            <Steps
+              direction="vertical"
+              size="small"
+              items={reasoningResult.chain.reasoningSteps.map(step => ({ title: step }))}
+            />
+            <Divider />
+            <Title level={5}>业务对象候选</Title>
+            <List
+              size="small"
+              dataSource={reasoningResult.chain.proposedObjects.slice(0, 12)}
+              renderItem={item => (
+                <List.Item>
+                  <Text code>{String(item.objectCode || item.sourceTable || item.code || '-')}</Text>
+                  <span style={{ marginLeft: 8 }}>{String(item.objectName || item.name || item.reason || '')}</span>
+                </List.Item>
+              )}
+            />
+            <Divider />
+            <Title level={5}>关系与规则候选</Title>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {reasoningResult.chain.proposedRelations.slice(0, 8).map((item, index) => (
+                <Tag key={`rel-${index}`} color="blue">
+                  {String(item.sourceObject || item.source || '-') } → {String(item.targetObject || item.target || '-')}
+                </Tag>
+              ))}
+              {reasoningResult.chain.proposedRules.slice(0, 8).map((item, index) => (
+                <Tag key={`rule-${index}`} color="orange">
+                  {String(item.ruleName || item.name || item.rule || '-')}
+                </Tag>
+              ))}
+            </Space>
+            <Divider />
+            <Title level={5}>构建路径</Title>
+            <List
+              size="small"
+              dataSource={reasoningResult.chain.buildPlan}
+              renderItem={item => <List.Item>{item}</List.Item>}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   );

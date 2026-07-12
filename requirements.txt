@@ -3,3 +3,4 @@ uvicorn[standard]==0.30.3
 pytest==8.3.2
 psycopg[binary]==3.2.9
 PyMySQL==1.1.1
+python-docx==1.1.2

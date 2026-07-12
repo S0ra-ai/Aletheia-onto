@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .database import connect
+from .database import connect, last_insert_id
 
 
 VALID_MAPPING_STATUSES = {"pending", "confirmed", "rejected"}
@@ -174,7 +174,7 @@ def derive_ontology_version(
             "insert into ontology (name, domain, version, status) values (?, ?, ?, 'draft')",
             (source["name"], source["domain"], version),
         )
-        new_ontology_id = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+        new_ontology_id = last_insert_id(conn)
 
         object_id_map: dict[int, int] = {}
         attribute_id_map: dict[int, int] = {}
@@ -211,14 +211,148 @@ def list_business_rules(platform_db: Path | str, ontology_id: int) -> dict[str, 
         rows = conn.execute(
             """
             select id, code, name, rule_type, scope_object_code, expression,
-                   severity, natural_language, status
+                   severity, natural_language, status, priority, category,
+                   effective_start, effective_end, depends_on
             from business_rule
             where ontology_id = ?
-            order by code
+            order by priority desc, code
             """,
             (ontology_id,),
         ).fetchall()
         return {"ontologyId": ontology_id, "items": [dict(row) for row in rows]}
+
+
+def get_business_rule(platform_db: Path | str, ontology_id: int, rule_id: int) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        _require_ontology(conn, ontology_id)
+        rule = conn.execute(
+            "select id, code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends_on from business_rule where id = ? and ontology_id = ?",
+            (rule_id, ontology_id),
+        ).fetchone()
+        if rule is None:
+            raise ValueError(f"规则不存在: {rule_id}")
+        return dict(rule)
+
+
+def update_business_rule(
+    platform_db: Path | str,
+    ontology_id: int,
+    rule_id: int,
+    code: str,
+    name: str,
+    rule_type: str,
+    scope_object_code: str,
+    expression: str,
+    severity: str,
+    natural_language: str,
+    actor: str,
+    status: str = "published",
+    priority: int = 0,
+    category: str = "",
+    effective_start: str | None = None,
+    effective_end: str | None = None,
+    depends_on: str | None = None,
+) -> dict[str, Any]:
+    if rule_type not in VALID_RULE_TYPES:
+        raise ValueError(f"不支持的规则类型: {rule_type}")
+    if severity not in VALID_RULE_SEVERITIES:
+        raise ValueError(f"不支持的规则严重级别: {severity}")
+    with connect(platform_db) as conn:
+        ontology = _require_ontology(conn, ontology_id)
+        if ontology["status"] == "published":
+            raise ValueError("已发布本体的规则不可直接修改，请派生新版本。")
+        existing = conn.execute(
+            "select id from business_rule where id = ? and ontology_id = ?",
+            (rule_id, ontology_id),
+        ).fetchone()
+        if existing is None:
+            raise ValueError(f"规则不存在: {rule_id}")
+        scope = conn.execute(
+            "select id from business_object where ontology_id = ? and code = ?",
+            (ontology_id, scope_object_code),
+        ).fetchone()
+        if scope is None:
+            raise ValueError(f"规则适用业务对象不存在: {scope_object_code}")
+        depends = depends_on if depends_on is not None else "[]"
+        conn.execute(
+            """
+            update business_rule
+            set code = ?, name = ?, rule_type = ?, scope_object_code = ?,
+                expression = ?, severity = ?, natural_language = ?, status = ?,
+                priority = ?, category = ?, effective_start = ?, effective_end = ?, depends_on = ?
+            where id = ? and ontology_id = ?
+            """,
+            (code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends, rule_id, ontology_id),
+        )
+        rule = conn.execute(
+            "select * from business_rule where id = ?", (rule_id,)
+        ).fetchone()
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                actor,
+                "update_business_rule",
+                "business_rule",
+                str(rule_id),
+                json.dumps({"code": code, "scope": scope_object_code}, ensure_ascii=False),
+            ),
+        )
+        return dict(rule)
+
+
+def delete_business_rule(platform_db: Path | str, ontology_id: int, rule_id: int, actor: str = "system") -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        ontology = _require_ontology(conn, ontology_id)
+        if ontology["status"] == "published":
+            raise ValueError("已发布本体的规则不可直接删除，请派生新版本。")
+        rule = conn.execute(
+            "select id, code from business_rule where id = ? and ontology_id = ?",
+            (rule_id, ontology_id),
+        ).fetchone()
+        if rule is None:
+            raise ValueError(f"规则不存在: {rule_id}")
+        conn.execute("delete from business_rule where id = ? and ontology_id = ?", (rule_id, ontology_id))
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                actor,
+                "delete_business_rule",
+                "business_rule",
+                str(rule_id),
+                json.dumps({"code": rule["code"]}, ensure_ascii=False),
+            ),
+        )
+        return {"deleted": True, "ruleId": rule_id, "code": rule["code"]}
+
+
+def toggle_business_rule_status(
+    platform_db: Path | str, ontology_id: int, rule_id: int, status: str, actor: str = "system"
+) -> dict[str, Any]:
+    if status not in {"draft", "published", "disabled"}:
+        raise ValueError(f"不支持的状态: {status}")
+    with connect(platform_db) as conn:
+        _require_ontology(conn, ontology_id)
+        rule = conn.execute(
+            "select id from business_rule where id = ? and ontology_id = ?",
+            (rule_id, ontology_id),
+        ).fetchone()
+        if rule is None:
+            raise ValueError(f"规则不存在: {rule_id}")
+        conn.execute(
+            "update business_rule set status = ? where id = ? and ontology_id = ?",
+            (status, rule_id, ontology_id),
+        )
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (
+                actor,
+                "toggle_business_rule_status",
+                "business_rule",
+                str(rule_id),
+                json.dumps({"status": status}, ensure_ascii=False),
+            ),
+        )
+        return {"ruleId": rule_id, "status": status}
 
 
 def upsert_business_rule(
@@ -233,6 +367,11 @@ def upsert_business_rule(
     natural_language: str,
     actor: str,
     status: str = "published",
+    priority: int = 0,
+    category: str = "",
+    effective_start: str | None = None,
+    effective_end: str | None = None,
+    depends_on: str | None = None,
 ) -> dict[str, Any]:
     if rule_type not in VALID_RULE_TYPES:
         raise ValueError(f"不支持的规则类型: {rule_type}")
@@ -248,13 +387,15 @@ def upsert_business_rule(
         ).fetchone()
         if scope is None:
             raise ValueError(f"规则适用业务对象不存在: {scope_object_code}")
+        depends = depends_on if depends_on is not None else "[]"
         conn.execute(
             """
             insert into business_rule (
                 ontology_id, code, name, rule_type, scope_object_code,
-                expression, severity, natural_language, status
+                expression, severity, natural_language, status,
+                priority, category, effective_start, effective_end, depends_on
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(ontology_id, code) do update set
                 name = excluded.name,
                 rule_type = excluded.rule_type,
@@ -262,9 +403,14 @@ def upsert_business_rule(
                 expression = excluded.expression,
                 severity = excluded.severity,
                 natural_language = excluded.natural_language,
-                status = excluded.status
+                status = excluded.status,
+                priority = excluded.priority,
+                category = excluded.category,
+                effective_start = excluded.effective_start,
+                effective_end = excluded.effective_end,
+                depends_on = excluded.depends_on
             """,
-            (ontology_id, code, name, rule_type, scope_object_code, expression, severity, natural_language, status),
+            (ontology_id, code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends),
         )
         rule = conn.execute(
             "select * from business_rule where ontology_id = ? and code = ?",
@@ -357,7 +503,7 @@ def _copy_business_objects(
                 business_object["source_table_id"],
             ),
         )
-        new_object_id = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+        new_object_id = last_insert_id(conn)
         object_id_map[business_object["id"]] = new_object_id
 
         attributes = conn.execute(
@@ -381,7 +527,7 @@ def _copy_business_objects(
                     attribute["source_column_id"],
                 ),
             )
-            attribute_id_map[attribute["id"]] = int(conn.execute("select last_insert_rowid()").fetchone()[0])
+            attribute_id_map[attribute["id"]] = last_insert_id(conn)
 
 
 def _copy_business_relations(

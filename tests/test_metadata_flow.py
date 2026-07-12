@@ -30,6 +30,7 @@ from ontology_platform.industry_blueprints import infer_industry_blueprint, list
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
 from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, import_openapi_operations_from_url, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
 from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
+from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.natural_language import query_natural_language
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.operation_bindings import assess_operation_bindings
@@ -84,25 +85,82 @@ def test_natural_language_query_routes_to_semantic_kernel(tmp_path: Path) -> Non
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
 
-    compliance = query_natural_language(platform_db, "合同 1 是否合规？", ontology["id"], source.id)
+    compliance = query_natural_language(platform_db, "合同 1 是否合规？", ontology["id"], source.id, use_model=False)
     assert compliance["intent"] == "compliance_assessment"
     assert compliance["resolved"]["objectCode"] == "contract"
     assert compliance["resolved"]["instanceId"] == "1"
     assert compliance["evidence"]["decision"]["status"] == "approved"
     assert "合规" in compliance["answer"]
 
-    overall = query_natural_language(platform_db, "合同是否合规？", ontology["id"], source.id)
+    overall = query_natural_language(platform_db, "合同是否合规？", ontology["id"], source.id, use_model=False)
     assert overall["intent"] == "compliance_assessment"
     assert overall["evidence"]["objectCode"] == "contract"
     assert overall["evidence"]["assessed"] > 0
     assert "已评估" in overall["answer"]
 
-    preflight = query_natural_language(platform_db, "HT-2026-003 能提交审批吗？", ontology["id"], source.id)
+    preflight = query_natural_language(platform_db, "HT-2026-003 能提交审批吗？", ontology["id"], source.id, use_model=False)
     assert preflight["intent"] == "operation_preflight"
     assert preflight["resolved"]["instanceId"] == "3"
     assert preflight["resolved"]["operationCode"] == "submit_contract"
     assert preflight["evidence"]["allowed"] is False
     assert "不建议自动执行" in preflight["answer"]
+
+
+def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
+    from io import BytesIO
+
+    from docx import Document
+
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
+
+    doc = Document()
+    doc.add_paragraph("合同自定义规则")
+    table = doc.add_table(rows=1, cols=7)
+    headers = ["规则编码", "规则名称", "适用对象", "规则类型", "规则表达式", "严重程度", "自然语言说明"]
+    for index, header in enumerate(headers):
+        table.rows[0].cells[index].text = header
+    row = table.add_row().cells
+    values = [
+        "contract_title_required_word",
+        "合同标题必填（Word导入）",
+        "contract",
+        "校验",
+        "title != null",
+        "阻断",
+        "合同标题不能为空。",
+    ]
+    for index, value in enumerate(values):
+        row[index].text = value
+    buffer = BytesIO()
+    doc.save(buffer)
+
+    parsed = parse_rule_docx_bytes("rules.docx", buffer.getvalue())
+    assert parsed["rules"][0]["code"] == "contract_title_required_word"
+    assert parsed["rules"][0]["ruleType"] == "validation"
+    assert parsed["rules"][0]["severity"] == "blocking"
+
+    rule = parsed["rules"][0]
+    upsert_business_rule(
+        platform_db,
+        ontology["id"],
+        rule["code"],
+        rule["name"],
+        rule["ruleType"],
+        rule["scopeObjectCode"],
+        rule["expression"],
+        rule["severity"],
+        rule["naturalLanguage"],
+        "test",
+        rule["status"],
+    )
+    assert any(rule["code"] == "contract_title_required_word" for rule in list_business_rules(platform_db, ontology["id"])["items"])
 
 
 def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None:

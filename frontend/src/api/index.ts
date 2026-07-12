@@ -29,11 +29,14 @@ import type {
   ModelConfig,
   ModelConfigUpdate,
   IndustryBlueprint,
+  OntologyReasoningChainResult,
+  ContractDocumentParseResult,
+  RuleWordImportResult,
 } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 90000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -222,6 +225,48 @@ export const ontologyApi = {
     return data.items || [];
   },
 
+  importRulesFromWord: async (ontologyId: number, file: File, apply = true): Promise<RuleWordImportResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('apply', String(apply));
+    const { data } = await api.post(`/ontologies/${ontologyId}/rules/import-word`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 90000,
+    });
+    return data as RuleWordImportResult;
+  },
+
+  createRule: async (ontologyId: number, payload: {
+    code: string; name: string; ruleType: string; scopeObjectCode: string;
+    expression: string; severity: string; naturalLanguage: string; status?: string;
+  }): Promise<any> => {
+    const { data } = await api.post(`/ontologies/${ontologyId}/rules`, payload);
+    return data;
+  },
+
+  getRule: async (ontologyId: number, ruleId: number): Promise<any> => {
+    const { data } = await api.get(`/ontologies/${ontologyId}/rules/${ruleId}`);
+    return data;
+  },
+
+  updateRule: async (ontologyId: number, ruleId: number, payload: {
+    code: string; name: string; ruleType: string; scopeObjectCode: string;
+    expression: string; severity: string; naturalLanguage: string; status?: string;
+  }): Promise<any> => {
+    const { data } = await api.put(`/ontologies/${ontologyId}/rules/${ruleId}`, payload);
+    return data;
+  },
+
+  deleteRule: async (ontologyId: number, ruleId: number): Promise<any> => {
+    const { data } = await api.delete(`/ontologies/${ontologyId}/rules/${ruleId}`);
+    return data;
+  },
+
+  toggleRuleStatus: async (ontologyId: number, ruleId: number, status: string): Promise<any> => {
+    const { data } = await api.patch(`/ontologies/${ontologyId}/rules/${ruleId}/status`, null, { params: { status } });
+    return data;
+  },
+
   exportUrl: (ontologyId: number, format: 'jsonld' | 'turtle'): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
 };
 
@@ -407,6 +452,23 @@ export const aiApi = {
   getBlueprintDraft: async (dataSourceId: number): Promise<{ blueprint: IndustryBlueprint; usedRemoteModel: boolean; provider: string; model: string; remoteError?: string }> => {
     const { data } = await api.post(`/ai/data-sources/${dataSourceId}/blueprint-draft`);
     return data as { blueprint: IndustryBlueprint; usedRemoteModel: boolean; provider: string; model: string; remoteError?: string };
+  },
+
+  getOntologyReasoningChain: async (dataSourceId: number): Promise<OntologyReasoningChainResult> => {
+    const { data } = await api.post(`/ai/data-sources/${dataSourceId}/ontology-reasoning-chain`);
+    return data as OntologyReasoningChainResult;
+  },
+};
+
+export const documentApi = {
+  parseContractWord: async (file: File): Promise<ContractDocumentParseResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post('/documents/contracts/parse', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 90000,
+    });
+    return data as ContractDocumentParseResult;
   },
 };
 

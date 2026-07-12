@@ -414,13 +414,20 @@ export interface SemanticMapping {
 // 业务规则相关类型
 export interface BusinessRule {
   id: number;
-  ontologyId: number;
+  ontologyId?: number;
   code: string;
   name: string;
-  description: string;
+  ruleType: string;
+  scopeObjectCode: string;
   expression: string;
   severity: string;
-  enabled: boolean;
+  naturalLanguage: string;
+  status: string;
+  priority?: number;
+  category?: string;
+  effectiveStart?: string;
+  effectiveEnd?: string;
+  dependsOn?: string[];
 }
 
 // 语义服务相关类型
@@ -516,6 +523,11 @@ export interface NaturalLanguageQueryPayload {
   dataSourceId?: number;
   objectCode?: string;
   instanceId?: string;
+  history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+  useModel?: boolean;
 }
 
 export interface NaturalLanguageQueryResult {
@@ -532,6 +544,102 @@ export interface NaturalLanguageQueryResult {
   };
   evidence: Record<string, unknown>;
   nextActions: string[];
+  model?: {
+    configured: boolean;
+    usedForUnderstanding: boolean;
+    usedForSummary: boolean;
+    name: string;
+    fallbackReason?: string;
+  };
+}
+
+export interface OntologyReasoningChain {
+  summary: string;
+  reasoningSteps: string[];
+  proposedObjects: Array<Record<string, unknown>>;
+  proposedRelations: Array<Record<string, unknown>>;
+  proposedRules: Array<Record<string, unknown>>;
+  buildPlan: string[];
+  questionsForUser: string[];
+}
+
+export interface OntologyReasoningChainResult {
+  provider: string;
+  model: string;
+  usedRemoteModel: boolean;
+  remoteError?: string;
+  chain: OntologyReasoningChain;
+}
+
+export interface ContractDocumentParseResult {
+  file: {
+    name: string;
+    size: number;
+    md5: string;
+  };
+  text: string;
+  textLength: number;
+  paragraphs: string[];
+  tables: Array<{
+    index: number;
+    rows: string[][];
+  }>;
+  entities: {
+    contractNo?: string;
+    title?: string;
+    partyA?: string;
+    partyB?: string;
+    amount?: number | null;
+    currency?: string;
+    dates?: string[];
+    signDate?: string;
+    startDate?: string;
+    endDate?: string;
+  };
+  clauses: Array<{
+    title: string;
+    content: string;
+  }>;
+  paymentTerms: Array<{
+    source: string;
+    text: string;
+    amount?: number | null;
+    date?: string[];
+  }>;
+  risks: Array<{
+    code: string;
+    severity: string;
+    message: string;
+  }>;
+  ontologyHints: Record<string, unknown>;
+}
+
+export interface RuleWordImportResult {
+  ontologyId: number;
+  file: {
+    name: string;
+    size: number;
+    md5: string;
+  };
+  rules: Array<{
+    code: string;
+    name: string;
+    ruleType: string;
+    scopeObjectCode: string;
+    expression: string;
+    severity: string;
+    naturalLanguage: string;
+    status: string;
+  }>;
+  warnings: string[];
+  applied: boolean;
+  imported: unknown[];
+  errors: Array<{
+    code: string;
+    error: string;
+  }>;
+  importedCount: number;
+  errorCount: number;
 }
 
 export interface DecisionRecordItem {

@@ -1,12 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input } from 'antd';
-import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined } from '@ant-design/icons';
-import { aiApi, dataSourceApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult } from '../../types';
+import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload } from 'antd';
+import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
+import { aiApi, dataSourceApi, documentApi, ontologyApi } from '../../api';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ContractDocumentParseResult, RuleWordImportResult } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
+
+type DataSourceRule = {
+  id: number;
+  ontologyId: number;
+  code: string;
+  name: string;
+  rule_type: string;
+  scope_object_code: string;
+  expression: string;
+  severity: string;
+  natural_language: string;
+  status: string;
+};
 
 const DataSourceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +31,7 @@ const DataSourceDetail: React.FC = () => {
   const [schemaDrift, setSchemaDrift] = useState<SchemaDriftResult | null>(null);
   const [semanticCoverage, setSemanticCoverage] = useState<SemanticCoverageResult | null>(null);
   const [operationBindings, setOperationBindings] = useState<OperationBindingResult | null>(null);
+  const [businessRules, setBusinessRules] = useState<DataSourceRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [gatewayTesting, setGatewayTesting] = useState(false);
@@ -27,6 +41,10 @@ const DataSourceDetail: React.FC = () => {
   const [blueprintDraftVisible, setBlueprintDraftVisible] = useState(false);
   const [blueprintDraftLoading, setBlueprintDraftLoading] = useState(false);
   const [blueprintDraft, setBlueprintDraft] = useState<IndustryBlueprint | null>(null);
+  const [documentParsing, setDocumentParsing] = useState(false);
+  const [documentParseResult, setDocumentParseResult] = useState<ContractDocumentParseResult | null>(null);
+  const [ruleImporting, setRuleImporting] = useState(false);
+  const [ruleImportResult, setRuleImportResult] = useState<RuleWordImportResult | null>(null);
   const [openApiForm] = Form.useForm();
 
   const fetchData = async () => {
@@ -45,6 +63,14 @@ const DataSourceDetail: React.FC = () => {
       setReadiness(readinessData);
       setSemanticCoverage(coverageData);
       setOperationBindings(bindingData);
+      const ontologyIds = Array.from(new Set(coverageData.objects.map(item => item.ontologyId)));
+      const ruleGroups = await Promise.all(
+        ontologyIds.map(async ontologyId => {
+          const rules = await ontologyApi.getRules(ontologyId);
+          return rules.map((rule: any) => ({ ...rule, ontologyId }));
+        })
+      );
+      setBusinessRules(ruleGroups.flat());
       // 获取数据源基本信息（从列表中获取）
       const sources = await dataSourceApi.list();
       const source = sources.find(s => s.id === parseInt(id));
@@ -126,6 +152,42 @@ const DataSourceDetail: React.FC = () => {
       message.error('生成蓝图草案失败');
     } finally {
       setBlueprintDraftLoading(false);
+    }
+  };
+
+  const handleParseContractDocument = async (file: File) => {
+    setDocumentParsing(true);
+    try {
+      const result = await documentApi.parseContractWord(file);
+      setDocumentParseResult(result);
+      message.success('Word 合同解析完成');
+    } catch (error) {
+      message.error('Word 合同解析失败，请确认文件为 .docx 格式');
+    } finally {
+      setDocumentParsing(false);
+    }
+  };
+
+  const handleImportRulesFromWord = async (file: File) => {
+    const ontologyId = Array.from(new Set(semanticCoverage?.objects.map(item => item.ontologyId) || []))[0];
+    if (!ontologyId) {
+      message.warning('当前数据源还没有关联本体，请先生成本体草案');
+      return;
+    }
+    setRuleImporting(true);
+    try {
+      const result = await ontologyApi.importRulesFromWord(ontologyId, file, true);
+      setRuleImportResult(result);
+      if (result.errorCount > 0) {
+        message.warning(`识别 ${result.rules.length} 条规则，成功导入 ${result.importedCount} 条，失败 ${result.errorCount} 条`);
+      } else {
+        message.success(`已从 Word 导入 ${result.importedCount} 条自定义规则`);
+      }
+      await fetchData();
+    } catch {
+      message.error('规则 Word 导入失败，请确认文件格式和规则字段');
+    } finally {
+      setRuleImporting(false);
     }
   };
 
@@ -374,6 +436,166 @@ const DataSourceDetail: React.FC = () => {
       render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? '就绪' : '待补齐'}</Tag>,
     },
   ];
+
+  const ruleSeverityColor = (severity: string) => {
+    if (severity === 'blocking') return 'red';
+    if (severity === 'warning') return 'orange';
+    return 'blue';
+  };
+
+  const ruleColumns = [
+    {
+      title: '规则编码',
+      dataIndex: 'code',
+      key: 'code',
+      width: 220,
+      render: (code: string) => <Typography.Text code>{code}</Typography.Text>,
+    },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 220,
+    },
+    {
+      title: '对象',
+      dataIndex: 'scope_object_code',
+      key: 'scope_object_code',
+      width: 130,
+      render: (objectCode: string) => <Tag>{objectCode}</Tag>,
+    },
+    {
+      title: '类型',
+      dataIndex: 'rule_type',
+      key: 'rule_type',
+      width: 120,
+    },
+    {
+      title: '严重程度',
+      dataIndex: 'severity',
+      key: 'severity',
+      width: 120,
+      render: (severity: string) => <Tag color={ruleSeverityColor(severity)}>{severity}</Tag>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (status: string) => <Tag color={status === 'published' ? 'green' : 'orange'}>{status}</Tag>,
+    },
+    {
+      title: '规则表达式',
+      dataIndex: 'expression',
+      key: 'expression',
+      render: (expression: string) => (
+        <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>
+          {expression}
+        </code>
+      ),
+    },
+    {
+      title: '业务说明',
+      dataIndex: 'natural_language',
+      key: 'natural_language',
+      ellipsis: true,
+    },
+  ];
+
+  const riskColor = (severity: string) => {
+    if (severity === 'blocking') return 'red';
+    if (severity === 'warning') return 'orange';
+    return 'blue';
+  };
+
+  const renderDocumentParser = () => (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Alert
+        type="info"
+        message="上传 Word 合同进行平台级解析"
+        description="平台会直接读取 .docx，抽取合同编号、标题、甲乙方、金额、日期、付款条款、条款结构、风险提示和本体映射建议。"
+      />
+      <Upload.Dragger
+        accept=".docx"
+        maxCount={1}
+        beforeUpload={(file) => {
+          handleParseContractDocument(file);
+          return false;
+        }}
+        showUploadList={false}
+        disabled={documentParsing}
+      >
+        <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+        <p className="ant-upload-text">点击或拖拽 Word 合同到这里解析</p>
+        <p className="ant-upload-hint">当前支持 .docx。解析结果只用于平台语义接入和演示验证。</p>
+      </Upload.Dragger>
+      {documentParsing && <Spin tip="正在解析 Word 合同..." />}
+      {documentParseResult && (
+        <>
+          <Card size="small" title="文件与合同要素">
+            <Descriptions column={3}>
+              <Descriptions.Item label="文件名">{documentParseResult.file.name}</Descriptions.Item>
+              <Descriptions.Item label="大小">{documentParseResult.file.size} bytes</Descriptions.Item>
+              <Descriptions.Item label="MD5">{documentParseResult.file.md5}</Descriptions.Item>
+              <Descriptions.Item label="合同编号">{documentParseResult.entities.contractNo || '-'}</Descriptions.Item>
+              <Descriptions.Item label="标题">{documentParseResult.entities.title || '-'}</Descriptions.Item>
+              <Descriptions.Item label="金额">{documentParseResult.entities.amount ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="甲方">{documentParseResult.entities.partyA || '-'}</Descriptions.Item>
+              <Descriptions.Item label="乙方">{documentParseResult.entities.partyB || '-'}</Descriptions.Item>
+              <Descriptions.Item label="签订日期">{documentParseResult.entities.signDate || '-'}</Descriptions.Item>
+              <Descriptions.Item label="开始日期">{documentParseResult.entities.startDate || '-'}</Descriptions.Item>
+              <Descriptions.Item label="结束日期">{documentParseResult.entities.endDate || '-'}</Descriptions.Item>
+              <Descriptions.Item label="文本长度">{documentParseResult.textLength}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+          <Card size="small" title={`风险提示 (${documentParseResult.risks.length})`}>
+            {documentParseResult.risks.length === 0 ? (
+              <Alert type="success" message="未发现基础解析风险" />
+            ) : (
+              <Space wrap>
+                {documentParseResult.risks.map(item => (
+                  <Tag color={riskColor(item.severity)} key={item.code}>
+                    {item.code}: {item.message}
+                  </Tag>
+                ))}
+              </Space>
+            )}
+          </Card>
+          <Card size="small" title={`付款条款 (${documentParseResult.paymentTerms.length})`}>
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={documentParseResult.paymentTerms}
+              rowKey={(_, index) => `payment-${index}`}
+              columns={[
+                { title: '来源', dataIndex: 'source', key: 'source', width: 120 },
+                { title: '金额', dataIndex: 'amount', key: 'amount', width: 120, render: (value: number | null) => value ?? '-' },
+                { title: '日期', dataIndex: 'date', key: 'date', width: 160, render: (value: string[]) => value?.join(', ') || '-' },
+                { title: '文本', dataIndex: 'text', key: 'text' },
+              ]}
+            />
+          </Card>
+          <Card size="small" title={`条款结构 (${documentParseResult.clauses.length})`}>
+            <Table
+              size="small"
+              dataSource={documentParseResult.clauses}
+              rowKey={(_, index) => `clause-${index}`}
+              columns={[
+                { title: '条款', dataIndex: 'title', key: 'title', width: 260 },
+                { title: '内容摘要', dataIndex: 'content', key: 'content', ellipsis: true },
+              ]}
+            />
+          </Card>
+          <Card size="small" title="本体映射提示">
+            <Input.TextArea rows={8} value={JSON.stringify(documentParseResult.ontologyHints, null, 2)} readOnly />
+          </Card>
+          <Card size="small" title="提取文本">
+            <Input.TextArea rows={12} value={documentParseResult.text} readOnly />
+          </Card>
+        </>
+      )}
+    </Space>
+  );
 
   const renderSemanticCoverage = () => {
     if (!semanticCoverage) return null;
@@ -674,6 +896,65 @@ const DataSourceDetail: React.FC = () => {
           </TabPane>
           <TabPane tab="语义覆盖" key="coverage">
             {renderSemanticCoverage()}
+          </TabPane>
+          <TabPane tab={`业务规则 (${businessRules.length})`} key="rules">
+            <Alert
+              style={{ marginBottom: 16 }}
+              type="info"
+              message="当前数据源关联本体中已定义的规则"
+              description="这些规则会被本体语义内核用于合规研判、操作预检、决策一致性评估和自动化拦截。"
+            />
+            <Card size="small" title="通过 Word 自定义规则" style={{ marginBottom: 16 }}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Alert
+                  type="success"
+                  message="支持上传 Word 规则定义表"
+                  description="建议表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。导入会写入当前数据源关联的本体草案。"
+                />
+                <Upload.Dragger
+                  accept=".docx"
+                  maxCount={1}
+                  beforeUpload={(file) => {
+                    handleImportRulesFromWord(file);
+                    return false;
+                  }}
+                  showUploadList={false}
+                  disabled={ruleImporting}
+                >
+                  <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+                  <p className="ant-upload-text">点击或拖拽 Word 规则文档到这里导入</p>
+                  <p className="ant-upload-hint">支持表格和“规则编码：...”分段文本。已发布本体仍需先派生草案版本。</p>
+                </Upload.Dragger>
+                {ruleImporting && <Spin tip="正在解析并导入规则..." />}
+                {ruleImportResult && (
+                  <Alert
+                    type={ruleImportResult.errorCount > 0 ? 'warning' : 'success'}
+                    message={`识别 ${ruleImportResult.rules.length} 条规则，成功导入 ${ruleImportResult.importedCount} 条`}
+                    description={[
+                      ...ruleImportResult.warnings,
+                      ...ruleImportResult.errors.map(item => `${item.code}: ${item.error}`),
+                    ].join('；') || `来源文件：${ruleImportResult.file.name}`}
+                  />
+                )}
+              </Space>
+            </Card>
+            <Table
+              columns={ruleColumns}
+              dataSource={businessRules}
+              rowKey={(record) => `${record.ontologyId}-${record.id}`}
+              expandable={{
+                expandedRowRender: (record) => (
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="所属本体ID">{record.ontologyId}</Descriptions.Item>
+                    <Descriptions.Item label="规则表达式"><code>{record.expression}</code></Descriptions.Item>
+                    <Descriptions.Item label="自然语言说明">{record.natural_language}</Descriptions.Item>
+                  </Descriptions>
+                ),
+              }}
+            />
+          </TabPane>
+          <TabPane tab="Word解析" key="document-parser">
+            {renderDocumentParser()}
           </TabPane>
           <TabPane tab="接入检查" key="readiness">
             <Table

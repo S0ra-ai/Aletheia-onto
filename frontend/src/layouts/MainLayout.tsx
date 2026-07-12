@@ -1,15 +1,9 @@
 import React, { useState } from 'react';
 import { Layout, Menu, theme } from 'antd';
 import {
-  DashboardOutlined,
   DatabaseOutlined,
-  ApartmentOutlined,
-  LinkOutlined,
-  SafetyCertificateOutlined,
-  BulbOutlined,
-  AuditOutlined,
-  RocketOutlined,
   SettingOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
@@ -17,44 +11,14 @@ const { Header, Sider, Content } = Layout;
 
 const menuItems = [
   {
-    key: '/',
-    icon: <DashboardOutlined />,
-    label: '工作台',
+    key: '/chat',
+    icon: <MessageOutlined />,
+    label: '对话',
   },
   {
     key: '/datasource',
     icon: <DatabaseOutlined />,
     label: '数据源管理',
-  },
-  {
-    key: '/ontology',
-    icon: <ApartmentOutlined />,
-    label: '本体建模',
-  },
-  {
-    key: '/mapping',
-    icon: <LinkOutlined />,
-    label: '语义映射',
-  },
-  {
-    key: '/rules',
-    icon: <SafetyCertificateOutlined />,
-    label: '规则管理',
-  },
-  {
-    key: '/semantic',
-    icon: <BulbOutlined />,
-    label: '语义服务',
-  },
-  {
-    key: '/governance',
-    icon: <AuditOutlined />,
-    label: '治理审计',
-  },
-  {
-    key: '/demo',
-    icon: <RocketOutlined />,
-    label: '演示中心',
   },
   {
     key: '/model',
@@ -73,7 +37,7 @@ const MainLayout: React.FC = () => {
 
   const getSelectedKey = () => {
     const path = location.pathname;
-    if (path === '/') return '/';
+    if (path === '/') return '/chat';
     const firstSegment = '/' + path.split('/')[1];
     return menuItems.find(item => item.key === firstSegment)?.key || '/';
   };

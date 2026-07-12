@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
-from .database import connect
+from .database import connect, last_insert_id
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 
 
@@ -482,7 +482,7 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         "insert into ontology (name, domain, version, status) values (?, ?, ?, ?)",
         (name, domain, "0.1.0", "draft"),
     )
-    return int(conn.execute("select last_insert_rowid()").fetchone()[0])
+    return last_insert_id(conn)
 
 
 def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
@@ -495,7 +495,7 @@ def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: s
         """,
         (ontology_id, code, name, f"由传统表 {table['table_name']} 生成的业务对象候选。", table["id"]),
     )
-    return int(conn.execute("select last_insert_rowid()").fetchone()[0])
+    return last_insert_id(conn)
 
 
 def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
@@ -508,7 +508,7 @@ def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.
         """,
         (object_id, code, name, _map_data_type(column["data_type"]), 0 if column["nullable"] else 1, column["id"]),
     )
-    return int(conn.execute("select last_insert_rowid()").fetchone()[0])
+    return last_insert_id(conn)
 
 
 def _create_relation_from_foreign_key(conn: sqlite3.Connection, ontology_id: int, foreign_key: sqlite3.Row) -> None:

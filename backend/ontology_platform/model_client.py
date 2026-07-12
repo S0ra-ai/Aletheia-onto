@@ -226,6 +226,58 @@ def generate_blueprint_draft(
         }
 
 
+def generate_ontology_reasoning_chain(
+    platform_db: Path | str,
+    data_source_id: int,
+    client: OpenRouterClient | None = None,
+) -> dict[str, Any]:
+    metadata = _metadata_prompt_payload(platform_db, data_source_id)
+    model_client = client or OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
+    local = _local_reasoning_chain(metadata)
+    if not model_client.configured:
+        return {
+            "provider": "local-heuristic",
+            "model": "metadata-profile",
+            "usedRemoteModel": False,
+            "chain": local,
+            "openrouter": model_client.status(),
+        }
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是企业本体工程架构师。请基于传统数据库元数据构建本体推理链。"
+                "必须只输出 JSON 对象，字段包括 summary, reasoningSteps, proposedObjects, proposedRelations, proposedRules, buildPlan, questionsForUser。"
+                "reasoningSteps 要说明从表、字段、外键、业务 API 推断业务对象/关系/规则的过程。"
+                "buildPlan 要给出自动构建与用户手工确认两种路径。"
+            ),
+        },
+        {"role": "user", "content": json.dumps(metadata, ensure_ascii=False)},
+    ]
+    try:
+        result = model_client.chat(messages, purpose="ontology_reasoning_chain", session_id=f"reasoning-{data_source_id}")
+        _record_model_invocation(platform_db, result, "ontology_reasoning_chain", "success")
+        parsed = _extract_json_object(result.content)
+        return {
+            "provider": result.provider,
+            "model": result.model,
+            "usedRemoteModel": result.used_remote_model,
+            "chain": _normalize_reasoning_chain(parsed, local),
+            "openrouter": model_client.status(),
+        }
+    except Exception as error:
+        _record_model_invocation(platform_db, None, "ontology_reasoning_chain", "error", str(error), model_client)
+        return {
+            "provider": "local-heuristic",
+            "model": "metadata-profile",
+            "usedRemoteModel": False,
+            "chain": local,
+            "openrouter": model_client.status(),
+            "remoteError": str(error),
+        }
+
+
 def get_model_config(platform_db: Path | str) -> dict[str, Any]:
     config = OpenRouterConfig.from_db_or_env(platform_db)
     source = _model_config_source(platform_db)
@@ -443,6 +495,65 @@ def _local_blueprint_draft(metadata: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _local_reasoning_chain(metadata: dict[str, Any]) -> dict[str, Any]:
+    tables = metadata["tables"]
+    objects = [
+        {
+            "objectCode": table["table"],
+            "objectName": table["table"].replace("_", " ").title(),
+            "sourceTable": table["table"],
+            "reason": f"表 {table['table']} 具有主键 {table['primaryKey']}，可作为业务对象候选。",
+            "attributes": [column["column_name"] for column in table["columns"]],
+        }
+        for table in tables
+    ]
+    relations = []
+    for table in tables:
+        for foreign_key in table.get("foreignKeys", []):
+            relations.append(
+                {
+                    "sourceObject": table["table"],
+                    "targetObject": foreign_key["target_table"],
+                    "sourceForeignKey": foreign_key["column_name"],
+                    "reason": "由数据库外键推断业务对象关系。",
+                }
+            )
+    rules = []
+    for table in tables:
+        for column in table["columns"]:
+            if column["nullable"] == 0 and column["column_name"] != table["primaryKey"]:
+                rules.append(
+                    {
+                        "scopeObject": table["table"],
+                        "ruleName": f"{column['column_name']} 必填",
+                        "severity": "blocking",
+                        "reason": "非空字段可作为基础完整性规则。",
+                    }
+                )
+    return {
+        "summary": f"识别到 {len(objects)} 个业务对象候选、{len(relations)} 条关系候选和 {len(rules)} 条基础规则候选。",
+        "reasoningSteps": [
+            "读取数据源表、字段、主键、外键和字段画像。",
+            "将可独立拥有主键的表识别为业务对象候选。",
+            "将外键约束识别为业务关系候选。",
+            "将非空字段、金额、状态、日期等字段识别为规则候选。",
+            "将业务 API 的 semanticAction 绑定到对象动作，形成自动化预检入口。",
+        ],
+        "proposedObjects": objects,
+        "proposedRelations": relations,
+        "proposedRules": rules[:20],
+        "buildPlan": [
+            "自动路径：使用一键接入生成本体草案、语义映射和基础规则。",
+            "人工路径：业务专家逐项确认对象、字段、关系和规则后再发布本体。",
+        ],
+        "questionsForUser": [
+            "哪些表是主业务对象，哪些只是日志、字典或中间表？",
+            "哪些规则应作为阻断级规则，哪些只是复核建议？",
+            "哪些业务 API 可以被语义内核自动调用？",
+        ],
+    }
+
+
 def _extract_json_object(content: str) -> dict[str, Any]:
     stripped = content.strip()
     if stripped.startswith("```"):
@@ -470,6 +581,17 @@ def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> di
     result["attributeHints"] = attribute_hints
     result["tableKeywords"] = [str(item) for item in result.get("tableKeywords") or []]
     result["capabilityTags"] = [str(item) for item in result.get("capabilityTags") or []]
+    return result
+
+
+def _normalize_reasoning_chain(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    result = dict(fallback)
+    for key in ("summary", "reasoningSteps", "proposedObjects", "proposedRelations", "proposedRules", "buildPlan", "questionsForUser"):
+        if key in parsed and parsed[key] not in (None, "", [], {}):
+            result[key] = parsed[key]
+    for key in ("reasoningSteps", "proposedObjects", "proposedRelations", "proposedRules", "buildPlan", "questionsForUser"):
+        if not isinstance(result.get(key), list):
+            result[key] = fallback.get(key, [])
     return result
 
 

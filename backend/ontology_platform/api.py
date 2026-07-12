@@ -1,23 +1,29 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from .automation import execute_operation, preflight_operation
 from .coverage import build_semantic_coverage
-from .database import DEFAULT_PLATFORM_DB, connect, initialize_platform_db
+from .contract_documents import parse_contract_docx_bytes, parse_rule_docx_bytes
+from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
 from .governance import (
     bulk_review_semantic_mappings,
+    delete_business_rule,
     derive_ontology_version,
+    get_business_rule,
     list_business_rules,
     list_semantic_mappings,
     publish_ontology,
     review_semantic_mapping,
+    toggle_business_rule_status,
+    update_business_rule,
     upsert_business_rule,
 )
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
@@ -39,6 +45,7 @@ from .model_client import (
     OpenRouterClient,
     OpenRouterConfig,
     generate_blueprint_draft,
+    generate_ontology_reasoning_chain,
     generate_semantic_suggestions,
     get_model_config,
     reset_model_config,
@@ -56,7 +63,13 @@ from .semantic_kernel import assess_decision_consistency, assess_instance
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    initialize_platform_db(DEFAULT_PLATFORM_DB)
+    platform_db_type = os.environ.get("ONTOLOGY_PLATFORM_DB_TYPE", "sqlite").lower()
+    platform_db_uri = os.environ.get("ONTOLOGY_PLATFORM_DB_URI", "")
+    if platform_db_type != "sqlite":
+        configure_platform_db(platform_db_type, platform_db_uri)
+        initialize_platform_db()
+    else:
+        initialize_platform_db(DEFAULT_PLATFORM_DB)
     yield
 
 
@@ -154,6 +167,8 @@ class NaturalLanguageQueryCreate(BaseModel):
     dataSourceId: Optional[int] = None
     objectCode: Optional[str] = None
     instanceId: Optional[str] = None
+    history: list[dict[str, str]] = Field(default_factory=list)
+    useModel: bool = True
 
 
 class OperationExecuteCreate(OperationPreflightCreate):
@@ -194,11 +209,35 @@ class BusinessRuleCreate(BaseModel):
     naturalLanguage: str
     actor: str = "system"
     status: str = "published"
+    priority: int = 0
+    category: str = ""
+    effectiveStart: Optional[str] = None
+    effectiveEnd: Optional[str] = None
+    dependsOn: Optional[str] = None
+
+
+class ContractDocumentParseOptions(BaseModel):
+    persist: bool = False
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/documents/contracts/parse")
+async def parse_contract_document(file: UploadFile = File(...)) -> dict[str, object]:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    if not file.filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="当前仅支持 .docx 文件解析")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    try:
+        return parse_contract_docx_bytes(file.filename, content)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.post("/demo/bootstrap")
@@ -546,7 +585,118 @@ def create_or_update_business_rule(ontology_id: int, payload: BusinessRuleCreate
             payload.naturalLanguage,
             payload.actor,
             payload.status,
+            payload.priority,
+            payload.category,
+            payload.effectiveStart,
+            payload.effectiveEnd,
+            payload.dependsOn,
         )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/rules/import-word")
+async def import_business_rules_from_word(
+    ontology_id: int,
+    file: UploadFile = File(...),
+    apply: bool = Form(True),
+    actor: str = Form("rule_word_import"),
+) -> dict[str, object]:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    try:
+        parsed = parse_rule_docx_bytes(file.filename, content)
+        imported = []
+        errors = []
+        if apply:
+            for rule in parsed["rules"]:
+                try:
+                    imported.append(
+                        upsert_business_rule(
+                            DEFAULT_PLATFORM_DB,
+                            ontology_id,
+                            rule["code"],
+                            rule["name"],
+                            rule["ruleType"],
+                            rule["scopeObjectCode"],
+                            rule["expression"],
+                            rule["severity"],
+                            rule["naturalLanguage"],
+                            actor,
+                            rule.get("status", "published"),
+                            rule.get("priority", 0),
+                            rule.get("category", ""),
+                            rule.get("effectiveStart"),
+                            rule.get("effectiveEnd"),
+                            rule.get("dependsOn"),
+                        )
+                    )
+                except ValueError as error:
+                    errors.append({"code": rule["code"], "error": str(error)})
+        return {
+            "ontologyId": ontology_id,
+            "file": parsed["file"],
+            "rules": parsed["rules"],
+            "warnings": parsed["warnings"],
+            "applied": apply,
+            "imported": imported,
+            "errors": errors,
+            "importedCount": len(imported),
+            "errorCount": len(errors),
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/rules/{rule_id}")
+def get_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
+    try:
+        return get_business_rule(DEFAULT_PLATFORM_DB, ontology_id, rule_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.put("/ontologies/{ontology_id}/rules/{rule_id}")
+def update_ontology_rule(ontology_id: int, rule_id: int, payload: BusinessRuleCreate) -> dict[str, object]:
+    try:
+        return update_business_rule(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            rule_id,
+            payload.code,
+            payload.name,
+            payload.ruleType,
+            payload.scopeObjectCode,
+            payload.expression,
+            payload.severity,
+            payload.naturalLanguage,
+            payload.actor,
+            payload.status,
+            payload.priority,
+            payload.category,
+            payload.effectiveStart,
+            payload.effectiveEnd,
+            payload.dependsOn,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.delete("/ontologies/{ontology_id}/rules/{rule_id}")
+def delete_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
+    try:
+        return delete_business_rule(DEFAULT_PLATFORM_DB, ontology_id, rule_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.patch("/ontologies/{ontology_id}/rules/{rule_id}/status")
+def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "published") -> dict[str, object]:
+    try:
+        return toggle_business_rule_status(DEFAULT_PLATFORM_DB, ontology_id, rule_id, status)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -591,6 +741,8 @@ def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object
             payload.dataSourceId,
             payload.objectCode,
             payload.instanceId,
+            payload.history,
+            payload.useModel,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -671,6 +823,14 @@ def ai_blueprint_draft(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
+@app.post("/ai/data-sources/{data_source_id}/ontology-reasoning-chain")
+def ai_ontology_reasoning_chain(data_source_id: int) -> dict[str, object]:
+    try:
+        return generate_ontology_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @app.get("/governance/audit-log")
 def audit_log(limit: int = 50) -> dict[str, object]:
     with connect(DEFAULT_PLATFORM_DB) as conn:
@@ -708,7 +868,9 @@ def decisions(limit: int = 50) -> dict[str, object]:
 
 @app.get("/files")
 def files() -> dict[str, str]:
+    config = get_platform_config()
     return {
-        "platformDb": str(Path(DEFAULT_PLATFORM_DB).resolve()),
+        "platformDbType": config.db_type,
+        "platformDb": config.connection_uri or str(Path(DEFAULT_PLATFORM_DB).resolve()),
         "sampleDb": str(Path(DEFAULT_SAMPLE_DB).resolve()),
     }

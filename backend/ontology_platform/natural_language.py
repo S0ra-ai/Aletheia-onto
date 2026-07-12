@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
 from .automation import preflight_operation
 from .database import connect
+from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
 
@@ -53,13 +55,25 @@ def query_natural_language(
     data_source_id: int | None = None,
     object_code: str | None = None,
     instance_id: str | None = None,
+    history: list[dict[str, str]] | None = None,
+    use_model: bool = True,
 ) -> dict[str, Any]:
     normalized_question = " ".join(question.strip().split())
     if not normalized_question:
         raise ValueError("问题不能为空")
 
-    intent = _detect_intent(normalized_question)
-    resolved = _resolve_target(platform_db, normalized_question, ontology_id, data_source_id, object_code, instance_id, intent)
+    model_client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
+    model_interpretation = _interpret_with_model(platform_db, _client_with_timeout(model_client, 12), normalized_question, history or []) if use_model else {}
+    intent = str(model_interpretation.get("intent") or _detect_intent(normalized_question))
+    resolved = _resolve_target(
+        platform_db,
+        normalized_question,
+        int(model_interpretation.get("ontologyId") or ontology_id) if (model_interpretation.get("ontologyId") or ontology_id) else None,
+        int(model_interpretation.get("dataSourceId") or data_source_id) if (model_interpretation.get("dataSourceId") or data_source_id) else None,
+        str(model_interpretation.get("objectCode") or object_code) if (model_interpretation.get("objectCode") or object_code) else None,
+        str(model_interpretation.get("instanceId") or instance_id) if (model_interpretation.get("instanceId") or instance_id) else None,
+        intent,
+    )
 
     if intent == INTENT_EXPLAIN:
         if not resolved.instance_id:
@@ -71,7 +85,7 @@ def query_natural_language(
             raise ValueError("请在问题中说明要预检的实例，例如：合同 3 能提交审批吗？")
         if resolved.data_source_id is None:
             raise ValueError("无法定位数据源，不能进行操作预检")
-        operation_code = resolved.operation_code or _default_operation_code(normalized_question, resolved.object_code)
+        operation_code = str(model_interpretation.get("operationCode") or resolved.operation_code or _default_operation_code(normalized_question, resolved.object_code))
         evidence = preflight_operation(
             platform_db,
             resolved.ontology_id,
@@ -102,6 +116,13 @@ def query_natural_language(
         evidence = {"hint": "未识别到明确意图"}
         answer = "我还不能可靠理解这个问题。你可以尝试问：合同 1 是否合规？合同 3 能提交审批吗？合同整体决策是否一致？"
 
+    used_model_summary = False
+    if use_model and model_client.configured and evidence:
+        summarized = _summarize_with_model(_client_with_timeout(model_client, 12), normalized_question, answer, intent, resolved, evidence, history or [])
+        if summarized:
+            answer = summarized
+            used_model_summary = True
+
     return {
         "question": normalized_question,
         "intent": intent,
@@ -116,7 +137,105 @@ def query_natural_language(
         },
         "evidence": evidence,
         "nextActions": _next_actions(intent, evidence),
+        "model": {
+            "configured": model_client.configured,
+            "usedForUnderstanding": bool(model_interpretation.get("_usedModel")),
+            "usedForSummary": used_model_summary,
+            "name": model_client.config.model,
+            "fallbackReason": model_interpretation.get("_fallbackReason", ""),
+        },
     }
+
+
+def _interpret_with_model(
+    platform_db: Path | str,
+    client: OpenRouterClient,
+    question: str,
+    history: list[dict[str, str]],
+) -> dict[str, Any]:
+    if not client.configured:
+        return {"_usedModel": False, "_fallbackReason": "model_not_configured"}
+    context = _semantic_context(platform_db)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是本体改造研发平台的自然语言理解器。只输出 JSON 对象，不要输出 Markdown。"
+                "你的任务是把用户问题解析为本体语义内核可执行的调用参数。"
+                "intent 只能是 compliance_assessment、explain_instance、operation_preflight、decision_consistency、unknown。"
+                "字段包括 intent, ontologyId, dataSourceId, objectCode, instanceId, operationCode。无法确定则填 null。"
+                "注意：你只负责理解问题，不能替代规则引擎做最终合规结论。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": _compact_json(
+                {
+                    "availableSemanticContext": context,
+                    "recentConversation": history[-8:],
+                    "question": question,
+                }
+            ),
+        },
+    ]
+    try:
+        result = client.chat(messages, purpose="natural_language_understanding", session_id="ontology-chat")
+        parsed = _extract_json_object(result.content)
+        parsed["_usedModel"] = True
+        return parsed
+    except Exception as error:
+        return {"_usedModel": False, "_fallbackReason": str(error)}
+
+
+def _client_with_timeout(client: OpenRouterClient, timeout_seconds: float) -> OpenRouterClient:
+    config = replace(client.config, timeout_seconds=min(client.config.timeout_seconds, timeout_seconds))
+    return OpenRouterClient(config, client.transport)
+
+
+def _summarize_with_model(
+    client: OpenRouterClient,
+    question: str,
+    deterministic_answer: str,
+    intent: str,
+    resolved: ResolvedTarget,
+    evidence: dict[str, Any],
+    history: list[dict[str, str]],
+) -> str:
+    compact_evidence = _compact_evidence(evidence)
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是企业业务语义内核的解释助手。请基于给定 evidence 生成中文业务回答。"
+                "必须忠实于 evidence，不得编造结论；合规、放行、阻断等判断必须以 evidence 中的规则结果为准。"
+                "回答应像业务专家：先给结论，再给关键依据和下一步建议。不要输出 JSON。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": _compact_json(
+                {
+                    "question": question,
+                    "intent": intent,
+                    "resolved": {
+                        "ontologyId": resolved.ontology_id,
+                        "dataSourceId": resolved.data_source_id,
+                        "objectCode": resolved.object_code,
+                        "instanceId": resolved.instance_id,
+                        "operationCode": resolved.operation_code,
+                    },
+                    "deterministicAnswer": deterministic_answer,
+                    "evidence": compact_evidence,
+                    "recentConversation": history[-6:],
+                }
+            ),
+        },
+    ]
+    try:
+        result = client.chat(messages, purpose="natural_language_summary", session_id="ontology-chat")
+        return result.content.strip() or deterministic_answer
+    except Exception:
+        return ""
 
 
 def _detect_intent(question: str) -> str:
@@ -131,6 +250,40 @@ def _detect_intent(question: str) -> str:
     if re.search(r"(合规|违规|风险|研判|审查|审核|通过|阻断|复核)", question):
         return INTENT_COMPLIANCE
     return INTENT_COMPLIANCE if _extract_instance_hint(question) else INTENT_UNKNOWN
+
+
+def _semantic_context(platform_db: Path | str) -> dict[str, Any]:
+    with connect(platform_db) as conn:
+        sources = conn.execute(
+            "select id, name, domain, system_category from data_source order by id desc limit 10"
+        ).fetchall()
+        ontologies = conn.execute(
+            "select id, name, domain, version, status from ontology order by id desc limit 10"
+        ).fetchall()
+        objects = conn.execute(
+            """
+            select o.id as ontologyId, bo.code, bo.name, st.data_source_id as dataSourceId, st.table_name as sourceTable
+            from business_object bo
+            join ontology o on o.id = bo.ontology_id
+            left join source_table st on st.id = bo.source_table_id
+            order by o.id desc, bo.code
+            limit 80
+            """
+        ).fetchall()
+        operations = conn.execute(
+            """
+            select data_source_id as dataSourceId, operation_code as operationCode, name, semantic_action as semanticAction
+            from source_api
+            order by id desc
+            limit 40
+            """
+        ).fetchall()
+        return {
+            "dataSources": [dict(row) for row in sources],
+            "ontologies": [dict(row) for row in ontologies],
+            "objects": [dict(row) for row in objects],
+            "operations": [dict(row) for row in operations],
+        }
 
 
 def _resolve_target(
@@ -371,3 +524,51 @@ def _confidence(intent: str, resolved: ResolvedTarget) -> float:
 
 def _object_label(object_code: str) -> str:
     return OBJECT_LABELS.get(object_code, object_code)
+
+
+def _extract_json_object(content: str) -> dict[str, Any]:
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`")
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("模型未返回 JSON 对象")
+    parsed = json.loads(stripped[start : end + 1])
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    if "ruleResults" in evidence:
+        failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
+        return {
+            "decision": evidence.get("decision"),
+            "allowed": evidence.get("allowed"),
+            "nextAction": evidence.get("nextAction"),
+            "target": evidence.get("target") or evidence.get("semanticKernel"),
+            "failedRules": failed[:8],
+            "ruleCount": len(evidence.get("ruleResults", [])),
+        }
+    if "items" in evidence:
+        return {
+            "objectCode": evidence.get("objectCode"),
+            "status": evidence.get("status"),
+            "summary": evidence.get("summary"),
+            "ruleFailures": evidence.get("ruleFailures", [])[:10],
+            "sampleItems": evidence.get("items", [])[:5],
+            "nextActions": evidence.get("nextActions", []),
+        }
+    if "attributes" in evidence:
+        return {
+            "object": evidence.get("object"),
+            "source": evidence.get("source"),
+            "attributes": evidence.get("attributes", [])[:20],
+            "explanation": evidence.get("explanation"),
+        }
+    return evidence

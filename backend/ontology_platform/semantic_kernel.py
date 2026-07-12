@@ -5,11 +5,12 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from .adapters import RuntimeDatabase, get_adapter
-from .database import connect
+from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .ontology import explain_instance
 
@@ -109,6 +110,7 @@ ALLOWED_AST_NODES = (
 def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
     with connect(platform_db) as platform:
         runtime = build_runtime(platform, ontology_id, object_code, instance_id)
+        today = date.today().isoformat()
         rules = platform.execute(
             """
             select *
@@ -116,9 +118,11 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
             where ontology_id = ?
               and scope_object_code = ?
               and status = 'published'
-            order by severity, code
+              and (effective_start is null or effective_start <= ?)
+              and (effective_end is null or effective_end >= ?)
+            order by priority desc, severity, code
             """,
-            (ontology_id, object_code),
+            (ontology_id, object_code, today, today),
         ).fetchall()
 
         results = []
@@ -148,7 +152,7 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     json.dumps(evidence, ensure_ascii=False),
                 ),
             )
-            inference_id = int(platform.execute("select last_insert_rowid()").fetchone()[0])
+            inference_id = last_insert_id(platform)
             platform.execute(
                 """
                 insert into explanation_trace (

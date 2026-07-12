@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
-from .database import connect
+from .database import connect, last_insert_id
 
 
 @dataclass(frozen=True)
@@ -980,7 +980,7 @@ def _store_table(platform: sqlite3.Connection, data_source_id: int, table: Sourc
         """,
         (data_source_id, table.name, table.row_count, table.primary_key),
     )
-    return int(platform.execute("select last_insert_rowid()").fetchone()[0])
+    return last_insert_id(platform)
 
 
 def _store_columns(platform: sqlite3.Connection, table_id: int, columns: list[SourceColumnInfo]) -> None:
