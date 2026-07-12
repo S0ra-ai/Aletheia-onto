@@ -134,7 +134,7 @@ def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
         "校验",
         "title != null",
         "阻断",
-        "合同标题不能为空。",
+        "合同标题必须填写，不能为空。",
     ]
     for index, value in enumerate(values):
         row[index].text = value
@@ -142,6 +142,7 @@ def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
     doc.save(buffer)
 
     parsed = parse_rule_docx_bytes("rules.docx", buffer.getvalue())
+    assert len(parsed["rules"]) == 1
     assert parsed["rules"][0]["code"] == "contract_title_required_word"
     assert parsed["rules"][0]["ruleType"] == "validation"
     assert parsed["rules"][0]["severity"] == "blocking"

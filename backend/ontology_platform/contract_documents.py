@@ -135,7 +135,9 @@ def parse_rule_docx(path: Path | str, file_name: str | None = None, content: byt
     tables = _extract_tables(doc)
     table_rules = _extract_rules_from_tables(tables)
     paragraph_rules = _extract_rules_from_paragraphs(paragraphs)
-    free_text_rules = _extract_rules_from_free_text(paragraphs)
+    # A structured document may naturally repeat words such as “必须” in rule
+    # names and explanations. Do not reinterpret those fields as extra draft rules.
+    free_text_rules = [] if table_rules or paragraph_rules else _extract_rules_from_free_text(paragraphs)
     rules = _deduplicate_rules([*table_rules, *paragraph_rules, *free_text_rules])
     if not rules:
         raise ValueError("未从 Word 文档中识别到规则。建议使用表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。")
