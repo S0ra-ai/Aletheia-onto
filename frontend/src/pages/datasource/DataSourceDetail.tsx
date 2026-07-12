@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload } from 'antd';
+import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
-import { aiApi, dataSourceApi, documentApi, ontologyApi } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ContractDocumentParseResult, RuleWordImportResult } from '../../types';
+import { aiApi, dataSourceApi, ontologyApi } from '../../api';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -41,10 +41,11 @@ const DataSourceDetail: React.FC = () => {
   const [blueprintDraftVisible, setBlueprintDraftVisible] = useState(false);
   const [blueprintDraftLoading, setBlueprintDraftLoading] = useState(false);
   const [blueprintDraft, setBlueprintDraft] = useState<IndustryBlueprint | null>(null);
-  const [documentParsing, setDocumentParsing] = useState(false);
-  const [documentParseResult, setDocumentParseResult] = useState<ContractDocumentParseResult | null>(null);
   const [ruleImporting, setRuleImporting] = useState(false);
   const [ruleImportResult, setRuleImportResult] = useState<RuleWordImportResult | null>(null);
+  const [tableBrowser, setTableBrowser] = useState<SourceTableRows | null>(null);
+  const [tableBrowserLoading, setTableBrowserLoading] = useState(false);
+  const [reasoningChain, setReasoningChain] = useState<ReasoningChain | null>(null);
   const [openApiForm] = Form.useForm();
 
   const fetchData = async () => {
@@ -84,6 +85,7 @@ const DataSourceDetail: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    loadReasoningChain();
   }, [id]);
 
   const handleScan = async () => {
@@ -155,17 +157,22 @@ const DataSourceDetail: React.FC = () => {
     }
   };
 
-  const handleParseContractDocument = async (file: File) => {
-    setDocumentParsing(true);
+  const handleBrowseTable = async (tableName: string, offset = 0) => {
+    if (!id) return;
+    setTableBrowserLoading(true);
     try {
-      const result = await documentApi.parseContractWord(file);
-      setDocumentParseResult(result);
-      message.success('Word 合同解析完成');
-    } catch (error) {
-      message.error('Word 合同解析失败，请确认文件为 .docx 格式');
+      setTableBrowser(await dataSourceApi.browseTable(parseInt(id), tableName, 50, offset));
+    } catch {
+      message.error('读取数据表失败，请确认连接和账号权限');
     } finally {
-      setDocumentParsing(false);
+      setTableBrowserLoading(false);
     }
+  };
+
+  const loadReasoningChain = async () => {
+    if (!id) return;
+    try { setReasoningChain(await dataSourceApi.getReasoningChain(parseInt(id))); }
+    catch { message.error('加载本体推理链失败'); }
   };
 
   const handleImportRulesFromWord = async (file: File) => {
@@ -184,6 +191,7 @@ const DataSourceDetail: React.FC = () => {
         message.success(`已从 Word 导入 ${result.importedCount} 条自定义规则`);
       }
       await fetchData();
+      await loadReasoningChain();
     } catch {
       message.error('规则 Word 导入失败，请确认文件格式和规则字段');
     } finally {
@@ -230,6 +238,11 @@ const DataSourceDetail: React.FC = () => {
       title: '扫描时间',
       dataIndex: 'scannedAt',
       key: 'scannedAt',
+    },
+    {
+      title: '数据浏览',
+      key: 'browse',
+      render: (_: unknown, record: SourceTable) => <Button type="link" onClick={() => handleBrowseTable(record.tableName)}>浏览内容</Button>,
     },
   ];
 
@@ -501,101 +514,6 @@ const DataSourceDetail: React.FC = () => {
       ellipsis: true,
     },
   ];
-
-  const riskColor = (severity: string) => {
-    if (severity === 'blocking') return 'red';
-    if (severity === 'warning') return 'orange';
-    return 'blue';
-  };
-
-  const renderDocumentParser = () => (
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert
-        type="info"
-        message="上传 Word 合同进行平台级解析"
-        description="平台会直接读取 .docx，抽取合同编号、标题、甲乙方、金额、日期、付款条款、条款结构、风险提示和本体映射建议。"
-      />
-      <Upload.Dragger
-        accept=".docx"
-        maxCount={1}
-        beforeUpload={(file) => {
-          handleParseContractDocument(file);
-          return false;
-        }}
-        showUploadList={false}
-        disabled={documentParsing}
-      >
-        <p className="ant-upload-drag-icon"><UploadOutlined /></p>
-        <p className="ant-upload-text">点击或拖拽 Word 合同到这里解析</p>
-        <p className="ant-upload-hint">当前支持 .docx。解析结果只用于平台语义接入和演示验证。</p>
-      </Upload.Dragger>
-      {documentParsing && <Spin tip="正在解析 Word 合同..." />}
-      {documentParseResult && (
-        <>
-          <Card size="small" title="文件与合同要素">
-            <Descriptions column={3}>
-              <Descriptions.Item label="文件名">{documentParseResult.file.name}</Descriptions.Item>
-              <Descriptions.Item label="大小">{documentParseResult.file.size} bytes</Descriptions.Item>
-              <Descriptions.Item label="MD5">{documentParseResult.file.md5}</Descriptions.Item>
-              <Descriptions.Item label="合同编号">{documentParseResult.entities.contractNo || '-'}</Descriptions.Item>
-              <Descriptions.Item label="标题">{documentParseResult.entities.title || '-'}</Descriptions.Item>
-              <Descriptions.Item label="金额">{documentParseResult.entities.amount ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="甲方">{documentParseResult.entities.partyA || '-'}</Descriptions.Item>
-              <Descriptions.Item label="乙方">{documentParseResult.entities.partyB || '-'}</Descriptions.Item>
-              <Descriptions.Item label="签订日期">{documentParseResult.entities.signDate || '-'}</Descriptions.Item>
-              <Descriptions.Item label="开始日期">{documentParseResult.entities.startDate || '-'}</Descriptions.Item>
-              <Descriptions.Item label="结束日期">{documentParseResult.entities.endDate || '-'}</Descriptions.Item>
-              <Descriptions.Item label="文本长度">{documentParseResult.textLength}</Descriptions.Item>
-            </Descriptions>
-          </Card>
-          <Card size="small" title={`风险提示 (${documentParseResult.risks.length})`}>
-            {documentParseResult.risks.length === 0 ? (
-              <Alert type="success" message="未发现基础解析风险" />
-            ) : (
-              <Space wrap>
-                {documentParseResult.risks.map(item => (
-                  <Tag color={riskColor(item.severity)} key={item.code}>
-                    {item.code}: {item.message}
-                  </Tag>
-                ))}
-              </Space>
-            )}
-          </Card>
-          <Card size="small" title={`付款条款 (${documentParseResult.paymentTerms.length})`}>
-            <Table
-              size="small"
-              pagination={false}
-              dataSource={documentParseResult.paymentTerms}
-              rowKey={(_, index) => `payment-${index}`}
-              columns={[
-                { title: '来源', dataIndex: 'source', key: 'source', width: 120 },
-                { title: '金额', dataIndex: 'amount', key: 'amount', width: 120, render: (value: number | null) => value ?? '-' },
-                { title: '日期', dataIndex: 'date', key: 'date', width: 160, render: (value: string[]) => value?.join(', ') || '-' },
-                { title: '文本', dataIndex: 'text', key: 'text' },
-              ]}
-            />
-          </Card>
-          <Card size="small" title={`条款结构 (${documentParseResult.clauses.length})`}>
-            <Table
-              size="small"
-              dataSource={documentParseResult.clauses}
-              rowKey={(_, index) => `clause-${index}`}
-              columns={[
-                { title: '条款', dataIndex: 'title', key: 'title', width: 260 },
-                { title: '内容摘要', dataIndex: 'content', key: 'content', ellipsis: true },
-              ]}
-            />
-          </Card>
-          <Card size="small" title="本体映射提示">
-            <Input.TextArea rows={8} value={JSON.stringify(documentParseResult.ontologyHints, null, 2)} readOnly />
-          </Card>
-          <Card size="small" title="提取文本">
-            <Input.TextArea rows={12} value={documentParseResult.text} readOnly />
-          </Card>
-        </>
-      )}
-    </Space>
-  );
 
   const renderSemanticCoverage = () => {
     if (!semanticCoverage) return null;
@@ -953,8 +871,27 @@ const DataSourceDetail: React.FC = () => {
               }}
             />
           </TabPane>
-          <TabPane tab="Word解析" key="document-parser">
-            {renderDocumentParser()}
+          <TabPane tab="本体推理链" key="reasoning-chain">
+            {!reasoningChain?.initialized ? (
+              <Alert type="warning" message="数据源尚未初始化为本体知识库" description="请返回数据源列表执行初始化。" />
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                <Descriptions column={4}>
+                  <Descriptions.Item label="本体">{reasoningChain.ontologyName}</Descriptions.Item>
+                  <Descriptions.Item label="版本">{reasoningChain.version}</Descriptions.Item>
+                  <Descriptions.Item label="对象">{reasoningChain.objects.length}</Descriptions.Item>
+                  <Descriptions.Item label="关系">{reasoningChain.relations.length}</Descriptions.Item>
+                  <Descriptions.Item label="规则">{reasoningChain.rules.length}</Descriptions.Item>
+                </Descriptions>
+                <Tabs
+                  items={[
+                    { key: 'steps', label: '推理步骤', children: <Steps direction="vertical" items={reasoningChain.steps.map(step => ({ title: step.label, description: step.type }))} /> },
+                    { key: 'relations', label: '本体关系', children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: '源对象', dataIndex: 'sourceObject' }, { title: '关系', dataIndex: 'name' }, { title: '目标对象', dataIndex: 'targetObject' }, { title: '类型', dataIndex: 'relationType' }]} /> },
+                    { key: 'chain-rules', label: '推理规则', children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: '规则', dataIndex: 'name' }, { title: '对象', dataIndex: 'scopeObjectCode' }, { title: '表达式', dataIndex: 'expression' }, { title: '严重程度', dataIndex: 'severity' }]} /> },
+                  ]}
+                />
+              </Space>
+            )}
           </TabPane>
           <TabPane tab="接入检查" key="readiness">
             <Table
@@ -966,6 +903,32 @@ const DataSourceDetail: React.FC = () => {
           </TabPane>
         </Tabs>
       </Card>
+
+      <Modal
+        title={tableBrowser ? `数据浏览：${tableBrowser.tableName}` : '数据浏览'}
+        open={Boolean(tableBrowser) || tableBrowserLoading}
+        onCancel={() => setTableBrowser(null)}
+        footer={null}
+        width="90vw"
+      >
+        <Spin spinning={tableBrowserLoading}>
+          {tableBrowser && <>
+            <Alert style={{ marginBottom: 12 }} type="info" message={`共 ${tableBrowser.page.total} 行，当前显示 ${tableBrowser.page.offset + 1}-${tableBrowser.page.offset + tableBrowser.rows.length}`} />
+            <Table
+              size="small"
+              scroll={{ x: 'max-content' }}
+              pagination={false}
+              rowKey={(_, index) => `${tableBrowser.page.offset}-${index}`}
+              dataSource={tableBrowser.rows}
+              columns={tableBrowser.columns.map(column => ({ title: column, dataIndex: column, key: column, render: (value: unknown) => typeof value === 'object' ? JSON.stringify(value) : String(value ?? '') }))}
+            />
+            <Space style={{ marginTop: 12 }}>
+              <Button disabled={tableBrowser.page.offset === 0} onClick={() => handleBrowseTable(tableBrowser.tableName, Math.max(0, tableBrowser.page.offset - tableBrowser.page.limit))}>上一页</Button>
+              <Button disabled={!tableBrowser.page.hasMore} onClick={() => handleBrowseTable(tableBrowser.tableName, tableBrowser.page.offset + tableBrowser.page.limit)}>下一页</Button>
+            </Space>
+          </>}
+        </Spin>
+      </Modal>
 
       <Modal
         title="导入 OpenAPI"

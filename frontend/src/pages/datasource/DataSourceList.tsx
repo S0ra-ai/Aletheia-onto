@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider } from 'antd';
-import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined } from '@ant-design/icons';
+import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
@@ -22,6 +22,7 @@ const DataSourceList: React.FC = () => {
   const [reasoningLoading, setReasoningLoading] = useState(false);
   const [reasoningResult, setReasoningResult] = useState<OntologyReasoningChainResult | null>(null);
   const [reasoningSource, setReasoningSource] = useState<DataSource | null>(null);
+  const [initializingId, setInitializingId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
   const fetchDataSources = async () => {
@@ -124,6 +125,21 @@ const DataSourceList: React.FC = () => {
     }
   };
 
+  const handleInitialize = async (record: DataSource) => {
+    setInitializingId(record.id);
+    try {
+      const result = await dataSourceApi.initialize(record.id);
+      message.success(`${record.name} 已初始化，可在对话模块选择`);
+      void result;
+      await fetchDataSources();
+      navigate(`/datasource/${record.id}`);
+    } catch {
+      message.error('初始化失败，请先确认数据库连接可用');
+    } finally {
+      setInitializingId(null);
+    }
+  };
+
   const handleReasoningChain = async (record: DataSource) => {
     setReasoningSource(record);
     setReasoningResult(null);
@@ -204,6 +220,14 @@ const DataSourceList: React.FC = () => {
       key: 'action',
       render: (_: unknown, record: DataSource) => (
         <Space>
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            loading={initializingId === record.id}
+            onClick={() => handleInitialize(record)}
+          >
+            初始化知识库
+          </Button>
           <Button
             type="link"
             icon={<ScanOutlined />}

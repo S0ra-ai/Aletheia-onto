@@ -30,10 +30,10 @@ import type {
   ModelConfigUpdate,
   IndustryBlueprint,
   OntologyReasoningChainResult,
-  ContractDocumentParseResult,
   RuleWordImportResult,
-  ManagedContract,
-  ContractComparison,
+  KnowledgeBase,
+  SourceTableRows,
+  ReasoningChain,
 } from '../types';
 
 const api = axios.create({
@@ -113,6 +113,21 @@ export const dataSourceApi = {
     return ((data as { tables: unknown[] }).tables || []).map(normalizeSourceTable);
   },
 
+  browseTable: async (id: number, tableName: string, limit = 50, offset = 0): Promise<SourceTableRows> => {
+    const { data } = await api.get(`/data-sources/${id}/tables/${encodeURIComponent(tableName)}/rows`, { params: { limit, offset } });
+    return data as SourceTableRows;
+  },
+
+  initialize: async (id: number): Promise<{ status: string; reasoningChain: ReasoningChain }> => {
+    const { data } = await api.post(`/data-sources/${id}/initialize`);
+    return data;
+  },
+
+  getReasoningChain: async (id: number): Promise<ReasoningChain> => {
+    const { data } = await api.get(`/data-sources/${id}/reasoning-chain`);
+    return data as ReasoningChain;
+  },
+
   scan: async (id: number): Promise<{ tables: number; columns: number; foreignKeys: number }> => {
     const { data } = await api.post(`/data-sources/${id}/scan`);
     return data as { tables: number; columns: number; foreignKeys: number };
@@ -170,22 +185,11 @@ export const dataSourceApi = {
   kernelPackageUrl: (dataSourceId: number): string => `/api/data-sources/${dataSourceId}/kernel-package/download`,
 };
 
-export const contractApi = {
-  list: async (): Promise<ManagedContract[]> => {
-    const { data } = await api.get('/contracts');
-    return data.items || [];
+export const knowledgeBaseApi = {
+  list: async (): Promise<KnowledgeBase[]> => {
+    const { data } = await api.get('/knowledge-bases');
+    return (data.items || []) as KnowledgeBase[];
   },
-  upload: async (file: File): Promise<ManagedContract> => {
-    const form = new FormData();
-    form.append('file', file);
-    const { data } = await api.post('/contracts', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-    return data;
-  },
-  compare: async (id: number, question: string): Promise<ContractComparison> => {
-    const { data } = await api.post(`/contracts/${id}/compare`, { question });
-    return data;
-  },
-  documentUrl: (id: number, version?: number): string => `/api/contracts/${id}/document${version ? `?version=${version}` : ''}`,
 };
 
 export const onboardingApi = {
@@ -477,18 +481,6 @@ export const aiApi = {
   getOntologyReasoningChain: async (dataSourceId: number): Promise<OntologyReasoningChainResult> => {
     const { data } = await api.post(`/ai/data-sources/${dataSourceId}/ontology-reasoning-chain`);
     return data as OntologyReasoningChainResult;
-  },
-};
-
-export const documentApi = {
-  parseContractWord: async (file: File): Promise<ContractDocumentParseResult> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const { data } = await api.post('/documents/contracts/parse', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 90000,
-    });
-    return data as ContractDocumentParseResult;
   },
 };
 

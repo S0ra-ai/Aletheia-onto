@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { RobotOutlined, SendOutlined, UserOutlined, ClearOutlined } from '@ant-design/icons';
-import { dataSourceApi, semanticApi } from '../../api';
-import type { DataSource, NaturalLanguageQueryResult } from '../../types';
+import { knowledgeBaseApi, semanticApi } from '../../api';
+import type { KnowledgeBase, NaturalLanguageQueryResult } from '../../types';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -14,10 +14,10 @@ type ChatMessage = {
 };
 
 const quickPrompts = [
-  '合同是否合规？',
-  'HT-2024-006 能提交审批吗？',
-  '解释合同 1 的业务语义',
-  '合同整体决策是否一致？',
+  '解释实例 1 的业务语义',
+  '实例 1 是否合规？',
+  '当前业务对象有哪些规则？',
+  '整体决策是否一致？',
 ];
 
 const OntologyChat: React.FC = () => {
@@ -25,26 +25,29 @@ const OntologyChat: React.FC = () => {
     {
       id: 'welcome',
       role: 'assistant',
-      content: '你好，我是业务语义内核助手。你可以直接问合同是否合规、某份合同能否提交审批、某个实例为什么被复核，或让模型基于已接入数据源解释本体推理链。',
+      content: '你好，我是本体知识库助手。请先选择已初始化的数据源和业务对象，我会基于该数据源的真实记录、本体关系和用户上传规则回答。',
     },
   ]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [dataSourceId, setDataSourceId] = useState<number | undefined>();
-  const [objectCode, setObjectCode] = useState('contract');
+  const [objectCode, setObjectCode] = useState<string>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    dataSourceApi.list()
+    knowledgeBaseApi.list()
       .then(items => {
-        setDataSources(items);
+        setKnowledgeBases(items);
         if (items.length > 0) {
-          setDataSourceId(Math.max(...items.map(item => item.id)));
+          setDataSourceId(items[0].dataSourceId);
+          setObjectCode(items[0].objects[0]?.code);
         }
       })
       .catch(() => undefined);
   }, []);
+
+  const selectedKnowledgeBase = knowledgeBases.find(item => item.dataSourceId === dataSourceId);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -114,21 +117,27 @@ const OntologyChat: React.FC = () => {
             allowClear
             placeholder="数据源"
             value={dataSourceId}
-            onChange={setDataSourceId}
+            onChange={(value) => {
+              setDataSourceId(value);
+              setObjectCode(knowledgeBases.find(item => item.dataSourceId === value)?.objects[0]?.code);
+            }}
             style={{ width: 220 }}
-            options={dataSources.map(item => ({ value: item.id, label: `${item.name} #${item.id}` }))}
+            options={knowledgeBases.map(item => ({ value: item.dataSourceId, label: `${item.name} · ${item.sourceType}` }))}
           />
-          <Input
+          <Select
             value={objectCode}
-            onChange={event => setObjectCode(event.target.value)}
-            placeholder="业务对象，如 contract"
+            onChange={setObjectCode}
+            placeholder="本体业务对象"
             style={{ width: 190 }}
+            options={(selectedKnowledgeBase?.objects || []).map(item => ({ value: item.code, label: `${item.name} (${item.code})` }))}
           />
           <Button icon={<ClearOutlined />} onClick={() => setMessages(messages.slice(0, 1))}>
             清空
           </Button>
         </Space>
       </div>
+
+      {knowledgeBases.length === 0 && <Alert style={{ marginBottom: 12 }} type="warning" showIcon message="暂无可问答的数据源" description="请先在数据源管理中完成连接测试和知识库初始化。" />}
 
       <Card
         styles={{ body: { padding: 0, height: '100%', display: 'flex', flexDirection: 'column' } }}
@@ -202,8 +211,8 @@ const OntologyChat: React.FC = () => {
               }
             }}
             autoSize={{ minRows: 2, maxRows: 5 }}
-            placeholder="输入业务问题，例如：合同是否合规？HT-2024-006 能提交审批吗？"
-            disabled={loading}
+            placeholder="输入业务问题，系统会使用当前数据源的本体关系与规则回答"
+            disabled={loading || !dataSourceId || !objectCode}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
             <Text type="secondary">Enter 发送，Shift + Enter 换行</Text>

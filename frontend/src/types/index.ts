@@ -571,49 +571,6 @@ export interface OntologyReasoningChainResult {
   chain: OntologyReasoningChain;
 }
 
-export interface ContractDocumentParseResult {
-  file: {
-    name: string;
-    size: number;
-    md5: string;
-  };
-  text: string;
-  textLength: number;
-  paragraphs: string[];
-  tables: Array<{
-    index: number;
-    rows: string[][];
-  }>;
-  entities: {
-    contractNo?: string;
-    title?: string;
-    partyA?: string;
-    partyB?: string;
-    amount?: number | null;
-    currency?: string;
-    dates?: string[];
-    signDate?: string;
-    startDate?: string;
-    endDate?: string;
-  };
-  clauses: Array<{
-    title: string;
-    content: string;
-  }>;
-  paymentTerms: Array<{
-    source: string;
-    text: string;
-    amount?: number | null;
-    date?: string[];
-  }>;
-  risks: Array<{
-    code: string;
-    severity: string;
-    message: string;
-  }>;
-  ontologyHints: Record<string, unknown>;
-}
-
 export interface RuleWordImportResult {
   ontologyId: number;
   file: {
@@ -642,26 +599,32 @@ export interface RuleWordImportResult {
   errorCount: number;
 }
 
-export interface ManagedContract {
-  id: number;
-  contractNo: string;
-  title: string;
-  partyA: string;
-  partyB: string;
-  amount?: number;
-  currency: string;
+export interface KnowledgeBase {
+  dataSourceId: number;
+  name: string;
+  sourceType: 'sqlite' | 'mysql' | 'postgresql';
+  domain: string;
+  ontologyId: number;
+  ontologyName: string;
+  version: string;
   status: string;
-  currentVersion: number;
-  createdAt: string;
-  document?: { version: number; fileName: string; byteSize: number; sha256: string };
+  objects: Array<{ code: string; name: string }>;
+  objectCodes: string[];
 }
 
-export interface ContractComparison {
-  question: string;
-  contractId: number;
-  rag: { method: string; answer: string; citations: Array<{ documentVersion: number; passage: string }>; limitations: string[] };
-  ontology: { method: string; answer: string; facts: Record<string, unknown>; relations: string[]; evidence: Record<string, unknown> };
-  differences: Array<{ dimension: string; rag: string; ontology: string }>;
+export interface SourceTableRows {
+  dataSourceId: number;
+  tableName: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  page: { limit: number; offset: number; total: number; hasMore: boolean };
+}
+
+export interface ReasoningChain extends KnowledgeBase {
+  initialized: boolean;
+  relations: Array<{ code: string; name: string; relationType: string; sourceObject: string; targetObject: string }>;
+  rules: Array<{ code: string; name: string; ruleType: string; scopeObjectCode: string; expression: string; severity: string; naturalLanguage: string; status: string }>;
+  steps: Array<{ type: string; label: string }>;
 }
 
 export interface DecisionRecordItem {

@@ -9,6 +9,7 @@ from typing import Any
 from .adapters import get_adapter
 from .automation import preflight_operation
 from .database import connect
+from .knowledge_base import build_reasoning_chain
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
@@ -37,6 +38,7 @@ INTENT_EXPLAIN = "explain_instance"
 INTENT_PREFLIGHT = "operation_preflight"
 INTENT_CONSISTENCY = "decision_consistency"
 INTENT_UNKNOWN = "unknown"
+INTENT_KNOWLEDGE_OVERVIEW = "knowledge_overview"
 
 
 @dataclass(frozen=True)
@@ -68,14 +70,24 @@ def query_natural_language(
     resolved = _resolve_target(
         platform_db,
         normalized_question,
-        int(model_interpretation.get("ontologyId") or ontology_id) if (model_interpretation.get("ontologyId") or ontology_id) else None,
-        int(model_interpretation.get("dataSourceId") or data_source_id) if (model_interpretation.get("dataSourceId") or data_source_id) else None,
-        str(model_interpretation.get("objectCode") or object_code) if (model_interpretation.get("objectCode") or object_code) else None,
-        str(model_interpretation.get("instanceId") or instance_id) if (model_interpretation.get("instanceId") or instance_id) else None,
+        int(ontology_id or model_interpretation.get("ontologyId")) if (ontology_id or model_interpretation.get("ontologyId")) else None,
+        int(data_source_id or model_interpretation.get("dataSourceId")) if (data_source_id or model_interpretation.get("dataSourceId")) else None,
+        str(object_code or model_interpretation.get("objectCode")) if (object_code or model_interpretation.get("objectCode")) else None,
+        str(instance_id or model_interpretation.get("instanceId")) if (instance_id or model_interpretation.get("instanceId")) else None,
         intent,
     )
 
-    if intent == INTENT_EXPLAIN:
+    if intent == INTENT_KNOWLEDGE_OVERVIEW:
+        if resolved.data_source_id is None:
+            raise ValueError("请选择已初始化的数据源")
+        chain = build_reasoning_chain(platform_db, resolved.data_source_id)
+        object_rules = [rule for rule in chain.get("rules", []) if rule["scopeObjectCode"] == resolved.object_code]
+        related = [relation for relation in chain.get("relations", []) if resolved.object_code in {relation["sourceObject"], relation["targetObject"]}]
+        evidence = {"objectCode": resolved.object_code, "rules": object_rules, "relations": related, "reasoningSteps": chain.get("steps", [])}
+        rule_text = "；".join(f"{rule['name']}（{rule['naturalLanguage']}）" for rule in object_rules) or "暂无已定义规则"
+        relation_text = "；".join(f"{relation['sourceObject']} -{relation['name']}-> {relation['targetObject']}" for relation in related) or "暂无已定义关系"
+        answer = f"业务对象 {resolved.object_code} 的规则：{rule_text}。本体关系：{relation_text}。"
+    elif intent == INTENT_EXPLAIN:
         if not resolved.instance_id:
             raise ValueError("请在问题中说明要解释的实例，例如：合同 1 是什么？")
         evidence = explain_instance(platform_db, resolved.ontology_id, resolved.object_code, resolved.instance_id)
@@ -162,7 +174,7 @@ def _interpret_with_model(
             "content": (
                 "你是本体改造研发平台的自然语言理解器。只输出 JSON 对象，不要输出 Markdown。"
                 "你的任务是把用户问题解析为本体语义内核可执行的调用参数。"
-                "intent 只能是 compliance_assessment、explain_instance、operation_preflight、decision_consistency、unknown。"
+                "intent 只能是 compliance_assessment、explain_instance、operation_preflight、decision_consistency、knowledge_overview、unknown。"
                 "字段包括 intent, ontologyId, dataSourceId, objectCode, instanceId, operationCode。无法确定则填 null。"
                 "注意：你只负责理解问题，不能替代规则引擎做最终合规结论。"
             ),
@@ -239,6 +251,8 @@ def _summarize_with_model(
 
 
 def _detect_intent(question: str) -> str:
+    if re.search(r"(有哪些|列出|介绍|概览|知识库).*(规则|关系|本体|对象)|(规则|关系|本体|对象).*(有哪些|是什么|概览)", question):
+        return INTENT_KNOWLEDGE_OVERVIEW
     if re.search(r"(能否|是否可以|可不可以|能不能|可以).*(提交|审批|执行|自动化|调用)", question):
         return INTENT_PREFLIGHT
     if re.search(r"(提交|审批|执行|自动执行|操作预检)", question):

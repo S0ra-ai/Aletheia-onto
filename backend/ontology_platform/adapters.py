@@ -59,6 +59,9 @@ class DatabaseAdapter(Protocol):
 
 
 class RuntimeDatabase(Protocol):
+    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        ...
+
     def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
         ...
 
@@ -100,6 +103,12 @@ class SQLiteRuntime:
             (limit,),
         ).fetchall()
         return [row["instance_id"] for row in rows]
+
+    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        quoted = table_name.replace('"', '""')
+        total = int(self.conn.execute(f'select count(*) as count from "{quoted}"').fetchone()["count"])
+        rows = self.conn.execute(f'select * from "{quoted}" limit ? offset ?', (limit, offset)).fetchall()
+        return [dict(row) for row in rows], total
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -222,6 +231,12 @@ class SQLRuntime:
             (limit,),
         )
         return [row["instance_id"] for row in rows]
+
+    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        table = _quote_identifier(table_name, self.dialect)
+        total_row = self._fetch_one(f"select count(*) as row_count from {table}", ()) or {"row_count": 0}
+        rows = self._fetch_all(f"select * from {table} limit %s offset %s", (limit, offset))
+        return rows, int(total_row["row_count"])
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s", (instance_id,))

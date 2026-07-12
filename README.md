@@ -29,10 +29,6 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 
 ## 关键 API
 
-- `GET /contracts` / `POST /contracts`：查看或上传以 `.docx` 为权威主文档的合同。
-- `POST /contracts/{id}/versions`：增加 Word 合同版本，合同编号必须与原版一致。
-- `GET /contracts/{id}/document`：下载当前或指定版本的 Word 原件。
-- `POST /contracts/{id}/compare`：对同一问题输出传统文本检索与本体语义推理的并列证据。
 
 - `POST /demo/bootstrap`：创建合同管理样例系统并生成本体草案。
 - `POST /demo/bootstrap/equipment`：创建设备运维样例系统并生成本体草案。
@@ -42,6 +38,10 @@ uvicorn ontology_platform.api:app --reload --app-dir backend
 - `POST /data-sources/{id}/apis`：登记传统业务系统 API 或业务动作。
 - `POST /data-sources/{id}/apis/import-openapi`：从 OpenAPI 文档批量导入业务 API。
 - `POST /data-sources/{id}/scan`：扫描数据库元数据。
+- `POST /data-sources/{id}/initialize`：扫描数据源并初始化可问答的本体知识库。
+- `GET /data-sources/{id}/tables/{table}/rows`：分页浏览 SQLite、MySQL 或 PostgreSQL 业务表内容。
+- `GET /data-sources/{id}/reasoning-chain`：查看业务对象、关系、用户规则和推理步骤。
+- `GET /knowledge-bases`：列出已初始化、可在对话模块选择的数据源。
 - `GET /data-sources/{id}/readiness`：查看数据源接入准备度。
 - `GET /data-sources/{id}/semantic-coverage`：查看业务对象、映射、规则和 API 的语义覆盖度。
 - `GET /data-sources/{id}/operation-bindings`：校验传统业务系统 API 的语义动作是否绑定到本体对象并具备自动化条件。
@@ -161,9 +161,9 @@ python -m pytest
 
 生产接入建议使用只读账号，并先在测试库执行元数据扫描。
 
-### 使用 MySQL 运行平台与合同中心
+### 使用 MySQL 运行平台与数据源知识库
 
-合同中心的表会在首次访问时自动创建。MySQL 账号需要对目标库具有建表和读写权限。
+平台可将 SQLite、MySQL 和 PostgreSQL 登记为业务数据源。生产数据源建议使用只读账号；平台自身使用 MySQL 时，账号需要对平台库具有建表和读写权限。
 
 ```bash
 mysql -u root -p -e 'create database ontology_platform character set utf8mb4 collate utf8mb4_unicode_ci;'
@@ -172,7 +172,7 @@ export ONTOLOGY_PLATFORM_DB_URI='mysql://root:password@127.0.0.1:3306/ontology_p
 uvicorn ontology_platform.api:app --reload --app-dir backend
 ```
 
-合同只接受 `.docx`。MySQL 保存合同业务索引、文档版本、SHA-256、Word 原件和语义快照；结构化记录不可脱离 Word 主文档独立成为合同。
+数据源完成连接测试后，可一键扫描表结构并初始化本体知识库；用户上传的 Word 规则会进入该数据源关联的本体推理链。初始化成功后，该数据源才会出现在对话模块的知识库选择器中。
 
 登记前连接测试示例：
 

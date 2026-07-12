@@ -4,15 +4,13 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from .automation import execute_operation, preflight_operation
 from .coverage import build_semantic_coverage
-from .contract_documents import parse_contract_docx_bytes, parse_rule_docx_bytes
-from .contract_management import add_contract_version, compare_contract_engines, create_contract, get_contract, get_contract_document, list_contracts
+from .contract_documents import parse_rule_docx_bytes
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
 from .governance import (
@@ -30,6 +28,7 @@ from .governance import (
 )
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .kernel_package import build_kernel_package, export_kernel_package
+from .knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
 from .metadata import (
     analyze_schema_drift,
     assess_data_source_readiness,
@@ -218,86 +217,9 @@ class BusinessRuleCreate(BaseModel):
     dependsOn: Optional[str] = None
 
 
-class ContractDocumentParseOptions(BaseModel):
-    persist: bool = False
-
-
-class ContractCompareRequest(BaseModel):
-    question: str = Field(min_length=2, max_length=1000)
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.post("/documents/contracts/parse")
-async def parse_contract_document(file: UploadFile = File(...)) -> dict[str, object]:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="文件名不能为空")
-    if not file.filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="当前仅支持 .docx 文件解析")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="文件内容为空")
-    try:
-        return parse_contract_docx_bytes(file.filename, content)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/contracts")
-def managed_contracts() -> dict[str, object]:
-    return {"items": list_contracts(DEFAULT_PLATFORM_DB)}
-
-
-@app.post("/contracts")
-async def upload_managed_contract(file: UploadFile = File(...), actor: str = Form("system")) -> dict[str, object]:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="文件名不能为空")
-    content = await file.read()
-    try:
-        return create_contract(DEFAULT_PLATFORM_DB, file.filename, content, actor)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/contracts/{contract_id}")
-def managed_contract_detail(contract_id: int) -> dict[str, object]:
-    try:
-        return get_contract(DEFAULT_PLATFORM_DB, contract_id)
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@app.get("/contracts/{contract_id}/document")
-def download_managed_contract(contract_id: int, version: Optional[int] = None) -> Response:
-    try:
-        document = get_contract_document(DEFAULT_PLATFORM_DB, contract_id, version)
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-    return Response(
-        content=document["content"], media_type=document["mimeType"],
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(document['fileName'])}", "X-Document-SHA256": document["sha256"]},
-    )
-
-
-@app.post("/contracts/{contract_id}/versions")
-async def upload_contract_version(contract_id: int, file: UploadFile = File(...), actor: str = Form("system")) -> dict[str, object]:
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="文件名不能为空")
-    try:
-        return add_contract_version(DEFAULT_PLATFORM_DB, contract_id, file.filename, await file.read(), actor)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/contracts/{contract_id}/compare")
-def compare_managed_contract(contract_id: int, payload: ContractCompareRequest) -> dict[str, object]:
-    try:
-        return compare_contract_engines(DEFAULT_PLATFORM_DB, contract_id, payload.question)
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/demo/bootstrap")
@@ -523,6 +445,32 @@ def list_source_tables(data_source_id: int) -> dict[str, object]:
             (data_source_id,),
         ).fetchall()
         return {"tables": [dict(row) for row in tables]}
+
+
+@app.get("/data-sources/{data_source_id}/tables/{table_name}/rows")
+def browse_table_rows(data_source_id: int, table_name: str, limit: int = 50, offset: int = 0) -> dict[str, object]:
+    try:
+        return browse_source_table(DEFAULT_PLATFORM_DB, data_source_id, table_name, limit, offset)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/data-sources/{data_source_id}/initialize")
+def initialize_data_source_knowledge_base(data_source_id: int) -> dict[str, object]:
+    try:
+        return initialize_knowledge_base(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/data-sources/{data_source_id}/reasoning-chain")
+def get_data_source_reasoning_chain(data_source_id: int) -> dict[str, object]:
+    return build_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
+
+
+@app.get("/knowledge-bases")
+def get_knowledge_bases() -> dict[str, object]:
+    return {"items": list_knowledge_bases(DEFAULT_PLATFORM_DB)}
 
 
 @app.post("/ontologies/draft")
