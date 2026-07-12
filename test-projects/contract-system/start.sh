@@ -8,18 +8,24 @@ echo "==================================="
 # 获取脚本所在目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# 初始化数据库并生成测试数据
-echo ""
-echo "1. 初始化数据库和测试数据..."
-cd "$SCRIPT_DIR/backend"
-python3 seed_data.py
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PYTHON="$ROOT/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+    echo "未找到项目虚拟环境: $PYTHON"
+    exit 1
+fi
 
 # 启动后端
 echo ""
 echo "2. 启动后端服务 (端口 8001)..."
 cd "$SCRIPT_DIR/backend"
-nohup python3 main.py > /tmp/contract-system-backend.log 2>&1 &
-BACKEND_PID=$!
+if curl -fsS --max-time 1 http://127.0.0.1:8001/api/health >/dev/null 2>&1; then
+    echo "   后端已在运行，跳过重复启动"
+    BACKEND_PID=""
+else
+    nohup "$PYTHON" main.py > /tmp/contract-system-backend.log 2>&1 &
+    BACKEND_PID=$!
+fi
 sleep 2
 
 # 检查后端是否启动成功

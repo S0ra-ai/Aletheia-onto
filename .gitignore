@@ -6,3 +6,4 @@ __pycache__/
 data/*.sqlite3
 backend/data/*.sqlite3
 test-projects/contract-system/data/*.sqlite3
+.run/

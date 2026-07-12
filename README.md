@@ -22,6 +22,15 @@ python scripts/bootstrap_demo.py
 uvicorn ontology_platform.api:app --reload --app-dir backend
 ```
 
+也可以一次启动平台前后端和 Word 合同测试网关，避免数据源网关因遗漏启动而不可用：
+
+```bash
+./scripts/start_dev.sh
+```
+
+该脚本可重复执行，不会重新播种或覆盖合同测数据。日志和 PID 保存在 `.run/`，可使用 `./scripts/stop_dev.sh` 停止由该脚本启动的进程。
+在 Codex 等会回收后台子进程的执行环境中，使用 `DEV_FOREGROUND=1 ./scripts/start_dev.sh` 启用前台监督模式。
+
 启动后访问：
 
 - API 文档：`http://127.0.0.1:8000/docs`
