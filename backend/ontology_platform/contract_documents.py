@@ -561,7 +561,7 @@ def _clean_party(value: str) -> str:
 def _extract_party_from_paragraphs(paragraphs: list[str], label: str) -> str:
     for index, paragraph in enumerate(paragraphs):
         if paragraph.startswith(label):
-            inline = re.sub(rf"^{label}[（(][^）)]*[）)]\s*[:：]?", "", paragraph).strip()
+            inline = re.sub(rf"^{label}(?:[（(][^）)]*[）)])?\s*[:：]?\s*", "", paragraph).strip()
             if inline and inline != paragraph:
                 return _clean_party(inline)
             if index + 1 < len(paragraphs):

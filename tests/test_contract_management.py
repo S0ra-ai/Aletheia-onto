@@ -34,6 +34,8 @@ def test_word_document_is_required_and_version_is_downloadable(tmp_path: Path) -
     contract = create_contract(database, "采购合同.docx", _contract_docx())
 
     assert contract["contractNo"] == "HT-2026-100"
+    assert contract["partyA"] == "星河科技有限公司"
+    assert contract["partyB"] == "未来软件有限公司"
     assert contract["document"]["version"] == 1
     assert contract["document"]["sha256"]
     assert list_contracts(database)[0]["title"] == "软件采购合同"
