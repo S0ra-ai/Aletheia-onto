@@ -327,9 +327,7 @@ def test_republishing_a_published_ontology_is_a_conflict_not_a_server_error(
     )
     assert confirm.status_code == 200, confirm.text
 
-    published = client.post(
-        f"/ontologies/{ontology_id}/publish", json={"force": True}, headers=headers
-    )
+    published = client.post(f"/ontologies/{ontology_id}/publish", json={"force": True}, headers=headers)
     assert published.status_code == 200, published.text
 
     again = client.post("/demo/bootstrap", json={}, headers=headers)
