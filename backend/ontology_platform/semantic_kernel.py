@@ -7,9 +7,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .adapters import RuntimeDatabase, get_adapter
+from .config import clamp_page_size, clamp_sample_size
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .ontology import explain_instance
@@ -106,6 +107,13 @@ ALLOWED_AST_NODES = (
     ast.IsNot,
 )
 
+ALLOWED_RULE_FUNCTIONS = frozenset({"sum", "len", "count", "any", "all"})
+
+# Attribute access is needed to reach related rows (payment_plan.amount), but
+# dunder attributes are the entry point for sandbox escapes via __class__,
+# __globals__ and friends.
+FORBIDDEN_ATTRIBUTE_PREFIXES = ("__",)
+
 
 def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
     with connect(platform_db) as platform:
@@ -128,11 +136,19 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
         results = []
         for rule in rules:
             passed, error = _evaluate_rule(rule["expression"], runtime.context)
+            skipped = error is not None
+            # Fail closed: an expression that cannot be evaluated (renamed
+            # column, type mismatch, bad syntax) must not be reported as a
+            # pass, otherwise structural drift silently disables a blocking
+            # rule and automation keeps running on unverified data.
+            decision_passed = False if skipped else passed
             explanation = _build_explanation(rule, passed, error)
             evidence = {
                 "record": runtime.record,
                 "related": _serializable_related(runtime.related),
                 "expression": rule["expression"],
+                "skipped": skipped,
+                "evaluationError": error or "",
             }
             platform.execute(
                 """
@@ -147,9 +163,9 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     instance_id,
                     rule["rule_type"],
                     rule["severity"],
-                    1 if passed else 0,
+                    1 if decision_passed else 0,
                     explanation,
-                    json.dumps(evidence, ensure_ascii=False),
+                    _json_dumps(evidence),
                 ),
             )
             inference_id = last_insert_id(platform)
@@ -163,9 +179,9 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 (
                     inference_id,
                     runtime.ontology_version,
-                    json.dumps(_mapping_refs(platform, ontology_id, runtime.source_table), ensure_ascii=False),
-                    json.dumps({"table": runtime.source_table, "primaryKey": runtime.primary_key, "instanceId": instance_id}, ensure_ascii=False),
-                    json.dumps({"ruleId": rule["id"], "ruleCode": rule["code"]}, ensure_ascii=False),
+                    _json_dumps(_mapping_refs(platform, ontology_id, runtime.source_table)),
+                    _json_dumps({"table": runtime.source_table, "primaryKey": runtime.primary_key, "instanceId": instance_id}),
+                    _json_dumps({"ruleId": rule["id"], "ruleCode": rule["code"]}),
                 ),
             )
             results.append(
@@ -174,7 +190,9 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     "ruleName": rule["name"],
                     "ruleType": rule["rule_type"],
                     "severity": rule["severity"],
-                    "passed": passed,
+                    "passed": decision_passed,
+                    "skipped": skipped,
+                    "evaluationError": error or "",
                     "explanation": explanation,
                     "naturalLanguage": rule["natural_language"],
                 }
@@ -203,7 +221,7 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "assess_instance",
                 object_code,
                 instance_id,
-                json.dumps({"ontologyId": ontology_id, "decision": decision["status"], "decisionId": decision["decisionId"], "failedRules": len(failed)}, ensure_ascii=False),
+                _json_dumps({"ontologyId": ontology_id, "decision": decision["status"], "decisionId": decision["decisionId"], "failedRules": len(failed)}),
             ),
         )
         explanation = explain_instance(platform_db, ontology_id, object_code, instance_id)
@@ -228,7 +246,7 @@ def assess_decision_consistency(
     instance_ids: list[str] | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    resolved_limit = max(1, min(int(limit), 200))
+    resolved_limit = clamp_sample_size(limit)
     ids = [str(item) for item in instance_ids or [] if str(item).strip()]
     if not ids:
         ids = [str(item) for item in list_instance_ids(platform_db, ontology_id, object_code, resolved_limit)]
@@ -284,14 +302,13 @@ def assess_decision_consistency(
                 "assess_decision_consistency",
                 object_code,
                 str(ontology_id),
-                json.dumps(
+                _json_dumps(
                     {
                         "sampleSize": report["sampleSize"],
                         "assessed": report["assessed"],
                         "status": report["status"],
                         "summary": report["summary"],
-                    },
-                    ensure_ascii=False,
+                    }
                 ),
             ),
         )
@@ -299,12 +316,61 @@ def assess_decision_consistency(
 
 
 def list_instance_ids(platform_db: Path | str, ontology_id: int, object_code: str, limit: int = 50) -> list[Any]:
-    resolved_limit = max(1, min(int(limit), 200))
+    resolved_limit = clamp_page_size(limit)
     with connect(platform_db) as platform:
         runtime = _runtime_target(platform, ontology_id, object_code)
         adapter = get_adapter(runtime["source_type"])
         with adapter.runtime(runtime["connection_uri"]) as database:
             return database.fetch_primary_keys(runtime["table_name"], runtime["primary_key"], resolved_limit)
+
+
+def available_rule_names(platform_db: Path | str, ontology_id: int, object_code: str) -> list[str]:
+    """List the names a rule for this object may reference.
+
+    Combines the source table's own columns with the related table names that
+    the runtime loads as context, so the UI can warn about typos and drift.
+    """
+    with connect(platform_db) as platform:
+        business_object = platform.execute(
+            "select source_table_id from business_object where ontology_id = ? and code = ?",
+            (ontology_id, object_code),
+        ).fetchone()
+        if business_object is None or business_object["source_table_id"] is None:
+            return []
+        source_table_id = business_object["source_table_id"]
+        source_table = platform.execute(
+            "select table_name, data_source_id from source_table where id = ?",
+            (source_table_id,),
+        ).fetchone()
+        if source_table is None:
+            return []
+        names = {
+            row["column_name"]
+            for row in platform.execute(
+                "select column_name from source_column where source_table_id = ?",
+                (source_table_id,),
+            ).fetchall()
+        }
+        names.update(
+            row["target_table"]
+            for row in platform.execute(
+                "select target_table from source_foreign_key where source_table_id = ?",
+                (source_table_id,),
+            ).fetchall()
+        )
+        names.update(
+            row["child_table"]
+            for row in platform.execute(
+                """
+                select st.table_name as child_table
+                from source_foreign_key fk
+                join source_table st on st.id = fk.source_table_id
+                where st.data_source_id = ? and fk.target_table = ?
+                """,
+                (source_table["data_source_id"], source_table["table_name"]),
+            ).fetchall()
+        )
+        return sorted(names)
 
 
 def build_runtime(platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str) -> SemanticRuntime:
@@ -414,8 +480,47 @@ def _validate_ast(tree: ast.AST) -> None:
         if not isinstance(node, ALLOWED_AST_NODES):
             raise ValueError(f"不允许的规则表达式节点: {type(node).__name__}")
         if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name) or node.func.id not in {"sum", "len", "count", "any", "all"}:
-                raise ValueError("只允许 sum、len、count、any、all 函数")
+            if not isinstance(node.func, ast.Name) or node.func.id not in ALLOWED_RULE_FUNCTIONS:
+                raise ValueError(f"只允许 {'、'.join(sorted(ALLOWED_RULE_FUNCTIONS))} 函数")
+            if node.keywords:
+                raise ValueError("规则函数不支持关键字参数")
+        if isinstance(node, ast.Attribute) and node.attr.startswith(FORBIDDEN_ATTRIBUTE_PREFIXES):
+            raise ValueError(f"不允许访问内部属性: {node.attr}")
+
+
+def validate_rule_expression(expression: str, available_names: Iterable[str] | None = None) -> dict[str, Any]:
+    """Statically check a business rule expression.
+
+    Called when a rule is written so an unparseable expression is rejected up
+    front instead of silently failing during assessment.
+    """
+    text = (expression or "").strip()
+    if not text:
+        return {"valid": False, "error": "规则表达式不能为空", "referencedNames": []}
+    normalized = _normalize_expression(text)
+    try:
+        tree = ast.parse(normalized, mode="eval")
+        _validate_ast(tree)
+    except SyntaxError as error:
+        return {"valid": False, "error": f"规则表达式语法错误: {error.msg}", "referencedNames": []}
+    except ValueError as error:
+        return {"valid": False, "error": str(error), "referencedNames": []}
+
+    referenced = sorted(
+        {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id not in ALLOWED_RULE_FUNCTIONS and node.id != "None"
+        }
+    )
+    result: dict[str, Any] = {"valid": True, "error": "", "referencedNames": referenced}
+    if available_names is not None:
+        known = set(available_names)
+        unknown = [name for name in referenced if name not in known]
+        result["unknownNames"] = unknown
+        if unknown:
+            result["warning"] = "表达式引用了当前来源结构中不存在的字段: " + "、".join(unknown)
+    return result
 
 
 def _allowed_names(context: dict[str, Any]) -> dict[str, Any]:
@@ -459,6 +564,10 @@ def _serializable_related(related: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
 def _mapping_refs(platform: sqlite3.Connection, ontology_id: int, source_table: str) -> list[str]:
     rows = platform.execute(
         """
@@ -475,18 +584,38 @@ def _mapping_refs(platform: sqlite3.Connection, ontology_id: int, source_table: 
 
 def _build_explanation(rule: sqlite3.Row, passed: bool, error: str | None) -> str:
     if error is not None:
-        return f"规则执行失败：{rule['name']}。错误：{error}"
+        return (
+            f"规则“{rule['name']}”无法在当前数据结构上求值，已按未通过处理，需人工复核规则表达式或来源字段。"
+            f"（原因：{error}）"
+        )
     prefix = "通过" if passed else "未通过"
     return f"{prefix}：{rule['natural_language']}"
 
 
 def _decision_from_results(failed: list[dict[str, Any]]) -> dict[str, Any]:
+    unevaluable = [result for result in failed if result.get("skipped")]
     if any(result["severity"] == "blocking" for result in failed):
+        if unevaluable:
+            return {
+                "status": "blocked",
+                "recommendation": (
+                    "存在阻断级规则未通过，且部分规则无法求值（可能由结构漂移导致）。"
+                    "应暂停自动化操作，先修复规则表达式或来源字段映射。"
+                ),
+            }
         return {
             "status": "blocked",
             "recommendation": "存在阻断级规则未通过，应暂停自动化操作并要求业务人员复核。",
         }
     if failed:
+        if unevaluable:
+            return {
+                "status": "review",
+                "recommendation": (
+                    "部分规则无法在当前数据结构上求值，已按未通过处理，"
+                    "应人工复核规则表达式与来源字段后再恢复自动化。"
+                ),
+            }
         return {
             "status": "review",
             "recommendation": "存在风险或警告，应进入人工复核或触发后续治理流程。",

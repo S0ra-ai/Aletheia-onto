@@ -699,6 +699,14 @@ def _ontology_base_uri(ontology: dict[str, Any]) -> str:
     return f"https://ontology-platform.local/ontology/{ontology['id']}/v/{_uri_part(str(ontology['version']))}/"
 
 
+    # Generated rules bypass the governance write path, so validate here too:
+    # the kernel fails closed, and an unparseable generated rule would block
+    # every instance of the object it scopes to.
+    from .semantic_kernel import validate_rule_expression
+
+    validation = validate_rule_expression(expression)
+    if not validation["valid"]:
+        raise ValueError(f"生成的规则表达式不可执行 ({code}): {validation['error']}")
 def _uri_part(value: str) -> str:
     normalized = re.sub(r"[^0-9a-zA-Z_.-]+", "-", value.strip())
     normalized = re.sub(r"-+", "-", normalized).strip("-")
