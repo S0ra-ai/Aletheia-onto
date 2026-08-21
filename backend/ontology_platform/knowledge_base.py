@@ -15,7 +15,19 @@ def initialize_knowledge_base(platform_db: Path | str, data_source_id: int) -> d
     existing = [item for item in list_knowledge_bases(platform_db) if item["dataSourceId"] == data_source_id]
     ontology = None
     if not existing:
-        ontology = generate_ontology_draft(platform_db, data_source_id)
+        with connect(platform_db) as conn:
+            source = conn.execute("select name, domain from data_source where id = ?", (data_source_id,)).fetchone()
+        if source is None:
+            raise ValueError("数据源不存在")
+        # Domain-only names such as “合同管理本体” collide as soon as two
+        # systems from the same domain are initialized. Keep ontology ownership
+        # explicit by deriving the draft name from the data source.
+        ontology = generate_ontology_draft(
+            platform_db,
+            data_source_id,
+            name=f"{source['name']}本体",
+            domain=source["domain"],
+        )
     chain = build_reasoning_chain(platform_db, data_source_id)
     return {"status": "initialized", "scan": {"tables": len(scan["tables"])}, "ontology": ontology, "reasoningChain": chain}
 
