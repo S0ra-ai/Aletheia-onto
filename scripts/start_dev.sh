@@ -44,6 +44,13 @@ if [[ ! -x "$ROOT/.venv/bin/python" ]]; then
   exit 1
 fi
 
+# Optional: a second, external business system to onboard alongside the demo.
+# Unset by default, so a fresh clone starts the platform and the bundled
+# example only.
+EXTERNAL_SYSTEM_ROOT="${ALETHEIA_EXTERNAL_SYSTEM_ROOT:-}"
+EXTERNAL_SYSTEM_BACKEND_PORT="${ALETHEIA_EXTERNAL_SYSTEM_BACKEND_PORT:-8010}"
+EXTERNAL_SYSTEM_FRONTEND_PORT="${ALETHEIA_EXTERNAL_SYSTEM_FRONTEND_PORT:-5174}"
+
 start_if_unavailable \
   "本体平台后端" \
   "http://127.0.0.1:8000/health" \
@@ -56,7 +63,27 @@ start_if_unavailable \
   "http://127.0.0.1:8001/api/health" \
   "$RUN_DIR/contract-gateway.pid" \
   "$LOG_DIR/contract-gateway.log" \
-  "$ROOT/.venv/bin/python" "$ROOT/test-projects/contract-system/backend/main.py"
+  "$ROOT/.venv/bin/python" "$ROOT/examples/contract-system/backend/main.py"
+
+if [[ -n "$EXTERNAL_SYSTEM_ROOT" && -f "$EXTERNAL_SYSTEM_ROOT/backend/app/main.py" ]]; then
+  start_if_unavailable \
+    "外部业务系统后端" \
+    "http://127.0.0.1:$EXTERNAL_SYSTEM_BACKEND_PORT/health" \
+    "$RUN_DIR/external-system-backend.pid" \
+    "$LOG_DIR/external-system-backend.log" \
+    python3 -m uvicorn app.main:app --app-dir "$EXTERNAL_SYSTEM_ROOT/backend" --host 127.0.0.1 --port "$EXTERNAL_SYSTEM_BACKEND_PORT"
+
+  start_if_unavailable \
+    "外部业务系统前端" \
+    "http://127.0.0.1:$EXTERNAL_SYSTEM_FRONTEND_PORT/" \
+    "$RUN_DIR/external-system-frontend.pid" \
+    "$LOG_DIR/external-system-frontend.log" \
+    env VITE_API_PROXY_TARGET="http://127.0.0.1:$EXTERNAL_SYSTEM_BACKEND_PORT" npm --prefix "$EXTERNAL_SYSTEM_ROOT/frontend" run dev -- --host 127.0.0.1 --port "$EXTERNAL_SYSTEM_FRONTEND_PORT"
+
+  EXAMPLE_CONTRACT_API_URL="http://127.0.0.1:$EXTERNAL_SYSTEM_BACKEND_PORT" "$ROOT/.venv/bin/python" "$ROOT/scripts/connect_example_contracts.py"
+elif [[ -n "$EXTERNAL_SYSTEM_ROOT" ]]; then
+  echo "[warn] ALETHEIA_EXTERNAL_SYSTEM_ROOT 指向的项目不存在: $EXTERNAL_SYSTEM_ROOT" >&2
+fi
 
 start_if_unavailable \
   "本体平台前端" \
@@ -70,6 +97,9 @@ echo "开发环境已就绪："
 echo "  平台: http://127.0.0.1:3000"
 echo "  后端: http://127.0.0.1:8000"
 echo "  网关: http://127.0.0.1:8001"
+if [[ -n "$EXTERNAL_SYSTEM_ROOT" ]]; then
+  echo "  外部业务系统: http://127.0.0.1:${EXTERNAL_SYSTEM_FRONTEND_PORT}（API ${EXTERNAL_SYSTEM_BACKEND_PORT}）"
+fi
 echo "停止命令: $ROOT/scripts/stop_dev.sh"
 
 if [[ "${DEV_FOREGROUND:-0}" == "1" && ${#STARTED_PIDS[@]} -gt 0 ]]; then

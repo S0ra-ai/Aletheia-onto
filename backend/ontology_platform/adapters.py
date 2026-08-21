@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import importlib
-import json
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Protocol
 from urllib.parse import urlparse
+
+from .config import QUERY_LIMITS
 
 
 @dataclass(frozen=True)
@@ -47,32 +48,24 @@ class SourceForeignKeyInfo:
 class DatabaseAdapter(Protocol):
     source_type: str
 
-    def test_connection(self, connection_uri: str) -> dict[str, Any]:
-        ...
+    def test_connection(self, connection_uri: str) -> dict[str, Any]: ...
 
-    def scan(self, connection_uri: str) -> list[SourceTableInfo]:
-        ...
+    def scan(self, connection_uri: str) -> list[SourceTableInfo]: ...
 
     @contextmanager
-    def runtime(self, connection_uri: str) -> Iterator["RuntimeDatabase"]:
-        ...
+    def runtime(self, connection_uri: str) -> Iterator["RuntimeDatabase"]: ...
 
 
 class RuntimeDatabase(Protocol):
-    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
-        ...
+    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]: ...
 
-    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
-        ...
+    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]: ...
 
-    def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
-        ...
+    def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None: ...
 
-    def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
-        ...
+    def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None: ...
 
-    def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]:
-        ...
+    def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]: ...
 
 
 SUPPORTED_SOURCE_TYPES = ("sqlite", "postgresql", "mysql")
@@ -239,13 +232,22 @@ class SQLRuntime:
         return rows, int(total_row["row_count"])
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
-        return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s", (instance_id,))
+        return self._fetch_one(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s",
+            (instance_id,),
+        )
 
     def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
-        return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s", (value,))
+        return self._fetch_one(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            (value,),
+        )
 
     def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]:
-        return self._fetch_all(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s", (value,))
+        return self._fetch_all(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            (value,),
+        )
 
     def _fetch_one(self, query: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
         rows = self._fetch_all(query, params)
@@ -302,11 +304,17 @@ def _scan_sqlite_table(conn: sqlite3.Connection, table_name: str) -> SourceTable
     )
 
 
-def _profile_sqlite_column(conn: sqlite3.Connection, table_name: str, column_name: str, row_count: int) -> ColumnProfile:
+def _profile_sqlite_column(
+    conn: sqlite3.Connection, table_name: str, column_name: str, row_count: int
+) -> ColumnProfile:
     quoted_table = f'"{table_name}"'
     quoted_column = f'"{column_name}"'
-    null_count = conn.execute(f"select count(*) as count from {quoted_table} where {quoted_column} is null").fetchone()["count"]
-    distinct_count = conn.execute(f"select count(distinct {quoted_column}) as count from {quoted_table}").fetchone()["count"]
+    null_count = conn.execute(f"select count(*) as count from {quoted_table} where {quoted_column} is null").fetchone()[
+        "count"
+    ]
+    distinct_count = conn.execute(f"select count(distinct {quoted_column}) as count from {quoted_table}").fetchone()[
+        "count"
+    ]
     sample_rows = conn.execute(
         f"""
         select distinct {quoted_column} as value from {quoted_table}
@@ -316,8 +324,10 @@ def _profile_sqlite_column(conn: sqlite3.Connection, table_name: str, column_nam
     ).fetchall()
     samples = [row["value"] for row in sample_rows]
     null_ratio = 0 if row_count == 0 else null_count / row_count
-    enum_candidate = row_count > 0 and 1 < distinct_count <= min(20, max(3, row_count))
-    return ColumnProfile(samples=samples, null_ratio=null_ratio, distinct_count=distinct_count, enum_candidate=enum_candidate)
+    enum_candidate = _is_enum_candidate(row_count, distinct_count)
+    return ColumnProfile(
+        samples=samples, null_ratio=null_ratio, distinct_count=distinct_count, enum_candidate=enum_candidate
+    )
 
 
 def _scan_information_schema(conn: Any, dialect: str) -> list[SourceTableInfo]:
@@ -407,7 +417,7 @@ def _profile_sql_column(conn: Any, table_name: str, column_name: str, row_count:
     null_count = int(null_rows[0]["count"]) if null_rows else 0
     distinct_count = int(distinct_rows[0]["count"]) if distinct_rows else 0
     null_ratio = 0 if row_count == 0 else null_count / row_count
-    enum_candidate = row_count > 0 and 1 < distinct_count <= min(20, max(3, row_count))
+    enum_candidate = _is_enum_candidate(row_count, distinct_count)
     return ColumnProfile(
         samples=[row["value"] for row in sample_rows],
         null_ratio=null_ratio,
@@ -425,6 +435,7 @@ def _primary_keys(conn: Any, table_name: str, dialect: str) -> list[str]:
         join information_schema.key_column_usage kcu
           on tc.constraint_name = kcu.constraint_name
          and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
         where tc.constraint_type = 'PRIMARY KEY'
           and tc.table_schema = current_schema()
           and tc.table_name = %s
@@ -437,6 +448,7 @@ def _primary_keys(conn: Any, table_name: str, dialect: str) -> list[str]:
         join information_schema.key_column_usage kcu
           on tc.constraint_name = kcu.constraint_name
          and tc.table_schema = kcu.table_schema
+         and tc.table_name = kcu.table_name
         where tc.constraint_type = 'PRIMARY KEY'
           and tc.table_schema = database()
           and tc.table_name = %s
@@ -487,7 +499,10 @@ def _fetch_dicts(conn: Any, query: str, params: tuple[Any, ...] = ()) -> list[di
     with conn.cursor() as cursor:
         cursor.execute(query, params)
         rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    # MySQL preserves information_schema column labels as upper-case on some
+    # server/driver combinations, while PostgreSQL returns lower-case labels.
+    # Normalize metadata keys so the shared scanner behaves consistently.
+    return [{str(key).lower(): value for key, value in dict(row).items()} for row in rows]
 
 
 def _quote_identifier(identifier: str, dialect: str = "postgresql") -> str:
@@ -515,6 +530,19 @@ def _optional_import(module_name: str, message: str) -> Any:
         return importlib.import_module(module_name)
     except ImportError as error:
         raise RuntimeError(message) from error
+
+
+def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
+    """Decide whether a column looks like an enumeration.
+
+    A column qualifies when it has more than one distinct value but few enough
+    to read as a code list. Bounds are configurable because the right ceiling
+    depends on the source system.
+    """
+    if row_count <= 0 or distinct_count <= 1:
+        return False
+    ceiling = min(QUERY_LIMITS.enum_max_distinct, max(QUERY_LIMITS.enum_min_distinct, row_count))
+    return distinct_count <= ceiling
 
 
 def _connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:

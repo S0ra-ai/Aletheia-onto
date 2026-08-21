@@ -3,7 +3,38 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .DS_Store
-data/*.sqlite3
-backend/data/*.sqlite3
-test-projects/contract-system/data/*.sqlite3
+# Databases and their WAL/SHM sidecars, wherever they land
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite
+*.db
+
+# Runtime state: pid files and logs from scripts/start_dev.sh
 .run/
+*.log
+
+# Build output
+frontend/dist/
+frontend/node_modules/
+build/
+dist/
+*.egg-info/
+
+# Environment and secrets. Never commit real credentials.
+.env
+.env.*
+!.env.example
+
+# Editors and OS cruft
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

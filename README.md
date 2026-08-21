@@ -1,195 +1,477 @@
-# 本体改造研发平台原型
+# Aletheia
 
-这是“本体改造研发平台”的第一版可运行原型，目标是先跑通 MVP 主链路：
+> 让埋在表结构里的业务语义显形，并让每个判定都可核验。
 
-1. 创建合同管理、设备运维等样例传统数据库。
-2. 注册传统数据库与业务系统接口为平台数据源。
-3. 扫描表、字段、主键、外键和字段画像。
-4. 生成领域本体草案。
-5. 建立基础语义映射。
-6. 对业务记录输出语义解释与语义研判。
-7. 对传统业务系统 API 做语义预检、自动化执行计划和决策留痕。
-8. 通过 OpenRouter 兼容模型层生成本体、规则和行业蓝图建议。
-9. 输出语义覆盖度、结构漂移影响和可安装语义内核包。
+[![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+
+[English](README.en.md) | 简体中文
+
+Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神之名。它的字面义是
+**「去蔽」——使被隐藏之物显现**。这与本项目要做的事高度一致：业务语义被掩埋在
+表名、字段与外键中，Aletheia 把它揭示为可治理的领域本体，并让每个判定结论都可核验。
+
+神话中它的对立面是 Pseudologoi（谎言之灵）——看似合理却无法核验的言说。
+这正是本项目要解决的问题。
+
+---
+
+## 解决什么问题
+
+通用 RAG 框架优化的是「检索到的内容像不像答案」。Aletheia 优化的是
+**「答案能不能被追问」**。
+
+对权益、金额、合规、审批这类判定场景，一个「看起来对」的回答没有价值，
+因为没有人能为它签字。Aletheia 的判定类结论必须同时给出四样东西：
+
+| | 来源 |
+|---|---|
+| **结论** —— 订单 A123 不满足退款条件 | 规则引擎 |
+| **依据规则** —— `refund_window_check` | 业务规则定义 |
+| **证据链** —— 签收日期 2026-07-28，距今 24 天，超过 15 天窗口 | 结构化查询 |
+| **决策记录** —— 落库的 `decision_record`，可审计、可复核、可追责 | 决策留痕 |
+
+目标形态是这样一句客服回答：
+
+> 「订单 A123 不满足退款条件，因签收已超 15 天（规则 `refund_window_check`），
+> 依据《售后政策》第 3.2 条。」
+
+其中「超 15 天」来自结构化查询，「不满足」来自规则引擎，
+「第 3.2 条」来自文档检索。
+
+**前两段今天已经能做，第三段还不能。** 文档检索尚未实现——
+见 [当前限制](#当前限制)。本项目不会用「知识库问答」这类措辞暗示自己具备文档 RAG。
+
+与 Dify／FastGPT／LangChain 的差别不在检索精度，而在结论的可追问性。
 
 ## 快速开始
 
+需要 Python 3.9+（前端另需 Node.js 18+）。以下命令在干净 clone 中逐条实测通过。
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python scripts/bootstrap_demo.py
-uvicorn ontology_platform.api:app --reload --app-dir backend
+git clone git@github.com:S0ra-ai/Aletheia-onto.git && cd Aletheia-onto
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+ONTOLOGY_ADMIN_PASSWORD=change-me-please .venv/bin/python -m uvicorn \
+    ontology_platform.api:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
-也可以一次启动平台前后端和 Word 合同测试网关，避免数据源网关因遗漏启动而不可用：
+服务起来后：
+
+- 健康检查 `http://127.0.0.1:8000/health` → `{"status":"ok"}`
+- API 文档 `http://127.0.0.1:8000/docs`
+
+默认平台库是 SQLite，**无需任何外部数据库服务**。
+未设置 `ONTOLOGY_ADMIN_PASSWORD` 时会生成随机管理员口令并打印在启动日志中。
+
+### 登录并完成一次问答
 
 ```bash
-./scripts/start_dev.sh
-```
-
-该脚本可重复执行，不会重新播种或覆盖合同测数据。日志和 PID 保存在 `.run/`，可使用 `./scripts/stop_dev.sh` 停止由该脚本启动的进程。
-在 Codex 等会回收后台子进程的执行环境中，使用 `DEV_FOREGROUND=1 ./scripts/start_dev.sh` 启用前台监督模式。
-
-启动后访问：
-
-- API 文档：`http://127.0.0.1:8000/docs`
-- 健康检查：`http://127.0.0.1:8000/health`
-
-## 关键 API
-
-
-- `POST /demo/bootstrap`：创建合同管理样例系统并生成本体草案。
-- `POST /demo/bootstrap/equipment`：创建设备运维样例系统并生成本体草案。
-- `POST /data-sources/test-connection`：登记前测试数据库连接。
-- `POST /data-sources`：登记传统业务系统数据库。
-- `POST /data-sources/{id}/test-connection`：测试已登记数据源连接。
-- `POST /data-sources/{id}/apis`：登记传统业务系统 API 或业务动作。
-- `POST /data-sources/{id}/apis/import-openapi`：从 OpenAPI 文档批量导入业务 API。
-- `POST /data-sources/{id}/scan`：扫描数据库元数据。
-- `POST /data-sources/{id}/initialize`：扫描数据源并初始化可问答的本体知识库。
-- `GET /data-sources/{id}/tables/{table}/rows`：分页浏览 SQLite、MySQL 或 PostgreSQL 业务表内容。
-- `GET /data-sources/{id}/reasoning-chain`：查看业务对象、关系、用户规则和推理步骤。
-- `GET /knowledge-bases`：列出已初始化、可在对话模块选择的数据源。
-- `GET /data-sources/{id}/readiness`：查看数据源接入准备度。
-- `GET /data-sources/{id}/semantic-coverage`：查看业务对象、映射、规则和 API 的语义覆盖度。
-- `GET /data-sources/{id}/operation-bindings`：校验传统业务系统 API 的语义动作是否绑定到本体对象并具备自动化条件。
-- `GET /data-sources/{id}/schema-drift`：对比实时数据库结构与最近扫描基线，分析结构漂移影响。
-- `GET /data-sources/{id}/kernel-package/download`：导出可安装的业务语义内核包。
-- `GET /industry-blueprints`：查看内置和自定义行业蓝图。
-- `POST /industry-blueprints`：导入或更新行业蓝图。
-- `POST /ontologies/draft`：生成领域本体草案。
-- `GET /ontologies/{id}/export`：导出 JSON-LD 或 Turtle 语义资产。
-- `GET /ontologies/{id}/mappings`：查看语义映射候选。
-- `POST /semantic-mappings/{id}/review`：审核单条语义映射。
-- `POST /ontologies/{id}/mappings/review`：批量审核语义映射。
-- `POST /ontologies/{id}/publish`：发布已审核本体版本。
-- `GET /ontologies/{id}/release-readiness`：评估本体发布门禁，汇总映射、规则、数据源准备度、语义覆盖和结构漂移证据。
-- `POST /ontologies/{id}/derive`：从已发布本体派生新的草案版本。
-- `GET /ontologies/{id}/rules`：查看业务规则。
-- `POST /ontologies/{id}/rules`：登记或更新业务规则。
-- `GET /semantic/objects/{objectCode}/instances/{id}/explain`：解释业务实例。
-- `POST /semantic/objects/{objectCode}/instances/{id}/assess`：执行业务规则研判。
-- `POST /semantic/objects/{objectCode}/consistency`：批量评估业务对象实例，验证决策一致性和规则失败分布。
-- `POST /automation/operations/{operationCode}/preflight`：对传统业务系统操作执行语义预检，判断是否允许自动化。
-- `POST /automation/operations/{operationCode}/execute`：在语义预检通过后生成执行计划，或调用 HTTP/HTTPS 传统业务系统 API。
-- `POST /ai/data-sources/{id}/ontology-suggestions`：生成 AI 本体建议。
-- `POST /ai/data-sources/{id}/blueprint-draft`：生成行业蓝图草案。
-- `GET /model/status`：查看 OpenRouter 模型层配置状态。
-- `GET /model/config` / `POST /model/config` / `DELETE /model/config`：查看、保存或重置 OpenRouter 配置。
-- `GET /governance/audit-log`：查看治理审计记录。
-- `GET /governance/decisions`：查看语义研判、预检和执行的决策记录。
-
-## OpenRouter 配置
-
-平台模型层兼容 OpenRouter 的 OpenAI 风格 Chat Completions API。可以通过环境变量提供默认值，也可以在平台页面或 `/model/config` API 中保存配置。平台会传递 `service_tier`，可兼容 OpenRouter 的订阅模式、自动路由和额度策略。
-
-```bash
-export OPENROUTER_API_KEY="你的 OpenRouter API Key"
-export OPENROUTER_MODEL="~openai/gpt-latest"
-export OPENROUTER_HTTP_REFERER="https://your-company.example"
-export OPENROUTER_APP_TITLE="Ontology Transformation Platform"
-export OPENROUTER_SERVICE_TIER="auto"
-```
-
-也可以通过 API 持久化配置：
-
-```bash
-curl -X POST http://127.0.0.1:8000/model/config \
+# 1. 登录，取得令牌
+TOKEN=$(curl -fsS -X POST http://127.0.0.1:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{
-    "apiKey": "你的 OpenRouter API Key",
-    "model": "~openai/gpt-latest",
-    "baseUrl": "https://openrouter.ai/api/v1",
-    "httpReferer": "https://your-company.example",
-    "appTitle": "Ontology Transformation Platform",
-    "serviceTier": "auto"
-  }'
+  -d '{"username":"admin","password":"change-me-please"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+
+# 2. 载入示例本体（合同管理样例，4 张表）
+curl -fsS -X POST http://127.0.0.1:8000/demo/bootstrap \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
+
+# 3. 问一个问题
+curl -fsS -X POST http://127.0.0.1:8000/semantic/natural-language/query \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"question":"整体合规情况如何？","ontologyId":1,"useModel":false}'
 ```
 
-未配置 API Key 时，AI 建模能力会回退到本地启发式建议，核心接入、建模、映射、研判、自动化和治理流程仍可运行。
+第 3 步的实际返回（未配置模型密钥，走本地启发式）：
 
-## 治理发布流程
+```json
+{
+  "answer": "合同 的批量决策一致性为 mixed。已评估 3 条：通过 2、复核 1、阻断 0、错误 0。",
+  "intent": "decision_consistency",
+  "confidence": 0.82
+}
+```
 
-平台不会把自动生成的本体草案直接当作生产真值。推荐流程：
+不带令牌访问受保护端点会得到 `401`。CI 的 `quickstart` job 每次都会重跑上面这条链路。
 
-1. 扫描传统业务系统数据库。
-2. 生成领域本体草案和语义映射候选。
-3. 业务专家审核语义映射，状态从 `pending` 变为 `confirmed` 或 `rejected`。
-4. 规则管理员补充或调整业务规则。
-5. 所有映射审核完成后发布本体版本。
-6. 已发布本体不可直接修改映射和规则。
-7. 业务变化时，从已发布本体派生新的草案版本，重新审核映射并调整规则。
+### 前端（可选）
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+前端默认 `http://127.0.0.1:3000`，需通过 `ONTOLOGY_ALLOWED_ORIGINS` 允许其来源。
+
+## 架构
+
+```mermaid
+flowchart TB
+    subgraph L1["接入层 ✅"]
+        DS["数据源适配器<br/>SQLite / MySQL / PostgreSQL"]
+        OAPI["OpenAPI 导入<br/>业务操作登记"]
+    end
+
+    subgraph L2["语义内核 ✅"]
+        META["元数据扫描<br/>字段画像 / 枚举识别 / 外键 / 结构漂移"]
+        ONTO["本体建模<br/>业务对象 / 属性 / 关系"]
+        MAP["语义映射<br/>table_to_object / column_to_attribute"]
+        RULE["规则引擎<br/>AST 白名单沙箱 / fail-closed"]
+    end
+
+    subgraph L3["治理与留痕 ✅"]
+        GOV["映射审核 / 版本发布<br/>发布门禁 release-readiness"]
+        TRACE["决策留痕<br/>inference_result / explanation_trace<br/>decision_record / audit_log"]
+        AUTH["认证授权<br/>6 能力 × 6 角色 / 集中式策略表"]
+    end
+
+    subgraph L4["语义服务 ✅"]
+        NL["自然语言问答<br/>意图路由 / 实例识别"]
+        AGENT["智能体<br/>角色由已接入领域派生"]
+        PRE["操作预检<br/>写回执行（HTTP）"]
+        EXPORT["语义资产导出<br/>JSON-LD / Turtle"]
+    end
+
+    subgraph L5["📋 规划中，尚无实现"]
+        RAG["文档摄取与检索"]
+        TENANT["多租户隔离"]
+        RESOLVER["实例解析器 SPI<br/>多表 / 复合主键 / 跨源"]
+        CHAN["渠道接入"]
+    end
+
+    DS --> META --> ONTO --> MAP --> RULE
+    OAPI --> ONTO
+    MAP --> GOV
+    RULE --> TRACE
+    GOV --> ONTO
+    RULE --> NL --> AGENT
+    RULE --> PRE
+    ONTO --> EXPORT
+    AUTH -.->|贯穿| L4
+    RAG -.->|规划| NL
+    RESOLVER -.->|规划| ONTO
+    TENANT -.->|规划| L3
+```
+
+## 核心概念
+
+**领域本体** —— 对业务对象、属性、关系的形式化表达。由元数据扫描生成草案，
+经人工审核后发布为不可变版本；已发布本体不可修改，只能派生新版本。
+
+**语义映射** —— 遗留系统的表与字段到本体概念的可追踪对应关系。
+每条映射有 `pending`／`confirmed` 状态与审核人留痕。
+
+**业务规则** —— 可解释的判定条件，在 AST 白名单沙箱中求值。
+写入时即校验表达式可执行性，不可执行的规则被直接拒绝。
+
+**决策留痕** —— 一次判定产生四层记录：规则级 `inference_result`、
+证据链 `explanation_trace`、决策级 `decision_record`、操作级 `audit_log`。
+
+**发布门禁** —— 发布前评估 release-readiness，存在阻断项则拒绝发布。
+`force` 覆盖会连同未通过门禁数一并写入审计。
+
+## 能力矩阵
+
+✅ 已实现且有测试覆盖　⚠️ 部分实现（逻辑未生效）　📋 计划中（零实现）
+
+### 数据接入
+
+| 能力 | 状态 | 实现位置 |
+|---|:--:|---|
+| SQLite／MySQL／PostgreSQL 适配器 | ✅ | `adapters.py` |
+| 元数据扫描、字段画像、枚举识别、外键关系 | ✅ | `metadata.py`、`adapters.py` |
+| 结构漂移对比 | ✅ | `metadata.py` |
+| OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
+| 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
+| Oracle／SQL Server／达梦／人大金仓／REST／文件／MQ | 📋 | — |
+
+### 本体与规则
+
+| 能力 | 状态 | 实现位置 |
+|---|:--:|---|
+| 按行业蓝图生成对象／属性／关系／映射候选 | ✅ | `ontology.py`、`industry_blueprints.py` |
+| 行业蓝图导入 | ✅ | `industry_blueprints.py` |
+| 规则引擎 AST 白名单沙箱求值 | ✅ | `semantic_kernel.py` |
+| 规则 fail-closed 语义 | ✅ | `semantic_kernel.py` |
+| 写入时表达式校验（含未知字段提示） | ✅ | `governance.py`、`semantic_kernel.py` |
+| 语义资产导出 JSON-LD／Turtle | ✅ | `ontology.py` |
+| 业务对象／属性／关系手工 CRUD | ⚠️ | 无端点，只能重新生成草案或审核映射 |
+| 规则依赖 `depends_on` | ⚠️ | 有读写，求值时不使用，仅按 `priority` 排序 |
+| 本体导入（SHACL／reasoner／命名空间管理） | 📋 | 只能导出 |
+| 值域映射、类型层级、关系基数、跨对象聚合 | 📋 | 见[结构性表达力约束](#结构性表达力约束) |
+
+### 治理与留痕
+
+| 能力 | 状态 | 实现位置 |
+|---|:--:|---|
+| 语义映射审核（单条与批量） | ✅ | `governance.py` |
+| 本体版本发布、已发布不可改、派生新版本 | ✅ | `governance.py` |
+| 发布门禁 release-readiness（force 写审计） | ✅ | `release_readiness.py`、`governance.py` |
+| 决策留痕四层记录 | ✅ | `decisions.py`、`semantic_kernel.py` |
+| 语义覆盖度报告 | ✅ | `coverage.py` |
+| 实例工作流状态与历史 | ✅ | `workflow_permission.py` |
+| 工作流 `guard_expression` | ⚠️ | 有存储有接口，transition 时**从不求值** |
+| 工作流与本体版本联动 | ⚠️ | derive 新版本**不复制**工作流配置 |
+| 列表端点分页 | ⚠️ | 基本无分页（audit-log 等少数除外） |
+
+### 认证与安全
+
+| 能力 | 状态 | 实现位置 |
+|---|:--:|---|
+| 令牌认证（PBKDF2-SHA256 加盐，仅存摘要） | ✅ | `auth.py` |
+| 会话可撤销与过期，改密失效旧会话 | ✅ | `auth.py` |
+| 6 能力 × 6 角色 | ✅ | `auth.py` |
+| 集中式路由→能力策略表（未登记默认仅管理员） | ✅ | `access_policy.py` |
+| 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
+| 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
+| 权限行级过滤 `filter_expression` | ⚠️ | 有存储，`check_permission` **只原样返回** |
+| 权限策略本体维度 | ⚠️ | 只按裸 `object_code` 索引，**同名对象共享策略**（已知缺陷） |
+| 多租户／租户隔离 | 📋 | 31 张表零租户概念 |
+| 数据字典、部门／岗位数据权限 | 📋 | — |
+
+### 语义服务
+
+| 能力 | 状态 | 实现位置 |
+|---|:--:|---|
+| 领域中立性（平台代码零内置行业词汇） | ✅ | `vocabulary.py`、`config.py` |
+| 自然语言语义问答（意图路由、实例识别） | ✅ | `natural_language.py` |
+| 智能体角色按已接入领域运行时派生 | ✅ | `agent_roles.py`、`agent.py` |
+| 操作预检与写回执行（HTTP／HTTPS） | ✅ | `automation.py` |
+| 模型层 OpenRouter 兼容，未配置密钥回退本地启发式 | ✅ | `model_client.py` |
+| 向量检索／嵌入／文档 RAG | 📋 | **零实现**，无 embedding／vector／chunk／rerank |
+| 文档知识库 | 📋 | `contract_documents.py` 只从 Word 抽规则，不建检索语料 |
+| 多轮对话持久化 | 📋 | history 由调用方每次传入，不落库 |
+| 渠道接入（企微／钉钉／飞书／网页挂件） | 📋 | — |
+| 定时调度器 | 📋 | 无任何 scheduler／cron |
+| 反馈闭环、满意度、转人工 | 📋 | — |
+| 跨源实体消解 | 📋 | — |
+| 写回执行器扩展（MQ／RPC／直写库／存储过程） | 📋 | 只支持 HTTP／HTTPS |
+
+## 当前限制
+
+诚实优先。以下每一项都在代码中逐项确认过。
+
+### 字段存在但逻辑未生效
+
+这类最危险，因为接口看起来能用：
+
+- **`workflow_transition.guard_expression`** —— 有存储有接口，transition 时从不求值。
+  不要依赖它做状态流转准入。
+- **`permission_policy.filter_expression`** —— 有存储，`check_permission` 只原样返回，
+  不做行级过滤。不要依赖它做数据隔离。
+- **`business_rule.depends_on`** —— 有读写，求值时完全不用，只按 `priority` 排序。
+- **`permission_policy` 缺本体维度** —— 只按裸 `object_code` 建索引，
+  两个本体定义同名对象时会共享同一条策略。**已知缺陷。**
+- **工作流与本体版本脱钩** —— `derive` 新版本不复制工作流配置。
+- **元模型文档超前** —— `docs/02` 画了 Event 与 State，schema 中无对应表。
+
+### 结构性表达力约束
+
+设计上的封顶，不是 bug，构成下一阶段的改造对象：
+
+| 约束 | 位置 |
+|---|---|
+| `business_object.source_table_id` 是单外键，**一个对象只能绑一张表** | `database.py:363`（表定义） |
+| **复合主键完全不支持**，三处显式 `raise ValueError` | `ontology.py:132`、`semantic_kernel.py:416`、`semantic_kernel.py:663` |
+| `relation_type` 恒为硬编码 `"references"`，只能由外键派生，**无基数、无多对多** | `ontology.py:606` |
+| 映射类型只有 `table_to_object` 与 `column_to_attribute`，**无值域映射** | `ontology.py` |
+| **无类型层级**（无 parent_object／subclass／inherit） | — |
+| 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
+| `ALLOWED_RULE_FUNCTIONS` 为冻结集合（5 个函数），**第三方无法注册** | `semantic_kernel.py:113` |
+| `get_adapter()` 硬编码 if/elif；`access_policy.RULES` 为模块级静态元组 | `adapters.py:74`、`access_policy.py` |
+| 写回执行器只支持 HTTP／HTTPS | `automation.py` |
+
+### 工程限制
+
+- **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
+- `api.py` 单文件 98 个端点，无 `/v1` 前缀。
+- 前端 `types/index.ts` 手写 889 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+- DDL 分散在 4 个模块各自手写三方言。
+
+架构层面的前置技术债逐项定位见 [`docs/architecture-debt.md`](docs/architecture-debt.md)。
+路线与阻塞条件见 [`ROADMAP.md`](ROADMAP.md)。
+
+## 设计决策
+
+四项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
+
+### 1. 规则引擎 fail-closed
+
+表达式无法求值（字段更名、类型不匹配、语法错误）时**判为「未通过」**，
+而非跳过后视为通过。阻断级→`blocked`，提示级→`review`。
+
+理由：字段改名会让阻断级规则静默失效、预检放行、自动化继续执行——
+而这恰恰是结构漂移检测声称要防的场景。宁可误报，不可漏报。
+
+配套：写入时静态校验表达式。没有这一步，fail-closed 会把一个笔误
+变成该对象所有实例的永久阻断。
+
+证据：`tests/test_rule_engine_safety.py` ·
+[ADR-0002](docs/adr/0002-rule-engine-fail-closed.md)
+
+### 2. 发布强制门禁
+
+`publish` 前评估 release-readiness，存在阻断项则拒绝发布。
+`force` 覆盖会连同未通过门禁数一并写入审计。
+
+理由：自动生成的本体草案不能直接当作生产真值。
+
+### 3. 领域词汇不内置
+
+任何内置行业词表都会让平台退化为单行业产品。业务术语只通过两条途径进入：
+元数据扫描，以及用户可导入的行业蓝图。对象识别／默认对象／实例识别／
+智能体角色／权限策略全部运行时派生。
+
+代价：未导入蓝图时，草案标签就是原始列名（`total_amount` 而非「合同总金额」）。
+难看但正确，好过漂亮但只对两个行业正确。
+
+证据：`tests/test_domain_neutrality.py` 用平台完全未知的领域（宠物诊疗）
+验证建模／识别／角色／权限全链路，并含静态守卫防止回归 ·
+[ADR-0003](docs/adr/0003-no-builtin-domain-vocabulary.md)
+
+### 4. 语义通用性明确封顶：不做完整 OWL/DL 推理
+
+理由：DL reasoner 的结论是全局蕴含的产物，无法解释成「因为第 3.2 条」，
+与本项目的可核验性直接对立。通用性靠「结构表达力 + 逃生舱」实现，
+而非靠推理能力。
+
+另一层：开放世界假设意味着「没查到就是未知」，而业务判定需要封闭世界语义——
+库里没有付款记录就是没付款，不是「未知是否付款」。
+
+证据：[ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) ·
+[Non-Goals](ROADMAP.md#non-goals)
+
+## 配置
+
+可配置项集中在 [`backend/ontology_platform/config.py`](backend/ontology_platform/config.py)，
+全部可由环境变量覆盖。
+
+### 运行与安全
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `ONTOLOGY_ADMIN_USERNAME` | 引导管理员用户名 | `admin` |
+| `ONTOLOGY_ADMIN_PASSWORD` | 引导管理员口令 | 未设则生成随机口令并打印 |
+| `ONTOLOGY_SESSION_TTL_HOURS` | 会话有效期（小时） | `12` |
+| `ONTOLOGY_AUTH_DISABLED` | 设为 `1` 关闭全部认证，**仅限本地开发** | 未设（认证开启） |
+| `ONTOLOGY_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔 | `http://127.0.0.1:3000,http://localhost:3000` |
+
+### 平台库
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `ONTOLOGY_PLATFORM_DB_TYPE` | `sqlite`／`mysql`／`postgresql` | `sqlite` |
+| `ONTOLOGY_PLATFORM_DB_URI` | 平台库连接串 | 本地 SQLite 文件 |
+| `ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEOUT_MS` | SQLite busy_timeout | `5000` |
+
+### 阈值与命名
+
+| 组 | 内容 | 环境变量前缀 |
+|---|---|---|
+| `QUERY_LIMITS` | 分页上限、一致性采样、枚举识别 distinct 上下界 | `ONTOLOGY_DEFAULT_PAGE_SIZE`、`ONTOLOGY_MAX_PAGE_SIZE`、`ONTOLOGY_ENUM_*` |
+| `MAPPING_CONFIDENCE` | 映射候选置信度（蓝图／结构／词表／弱匹配） | `ONTOLOGY_CONFIDENCE_*` |
+| `ANSWER_CONFIDENCE` | 问答置信度 | `ONTOLOGY_ANSWER_CONFIDENCE_*` |
+| `RESOLUTION_CONFIDENCE` | 实例识别置信度与加成 | `ONTOLOGY_RESOLUTION_*` |
+| `SEMANTIC_ASSET_NAMING` | JSON-LD／Turtle 的 IRI 命名空间 | `ONTOLOGY_VOCABULARY_BASE_IRI`、`ONTOLOGY_ASSET_BASE_IRI` |
+| `MODEL_PROVIDER_DEFAULTS` | 模型端点、模型名、超时、service tier | `OPENROUTER_*` |
+
+模型密钥 `OPENROUTER_API_KEY` 未配置时，问答与建模回退本地启发式，功能不中断。
+
+## 平台库三方言
+
+平台自身的存储可以是 SQLite、MySQL 或 PostgreSQL，三者都有集成测试覆盖。
+
+| 方言 | 连接串示例 | 说明 |
+|---|---|---|
+| SQLite | 默认，无需配置 | 启用 WAL 与 busy_timeout |
+| MySQL | `mysql://root:password@127.0.0.1:3306/ontology_platform` | 8.0+ |
+| PostgreSQL | `postgresql://postgres:postgres@127.0.0.1:5432/ontology_platform` | 14+ |
+
+无本地数据库服务时，对应测试**自动跳过**，不会导致 CI 失败。
+
+SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
+`on conflict` → `on duplicate key update`、TEXT 列表达式默认值、
+`dict_row` 行工厂、自增主键读取，以及提交与回滚语义。
+详见 [ADR-0004](docs/adr/0004-three-platform-dialects.md)。
+
+## 角色与能力
+
+6 种能力 × 6 种角色。集中式路由→能力策略表在 `access_policy.py`，
+**未登记的路由默认仅管理员可访问**。
+
+| 角色 | `platform:read` | `platform:write` | `governance:review` | `governance:publish` | `automation:execute` | `platform:admin` |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `ontology_engineer` | ✅ | ✅ | | ✅ | | |
+| `business_expert` | ✅ | ✅ | ✅ | | | |
+| `operator` | ✅ | | | | ✅ | |
+| `analyst` | ✅ | | | | | |
+| `ai_agent` | ✅ | | | | | |
+
+新用户默认角色为 `analyst`。令牌认证使用 PBKDF2-SHA256 加盐，**token 仅存摘要**；
+会话可撤销与过期，改密使旧会话全部失效；审计身份取自认证身份。
 
 ## 测试
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest
 ```
 
-## 当前范围
+**128 个测试**，全绿。分布：
 
-当前版本使用 SQLite 作为开发期平台库和样例传统库，便于快速验证。架构上已经区分数据源、业务系统 API、领域本体、语义映射、规则研判、模型适配和治理审计；后续可扩展 PostgreSQL、MySQL、Oracle、SQL Server 和国产数据库适配器。
+| 文件 | 数量 | 覆盖 |
+|---|--:|---|
+| `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
+| `test_api_authentication.py` | 26 | 认证、会话、能力策略、actor 可信 |
+| `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
+| `test_rule_engine_safety.py` | 17 | 沙箱逃逸、fail-closed 语义、发布门禁 |
+| `test_platform_database_dialects.py` | 10 | 三方言作为平台库 |
+| `test_credential_protection.py` | 8 | 连接串与 API Key 脱敏 |
+| `test_data_source_knowledge_base.py` | 8 | 数据源知识库 |
 
-当前已内置两个行业样例：
-
-- 合同管理：客户、合同、付款计划、发票。
-- 设备运维：设备、工单、点检记录、备件。
-
-## 数据库接入适配器
-
-接入层已经抽象为数据库适配器：
-
-- `sqlite`：当前完整可运行，用于样例库和本地验证。
-- `postgresql`：使用 `psycopg`，支持连接测试、元数据扫描和运行时读取。
-- `mysql`：使用 `PyMySQL`，支持连接测试、元数据扫描和运行时读取。
-
-登记 PostgreSQL 数据源示例：
-
-```json
-{
-  "name": "某行业生产业务系统",
-  "sourceType": "postgresql",
-  "connectionUri": "postgresql://user:password@host:5432/database",
-  "domain": "供应链采购",
-  "systemCategory": "database+api"
-}
-```
-
-登记 MySQL 数据源示例：
-
-```json
-{
-  "name": "某行业生产业务系统",
-  "sourceType": "mysql",
-  "connectionUri": "mysql://user:password@host:3306/database",
-  "domain": "设备运维",
-  "systemCategory": "database+api"
-}
-```
-
-生产接入建议使用只读账号，并先在测试库执行元数据扫描。
-
-### 使用 MySQL 运行平台与数据源知识库
-
-平台可将 SQLite、MySQL 和 PostgreSQL 登记为业务数据源。生产数据源建议使用只读账号；平台自身使用 MySQL 时，账号需要对平台库具有建表和读写权限。
+静态检查与前端构建：
 
 ```bash
-mysql -u root -p -e 'create database ontology_platform character set utf8mb4 collate utf8mb4_unicode_ci;'
-export ONTOLOGY_PLATFORM_DB_TYPE=mysql
-export ONTOLOGY_PLATFORM_DB_URI='mysql://root:password@127.0.0.1:3306/ontology_platform'
-uvicorn ontology_platform.api:app --reload --app-dir backend
+.venv/bin/python -m ruff check backend tests scripts
+.venv/bin/python -m ruff format --check backend tests scripts
+.venv/bin/python -m mypy
+cd frontend && npm run build
 ```
 
-数据源完成连接测试后，可一键扫描表结构并初始化本体知识库；用户上传的 Word 规则会进入该数据源关联的本体推理链。初始化成功后，该数据源才会出现在对话模块的知识库选择器中。
+CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开始链路，
+并校验此处声明的测试数量与实际收集数一致。
 
-登记前连接测试示例：
+## 规模
 
-```bash
-curl -X POST http://127.0.0.1:8000/data-sources/test-connection \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "sourceType": "postgresql",
-    "connectionUri": "postgresql://user:password@host:5432/database"
-  }'
-```
+29 个后端模块约 13400 行，98 个 API 端点，31 张平台表，前端 React + antd。
+
+## 示例
+
+[`examples/contract-system/`](examples/contract-system/) 是一个模拟遗留系统的
+最小合同管理应用，用于演示完整接入流程。
+**其中公司名、联系人、手机号、邮箱与统一社会信用代码全部为合成占位，
+不对应任何真实主体。**
+
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [ROADMAP](ROADMAP.md) | 三仓库形态、框架化 A–G、通用性 #1–#13、Non-Goals |
+| [docs/adr/](docs/adr/) | 架构决策记录，含被否决方案与后果 |
+| [docs/architecture-debt.md](docs/architecture-debt.md) | 框架化前置技术债 |
+| [docs/](docs/) | 设计文档索引（⚠️ 部分内容超前于当前实现） |
+| [CHANGELOG](CHANGELOG.md) | 变更记录 |
+
+## 贡献
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。两条硬要求：
+
+1. **不允许通过删改测试断言来让测试通过。**
+2. **文档只能描述已实现且有测试覆盖的能力。**
+
+安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要开公开 issue。
+行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+## 许可证
+
+[Apache-2.0](LICENSE)，含专利授权条款。

@@ -1,0 +1,64 @@
+# Lint and format configuration only. Packaging is deferred to ROADMAP stage E,
+# where the split into aletheia-core / -web / -admin is decided.
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["frontend", ".venv", "examples"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # import sorting
+    "B",    # flake8-bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    # FastAPI's Depends()/File()/Form() in defaults is the framework's own idiom.
+    "B008",
+    # Nested `with` blocks are clearer than a combined one when the second
+    # context depends on the first.
+    "SIM117",
+    # Line length is enforced by the formatter, not the linter.
+    "E501",
+    # A two-branch if/else that carries an explanatory comment reads better than
+    # a packed ternary; several of ours document a driver quirk.
+    "SIM108",
+    # This codebase is written in Chinese: full-width punctuation inside strings
+    # is correct, not an ambiguous-character mistake.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and scripts insert backend/ into sys.path before importing the package,
+# so imports legitimately follow executable statements.
+"tests/*" = ["E402"]
+"scripts/*" = ["E402"]
+# api.py has one mid-file import block for the workflow/permission routes.
+# Recorded in docs/architecture-debt.md; to be resolved when api.py is split
+# into APIRouters (ROADMAP stage E).
+"backend/ontology_platform/api.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.9"
+files = ["backend/ontology_platform"]
+# Deliberately permissive to start: the goal is to catch outright type errors
+# without blocking the branch on annotating 12k lines. Tighten incrementally
+# as part of ROADMAP stage C.
+ignore_missing_imports = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_unused_ignores = false
+warn_return_any = false
+no_implicit_optional = false
+exclude = ["frontend", "examples", "\\.venv"]

@@ -1,0 +1,44 @@
+name: 功能请求
+description: 提议一个新能力或改进
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先看 [ROADMAP](../../ROADMAP.md)：
+        你要的能力可能已在规划中，也可能落在 **Non-Goals**（明确不做）里。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你实际遇到的问题
+      description: 描述场景，而不是直接描述你想要的实现。
+      placeholder: |
+        我们的订单对象需要由 order 与 order_line 两张表共同构成，
+        但目前一个业务对象只能绑定一张表。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你期望的方案
+      description: 可选。如果你已有想法。
+
+  - type: dropdown
+    id: roadmap
+    attributes:
+      label: 与 ROADMAP 的关系
+      options:
+        - 我没有在 ROADMAP 中找到相关项
+        - 对应通用性路线中的某一项（请在下方说明编号）
+        - 对应框架化阶段 A-G 中的某一阶段
+        - 我认为应该重新考虑某个 Non-Goal
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充说明
+      description: 业务背景、涉及的数据规模、是否有替代做法。

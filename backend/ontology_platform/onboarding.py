@@ -13,6 +13,7 @@ from .metadata import (
     scan_data_source,
 )
 from .ontology import generate_ontology_draft
+from .workflow_permission import seed_default_roles_and_policies
 
 
 def run_onboarding_pipeline(
@@ -32,15 +33,21 @@ def run_onboarding_pipeline(
     openapi_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
-    source = register_data_source(platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url, api_headers)
+    source = register_data_source(
+        platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url, api_headers
+    )
     steps.append(_step("register_data_source", "completed", f"数据源已登记: {source.id}", {"dataSourceId": source.id}))
 
     connection = check_data_source_connection(platform_db, data_source_id=source.id)
-    steps.append(_step("test_connection", "completed" if connection["reachable"] else "failed", connection["message"], connection))
+    steps.append(
+        _step(
+            "test_connection", "completed" if connection["reachable"] else "failed", connection["message"], connection
+        )
+    )
     if not connection["reachable"]:
         readiness = assess_data_source_readiness(platform_db, source.id)
         return {
-            "dataSource": source.__dict__,
+            "dataSource": source.public_dict(),
             "connection": connection,
             "apiGateway": None,
             "scan": None,
@@ -64,7 +71,9 @@ def run_onboarding_pipeline(
     api_import = None
     if openapi_url:
         api_import = import_openapi_operations_from_url(platform_db, source.id, openapi_url)
-        steps.append(_step("import_openapi", "completed", f"已从 URL 导入 {api_import['count']} 个业务 API。", api_import))
+        steps.append(
+            _step("import_openapi", "completed", f"已从 URL 导入 {api_import['count']} 个业务 API。", api_import)
+        )
     elif openapi_spec:
         api_import = import_openapi_operations(platform_db, source.id, openapi_spec)
         steps.append(_step("import_openapi", "completed", f"已导入 {api_import['count']} 个业务 API。", api_import))
@@ -82,13 +91,28 @@ def run_onboarding_pipeline(
                 {"ontologyId": ontology["id"], "blueprintId": ontology.get("blueprint", {}).get("id")},
             )
         )
+        # Default object level policies follow the modelled objects, so refresh
+        # them once a draft exists. Reported as its own step because it can fail
+        # independently of ontology generation.
+        try:
+            seed_default_roles_and_policies(platform_db)
+            steps.append(_step("seed_permissions", "completed", "已为新建业务对象初始化默认权限策略。", {}))
+        except Exception as error:
+            steps.append(_step("seed_permissions", "failed", f"默认权限策略初始化失败: {error}", {}))
     else:
         steps.append(_step("generate_ontology", "skipped", "已按请求跳过本体草案生成。", {}))
 
     readiness = assess_data_source_readiness(platform_db, source.id)
-    steps.append(_step("assess_readiness", "completed", f"接入准备度 {readiness['score']} 分，状态 {readiness['status']}。", readiness["summary"]))
+    steps.append(
+        _step(
+            "assess_readiness",
+            "completed",
+            f"接入准备度 {readiness['score']} 分，状态 {readiness['status']}。",
+            readiness["summary"],
+        )
+    )
     return {
-        "dataSource": source.__dict__,
+        "dataSource": source.public_dict(),
         "connection": connection,
         "apiGateway": api_gateway,
         "scan": scan,

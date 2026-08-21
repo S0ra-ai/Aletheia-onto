@@ -1,0 +1,124 @@
+"""Route to capability policy.
+
+Authorization lives in one table instead of being spread across 80+ endpoint
+signatures, so the effective policy can be reviewed and tested as data. The
+matcher is deny-by-default: an unlisted route requires admin, which means a new
+endpoint cannot accidentally ship unprotected.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Iterable
+
+from .auth import CAP_ADMIN, CAP_EXECUTE, CAP_PUBLISH, CAP_READ, CAP_REVIEW, CAP_WRITE
+
+
+@dataclass(frozen=True)
+class Rule:
+    methods: frozenset[str]
+    pattern: re.Pattern[str]
+    capability: str
+    description: str
+
+
+def _rule(methods: Iterable[str], path_regex: str, capability: str, description: str) -> Rule:
+    return Rule(
+        methods=frozenset(method.upper() for method in methods),
+        pattern=re.compile(f"^{path_regex}$"),
+        capability=capability,
+        description=description,
+    )
+
+
+# Endpoints reachable without a token.
+PUBLIC_PATHS: frozenset[str] = frozenset(
+    {
+        "/health",
+        "/auth/login",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/docs/oauth2-redirect",
+    }
+)
+
+ANY_METHOD = ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+# Order matters: the first match wins, so specific rules precede generic ones.
+RULES: tuple[Rule, ...] = (
+    # -- Session --
+    _rule(("POST",), r"/auth/logout", CAP_READ, "退出登录"),
+    _rule(("GET",), r"/auth/me", CAP_READ, "查看当前身份"),
+    _rule(("POST",), r"/auth/change-password", CAP_READ, "修改自己的密码"),
+    # -- User administration --
+    _rule(ANY_METHOD, r"/auth/users.*", CAP_ADMIN, "用户管理"),
+    # -- Governance: review and publish are distinct capabilities --
+    _rule(("POST",), r"/semantic-mappings/\d+/review", CAP_REVIEW, "审核语义映射"),
+    _rule(("POST",), r"/ontologies/\d+/mappings/review", CAP_REVIEW, "批量审核语义映射"),
+    _rule(("POST",), r"/ontologies/\d+/publish", CAP_PUBLISH, "发布本体版本"),
+    _rule(("POST",), r"/ontologies/\d+/derive", CAP_PUBLISH, "派生本体版本"),
+    _rule(("POST",), r"/tools/logs/\d+/review", CAP_REVIEW, "审核工具执行"),
+    # -- Automation against legacy systems --
+    _rule(("POST",), r"/automation/operations/[^/]+/preflight", CAP_READ, "操作语义预检"),
+    _rule(("POST",), r"/automation/operations/[^/]+/execute", CAP_EXECUTE, "执行传统系统操作"),
+    _rule(("POST",), r"/workflows/\d+/transitions/run", CAP_EXECUTE, "驱动工作流流转"),
+    # -- Platform configuration --
+    _rule(("POST", "DELETE"), r"/model/config", CAP_ADMIN, "模型层配置"),
+    _rule(("GET",), r"/model/config(/test)?", CAP_ADMIN, "查看模型层配置"),
+    _rule(ANY_METHOD, r"/permissions/roles.*", CAP_ADMIN, "角色管理"),
+    _rule(("POST",), r"/permissions/policies", CAP_ADMIN, "权限策略管理"),
+    _rule(("POST",), r"/tools", CAP_ADMIN, "注册智能体工具"),
+    _rule(("POST",), r"/tools/authorize", CAP_ADMIN, "授权智能体工具"),
+    _rule(("POST",), r"/demo/bootstrap.*", CAP_ADMIN, "初始化演示数据"),
+    # -- Read-only assessment endpoints that use POST --
+    _rule(("POST",), r"/semantic/objects/[^/]+/instances/[^/]+/assess", CAP_READ, "实例语义研判"),
+    _rule(("POST",), r"/semantic/objects/[^/]+/consistency", CAP_READ, "批量一致性评估"),
+    _rule(("POST",), r"/semantic/natural-language/query", CAP_READ, "自然语言问答"),
+    _rule(("POST",), r"/agent/chat", CAP_READ, "智能体对话"),
+    _rule(("POST",), r"/data-sources/(\d+/)?test-connection", CAP_READ, "测试数据源连接"),
+    _rule(("POST",), r"/data-sources/\d+/test-api-gateway", CAP_READ, "测试业务网关"),
+    _rule(("POST",), r"/permissions/check", CAP_READ, "权限自查"),
+    _rule(("POST",), r"/tools/check-auth", CAP_READ, "工具授权自查"),
+    _rule(("POST",), r"/ontologies/\d+/rules/validate-expression", CAP_READ, "校验规则表达式"),
+    # -- Agent role administration --
+    _rule(("POST", "DELETE"), r"/agent/roles(/.*)?", CAP_ADMIN, "自定义智能体角色"),
+    # -- Modelling and metadata writes --
+    _rule(("POST",), r"/ai/.*", CAP_WRITE, "AI 建模建议"),
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/data-sources.*", CAP_WRITE, "数据源与元数据写入"),
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/onboarding/.*", CAP_WRITE, "接入流水线"),
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/ontologies.*", CAP_WRITE, "本体与规则写入"),
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/industry-blueprints.*", CAP_WRITE, "行业蓝图写入"),
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/workflows.*", CAP_WRITE, "工作流定义写入"),
+    # -- Everything readable --
+    _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
+)
+
+
+def required_capability(method: str, path: str) -> str:
+    """Return the capability needed for a request, defaulting to admin."""
+    normalized_method = method.upper()
+    normalized_path = path.rstrip("/") or "/"
+    for rule in RULES:
+        if normalized_method in rule.methods and rule.pattern.match(normalized_path):
+            return rule.capability
+    return CAP_ADMIN
+
+
+def is_public(path: str) -> bool:
+    normalized = path.rstrip("/") or "/"
+    return normalized in PUBLIC_PATHS or normalized.startswith("/docs")
+
+
+def describe_policy() -> list[dict[str, str]]:
+    """Expose the effective policy for review."""
+    return [
+        {
+            "methods": ",".join(sorted(rule.methods)),
+            "pattern": rule.pattern.pattern,
+            "capability": rule.capability,
+            "description": rule.description,
+        }
+        for rule in RULES
+    ]

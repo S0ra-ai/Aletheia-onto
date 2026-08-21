@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .config import MODEL_PROVIDER_DEFAULTS
 from .database import connect
-
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
 
@@ -28,12 +28,12 @@ class OpenRouterConfig:
     def from_env(cls) -> "OpenRouterConfig":
         return cls(
             api_key=os.getenv("OPENROUTER_API_KEY", ""),
-            model=os.getenv("OPENROUTER_MODEL", "~openai/gpt-latest"),
-            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/"),
+            model=MODEL_PROVIDER_DEFAULTS.model,
+            base_url=MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
             http_referer=os.getenv("OPENROUTER_HTTP_REFERER", ""),
-            app_title=os.getenv("OPENROUTER_APP_TITLE", "Ontology Transformation Platform"),
-            service_tier=os.getenv("OPENROUTER_SERVICE_TIER", "auto"),
-            timeout_seconds=float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30")),
+            app_title=MODEL_PROVIDER_DEFAULTS.app_title,
+            service_tier=MODEL_PROVIDER_DEFAULTS.service_tier,
+            timeout_seconds=MODEL_PROVIDER_DEFAULTS.timeout_seconds,
         )
 
     @classmethod
@@ -86,7 +86,9 @@ class OpenRouterClient:
             "apiKeySource": "OPENROUTER_API_KEY" if self.configured else "missing",
         }
 
-    def chat(self, messages: list[dict[str, str]], purpose: str = "semantic_assistance", session_id: str | None = None) -> ModelResult:
+    def chat(
+        self, messages: list[dict[str, str]], purpose: str = "semantic_assistance", session_id: str | None = None
+    ) -> ModelResult:
         if not self.configured:
             raise ValueError("未配置 OPENROUTER_API_KEY，无法调用 OpenRouter 远程模型")
 
@@ -256,7 +258,9 @@ def generate_ontology_reasoning_chain(
         {"role": "user", "content": json.dumps(metadata, ensure_ascii=False)},
     ]
     try:
-        result = model_client.chat(messages, purpose="ontology_reasoning_chain", session_id=f"reasoning-{data_source_id}")
+        result = model_client.chat(
+            messages, purpose="ontology_reasoning_chain", session_id=f"reasoning-{data_source_id}"
+        )
         _record_model_invocation(platform_db, result, "ontology_reasoning_chain", "success")
         parsed = _extract_json_object(result.content)
         return {
@@ -331,7 +335,13 @@ def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dic
         )
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "update_model_config", "model_config", "1", json.dumps({"model": model, "hasApiKey": bool(api_key)}, ensure_ascii=False)),
+            (
+                "system",
+                "update_model_config",
+                "model_config",
+                "1",
+                json.dumps({"model": model, "hasApiKey": bool(api_key)}, ensure_ascii=False),
+            ),
         )
     return {"success": True, "message": "模型配置已保存。"}
 
@@ -569,11 +579,23 @@ def _extract_json_object(content: str) -> dict[str, Any]:
 
 def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
     result = dict(fallback)
-    for key in ("id", "name", "domain", "description", "objectHints", "attributeHints", "rules", "tableKeywords", "capabilityTags"):
+    for key in (
+        "id",
+        "name",
+        "domain",
+        "description",
+        "objectHints",
+        "attributeHints",
+        "rules",
+        "tableKeywords",
+        "capabilityTags",
+    ):
         if key in parsed and parsed[key] not in (None, "", [], {}):
             result[key] = parsed[key]
     result["id"] = _slug(str(result["id"]))
-    result["objectHints"] = {str(key).split(".")[-1]: str(value) for key, value in dict(result.get("objectHints") or {}).items()}
+    result["objectHints"] = {
+        str(key).split(".")[-1]: str(value) for key, value in dict(result.get("objectHints") or {}).items()
+    }
     attribute_hints = {str(key): str(value) for key, value in dict(result.get("attributeHints") or {}).items()}
     for key, value in list(attribute_hints.items()):
         if "." in key:
@@ -586,10 +608,25 @@ def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> di
 
 def _normalize_reasoning_chain(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
     result = dict(fallback)
-    for key in ("summary", "reasoningSteps", "proposedObjects", "proposedRelations", "proposedRules", "buildPlan", "questionsForUser"):
+    for key in (
+        "summary",
+        "reasoningSteps",
+        "proposedObjects",
+        "proposedRelations",
+        "proposedRules",
+        "buildPlan",
+        "questionsForUser",
+    ):
         if key in parsed and parsed[key] not in (None, "", [], {}):
             result[key] = parsed[key]
-    for key in ("reasoningSteps", "proposedObjects", "proposedRelations", "proposedRules", "buildPlan", "questionsForUser"):
+    for key in (
+        "reasoningSteps",
+        "proposedObjects",
+        "proposedRelations",
+        "proposedRules",
+        "buildPlan",
+        "questionsForUser",
+    ):
         if not isinstance(result.get(key), list):
             result[key] = fallback.get(key, [])
     return result

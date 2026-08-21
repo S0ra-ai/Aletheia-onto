@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/S0ra-ai/Aletheia-onto/security/advisories/new
+    about: 安全问题请私下报告，不要开公开 issue。
+  - name: 提问与讨论
+    url: https://github.com/S0ra-ai/Aletheia-onto/discussions
+    about: 使用疑问、设计讨论、想法交流请到 Discussions。

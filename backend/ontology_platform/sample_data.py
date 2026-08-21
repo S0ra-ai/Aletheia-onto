@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-
 DEFAULT_SAMPLE_DB = Path("data") / "legacy_contracts.sqlite3"
 DEFAULT_EQUIPMENT_SAMPLE_DB = Path("data") / "legacy_equipment.sqlite3"
 
@@ -71,7 +70,17 @@ def create_contract_sample_db(db_path: Path | str = DEFAULT_SAMPLE_DB) -> Path:
         conn.executemany(
             "insert into contract values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                (1, "HT-2026-001", 1, "能源设备年度维保合同", 1200000, "effective", "2026-01-05", "2026-01-10", "2026-12-31"),
+                (
+                    1,
+                    "HT-2026-001",
+                    1,
+                    "能源设备年度维保合同",
+                    1200000,
+                    "effective",
+                    "2026-01-05",
+                    "2026-01-10",
+                    "2026-12-31",
+                ),
                 (2, "HT-2026-002", 2, "产线升级项目合同", 800000, "approval", None, None, "2026-10-31"),
                 (3, "HT-2026-003", 3, "贸易服务框架合同", 300000, "draft", None, None, "2026-09-30"),
             ],

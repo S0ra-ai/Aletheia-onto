@@ -39,7 +39,13 @@ def assess_operation_bindings(platform_db: Path | str, data_source_id: int) -> d
         "invalidActions": sum(1 for item in items if item["status"] == "invalid"),
         "blockedOperations": sum(1 for item in items if item["status"] in {"invalid", "unbound", "incomplete"}),
     }
-    status = "ready" if items and summary["readyOperations"] == len(items) else "partial" if summary["boundOperations"] else "blocked"
+    status = (
+        "ready"
+        if items and summary["readyOperations"] == len(items)
+        else "partial"
+        if summary["boundOperations"]
+        else "blocked"
+    )
     return {
         "dataSourceId": data_source_id,
         "name": source["name"],
@@ -77,7 +83,11 @@ def _operation_binding(
               and status = 'confirmed'
               and (source_ref = ? or source_ref like ?)
             """,
-            (business_object["ontology_id"], f"table:{business_object['table_name']}", f"table:{business_object['table_name']}.column:%"),
+            (
+                business_object["ontology_id"],
+                f"table:{business_object['table_name']}",
+                f"table:{business_object['table_name']}.column:%",
+            ),
         ).fetchone()["total"]
         rule_count = conn.execute(
             "select count(*) as total from business_rule where ontology_id = ? and scope_object_code = ? and status = 'published'",

@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import importlib
 import json
 import sqlite3
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-import importlib
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from ontology_platform.adapters import get_adapter
 import ontology_platform.automation as automation_module
+from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import execute_operation, preflight_operation
+from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.decisions import list_decisions
@@ -26,15 +27,37 @@ from ontology_platform.governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
+from ontology_platform.industry_blueprints import (
+    infer_industry_blueprint,
+    list_industry_blueprints,
+    upsert_industry_blueprint,
+)
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
-from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, import_openapi_operations_from_url, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
-from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
-from ontology_platform.contract_documents import parse_rule_docx_bytes
+from ontology_platform.metadata import (
+    analyze_schema_drift,
+    assess_data_source_readiness,
+    check_business_api_gateway,
+    check_data_source_connection,
+    import_openapi_operations,
+    import_openapi_operations_from_url,
+    list_data_sources,
+    list_source_apis,
+    register_data_source,
+    register_source_api,
+    scan_data_source,
+)
+from ontology_platform.model_client import (
+    OpenRouterClient,
+    OpenRouterConfig,
+    generate_blueprint_draft,
+    get_model_config,
+    reset_model_config,
+    update_model_config,
+)
 from ontology_platform.natural_language import query_natural_language
 from ontology_platform.onboarding import run_onboarding_pipeline
+from ontology_platform.ontology import explain_instance, export_ontology_asset, generate_ontology_draft, list_ontologies
 from ontology_platform.operation_bindings import assess_operation_bindings
-from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.release_readiness import assess_ontology_release_readiness
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_decision_consistency, assess_instance, list_instance_ids
@@ -47,7 +70,15 @@ def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan = scan_data_source(platform_db, source.id)
 
     assert len(scan["tables"]) == 4
@@ -81,7 +112,15 @@ def test_natural_language_query_routes_to_semantic_kernel(tmp_path: Path) -> Non
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
 
@@ -98,7 +137,9 @@ def test_natural_language_query_routes_to_semantic_kernel(tmp_path: Path) -> Non
     assert overall["evidence"]["assessed"] > 0
     assert "已评估" in overall["answer"]
 
-    preflight = query_natural_language(platform_db, "HT-2026-003 能提交审批吗？", ontology["id"], source.id, use_model=False)
+    preflight = query_natural_language(
+        platform_db, "HT-2026-003 能提交审批吗？", ontology["id"], source.id, use_model=False
+    )
     assert preflight["intent"] == "operation_preflight"
     assert preflight["resolved"]["instanceId"] == "3"
     assert preflight["resolved"]["operationCode"] == "submit_contract"
@@ -134,7 +175,7 @@ def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
         "校验",
         "title != null",
         "阻断",
-        "合同标题不能为空。",
+        "合同标题必须填写，不能为空。",
     ]
     for index, value in enumerate(values):
         row[index].text = value
@@ -142,6 +183,7 @@ def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
     doc.save(buffer)
 
     parsed = parse_rule_docx_bytes("rules.docx", buffer.getvalue())
+    assert len(parsed["rules"]) == 1
     assert parsed["rules"][0]["code"] == "contract_title_required_word"
     assert parsed["rules"][0]["ruleType"] == "validation"
     assert parsed["rules"][0]["severity"] == "blocking"
@@ -160,7 +202,10 @@ def test_rule_word_document_can_define_custom_rules(tmp_path: Path) -> None:
         "test",
         rule["status"],
     )
-    assert any(rule["code"] == "contract_title_required_word" for rule in list_business_rules(platform_db, ontology["id"])["items"])
+    assert any(
+        rule["code"] == "contract_title_required_word"
+        for rule in list_business_rules(platform_db, ontology["id"])["items"]
+    )
 
 
 def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None:
@@ -170,7 +215,15 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
 
@@ -198,9 +251,7 @@ def test_operation_execution_respects_semantic_preflight(tmp_path: Path) -> None
     assert blocked["decisionRecord"]["decisionType"] == "operation_execution"
 
     with connect(platform_db) as conn:
-        audit_count = conn.execute(
-            "select count(*) from audit_log where action = 'execute_operation'"
-        ).fetchone()[0]
+        audit_count = conn.execute("select count(*) from audit_log where action = 'execute_operation'").fetchone()[0]
     assert audit_count == 2
 
     decisions = list_decisions(platform_db, 10)
@@ -226,12 +277,22 @@ def test_real_operation_execution_uses_business_api_base_url(tmp_path: Path) -> 
         api_base_url="https://legacy.example/api",
         api_headers={"Authorization": "Bearer legacy-token", "X-Tenant": "contract"},
     )
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
     calls: list[dict[str, object]] = []
 
-    def fake_invoke(base_url: str, execution_plan: dict[str, object], timeout_seconds: float, headers: dict[str, str] | None = None) -> dict[str, object]:
+    def fake_invoke(
+        base_url: str, execution_plan: dict[str, object], timeout_seconds: float, headers: dict[str, str] | None = None
+    ) -> dict[str, object]:
         calls.append({"baseUrl": base_url, "plan": execution_plan, "timeout": timeout_seconds, "headers": headers})
         return {"statusCode": 200, "body": {"accepted": True}}
 
@@ -311,7 +372,15 @@ def test_data_source_readiness_identifies_onboarding_gaps(tmp_path: Path) -> Non
     assert initial["summary"]["tables"] == 0
     assert {"metadata_scan", "ontology", "business_apis"}.issubset({item["code"] for item in initial["gaps"]})
 
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
     reviewed = assess_data_source_readiness(platform_db, source.id)
@@ -345,7 +414,15 @@ def test_database_api_readiness_requires_business_api_base_url(tmp_path: Path) -
         domain="合同管理",
         system_category="database+api",
     )
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
     bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "API 基址门禁验证")
@@ -403,6 +480,7 @@ def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_read
         "scan_metadata",
         "import_openapi",
         "generate_ontology",
+        "seed_permissions",
         "assess_readiness",
     ]
 
@@ -467,7 +545,9 @@ def test_openapi_import_registers_business_operations(tmp_path: Path) -> None:
 
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
-    source = register_data_source(platform_db, "合同 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+    source = register_data_source(
+        platform_db, "合同 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api"
+    )
     spec = {
         "openapi": "3.0.0",
         "paths": {
@@ -586,7 +666,15 @@ def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: P
         system_category="database+api",
         api_headers={"Authorization": "Bearer legacy-token"},
     )
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
 
@@ -603,7 +691,10 @@ def test_kernel_package_exports_installable_semantic_kernel_manifest(tmp_path: P
     assert any(rule["code"] == "blacklist_customer_warning" for rule in package["ontologies"][0]["rules"])
     assert package["operations"][0]["operationCode"] == "submit_contract"
     assert package["operations"][0]["requiresPreflight"] is True
-    assert package["runtimeEndpoints"]["execute"] == "https://kernel.example/api/automation/operations/{operationCode}/execute"
+    assert (
+        package["runtimeEndpoints"]["execute"]
+        == "https://kernel.example/api/automation/operations/{operationCode}/execute"
+    )
     assert package["governanceGates"]["executionRequiresApprovedDecision"] is True
     assert asset["filename"] == f"semantic-kernel-datasource-{source.id}.json"
     assert json.loads(asset["content"])["packageType"] == "ontology-semantic-kernel"
@@ -621,7 +712,15 @@ def test_semantic_coverage_reports_object_rule_mapping_and_operation_readiness(t
     assert not_modeled["status"] == "not_modeled"
     assert not_modeled["score"] == 0
 
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
 
@@ -652,8 +751,18 @@ def test_operation_binding_assessment_validates_semantic_actions_against_ontolog
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
-    register_source_api(platform_db, source.id, "submit_contract", "提交合同审批", "POST", "/contracts/{id}/submit", "contract.submit_for_approval")
-    register_source_api(platform_db, source.id, "archive_case", "归档案件", "POST", "/cases/{id}/archive", "case.archive")
+    register_source_api(
+        platform_db,
+        source.id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
+    register_source_api(
+        platform_db, source.id, "archive_case", "归档案件", "POST", "/cases/{id}/archive", "case.archive"
+    )
     scan_data_source(platform_db, source.id)
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="contract-management")
     bulk_review_semantic_mappings(platform_db, ontology["id"], "confirmed", "业务专家", "API 绑定验证")
@@ -677,7 +786,9 @@ def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Pa
     legacy_db = tmp_path / "legacy_equipment.sqlite3"
 
     blueprints = list_industry_blueprints()
-    assert {item["id"] for item in blueprints}.issuperset({"contract-management", "equipment-maintenance", "generic-enterprise"})
+    assert {item["id"] for item in blueprints}.issuperset(
+        {"contract-management", "equipment-maintenance", "generic-enterprise"}
+    )
     assert infer_industry_blueprint(["equipment", "work_order"]).id == "equipment-maintenance"
 
     initialize_platform_db(platform_db)
@@ -690,7 +801,9 @@ def test_industry_blueprints_seed_ontology_names_mappings_and_rules(tmp_path: Pa
     assert any(item["code"] == "equipment" and item["name"] == "设备" for item in ontology["objects"])
     assert any(item["code"] == "criticality" and item["name"] == "重要等级" for item in ontology["attributes"])
     assert any(rule["code"] == "critical_equipment_open_fault" for rule in ontology["rules"])
-    assert any("设备运维蓝图" in mapping["evidence"] and mapping["confidence"] >= 0.92 for mapping in ontology["mappings"])
+    assert any(
+        "设备运维蓝图" in mapping["evidence"] and mapping["confidence"] >= 0.92 for mapping in ontology["mappings"]
+    )
 
     try:
         generate_ontology_draft(platform_db, source.id, name="不存在蓝图本体", blueprint_id="missing-blueprint")
@@ -796,7 +909,9 @@ def test_mapping_review_and_publish_governance_flow(tmp_path: Path) -> None:
         "规则管理员",
     )
     assert custom_rule["code"] == "contract_title_required"
-    assert any(rule["code"] == "contract_title_required" for rule in list_business_rules(platform_db, ontology["id"])["items"])
+    assert any(
+        rule["code"] == "contract_title_required" for rule in list_business_rules(platform_db, ontology["id"])["items"]
+    )
 
     published = publish_ontology(platform_db, ontology["id"], "架构师")
     assert published["status"] == "published"
@@ -932,7 +1047,9 @@ def test_schema_drift_analysis_compares_live_database_with_scanned_baseline(tmp_
     assert {item["tableName"] for item in drift["addedTables"]} == {"contract_attachment"}
     contract_change = next(item for item in drift["changedTables"] if item["tableName"] == "contract")
     assert [item["columnName"] for item in contract_change["addedColumns"]] == ["risk_level"]
-    assert any(item["ontologyId"] == ontology["id"] and item["code"] == "contract" for item in drift["impacts"]["objects"])
+    assert any(
+        item["ontologyId"] == ontology["id"] and item["code"] == "contract" for item in drift["impacts"]["objects"]
+    )
     assert any("重新扫描" in action or "本体" in action for action in drift["nextActions"])
 
 
@@ -945,7 +1062,9 @@ def test_data_source_connection_checks_sqlite_file(tmp_path: Path) -> None:
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
 
     registered = check_data_source_connection(platform_db, data_source_id=source.id)
-    missing = check_data_source_connection(platform_db, source_type="sqlite", connection_uri=str(tmp_path / "missing.sqlite3"))
+    missing = check_data_source_connection(
+        platform_db, source_type="sqlite", connection_uri=str(tmp_path / "missing.sqlite3")
+    )
 
     assert registered["reachable"] is True
     assert registered["status"] == "ok"
@@ -967,7 +1086,9 @@ def test_business_api_gateway_check_reports_configuration_and_reachability(tmp_p
 
     initialize_platform_db(platform_db)
     create_contract_sample_db(legacy_db)
-    source = register_data_source(platform_db, "合同管理 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api")
+    source = register_data_source(
+        platform_db, "合同管理 API 系统", "sqlite", str(legacy_db), domain="合同管理", system_category="database+api"
+    )
 
     missing = check_business_api_gateway(platform_db, source.id)
     assert missing["configured"] is False
@@ -1243,8 +1364,12 @@ def test_equipment_domain_generates_industry_rules_and_assessment(tmp_path: Path
 
     initialize_platform_db(platform_db)
     create_equipment_sample_db(legacy_db)
-    source = register_data_source(platform_db, "设备运维样例系统", "sqlite", str(legacy_db), domain="设备运维", system_category="database+api")
-    api = register_source_api(platform_db, source.id, "close_work_order", "关闭工单", "POST", "/work-orders/{id}/close", "work_order.close")
+    source = register_data_source(
+        platform_db, "设备运维样例系统", "sqlite", str(legacy_db), domain="设备运维", system_category="database+api"
+    )
+    api = register_source_api(
+        platform_db, source.id, "close_work_order", "关闭工单", "POST", "/work-orders/{id}/close", "work_order.close"
+    )
     scan = scan_data_source(platform_db, source.id)
 
     assert len(scan["tables"]) == 4
@@ -1265,7 +1390,9 @@ def test_equipment_domain_generates_industry_rules_and_assessment(tmp_path: Path
 def test_openrouter_client_uses_subscription_key_shape() -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float) -> dict[str, object]:
+    def fake_transport(
+        url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float
+    ) -> dict[str, object]:
         calls.append({"url": url, "headers": headers, "payload": payload, "timeout": timeout_seconds})
         return {
             "model": "openai/test-model",
@@ -1309,14 +1436,22 @@ def test_blueprint_draft_uses_local_fallback_and_openrouter_shape(tmp_path: Path
     source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
     scan_data_source(platform_db, source.id)
 
-    local = generate_blueprint_draft(platform_db, source.id, OpenRouterClient(OpenRouterConfig("", "test", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10)))
+    local = generate_blueprint_draft(
+        platform_db,
+        source.id,
+        OpenRouterClient(
+            OpenRouterConfig("", "test", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10)
+        ),
+    )
     assert local["usedRemoteModel"] is False
     assert local["blueprint"]["domain"] == "合同管理"
     assert "contract" in local["blueprint"]["objectHints"]
 
     calls: list[dict[str, object]] = []
 
-    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float) -> dict[str, object]:
+    def fake_transport(
+        url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float
+    ) -> dict[str, object]:
         calls.append({"url": url, "headers": headers, "payload": payload, "timeout": timeout_seconds})
         return {
             "model": "openai/test-model",
@@ -1347,7 +1482,9 @@ def test_blueprint_draft_uses_local_fallback_and_openrouter_shape(tmp_path: Path
         platform_db,
         source.id,
         OpenRouterClient(
-            OpenRouterConfig("or-test-key", "openai/test-model", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10),
+            OpenRouterConfig(
+                "or-test-key", "openai/test-model", "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10
+            ),
             transport=fake_transport,
         ),
     )

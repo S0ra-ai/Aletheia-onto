@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .metadata import assess_data_source_readiness, list_source_apis
 from .database import connect
+from .metadata import assess_data_source_readiness, list_source_apis
 from .ontology import summarize_ontology
 
 
@@ -123,7 +123,11 @@ def _load_api_headers(value: str | None) -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
+    return {
+        str(key): str(header_value)
+        for key, header_value in parsed.items()
+        if str(key).strip() and header_value is not None
+    }
 
 
 def _operation_descriptor(api: dict[str, Any]) -> dict[str, Any]:

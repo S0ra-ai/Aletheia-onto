@@ -73,7 +73,9 @@ def _object_rows(conn: sqlite3.Connection, data_source_id: int) -> list[sqlite3.
 
 
 def _object_coverage(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
-    attributes = conn.execute("select count(*) as total from business_attribute where object_id = ?", (row["id"],)).fetchone()["total"]
+    attributes = conn.execute(
+        "select count(*) as total from business_attribute where object_id = ?", (row["id"],)
+    ).fetchone()["total"]
     mapping_counts = conn.execute(
         """
         select status, count(*) as total
@@ -103,7 +105,13 @@ def _object_coverage(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, An
     rejected = _mapping_count(mapping_counts, "rejected")
     operation_count = len(operation_rows)
     automation_ready = bool(row["primary_key"]) and confirmed > 0 and rule_count > 0 and operation_count > 0
-    status = "ready" if automation_ready else "partial" if confirmed > 0 or pending > 0 or rule_count > 0 or operation_count > 0 else "blocked"
+    status = (
+        "ready"
+        if automation_ready
+        else "partial"
+        if confirmed > 0 or pending > 0 or rule_count > 0 or operation_count > 0
+        else "blocked"
+    )
     return {
         "ontologyId": row["ontology_id"],
         "ontologyName": row["ontology_name"],
@@ -229,7 +237,9 @@ def _coverage_status(score: int, summary: dict[str, int]) -> str:
     return "blocked"
 
 
-def _next_actions(summary: dict[str, int], objects: list[dict[str, Any]], operations: list[dict[str, Any]]) -> list[str]:
+def _next_actions(
+    summary: dict[str, int], objects: list[dict[str, Any]], operations: list[dict[str, Any]]
+) -> list[str]:
     actions: list[str] = []
     if summary["pendingMappings"]:
         actions.append("优先审核待确认语义映射，提升决策证据确定性。")

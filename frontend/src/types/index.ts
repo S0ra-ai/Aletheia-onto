@@ -709,3 +709,181 @@ export interface ModelConfigUpdate {
   serviceTier?: string;
   timeoutSeconds?: number;
 }
+
+// 智能体类型
+export interface AgentRole {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string;
+  /** Business domain this role was derived from; empty for the generic role. */
+  domain?: string;
+  /** Data source the derived role is scoped to, when applicable. */
+  dataSourceId?: number | null;
+  /** 'derived' from an onboarded domain, 'custom' if persisted, else 'generic'. */
+  source?: string;
+}
+
+export interface AgentChatPayload {
+  message: string;
+  /** Omit to let the platform choose a role from the onboarded domains. */
+  roleId?: string;
+  dataSourceId?: number;
+  objectCode?: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  sessionId?: string;
+}
+
+export interface AgentChatResult {
+  answer: string;
+  intent: string;
+  confidence: number;
+  resolved: {
+    dataSourceId?: number | null;
+    objectCode?: string | null;
+  };
+  evidence: Record<string, unknown>;
+  nextActions: string[];
+  model?: {
+    configured: boolean;
+    usedForUnderstanding: boolean;
+    usedForSummary: boolean;
+    name: string;
+    error?: string;
+  };
+  toolCalls: Array<{
+    tool: string;
+    args: Record<string, unknown>;
+    result?: Record<string, unknown>;
+    error?: string;
+    authBlocked?: boolean;
+  }>;
+  roleId: string;
+}
+
+// 工作流相关类型
+export interface WorkflowState {
+  id: number;
+  workflowId: number;
+  code: string;
+  name: string;
+  description: string;
+  isTerminal: number;
+  color: string;
+  sortOrder: number;
+}
+
+export interface WorkflowTransition {
+  id: number;
+  workflowId: number;
+  fromState: string;
+  toState: string;
+  actionCode: string;
+  name: string;
+  guardExpression: string;
+  requiresReview: number;
+  reviewRole: string;
+  sortOrder: number;
+}
+
+export interface WorkflowDefinition {
+  id: number;
+  ontologyId: number;
+  objectCode: string;
+  name: string;
+  description: string;
+  initialState: string;
+  status: string;
+  createdAt: string;
+  states?: WorkflowState[];
+  transitions?: WorkflowTransition[];
+}
+
+export interface WorkflowInstance {
+  id: number;
+  workflowId: number;
+  objectCode: string;
+  instanceId: string;
+  currentState: string;
+  stateEnteredAt: string;
+  updatedAt: string;
+  workflowName?: string;
+  stateInfo?: WorkflowState;
+}
+
+export interface WorkflowHistoryItem {
+  id: number;
+  instanceWorkflowId: number;
+  fromState: string;
+  toState: string;
+  actionCode: string;
+  actor: string;
+  reason: string;
+  metadata: string;
+  createdAt: string;
+}
+
+// 权限相关类型
+export interface PermissionRole {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  isSystem: number;
+  createdAt: string;
+}
+
+export interface PermissionPolicy {
+  id: number;
+  roleId: number;
+  objectCode: string;
+  canRead: number;
+  canWrite: number;
+  canExecute: number;
+  canDelete: number;
+  filterExpression: string;
+  description: string;
+  roleCode?: string;
+  roleName?: string;
+}
+
+// 工具相关类型
+export interface ToolDefinition {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  toolType: string;
+  inputSchema: string;
+  riskLevel: string;
+  requiresReview: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface ToolAuthorization {
+  id: number;
+  roleId: number;
+  toolId: number;
+  allowed: number;
+  maxCallsPerHour: number;
+}
+
+export interface ToolExecutionLog {
+  id: number;
+  toolId: number | null;
+  toolCode: string;
+  agentRole: string;
+  objectCode: string;
+  instanceId: string;
+  inputArgs: string;
+  resultSummary: string;
+  status: string;
+  error: string;
+  durationMs: number;
+  requiresReview: number;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewDecision: string | null;
+  createdAt: string;
+}

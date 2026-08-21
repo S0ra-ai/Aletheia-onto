@@ -1,0 +1,84 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        安全漏洞请勿在此提交，改用
+        [私密报告入口](https://github.com/S0ra-ai/Aletheia-onto/security/advisories/new)。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 实际发生了什么，你期望发生什么。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 越具体越好。能给出最小复现用例最佳。
+      placeholder: |
+        1. 接入一个 MySQL 数据源
+        2. 生成本体草案
+        3. 调用 POST /ontologies/1/publish
+        4. 观察到 ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform-db
+    attributes:
+      label: 平台库方言
+      description: 平台自身使用哪种数据库存储
+      options:
+        - SQLite（默认）
+        - MySQL
+        - PostgreSQL
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: source-type
+    attributes:
+      label: 接入的数据源类型
+      description: 如果问题与接入的遗留系统有关
+      placeholder: MySQL 8.0 / PostgreSQL 16 / SQLite / 不涉及
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交
+      description: git commit hash，或 pip 包版本
+      placeholder: 例如 093a7da
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python 版本
+      placeholder: python --version 的输出
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或错误栈
+      description: 请注意先移除连接串、令牌等敏感信息。
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已确认这不是 README「当前限制」中已记录的未实现能力
+          required: true
+        - label: 我已移除日志中的凭据与敏感信息
+          required: true

@@ -7,26 +7,16 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
-AMOUNT_PATTERN = re.compile(r"(?:合同金额|总价|价款|金额)[：:\s]*人民币?[（(]?[大写]?[）)]?\s*([0-9,]+(?:\.[0-9]+)?)\s*元?")
-DATE_PATTERN = re.compile(r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})日?")
-CONTRACT_NO_PATTERN = re.compile(r"(?:合同编号|编号)[：:\s]*([A-Z]{1,8}-\d{4}-\d{2,8})", re.IGNORECASE)
-PARTY_A_PATTERN = re.compile(r"(?:甲方|采购方|委托方)[：:\s]*([^\n\r]+)")
-PARTY_B_PATTERN = re.compile(r"(?:乙方|供应方|服务方|受托方)[：:\s]*([^\n\r]+)")
-
 # Chinese rule pattern for free-form paragraph extraction
 RULE_IF_PATTERN = re.compile(
     r"(?:当|若|如果|如)\s*(?P<condition>[^，,。]+?)\s*(?:时|，|,)\s*(?:则|需|应|必须|不得|禁止|可以)?\s*(?P<action>[^。]+)",
 )
-RULE_MUST_PATTERN = re.compile(
-    r"(?P<subject>[^，,。]{1,20})(?:需|应|必须|不得|禁止|可以)\s*(?P<action>[^。]+)"
-)
+RULE_MUST_PATTERN = re.compile(r"(?P<subject>[^，,。]{1,20})(?:需|应|必须|不得|禁止|可以)\s*(?P<action>[^。]+)")
 RULE_SEVERITY_KEYWORDS = {
     "blocking": ["必须", "不得", "禁止", "严禁"],
     "warning": ["应", "应当", "不应", "不宜", "需", "需要", "建议", "推荐"],
     "info": ["可以", "可", "宜", "允许"],
 }
-DEFAULT_SCOPE_GUESS = re.compile(r"(合同|订单|客户|设备|工单|项目|人员|风险|支付|发票|产品)")
 
 
 def _convert_doc_to_docx(content: bytes) -> tuple[bytes, str]:
@@ -45,13 +35,12 @@ def _convert_doc_to_docx(content: bytes) -> tuple[bytes, str]:
         if result.returncode != 0 or not docx_path.exists():
             raise RuntimeError(f"LibreOffice 转换失败: {result.stderr.strip()}")
         return docx_path.read_bytes(), docx_path.name
-    except FileNotFoundError:
+    except FileNotFoundError as error:
         raise ValueError(
-            "未检测到 LibreOffice，无法自动转换 .doc 文件。"
-            "请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。"
-        )
-    except subprocess.TimeoutExpired:
-        raise ValueError("LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。")
+            "未检测到 LibreOffice，无法自动转换 .doc 文件。请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。"
+        ) from error
+    except subprocess.TimeoutExpired as error:
+        raise ValueError("LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。") from error
     finally:
         doc_path.unlink(missing_ok=True)
         docx_path.unlink(missing_ok=True)
@@ -66,65 +55,29 @@ def _ensure_docx(file_name: str, content: bytes) -> tuple[bytes, str]:
     raise ValueError(f"不支持的文件格式: {suffix}。当前支持 .docx 和 .doc。")
 
 
-def parse_contract_docx_bytes(file_name: str, content: bytes) -> dict[str, Any]:
+def parse_rule_docx_bytes(file_name: str, content: bytes, default_scope: str = "") -> dict[str, Any]:
+    """Parse business rules from a Word document.
+
+    `default_scope` is the business object assumed when a rule row omits its
+    scope. The caller derives it from the target ontology, so no industry
+    specific object code is baked into the parser.
+    """
     content, safe_name = _ensure_docx(file_name, content)
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         tmp.write(content)
         tmp_path = Path(tmp.name)
     try:
-        return parse_contract_docx(tmp_path, file_name=safe_name, content=content)
+        return parse_rule_docx(tmp_path, file_name=safe_name, content=content, default_scope=default_scope)
     finally:
         tmp_path.unlink(missing_ok=True)
 
 
-def parse_contract_docx(path: Path | str, file_name: str | None = None, content: bytes | None = None) -> dict[str, Any]:
-    try:
-        from docx import Document
-    except Exception as error:  # pragma: no cover - depends on optional runtime package
-        raise ValueError("缺少 python-docx 依赖，无法解析 Word 文档。请安装 requirements.txt。") from error
-
-    doc = Document(str(path))
-    paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
-    tables = _extract_tables(doc)
-    text = "\n".join(paragraphs)
-    table_text = "\n".join(" | ".join(cell for cell in row if cell) for table in tables for row in table["rows"])
-    full_text = "\n".join(part for part in [text, table_text] if part.strip())
-    clauses = _extract_clauses(paragraphs)
-    entities = _extract_entities(full_text, paragraphs)
-    payment_terms = _extract_payment_terms(full_text, paragraphs, tables)
-    risks = _detect_risks(entities, payment_terms, clauses, full_text)
-    file_bytes = content if content is not None else Path(path).read_bytes()
-
-    return {
-        "file": {
-            "name": file_name or Path(path).name,
-            "size": len(file_bytes),
-            "md5": hashlib.md5(file_bytes).hexdigest(),
-        },
-        "text": full_text,
-        "textLength": len(full_text),
-        "paragraphs": paragraphs,
-        "tables": tables,
-        "entities": entities,
-        "clauses": clauses,
-        "paymentTerms": payment_terms,
-        "risks": risks,
-        "ontologyHints": _ontology_hints(entities, clauses, payment_terms, risks),
-    }
-
-
-def parse_rule_docx_bytes(file_name: str, content: bytes) -> dict[str, Any]:
-    content, safe_name = _ensure_docx(file_name, content)
-    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-    try:
-        return parse_rule_docx(tmp_path, file_name=safe_name, content=content)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-
-def parse_rule_docx(path: Path | str, file_name: str | None = None, content: bytes | None = None) -> dict[str, Any]:
+def parse_rule_docx(
+    path: Path | str,
+    file_name: str | None = None,
+    content: bytes | None = None,
+    default_scope: str = "",
+) -> dict[str, Any]:
     try:
         from docx import Document
     except Exception as error:  # pragma: no cover
@@ -133,12 +86,16 @@ def parse_rule_docx(path: Path | str, file_name: str | None = None, content: byt
     doc = Document(str(path))
     paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
     tables = _extract_tables(doc)
-    table_rules = _extract_rules_from_tables(tables)
-    paragraph_rules = _extract_rules_from_paragraphs(paragraphs)
-    free_text_rules = _extract_rules_from_free_text(paragraphs)
+    table_rules = _extract_rules_from_tables(tables, default_scope)
+    paragraph_rules = _extract_rules_from_paragraphs(paragraphs, default_scope)
+    # A structured document may naturally repeat words such as “必须” in rule
+    # names and explanations. Do not reinterpret those fields as extra draft rules.
+    free_text_rules = [] if table_rules or paragraph_rules else _extract_rules_from_free_text(paragraphs, default_scope)
     rules = _deduplicate_rules([*table_rules, *paragraph_rules, *free_text_rules])
     if not rules:
-        raise ValueError("未从 Word 文档中识别到规则。建议使用表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。")
+        raise ValueError(
+            "未从 Word 文档中识别到规则。建议使用表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。"
+        )
     file_bytes = content if content is not None else Path(path).read_bytes()
     return {
         "file": {
@@ -162,7 +119,7 @@ def _extract_tables(doc: Any) -> list[dict[str, Any]]:
     return output
 
 
-def _extract_rules_from_tables(tables: list[dict[str, Any]]) -> list[dict[str, str]]:
+def _extract_rules_from_tables(tables: list[dict[str, Any]], default_scope: str = "") -> list[dict[str, str]]:
     rules: list[dict[str, str]] = []
     for table in tables:
         if not table["rows"]:
@@ -171,32 +128,34 @@ def _extract_rules_from_tables(tables: list[dict[str, Any]]) -> list[dict[str, s
         if "code" not in headers or "expression" not in headers:
             continue
         for row in table["rows"][1:]:
-            values = {headers[index]: row[index].strip() for index in range(min(len(headers), len(row))) if headers[index]}
-            rule = _normalize_rule(values)
+            values = {
+                headers[index]: row[index].strip() for index in range(min(len(headers), len(row))) if headers[index]
+            }
+            rule = _normalize_rule(values, default_scope)
             if rule:
                 rules.append(rule)
     return rules
 
 
-def _extract_rules_from_paragraphs(paragraphs: list[str]) -> list[dict[str, str]]:
+def _extract_rules_from_paragraphs(paragraphs: list[str], default_scope: str = "") -> list[dict[str, str]]:
     rules: list[dict[str, str]] = []
     current: dict[str, str] = {}
     for paragraph in paragraphs:
         key, value = _split_rule_field(paragraph)
         if key == "code" and current.get("code"):
-            rule = _normalize_rule(current)
+            rule = _normalize_rule(current, default_scope)
             if rule:
                 rules.append(rule)
             current = {}
         if key:
             current[key] = value
-    rule = _normalize_rule(current)
+    rule = _normalize_rule(current, default_scope)
     if rule:
         rules.append(rule)
     return rules
 
 
-def _extract_rules_from_free_text(paragraphs: list[str]) -> list[dict[str, str]]:
+def _extract_rules_from_free_text(paragraphs: list[str], default_scope: str = "") -> list[dict[str, str]]:
     rules: list[dict[str, str]] = []
     seen_codes: set[str] = set()
 
@@ -207,21 +166,23 @@ def _extract_rules_from_free_text(paragraphs: list[str]) -> list[dict[str, str]]
             if not condition or not action:
                 continue
             severity = _infer_severity(paragraph)
-            scope = _infer_scope(paragraph, condition, action)
+            scope = _infer_scope(default_scope, paragraph, condition, action)
             code = _slug_code(f"rule_{len(rules) + 1}")
             if code in seen_codes:
                 code = _slug_code(f"rule_{len(rules) + 1}_{hash(condition) % 1000}")
             seen_codes.add(code)
-            rules.append({
-                "code": code,
-                "name": f"规则_{len(rules) + 1}",
-                "ruleType": "validation",
-                "scopeObjectCode": scope,
-                "expression": _condition_to_expression(condition),
-                "severity": severity,
-                "naturalLanguage": f"如果{condition}，则{action}",
-                "status": "draft",
-            })
+            rules.append(
+                {
+                    "code": code,
+                    "name": f"规则_{len(rules) + 1}",
+                    "ruleType": "validation",
+                    "scopeObjectCode": scope,
+                    "expression": _condition_to_expression(condition),
+                    "severity": severity,
+                    "naturalLanguage": f"如果{condition}，则{action}",
+                    "status": "draft",
+                }
+            )
 
         for match in RULE_MUST_PATTERN.finditer(paragraph):
             subject = match.group("subject").strip()
@@ -234,52 +195,60 @@ def _extract_rules_from_free_text(paragraphs: list[str]) -> list[dict[str, str]]
             if code in seen_codes:
                 code = _slug_code(f"must_{len(rules) + 1}_{hash(subject) % 1000}")
             seen_codes.add(code)
-            rules.append({
-                "code": code,
-                "name": f"必须规则_{len(rules) + 1}",
-                "ruleType": "validation",
-                "scopeObjectCode": scope,
-                "expression": _condition_to_expression(f"{subject}未{action}"),
-                "severity": severity,
-                "naturalLanguage": f"{subject}需{action}",
-                "status": "draft",
-            })
+            rules.append(
+                {
+                    "code": code,
+                    "name": f"必须规则_{len(rules) + 1}",
+                    "ruleType": "validation",
+                    "scopeObjectCode": scope,
+                    "expression": _condition_to_expression(f"{subject}未{action}"),
+                    "severity": severity,
+                    "naturalLanguage": f"{subject}需{action}",
+                    "status": "draft",
+                }
+            )
 
     return rules
 
 
 def _infer_severity(text: str) -> str:
-    text_lower = text.lower()
     for severity, keywords in RULE_SEVERITY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             return severity
     return "warning"
 
 
-def _infer_scope(text: str, *hints: str) -> str:
-    for hint in hints:
-        match = DEFAULT_SCOPE_GUESS.search(hint)
-        if match:
-            mapping = {
-                "合同": "contract", "订单": "order", "客户": "customer",
-                "设备": "equipment", "工单": "work_order", "项目": "project",
-                "人员": "personnel", "风险": "risk", "支付": "payment",
-                "发票": "invoice", "产品": "product",
-            }
-            return mapping.get(match.group(1), "contract")
-    return "contract"
+def _infer_scope(default_scope: str, *hints: str) -> str:
+    """Resolve the business object a free-text rule applies to.
+
+    Free text carries no reliable scope, so the caller supplied default (taken
+    from the target ontology) wins. Returning an empty string is preferred over
+    guessing a business object that may not exist: the importer surfaces it as a
+    warning instead of silently attaching the rule to the wrong object.
+    """
+    return _slug_code(default_scope)
 
 
 def _condition_to_expression(condition: str) -> str:
     replacements = [
-        ("大于", " > "), ("小于", " < "), ("等于", " == "),
-        ("不为空", " != null"), ("为空", " == null"),
-        ("不包含", " not in "), ("包含", " in "),
-        ("超过", " > "), ("未超过", " <= "),
-        ("达到", " >= "), ("未达到", " < "),
-        ("属于", " in "), ("不属于", " not in "),
-        ("是", " == "), ("不是", " != "),
-        ("且", " and "), ("或", " or "), ("并", " and "),
+        ("大于", " > "),
+        ("小于", " < "),
+        ("等于", " == "),
+        ("不为空", " != null"),
+        ("为空", " == null"),
+        ("不包含", " not in "),
+        ("包含", " in "),
+        ("超过", " > "),
+        ("未超过", " <= "),
+        ("达到", " >= "),
+        ("未达到", " < "),
+        ("属于", " in "),
+        ("不属于", " not in "),
+        ("是", " == "),
+        ("不是", " != "),
+        ("且", " and "),
+        ("或", " or "),
+        ("并", " and "),
     ]
     expr = condition
     for zh, op in replacements:
@@ -328,10 +297,12 @@ def _normalize_header(value: str) -> str:
     return aliases.get(normalized, "")
 
 
-def _normalize_rule(values: dict[str, str]) -> dict[str, str] | None:
+def _normalize_rule(values: dict[str, str], default_scope: str = "") -> dict[str, str] | None:
     code = _slug_code(values.get("code", ""))
     expression = values.get("expression", "").strip()
-    scope = _slug_code(values.get("scope_object_code", "contract")) or "contract"
+    # Fall back to the caller supplied scope (derived from the ontology) rather
+    # than to any built-in business object.
+    scope = _slug_code(values.get("scope_object_code", "")) or _slug_code(default_scope)
     if not code or not expression:
         return None
     return {
@@ -417,157 +388,8 @@ def _rule_warnings(rules: list[dict[str, str]]) -> list[str]:
     for rule in rules:
         if rule["status"] != "published":
             warnings.append(f"{rule['code']} 的状态不是 published，导入后可能不会参与已发布规则研判。")
+        if not rule["scopeObjectCode"]:
+            warnings.append(f"{rule['code']} 未指定适用业务对象，请在文档中补充“适用对象”列或在导入时指定默认对象。")
         if "." in rule["scopeObjectCode"]:
             warnings.append(f"{rule['code']} 的适用对象看起来像属性路径，请确认应为业务对象编码。")
     return warnings
-
-
-def _extract_entities(text: str, paragraphs: list[str]) -> dict[str, Any]:
-    dates = _extract_dates(text)
-    title = _infer_title(paragraphs)
-    amount = _extract_amount(text)
-    return {
-        "contractNo": _first_match(CONTRACT_NO_PATTERN, text),
-        "title": title,
-        "partyA": _extract_party_from_paragraphs(paragraphs, "甲方") or _clean_party(_first_match(PARTY_A_PATTERN, text)),
-        "partyB": _extract_party_from_paragraphs(paragraphs, "乙方") or _clean_party(_first_match(PARTY_B_PATTERN, text)),
-        "amount": amount,
-        "currency": "CNY" if amount is not None or "人民币" in text else "",
-        "dates": dates,
-        "signDate": dates[0] if dates else "",
-        "startDate": dates[1] if len(dates) > 1 else "",
-        "endDate": dates[-1] if len(dates) > 1 else "",
-    }
-
-
-def _extract_clauses(paragraphs: list[str]) -> list[dict[str, str]]:
-    clauses: list[dict[str, str]] = []
-    current: dict[str, str] | None = None
-    heading_pattern = re.compile(r"^(第[一二三四五六七八九十百]+条|[一二三四五六七八九十]+、|\d+[.、])\s*(.+)")
-    for paragraph in paragraphs:
-        match = heading_pattern.match(paragraph)
-        if match:
-            if current:
-                clauses.append(current)
-            current = {"title": paragraph[:80], "content": ""}
-        elif current:
-            current["content"] = (current["content"] + "\n" + paragraph).strip()
-    if current:
-        clauses.append(current)
-    if clauses:
-        return clauses
-    return [{"title": paragraph[:80], "content": paragraph} for paragraph in paragraphs[:12]]
-
-
-def _extract_payment_terms(text: str, paragraphs: list[str], tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    terms: list[dict[str, Any]] = []
-    for paragraph in paragraphs:
-        if any(keyword in paragraph for keyword in ("付款", "支付", "款项", "首付款", "尾款")):
-            terms.append({"source": "paragraph", "text": paragraph, "amount": _extract_amount(paragraph), "date": _extract_dates(paragraph)[:1]})
-    for table in tables:
-        header = table["rows"][0] if table["rows"] else []
-        joined_header = "".join(header)
-        if any(keyword in joined_header for keyword in ("付款", "金额", "日期", "节点")):
-            for row in table["rows"][1:]:
-                joined = " ".join(row)
-                terms.append({"source": f"table:{table['index']}", "text": joined, "amount": _extract_amount(joined), "date": _extract_dates(joined)[:1]})
-    return terms[:20]
-
-
-def _detect_risks(entities: dict[str, Any], payment_terms: list[dict[str, Any]], clauses: list[dict[str, str]], text: str) -> list[dict[str, str]]:
-    risks = []
-    if not entities.get("contractNo"):
-        risks.append(_risk("missing_contract_no", "warning", "未识别到合同编号，建议补充结构化编号。"))
-    if not entities.get("partyA") or not entities.get("partyB"):
-        risks.append(_risk("missing_parties", "warning", "未完整识别甲乙方，建议人工核对合同主体。"))
-    if entities.get("amount") is None:
-        risks.append(_risk("missing_amount", "warning", "未识别到合同金额，无法与付款计划做一致性校验。"))
-    if not entities.get("signDate"):
-        risks.append(_risk("missing_sign_date", "warning", "未识别到签订日期，已生效合同可能无法通过规则校验。"))
-    if entities.get("amount") is not None and entities["amount"] <= 0:
-        risks.append(_risk("invalid_amount", "blocking", "合同金额小于或等于 0，存在阻断性风险。"))
-    if payment_terms and entities.get("amount") is not None:
-        total = sum(float(term["amount"] or 0) for term in payment_terms)
-        if total and abs(total - float(entities["amount"])) > 0.01:
-            risks.append(_risk("payment_amount_mismatch", "warning", f"付款条款合计 {total:.2f} 与合同金额 {entities['amount']:.2f} 不一致。"))
-    if "黑名单" in text:
-        risks.append(_risk("blacklist_customer", "warning", "文档提及黑名单客户，应进入风险复核。"))
-    if not any("违约" in item["title"] or "违约" in item["content"] for item in clauses):
-        risks.append(_risk("missing_breach_clause", "info", "未明显识别违约责任条款，建议补充或人工确认。"))
-    return risks
-
-
-def _ontology_hints(entities: dict[str, Any], clauses: list[dict[str, str]], payment_terms: list[dict[str, Any]], risks: list[dict[str, str]]) -> dict[str, Any]:
-    return {
-        "objects": ["contract", "customer", "payment_plan"],
-        "attributes": {
-            "contract.contract_no": entities.get("contractNo"),
-            "contract.title": entities.get("title"),
-            "contract.amount": entities.get("amount"),
-            "contract.sign_date": entities.get("signDate"),
-            "contract.start_date": entities.get("startDate"),
-            "contract.end_date": entities.get("endDate"),
-            "customer.name": entities.get("partyA"),
-            "contract.counterparty": entities.get("partyB"),
-        },
-        "relations": [
-            {"source": "contract", "target": "customer", "type": "belongs_to"},
-            {"source": "contract", "target": "payment_plan", "type": "has_many"} if payment_terms else None,
-        ],
-        "rulesToEvaluate": [
-            "contract_amount_positive",
-            "effective_contract_signed",
-            "payment_plan_amount_match",
-            "blacklist_customer_warning",
-        ],
-        "riskCodes": [risk["code"] for risk in risks],
-        "clauseCount": len(clauses),
-    }
-
-
-def _extract_amount(text: str) -> float | None:
-    match = AMOUNT_PATTERN.search(text)
-    if not match:
-        money = re.search(r"([0-9,]+(?:\.[0-9]+)?)\s*元", text)
-        match = money
-    if not match:
-        return None
-    return float(match.group(1).replace(",", ""))
-
-
-def _extract_dates(text: str) -> list[str]:
-    dates = []
-    for year, month, day in DATE_PATTERN.findall(text):
-        dates.append(f"{int(year):04d}-{int(month):02d}-{int(day):02d}")
-    return list(dict.fromkeys(dates))
-
-
-def _infer_title(paragraphs: list[str]) -> str:
-    for paragraph in paragraphs[:5]:
-        if "合同" in paragraph or "协议" in paragraph:
-            return paragraph[:120]
-    return paragraphs[0][:120] if paragraphs else ""
-
-
-def _first_match(pattern: re.Pattern[str], text: str) -> str:
-    match = pattern.search(text)
-    return match.group(1).strip() if match else ""
-
-
-def _clean_party(value: str) -> str:
-    return value.split("，")[0].split(",")[0].strip()
-
-
-def _extract_party_from_paragraphs(paragraphs: list[str], label: str) -> str:
-    for index, paragraph in enumerate(paragraphs):
-        if paragraph.startswith(label):
-            inline = re.sub(rf"^{label}(?:[（(][^）)]*[）)])?\s*[:：]?\s*", "", paragraph).strip()
-            if inline and inline != paragraph:
-                return _clean_party(inline)
-            if index + 1 < len(paragraphs):
-                return _clean_party(paragraphs[index + 1])
-    return ""
-
-
-def _risk(code: str, severity: str, message: str) -> dict[str, str]:
-    return {"code": code, "severity": severity, "message": message}
