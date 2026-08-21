@@ -1,0 +1,39 @@
+name: 文档问题
+description: 文档有错、过时，或声称了不存在的能力
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本项目把「文档只描述已实现且有测试覆盖的能力」当作硬要求。
+        如果你发现文档夸大了能力，这是一个需要修的 bug。
+
+  - type: input
+    id: location
+    attributes:
+      label: 位置
+      placeholder: 例如 README.md 的「能力矩阵」一节
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型
+      options:
+        - 声称了实际不存在的能力
+        - 把「部分实现」写成「已支持」
+        - 命令或示例无法执行
+        - 内容过时
+        - 表述不清或有错别字
+        - 链接失效
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: 说明
+      description: 文档怎么写的，实际情况是什么。
+    validations:
+      required: true
