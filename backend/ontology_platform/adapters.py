@@ -5,10 +5,11 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Protocol
+from typing import Any, Callable, Iterable, Iterator, Protocol
 from urllib.parse import urlparse
 
 from .config import QUERY_LIMITS
+from .registry import Registry, RegistryError, load_entry_point_plugins
 
 
 @dataclass(frozen=True)
@@ -68,18 +69,57 @@ class RuntimeDatabase(Protocol):
     def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]: ...
 
 
-SUPPORTED_SOURCE_TYPES = ("sqlite", "postgresql", "mysql")
+# Third parties register their own adapters here instead of forking the platform.
+# Experimental: the DatabaseAdapter protocol may change before 1.0 (ADR-0007).
+ADAPTER_REGISTRY: Registry[Callable[[], DatabaseAdapter]] = Registry("数据源适配器")
+
+ADAPTER_ENTRY_POINT_GROUP = "aletheia.adapters"
+
+
+def register_adapter(
+    source_type: str,
+    factory: Callable[[], DatabaseAdapter],
+    *,
+    aliases: Iterable[str] = (),
+    replace: bool = False,
+) -> Callable[[], DatabaseAdapter]:
+    """Register a data source adapter factory.
+
+    A factory rather than an instance, because adapters are cheap to build and
+    callers treat each one as independent.
+
+    >>> register_adapter("oracle", OracleAdapter)          # doctest: +SKIP
+    >>> register_adapter("dm", DamengAdapter, aliases=["dameng"])  # doctest: +SKIP
+
+    Implementations must satisfy `DatabaseAdapter`. Run
+    `tests/test_adapter_contract.py` against a new adapter to check compliance.
+    """
+    ADAPTER_REGISTRY.register(source_type, factory, replace=replace)
+    for alias in aliases:
+        ADAPTER_REGISTRY.alias(alias, source_type)
+    return factory
 
 
 def get_adapter(source_type: str) -> DatabaseAdapter:
-    normalized = source_type.lower()
-    if normalized == "sqlite":
-        return SQLiteAdapter()
-    if normalized in {"postgresql", "postgres", "pgsql"}:
-        return PostgreSQLAdapter()
-    if normalized == "mysql":
-        return MySQLAdapter()
-    raise ValueError(f"不支持的数据源类型: {source_type}。当前支持: {', '.join(SUPPORTED_SOURCE_TYPES)}")
+    try:
+        factory = ADAPTER_REGISTRY.get(source_type)
+    except RegistryError as error:
+        # ValueError is what callers and the API layer already handle, so keep
+        # the exception type stable while improving the message.
+        raise ValueError(str(error)) from error
+    return factory()
+
+
+def supported_source_types() -> tuple[str, ...]:
+    return ADAPTER_REGISTRY.names()
+
+
+def load_adapter_plugins() -> list[str]:
+    """Discover adapters advertised by installed packages via entry points."""
+    return load_entry_point_plugins(
+        ADAPTER_ENTRY_POINT_GROUP,
+        lambda name, factory: ADAPTER_REGISTRY.register(name, factory),
+    )
 
 
 def test_connection(source_type: str, connection_uri: str) -> dict[str, Any]:
@@ -552,3 +592,17 @@ def _connection_status(source_type: str, reachable: bool, status: str, message: 
         "status": status,
         "message": message,
     }
+
+
+# -- Built-in adapters --
+#
+# Registered at import time so the defaults behave exactly as before and
+# supported_source_types() reports a complete list. Declared here, after the
+# classes exist, rather than next to the registry definition above.
+register_adapter("sqlite", SQLiteAdapter)
+register_adapter("postgresql", PostgreSQLAdapter, aliases=("postgres", "pgsql"))
+register_adapter("mysql", MySQLAdapter)
+
+# Third-party adapters shipped as installable packages. Failures are logged, not
+# raised: a broken plugin must not stop the platform from starting.
+load_adapter_plugins()

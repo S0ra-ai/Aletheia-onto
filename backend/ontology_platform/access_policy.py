@@ -10,9 +10,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
-from .auth import CAP_ADMIN, CAP_EXECUTE, CAP_PUBLISH, CAP_READ, CAP_REVIEW, CAP_WRITE
+from .auth import (
+    ALL_CAPABILITIES,
+    CAP_ADMIN,
+    CAP_EXECUTE,
+    CAP_PUBLISH,
+    CAP_READ,
+    CAP_REVIEW,
+    CAP_WRITE,
+)
+from .registry import load_entry_point_plugins
 
 
 @dataclass(frozen=True)
@@ -96,11 +105,64 @@ RULES: tuple[Rule, ...] = (
 )
 
 
+# Rules contributed by plugins. Checked *before* the built-in table so an
+# extension can protect its own routes; it cannot loosen a built-in rule,
+# because anything it does not match still falls through to RULES and then to
+# the admin default.
+#
+# Experimental: this signature may change before 1.0 (ADR-0007).
+_PLUGIN_RULES: list[Rule] = []
+
+POLICY_ENTRY_POINT_GROUP = "aletheia.access_policies"
+
+
+def register_route_policy(
+    methods: Iterable[str],
+    path_regex: str,
+    capability: str,
+    description: str = "",
+) -> Rule:
+    """Declare the capability required by a plugin's routes.
+
+    Plugins that add endpoints must register a policy, otherwise their routes
+    inherit the admin-only default and appear broken to non-admin users.
+
+    >>> register_route_policy(["GET"], r"/oracle/tables.*", CAP_READ, "Oracle 表浏览")  # doctest: +SKIP
+
+    Registering a policy for a path already covered by a plugin rule replaces
+    that rule, so re-importing a plugin is idempotent.
+    """
+    if capability not in ALL_CAPABILITIES:
+        raise ValueError(f"未知能力: {capability}。可用: {'、'.join(sorted(ALL_CAPABILITIES))}")
+    rule = _rule(methods, path_regex, capability, description)
+    for index, existing in enumerate(_PLUGIN_RULES):
+        if existing.pattern.pattern == rule.pattern.pattern and existing.methods == rule.methods:
+            _PLUGIN_RULES[index] = rule
+            return rule
+    _PLUGIN_RULES.append(rule)
+    return rule
+
+
+def clear_route_policies() -> None:
+    """Drop all plugin-registered rules. Intended for tests."""
+    _PLUGIN_RULES.clear()
+
+
+def load_policy_plugins() -> list[str]:
+    """Let installed packages contribute route policies via entry points."""
+
+    def _register(name: str, factory: Any) -> None:
+        for spec in factory() or ():
+            register_route_policy(*spec)
+
+    return load_entry_point_plugins(POLICY_ENTRY_POINT_GROUP, _register)
+
+
 def required_capability(method: str, path: str) -> str:
     """Return the capability needed for a request, defaulting to admin."""
     normalized_method = method.upper()
     normalized_path = path.rstrip("/") or "/"
-    for rule in RULES:
+    for rule in (*_PLUGIN_RULES, *RULES):
         if normalized_method in rule.methods and rule.pattern.match(normalized_path):
             return rule.capability
     return CAP_ADMIN
@@ -119,6 +181,7 @@ def describe_policy() -> list[dict[str, str]]:
             "pattern": rule.pattern.pattern,
             "capability": rule.capability,
             "description": rule.description,
+            "source": "plugin" if rule in _PLUGIN_RULES else "builtin",
         }
-        for rule in RULES
+        for rule in (*_PLUGIN_RULES, *RULES)
     ]

@@ -45,6 +45,49 @@ Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神
 
 与 Dify／FastGPT／LangChain 的差别不在检索精度，而在结论的可追问性。
 
+## 效果图
+
+以下均为真实运行截图，非示意图或设计稿。数据来自内置的合成示例系统
+（`examples/contract-system` 与设备运维样例），不含任何真实业务信息。
+
+### 语义问答：结论 + 依据规则 + 证据
+
+![语义问答与判定依据](docs/images/01-semantic-qa-with-evidence.png)
+
+提问「合同 1 是否合规？」，返回的不是一段自由文本，而是：
+**结论**（未通过）、**逐条规则的判定与原因**（合同金额必须为正数、生效合同必须已签署……）、
+**置信度**，以及左侧可切换的业务对象与角色。角色名「设备运维业务专家」由已接入领域
+运行时派生——平台没有内置任何行业角色。
+
+### 数据接入与元数据扫描
+
+![数据源接入与元数据扫描](docs/images/02-data-source-onboarding.png)
+
+接入既有数据库后自动扫描：表、字段、类型、外键关系、枚举候选、接入准备度评分。
+连接串中的密码段已脱敏。
+
+### 领域本体与业务对象
+
+![领域本体与业务对象](docs/images/03-ontology-objects.png)
+
+由元数据生成的本体草案：业务对象、属性、关系，以及每条语义映射的置信度与审核状态。
+
+### 治理与发布门禁
+
+![治理与发布门禁](docs/images/04-governance-release-gate.png)
+
+发布前评估 release-readiness。存在阻断项时拒绝发布，`force` 覆盖会连同
+未通过门禁数一并写入审计。
+
+### 角色与对象权限
+
+![角色与对象权限](docs/images/05-roles-and-permissions.png)
+
+6 种能力 × 6 种角色，对象级读写执行删除策略。
+
+> ⚠️ 图中的「行级过滤表达式」字段目前**有存储但未生效**，
+> `check_permission` 只原样返回、不做过滤。详见[当前限制](#当前限制)。
+
 ## 快速开始
 
 需要 Python 3.9+（前端另需 Node.js 18+）。以下命令在干净 clone 中逐条实测通过。
@@ -183,7 +226,8 @@ flowchart TB
 | 结构漂移对比 | ✅ | `metadata.py` |
 | OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
 | 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
-| Oracle／SQL Server／达梦／人大金仓／REST／文件／MQ | 📋 | — |
+| **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
+| Oracle／SQL Server／达梦／人大金仓内置适配器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
 ### 本体与规则
 
@@ -192,6 +236,7 @@ flowchart TB
 | 按行业蓝图生成对象／属性／关系／映射候选 | ✅ | `ontology.py`、`industry_blueprints.py` |
 | 行业蓝图导入 | ✅ | `industry_blueprints.py` |
 | 规则引擎 AST 白名单沙箱求值 | ✅ | `semantic_kernel.py` |
+| **规则函数可注册**（不放宽沙箱） | ✅ | `semantic_kernel.py`、`registry.py` |
 | 规则 fail-closed 语义 | ✅ | `semantic_kernel.py` |
 | 写入时表达式校验（含未知字段提示） | ✅ | `governance.py`、`semantic_kernel.py` |
 | 语义资产导出 JSON-LD／Turtle | ✅ | `ontology.py` |
@@ -222,6 +267,7 @@ flowchart TB
 | 会话可撤销与过期，改密失效旧会话 | ✅ | `auth.py` |
 | 6 能力 × 6 角色 | ✅ | `auth.py` |
 | 集中式路由→能力策略表（未登记默认仅管理员） | ✅ | `access_policy.py` |
+| **插件可注册路由权限策略** | ✅ | `access_policy.py` |
 | 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
 | 权限行级过滤 `filter_expression` | ⚠️ | 有存储，`check_permission` **只原样返回** |
@@ -237,6 +283,7 @@ flowchart TB
 | 自然语言语义问答（意图路由、实例识别） | ✅ | `natural_language.py` |
 | 智能体角色按已接入领域运行时派生 | ✅ | `agent_roles.py`、`agent.py` |
 | 操作预检与写回执行（HTTP／HTTPS） | ✅ | `automation.py` |
+| **写回执行器可注册**（按 scheme 分发） | ✅ | `automation.py`、`registry.py` |
 | 模型层 OpenRouter 兼容，未配置密钥回退本地启发式 | ✅ | `model_client.py` |
 | 向量检索／嵌入／文档 RAG | 📋 | **零实现**，无 embedding／vector／chunk／rerank |
 | 文档知识库 | 📋 | `contract_documents.py` 只从 Word 抽规则，不建检索语料 |
@@ -245,7 +292,7 @@ flowchart TB
 | 定时调度器 | 📋 | 无任何 scheduler／cron |
 | 反馈闭环、满意度、转人工 | 📋 | — |
 | 跨源实体消解 | 📋 | — |
-| 写回执行器扩展（MQ／RPC／直写库／存储过程） | 📋 | 只支持 HTTP／HTTPS |
+| MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
 ## 当前限制
 
@@ -277,9 +324,9 @@ flowchart TB
 | 映射类型只有 `table_to_object` 与 `column_to_attribute`，**无值域映射** | `ontology.py` |
 | **无类型层级**（无 parent_object／subclass／inherit） | — |
 | 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
-| `ALLOWED_RULE_FUNCTIONS` 为冻结集合（5 个函数），**第三方无法注册** | `semantic_kernel.py:113` |
-| `get_adapter()` 硬编码 if/elif；`access_policy.RULES` 为模块级静态元组 | `adapters.py:74`、`access_policy.py` |
-| 写回执行器只支持 HTTP／HTTPS | `automation.py` |
+
+> 扩展点已不在此列：数据源适配器、规则函数、路由策略、写回执行器
+> 现已开放注册，见[扩展指南](docs/extending.md)。
 
 ### 工程限制
 
@@ -417,12 +464,13 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**128 个测试**，全绿。分布：
+**174 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
+| `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
-| `test_api_authentication.py` | 26 | 认证、会话、能力策略、actor 可信 |
+| `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
 | `test_rule_engine_safety.py` | 17 | 沙箱逃逸、fail-closed 语义、发布门禁 |
 | `test_platform_database_dialects.py` | 10 | 三方言作为平台库 |

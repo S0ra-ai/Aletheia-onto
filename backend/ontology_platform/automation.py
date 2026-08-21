@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urljoin
 
 from .database import connect
 from .decisions import record_decision
+from .registry import Registry, load_entry_point_plugins
 from .semantic_kernel import assess_instance
 from .workflow_permission import get_available_actions, get_instance_state, get_workflow_by_object, transition_instance
 
@@ -159,10 +161,19 @@ def execute_operation(
         api_headers = _load_api_headers(source["api_headers"])
     if not api_base_url:
         raise ValueError("真实执行需要配置业务 API 基址 apiBaseUrl；数据库连接地址仅用于元数据和实例读取。")
-    if not api_base_url.lower().startswith(("http://", "https://")):
-        raise ValueError("业务 API 基址必须是 HTTP/HTTPS 地址。")
 
-    remote = _invoke_http_operation(api_base_url, execution_plan, timeout_seconds, api_headers)
+    # The scheme selects the executor, so a deployment can write back over MQ,
+    # RPC or a stored procedure by registering one (ADR-0007) rather than being
+    # limited to HTTP.
+    executor = resolve_executor(api_base_url)
+    remote = executor(
+        ExecutionRequest(
+            target=api_base_url,
+            plan=execution_plan,
+            timeout_seconds=timeout_seconds,
+            headers=api_headers,
+        )
+    )
     result = {
         "executed": True,
         "status": "executed",
@@ -211,6 +222,76 @@ def _render_operation_path(path: str, instance_id: str, payload: dict[str, Any])
     for key, value in payload.items():
         rendered = rendered.replace("{" + key + "}", str(value))
     return rendered
+
+
+@dataclass(frozen=True)
+class ExecutionRequest:
+    """Everything a writeback executor needs to perform one operation.
+
+    Passed as an object rather than positional arguments so new fields can be
+    added without breaking existing executors.
+    """
+
+    target: str
+    plan: dict[str, Any]
+    timeout_seconds: float
+    headers: dict[str, str] | None = None
+
+
+# Writeback executors keyed by URI scheme. HTTP/HTTPS ship built in; MQ, RPC,
+# direct-database and stored-procedure channels can be registered by a
+# deployment. Experimental: signature may change before 1.0 (ADR-0007).
+EXECUTOR_REGISTRY: Registry[Callable[[ExecutionRequest], dict[str, Any]]] = Registry("写回执行器")
+
+EXECUTOR_ENTRY_POINT_GROUP = "aletheia.executors"
+
+
+def register_executor(
+    scheme: str,
+    executor: Callable[[ExecutionRequest], dict[str, Any]],
+    *,
+    replace: bool = False,
+) -> Callable[[ExecutionRequest], dict[str, Any]]:
+    """Register a writeback channel for a URI scheme.
+
+    >>> register_executor("amqp", publish_to_rabbitmq)   # doctest: +SKIP
+    >>> register_executor("grpc", call_grpc_service)     # doctest: +SKIP
+
+    The executor receives an `ExecutionRequest` and returns a dict describing
+    the outcome; it is recorded verbatim under `execution.remote` in the
+    decision record, so include whatever an auditor would need.
+    """
+    # Split rather than rstrip("://"): rstrip removes any of those characters,
+    # so a scheme ending in one of them would be silently truncated.
+    normalized = str(scheme).split("://", 1)[0].strip().lower()
+    if not normalized:
+        raise ValueError("写回执行器的 scheme 不能为空")
+    EXECUTOR_REGISTRY.register(normalized, executor, replace=replace)
+    return executor
+
+
+def resolve_executor(target: str) -> Callable[[ExecutionRequest], dict[str, Any]]:
+    scheme = str(target).split("://", 1)[0].lower() if "://" in str(target) else ""
+    if not scheme:
+        raise ValueError(f"无法从业务 API 基址识别协议: {target!r}。当前支持: {'、'.join(EXECUTOR_REGISTRY.names())}")
+    executor = EXECUTOR_REGISTRY.try_get(scheme)
+    if executor is None:
+        raise ValueError(
+            f"不支持的写回协议 {scheme}://。当前支持: {'、'.join(EXECUTOR_REGISTRY.names())}。"
+            f"可通过 register_executor() 注册自定义通道。"
+        )
+    return executor
+
+
+def supported_executor_schemes() -> tuple[str, ...]:
+    return EXECUTOR_REGISTRY.names()
+
+
+def load_executor_plugins() -> list[str]:
+    return load_entry_point_plugins(
+        EXECUTOR_ENTRY_POINT_GROUP,
+        lambda name, executor: register_executor(name, executor),
+    )
 
 
 def _invoke_http_operation(
@@ -392,3 +473,15 @@ def _record_execution_decision(
         },
         actor=actor,
     )
+
+
+def _http_executor(request: ExecutionRequest) -> dict[str, Any]:
+    """Built-in HTTP/HTTPS writeback channel."""
+    return _invoke_http_operation(request.target, request.plan, request.timeout_seconds, request.headers)
+
+
+register_executor("http", _http_executor)
+register_executor("https", _http_executor)
+
+# Deployment-specific channels (MQ, RPC, stored procedures) shipped as packages.
+load_executor_plugins()

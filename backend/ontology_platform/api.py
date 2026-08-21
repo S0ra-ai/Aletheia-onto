@@ -486,53 +486,63 @@ def auth_access_policy() -> dict[str, object]:
 
 @app.post("/demo/bootstrap")
 def bootstrap_demo() -> dict[str, object]:
-    initialize_platform_db(DEFAULT_PLATFORM_DB)
-    sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
-    source = register_data_source(
-        DEFAULT_PLATFORM_DB,
-        "合同管理样例系统",
-        "sqlite",
-        str(sample_path),
-        domain="合同管理",
-        system_category="database+api",
-    )
-    register_source_api(
-        DEFAULT_PLATFORM_DB,
-        source.id,
-        "submit_contract",
-        "提交合同审批",
-        "POST",
-        "/contracts/{id}/submit",
-        "contract.submit_for_approval",
-    )
-    scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-    ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+    # ValueError here means a governance rule refused the request -- most often
+    # "this ontology version is already published, derive a new one". That is a
+    # client-correctable condition, so it must not surface as a 500.
+    try:
+        initialize_platform_db(DEFAULT_PLATFORM_DB)
+        sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
+        source = register_data_source(
+            DEFAULT_PLATFORM_DB,
+            "合同管理样例系统",
+            "sqlite",
+            str(sample_path),
+            domain="合同管理",
+            system_category="database+api",
+        )
+        register_source_api(
+            DEFAULT_PLATFORM_DB,
+            source.id,
+            "submit_contract",
+            "提交合同审批",
+            "POST",
+            "/contracts/{id}/submit",
+            "contract.submit_for_approval",
+        )
+        scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
+        ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 
 @app.post("/demo/bootstrap/equipment")
 def bootstrap_equipment_demo() -> dict[str, object]:
-    initialize_platform_db(DEFAULT_PLATFORM_DB)
-    sample_path = create_equipment_sample_db(DEFAULT_EQUIPMENT_SAMPLE_DB)
-    source = register_data_source(
-        DEFAULT_PLATFORM_DB,
-        "设备运维样例系统",
-        "sqlite",
-        str(sample_path),
-        domain="设备运维",
-        system_category="database+api",
-    )
-    register_source_api(
-        DEFAULT_PLATFORM_DB,
-        source.id,
-        "close_work_order",
-        "关闭工单",
-        "POST",
-        "/work-orders/{id}/close",
-        "work_order.close",
-    )
-    scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-    ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+    # Same as /demo/bootstrap: a refused governance rule is a 409, not a 500.
+    try:
+        initialize_platform_db(DEFAULT_PLATFORM_DB)
+        sample_path = create_equipment_sample_db(DEFAULT_EQUIPMENT_SAMPLE_DB)
+        source = register_data_source(
+            DEFAULT_PLATFORM_DB,
+            "设备运维样例系统",
+            "sqlite",
+            str(sample_path),
+            domain="设备运维",
+            system_category="database+api",
+        )
+        register_source_api(
+            DEFAULT_PLATFORM_DB,
+            source.id,
+            "close_work_order",
+            "关闭工单",
+            "POST",
+            "/work-orders/{id}/close",
+            "work_order.close",
+        )
+        scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
+        ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 

@@ -7,13 +7,14 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .adapters import RuntimeDatabase, get_adapter
 from .config import clamp_page_size, clamp_sample_size
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .ontology import explain_instance
+from .registry import Registry, load_entry_point_plugins
 
 
 class RowObject:
@@ -110,7 +111,55 @@ ALLOWED_AST_NODES = (
     ast.IsNot,
 )
 
-ALLOWED_RULE_FUNCTIONS = frozenset({"sum", "len", "count", "any", "all"})
+# Rule functions callable from a business rule expression.
+#
+# Open for registration so a deployment can express domain-specific predicates
+# without forking, but every entry still runs inside the AST allowlist sandbox:
+# registering a function grants the right to *call* it, never the right to
+# bypass node validation. Keep implementations pure and total -- a function that
+# raises turns into a fail-closed "not passed" verdict for every instance of the
+# scoped object (ADR-0002).
+#
+# Experimental: this signature may change before 1.0 (ADR-0007).
+RULE_FUNCTION_REGISTRY: Registry[Callable[..., Any]] = Registry("规则函数")
+
+RULE_FUNCTION_ENTRY_POINT_GROUP = "aletheia.rule_functions"
+
+
+def register_rule_function(
+    name: str,
+    implementation: Callable[..., Any],
+    *,
+    replace: bool = False,
+) -> Callable[..., Any]:
+    """Make a function callable from rule expressions.
+
+    >>> register_rule_function("abs", abs)                 # doctest: +SKIP
+    >>> register_rule_function("days_between", days_between)  # doctest: +SKIP
+
+    Names must be plain identifiers: the sandbox matches `ast.Name` nodes, so a
+    dotted name could never be resolved and would fail confusingly at eval time.
+    """
+    if not name.isidentifier():
+        raise ValueError(f"规则函数名必须是合法标识符: {name!r}")
+    if name.startswith("_"):
+        raise ValueError(f"规则函数名不能以下划线开头，避免与沙箱内部名冲突: {name!r}")
+    if not callable(implementation):
+        raise ValueError(f"规则函数 {name!r} 必须可调用")
+    RULE_FUNCTION_REGISTRY.register(name, implementation, replace=replace)
+    return implementation
+
+
+def allowed_rule_function_names() -> frozenset[str]:
+    return frozenset(RULE_FUNCTION_REGISTRY.names())
+
+
+def load_rule_function_plugins() -> list[str]:
+    return load_entry_point_plugins(
+        RULE_FUNCTION_ENTRY_POINT_GROUP,
+        lambda name, func: register_rule_function(name, func),
+    )
+
 
 # Attribute access is needed to reach related rows (payment_plan.amount), but
 # dunder attributes are the entry point for sandbox escapes via __class__,
@@ -501,8 +550,9 @@ def _validate_ast(tree: ast.AST) -> None:
         if not isinstance(node, ALLOWED_AST_NODES):
             raise ValueError(f"不允许的规则表达式节点: {type(node).__name__}")
         if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name) or node.func.id not in ALLOWED_RULE_FUNCTIONS:
-                raise ValueError(f"只允许 {'、'.join(sorted(ALLOWED_RULE_FUNCTIONS))} 函数")
+            allowed = allowed_rule_function_names()
+            if not isinstance(node.func, ast.Name) or node.func.id not in allowed:
+                raise ValueError(f"只允许 {'、'.join(sorted(allowed))} 函数")
             if node.keywords:
                 raise ValueError("规则函数不支持关键字参数")
         if isinstance(node, ast.Attribute) and node.attr.startswith(FORBIDDEN_ATTRIBUTE_PREFIXES):
@@ -531,7 +581,7 @@ def validate_rule_expression(expression: str, available_names: Iterable[str] | N
         {
             node.id
             for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and node.id not in ALLOWED_RULE_FUNCTIONS and node.id != "None"
+            if isinstance(node, ast.Name) and node.id not in allowed_rule_function_names() and node.id != "None"
         }
     )
     result: dict[str, Any] = {"valid": True, "error": "", "referencedNames": referenced}
@@ -546,7 +596,10 @@ def validate_rule_expression(expression: str, available_names: Iterable[str] | N
 
 def _allowed_names(context: dict[str, Any]) -> dict[str, Any]:
     names = dict(context)
-    names.update({"sum": sum, "len": len, "count": _count, "any": any, "all": all, "None": None})
+    # Registered functions are added after the context so a column named `sum`
+    # cannot shadow the function and silently change what a rule means.
+    names.update(dict(RULE_FUNCTION_REGISTRY.items()))
+    names["None"] = None
     return names
 
 
@@ -726,3 +779,18 @@ def _consistency_next_actions(
     if not actions:
         actions.append("决策结果存在分化，建议扩大样本并复核规则分层。")
     return actions
+
+
+# -- Built-in rule functions --
+#
+# Registered at import time so behaviour matches the previous frozen set
+# exactly. `count` is ours; the rest are Python builtins, deliberately exposed
+# one by one rather than by handing the sandbox __builtins__.
+register_rule_function("sum", sum)
+register_rule_function("len", len)
+register_rule_function("count", _count)
+register_rule_function("any", any)
+register_rule_function("all", all)
+
+# Deployment-specific predicates shipped as installable packages.
+load_rule_function_plugins()

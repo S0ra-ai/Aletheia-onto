@@ -300,3 +300,36 @@ def test_audit_log_records_authenticated_actor_not_client_input(client: TestClie
 def test_resolve_principal_rejects_empty_token(tmp_path: Path) -> None:
     with pytest.raises(AuthenticationError):
         resolve_principal(tmp_path / "missing.sqlite3", "")
+
+
+def test_republishing_a_published_ontology_is_a_conflict_not_a_server_error(
+    client: TestClient,
+) -> None:
+    """A refused governance rule is client-correctable, so it must not be a 500.
+
+    /demo/bootstrap regenerates a draft for a fixed ontology name. Once that
+    version is published, "已发布本体不可改" correctly refuses the second attempt
+    (ADR-0002 territory: governance rules are enforced, not advisory). The bug
+    was that the ValueError escaped as an opaque 500, telling the caller nothing
+    about what to do next.
+    """
+    token = _token(client, "admin", ADMIN_PASSWORD)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/demo/bootstrap", json={}, headers=headers)
+    assert first.status_code == 200, first.text
+    ontology_id = first.json()["ontology"]["ontology"]["id"]
+
+    confirm = client.post(
+        f"/ontologies/{ontology_id}/mappings/review",
+        json={"status": "confirmed", "note": "为发布做准备"},
+        headers=headers,
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    published = client.post(f"/ontologies/{ontology_id}/publish", json={"force": True}, headers=headers)
+    assert published.status_code == 200, published.text
+
+    again = client.post("/demo/bootstrap", json={}, headers=headers)
+    assert again.status_code == 409, again.text
+    assert "派生新版本" in again.json()["detail"]
