@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+import importlib
 import json
 import sqlite3
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-import importlib
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from ontology_platform.adapters import get_adapter
 import ontology_platform.automation as automation_module
+from ontology_platform.adapters import get_adapter
 from ontology_platform.automation import execute_operation, preflight_operation
+from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.decisions import list_decisions
@@ -26,15 +27,37 @@ from ontology_platform.governance import (
     review_semantic_mapping,
     upsert_business_rule,
 )
-from ontology_platform.industry_blueprints import infer_industry_blueprint, list_industry_blueprints, upsert_industry_blueprint
+from ontology_platform.industry_blueprints import (
+    infer_industry_blueprint,
+    list_industry_blueprints,
+    upsert_industry_blueprint,
+)
 from ontology_platform.kernel_package import build_kernel_package, export_kernel_package
-from ontology_platform.metadata import analyze_schema_drift, assess_data_source_readiness, check_business_api_gateway, check_data_source_connection, import_openapi_operations, import_openapi_operations_from_url, list_data_sources, list_source_apis, register_data_source, register_source_api, scan_data_source
-from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig, generate_blueprint_draft, get_model_config, reset_model_config, update_model_config
-from ontology_platform.contract_documents import parse_rule_docx_bytes
+from ontology_platform.metadata import (
+    analyze_schema_drift,
+    assess_data_source_readiness,
+    check_business_api_gateway,
+    check_data_source_connection,
+    import_openapi_operations,
+    import_openapi_operations_from_url,
+    list_data_sources,
+    list_source_apis,
+    register_data_source,
+    register_source_api,
+    scan_data_source,
+)
+from ontology_platform.model_client import (
+    OpenRouterClient,
+    OpenRouterConfig,
+    generate_blueprint_draft,
+    get_model_config,
+    reset_model_config,
+    update_model_config,
+)
 from ontology_platform.natural_language import query_natural_language
 from ontology_platform.onboarding import run_onboarding_pipeline
+from ontology_platform.ontology import explain_instance, export_ontology_asset, generate_ontology_draft, list_ontologies
 from ontology_platform.operation_bindings import assess_operation_bindings
-from ontology_platform.ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies
 from ontology_platform.release_readiness import assess_ontology_release_readiness
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_decision_consistency, assess_instance, list_instance_ids

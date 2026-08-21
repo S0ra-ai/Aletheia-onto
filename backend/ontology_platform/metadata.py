@@ -247,7 +247,6 @@ def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -
         if source is None:
             raise ValueError(f"数据源不存在: {data_source_id}")
         tables = conn.execute("select * from source_table where data_source_id = ?", (data_source_id,)).fetchall()
-        table_ids = [row["id"] for row in tables]
         columns = conn.execute(
             """
             select sc.*

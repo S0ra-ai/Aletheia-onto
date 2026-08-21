@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .database import connect, last_insert_id
-
 
 logger = logging.getLogger(__name__)
 
@@ -699,13 +698,13 @@ def _seed_default_states(conn: Any, workflow_id: int, initial_state: str) -> Non
         ("cancelled", "已取消", 1, "#6b7280", 6),
     ]
     for code, name, is_terminal, color, sort_order in defaults:
-        try:
+        # Seeding is idempotent: a state that already exists trips the unique
+        # constraint, which is the expected outcome on re-seed.
+        with contextlib.suppress(Exception):
             conn.execute(
                 "insert into workflow_state (workflow_id, code, name, is_terminal, color, sort_order) values (?, ?, ?, ?, ?, ?)",
                 (workflow_id, code, name, is_terminal, color, sort_order),
             )
-        except Exception:
-            pass
 
 
 def _seed_default_transitions(conn: Any, workflow_id: int) -> None:
@@ -719,13 +718,12 @@ def _seed_default_transitions(conn: Any, workflow_id: int) -> None:
         ("active", "cancelled", "cancel", "取消", 6),
     ]
     for from_s, to_s, action, name, sort in defaults:
-        try:
+        # Same as the states above: re-seeding an existing transition is a no-op.
+        with contextlib.suppress(Exception):
             conn.execute(
                 "insert into workflow_transition (workflow_id, from_state, to_state, action_code, name, sort_order) values (?, ?, ?, ?, ?, ?)",
                 (workflow_id, from_s, to_s, action, name, sort),
             )
-        except Exception:
-            pass
 
 
 # ============================================================
@@ -810,7 +808,10 @@ def check_permission(
         if policy is None:
             return {"allowed": False, "reason": f"角色 '{role_code}' 对对象 '{object_code}' 无策略"}
         col = f"can_{operation}"
-        allowed = bool(policy[col]) if col in policy.keys() else False
+        # Keep .keys() here. `col in policy` on a sqlite3.Row tests the row's
+        # *values*, not its column names, so removing it would silently deny
+        # every permission.
+        allowed = bool(policy[col]) if col in policy.keys() else False  # noqa: SIM118
         return {
             "allowed": allowed,
             "roleCode": role_code,

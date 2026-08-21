@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,16 +12,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
+from .agent import agent_chat, get_agent_roles
+from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
 from .auth import (
+    ROLE_CAPABILITIES,
     AuthenticationError,
     AuthorizationError,
-    CAP_ADMIN,
-    CAP_EXECUTE,
-    CAP_PUBLISH,
-    CAP_REVIEW,
-    CAP_WRITE,
     Principal,
-    ROLE_CAPABILITIES,
     authorize,
     change_password,
     create_user,
@@ -35,8 +32,8 @@ from .auth import (
     set_user_status,
 )
 from .automation import execute_operation, preflight_operation
-from .coverage import build_semantic_coverage
 from .contract_documents import parse_rule_docx_bytes
+from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
@@ -80,16 +77,8 @@ from .model_client import (
     test_model_config,
     update_model_config,
 )
-from .agent import agent_chat, get_agent_roles
-from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
-from .workflow_permission import (
-    init_workflow_and_permission_schema,
-    seed_default_tools,
-    seed_default_roles_and_policies,
-)
 from .natural_language import query_natural_language
 from .onboarding import run_onboarding_pipeline
-from .operation_bindings import assess_operation_bindings
 from .ontology import (
     explain_instance,
     export_ontology_asset,
@@ -98,8 +87,14 @@ from .ontology import (
     resolve_ontology_for_object,
     summarize_ontology,
 )
+from .operation_bindings import assess_operation_bindings
 from .release_readiness import assess_ontology_release_readiness
-from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
+from .sample_data import (
+    DEFAULT_EQUIPMENT_SAMPLE_DB,
+    DEFAULT_SAMPLE_DB,
+    create_contract_sample_db,
+    create_equipment_sample_db,
+)
 from .semantic_kernel import (
     assess_decision_consistency,
     assess_instance,
@@ -107,6 +102,11 @@ from .semantic_kernel import (
     validate_rule_expression,
 )
 from .vocabulary import default_object_code_for_ontology
+from .workflow_permission import (
+    init_workflow_and_permission_schema,
+    seed_default_roles_and_policies,
+    seed_default_tools,
+)
 
 
 @asynccontextmanager
@@ -1262,7 +1262,6 @@ from .workflow_permission import (
     list_roles,
     list_tools,
     list_workflows,
-    log_tool_execution,
     register_tool,
     review_tool_execution,
     transition_instance,

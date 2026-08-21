@@ -21,7 +21,6 @@ from typing import Any, Optional
 
 from .database import connect
 
-
 logger = logging.getLogger(__name__)
 
 GENERIC_ROLE_ID = "domain-expert"

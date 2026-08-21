@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
 from .automation import preflight_operation
-from .config import ANSWER_CONFIDENCE, RESOLUTION_CONFIDENCE
+from .config import RESOLUTION_CONFIDENCE
 from .database import connect
 from .knowledge_base import build_reasoning_chain
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
-from .vocabulary import DomainVocabulary, ObjectTerm, load_vocabulary
-
+from .vocabulary import DomainVocabulary, load_vocabulary
 
 INTENT_COMPLIANCE = "compliance_assessment"
 INTENT_EXPLAIN = "explain_instance"
@@ -610,7 +609,6 @@ def _answer_explain(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> s
         or "业务对象"
     )
     instance_id = evidence.get("instanceId", "")
-    source = evidence.get("source", {})
     attributes = evidence.get("attributes", [])
     snippets = []
     for item in attributes[:4]:
@@ -653,7 +651,6 @@ def _friendly_recommendation(recommendation: str) -> str:
 
 
 def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
-    decision = evidence["decision"]["status"]
     recommendation = evidence["decision"]["recommendation"]
     object_code = vocabulary.label_for(evidence["semanticKernel"]["objectCode"])
     instance_id = evidence["semanticKernel"]["instanceId"]
@@ -665,7 +662,6 @@ def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -
 
 
 def _answer_preflight(evidence: dict[str, Any]) -> str:
-    operation = evidence["operation"]["operationCode"]
     instance_id = evidence["target"]["instanceId"]
     if evidence["allowed"]:
         return f"实例 {instance_id} 已经具备操作条件，可以继续执行。"

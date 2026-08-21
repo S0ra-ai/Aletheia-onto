@@ -27,7 +27,6 @@ from typing import Any, Optional
 
 from .database import connect
 
-
 logger = logging.getLogger(__name__)
 
 PBKDF2_ITERATIONS = 240_000

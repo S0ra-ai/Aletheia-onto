@@ -13,19 +13,15 @@ from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-
 from ontology_platform.access_policy import required_capability
 from ontology_platform.auth import (
     ROLE_CAPABILITIES,
     AuthenticationError,
-    create_user,
     hash_password,
-    login,
     resolve_principal,
     verify_password,
 )
 from ontology_platform.database import connect
-
 
 ADMIN_PASSWORD = "admin-password-123"
 
@@ -38,8 +34,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("ONTOLOGY_ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ONTOLOGY_ADMIN_PASSWORD", ADMIN_PASSWORD)
 
-    import ontology_platform.database as database_module
     import ontology_platform.api as api_module
+    import ontology_platform.database as database_module
 
     database_module._platform_adapter = None
     monkeypatch.setattr(database_module, "DEFAULT_PLATFORM_DB", platform_db)

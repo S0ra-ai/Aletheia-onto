@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import sys
 from datetime import date
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.database import initialize_platform_db
 from ontology_platform.governance import upsert_business_rule
-from ontology_platform.knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
+from ontology_platform.knowledge_base import (
+    browse_source_table,
+    build_reasoning_chain,
+    initialize_knowledge_base,
+    list_knowledge_bases,
+)
 from ontology_platform.metadata import register_data_source, scan_data_source
 from ontology_platform.natural_language import query_natural_language
 from ontology_platform.ontology import generate_ontology_draft

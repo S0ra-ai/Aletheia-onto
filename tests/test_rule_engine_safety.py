@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,

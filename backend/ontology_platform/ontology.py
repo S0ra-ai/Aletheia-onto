@@ -257,7 +257,6 @@ def _export_jsonld(detail: dict[str, Any]) -> str:
     ontology = detail["ontology"]
     base = _ontology_base_uri(ontology)
     object_by_id = {item["id"]: item for item in detail["objects"]}
-    attribute_by_id = {item["id"]: item for item in detail["attributes"]}
     graph: list[dict[str, Any]] = [
         {
             "@id": base.rstrip("/"),

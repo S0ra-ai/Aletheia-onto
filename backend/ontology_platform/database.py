@@ -5,12 +5,10 @@ import logging
 import os
 import re
 import sqlite3
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional, Protocol
+from typing import Any, Iterable, Optional, Protocol
 from urllib.parse import urlparse
-
 
 logger = logging.getLogger(__name__)
 
@@ -518,15 +516,15 @@ def _apply_column_migrations(conn: Any, db_type: str) -> list[str]:
 
 
 def _sqlite_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("sqlite", list(stmt.values())[0])
+    return stmt.get("sqlite", next(iter(stmt.values())))
 
 
 def _postgresql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("postgresql", list(stmt.values())[0])
+    return stmt.get("postgresql", next(iter(stmt.values())))
 
 
 def _mysql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("mysql", list(stmt.values())[0])
+    return stmt.get("mysql", next(iter(stmt.values())))
 
 
 def _parse_mysql_uri(connection_uri: str) -> dict[str, Any]:

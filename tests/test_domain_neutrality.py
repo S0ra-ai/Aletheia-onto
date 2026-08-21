@@ -18,7 +18,6 @@ import tokenize
 from pathlib import Path
 
 import pytest
-
 from ontology_platform.agent_roles import (
     build_system_prompt,
     init_agent_role_schema,
@@ -43,7 +42,6 @@ from ontology_platform.workflow_permission import (
     seed_default_roles_and_policies,
     seed_default_tools,
 )
-
 
 CLINIC_SCHEMA = """
 create table pet_owner (id integer primary key, owner_name text, phone text, city text);

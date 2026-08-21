@@ -17,7 +17,6 @@ from ontology_platform.model_client import get_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.sample_data import create_contract_sample_db
 
-
 SECRET = "sup3rs3cret"
 
 

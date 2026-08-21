@@ -8,14 +8,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .adapters import get_adapter
-from .automation import preflight_operation
 from .agent_roles import AgentRole, build_system_prompt, list_agent_roles, resolve_agent_role
+from .automation import preflight_operation
 from .config import ANSWER_CONFIDENCE
 from .database import connect
 from .knowledge_base import build_reasoning_chain, list_knowledge_bases
 from .model_client import OpenRouterClient, OpenRouterConfig
-from .workflow_permission import check_tool_authorization, log_tool_execution
 from .natural_language import (
     INTENT_COMPLIANCE,
     INTENT_CONSISTENCY,
@@ -26,16 +24,11 @@ from .natural_language import (
     _compact_evidence,
     _compact_json,
     _detect_intent,
-    _detect_object_code,
-    _extract_instance_hint,
-    _extract_json_object,
-    _identifier_columns,
-    _resolve_instance_id,
 )
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
 from .vocabulary import load_vocabulary
-
+from .workflow_permission import check_tool_authorization, log_tool_execution
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +141,8 @@ def _llm_agent_chat(
         if tool_calls:
             tool_results = _execute_tool_calls(platform_db, tool_calls, data_source_id, object_code, role.id)
             if tool_results:
-                followup_messages = messages + [
+                followup_messages = [
+                    *messages,
                     {"role": "assistant", "content": clean_answer},
                     {
                         "role": "user",

@@ -8,26 +8,22 @@ MySQL and PostgreSQL tests skip automatically when no server is available.
 
 from __future__ import annotations
 
-import importlib
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Iterator
-
-import pytest
+from typing import Any, Iterator
 
 import ontology_platform.database as database_module
+import pytest
 from ontology_platform.database import (
     COLUMN_MIGRATIONS,
     SCHEMA_DEFINITIONS,
-    PlatformConnection,
     _adapt_sql,
     _apply_column_migrations,
     connect,
     initialize_platform_db,
 )
 from ontology_platform.workflow_permission import SCHEMA_SQL, init_workflow_and_permission_schema
-
 
 # -- Dialect translation (no server required) --
 

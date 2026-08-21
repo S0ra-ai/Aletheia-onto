@@ -12,7 +12,6 @@ from ontology_platform.knowledge_base import list_knowledge_bases
 from ontology_platform.metadata import register_data_source, register_source_api, scan_data_source
 from ontology_platform.ontology import generate_ontology_draft
 
-
 SOURCE_NAME = "示例 MySQL+Word 合同项目"
 
 

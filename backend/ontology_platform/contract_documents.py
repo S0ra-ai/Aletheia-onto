@@ -7,8 +7,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
-
 # Chinese rule pattern for free-form paragraph extraction
 RULE_IF_PATTERN = re.compile(
     r"(?:当|若|如果|如)\s*(?P<condition>[^，,。]+?)\s*(?:时|，|,)\s*(?:则|需|应|必须|不得|禁止|可以)?\s*(?P<action>[^。]+)",
@@ -39,13 +37,15 @@ def _convert_doc_to_docx(content: bytes) -> tuple[bytes, str]:
         if result.returncode != 0 or not docx_path.exists():
             raise RuntimeError(f"LibreOffice 转换失败: {result.stderr.strip()}")
         return docx_path.read_bytes(), docx_path.name
-    except FileNotFoundError:
+    except FileNotFoundError as error:
         raise ValueError(
             "未检测到 LibreOffice，无法自动转换 .doc 文件。"
             "请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。"
-        )
-    except subprocess.TimeoutExpired:
-        raise ValueError("LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。")
+        ) from error
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            "LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。"
+        ) from error
     finally:
         doc_path.unlink(missing_ok=True)
         docx_path.unlink(missing_ok=True)
@@ -209,7 +209,6 @@ def _extract_rules_from_free_text(paragraphs: list[str], default_scope: str = ""
 
 
 def _infer_severity(text: str) -> str:
-    text_lower = text.lower()
     for severity, keywords in RULE_SEVERITY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             return severity
@@ -381,4 +380,3 @@ def _rule_warnings(rules: list[dict[str, str]]) -> list[str]:
         if "." in rule["scopeObjectCode"]:
             warnings.append(f"{rule['code']} 的适用对象看起来像属性路径，请确认应为业务对象编码。")
     return warnings
-
