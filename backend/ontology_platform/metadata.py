@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
+from .credentials import redact_connection_uri
 from .database import connect, last_insert_id
 
 
@@ -22,6 +23,25 @@ class DataSource:
     connection_uri: str
     api_base_url: str
     capabilities: list[str]
+
+    def public_dict(self) -> dict[str, Any]:
+        """Serialize for API responses with the credential removed."""
+        redacted = redact_connection_uri(self.connection_uri)
+        return {
+            "id": self.id,
+            "name": self.name,
+            "domain": self.domain,
+            "system_category": self.system_category,
+            "systemCategory": self.system_category,
+            "source_type": self.source_type,
+            "sourceType": self.source_type,
+            "connection_uri": redacted,
+            "connectionUri": redacted,
+            "connectionUriRedacted": redacted != self.connection_uri,
+            "api_base_url": self.api_base_url,
+            "apiBaseUrl": self.api_base_url,
+            "capabilities": list(self.capabilities),
+        }
 
 
 @dataclass(frozen=True)
@@ -569,6 +589,7 @@ def _row_to_data_source(row: sqlite3.Row) -> DataSource:
 
 
 def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
+    redacted = redact_connection_uri(row["connection_uri"])
     return {
         "id": row["id"],
         "name": row["name"],
@@ -577,8 +598,11 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
         "system_category": row["system_category"],
         "sourceType": row["source_type"],
         "source_type": row["source_type"],
-        "connectionUri": row["connection_uri"],
-        "connection_uri": row["connection_uri"],
+        # Never return the raw credential: a data source row carries the
+        # production database password.
+        "connectionUri": redacted,
+        "connection_uri": redacted,
+        "connectionUriRedacted": redacted != row["connection_uri"],
         "apiBaseUrl": row["api_base_url"],
         "api_base_url": row["api_base_url"],
         "apiHeadersConfigured": bool(_load_api_headers(row["api_headers"])),
