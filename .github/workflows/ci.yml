@@ -100,12 +100,14 @@ jobs:
         # drift apart, so the number cannot quietly become a lie.
         run: |
           python - <<'PY'
-          import re, subprocess, pathlib
+          import re, subprocess, sys, pathlib
           out = subprocess.run(
-              ["python", "-m", "pytest", "--collect-only", "-q"],
+              [sys.executable, "-m", "pytest", "--collect-only"],
               capture_output=True, text=True, check=True,
           ).stdout
-          actual = int(re.search(r"(\d+) tests? collected", out).group(1))
+          match = re.search(r"(\d+) tests? collected", out)
+          assert match, f"未能从 pytest 输出解析测试数量:\n{out[-2000:]}"
+          actual = int(match.group(1))
           readme = pathlib.Path("README.md").read_text(encoding="utf-8")
           claimed = {int(n) for n in re.findall(r"(\d+)\s*个测试", readme)}
           assert claimed, "README 未声明测试数量"
