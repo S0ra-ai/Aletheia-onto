@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 from .database import connect
 from .decisions import record_decision
 from .semantic_kernel import assess_instance
+from .workflow_permission import get_available_actions, get_instance_state, get_workflow_by_object, transition_instance
 
 
 def preflight_operation(
@@ -56,6 +57,12 @@ def preflight_operation(
         "ruleResults": assessment["ruleResults"],
         "nextAction": _next_action(allowed, decision_status),
     }
+    workflow_state = _check_workflow_state(platform_db, ontology_id, resolved_object_code, instance_id)
+    if workflow_state:
+        preflight["workflowState"] = workflow_state
+        if workflow_state.get("currentState") in ("cancelled", "completed"):
+            preflight["allowed"] = False
+            preflight["nextAction"] = "workflow_terminated"
     decision_record = record_decision(
         platform_db,
         "operation_preflight",
@@ -159,6 +166,12 @@ def execute_operation(
         "execution": {**execution_plan, "remote": remote},
         "message": "预检通过，传统业务系统操作已执行。",
     }
+    resolved_object_code = preflight["target"]["objectCode"]
+    workflow_transition = _try_workflow_transition(
+        platform_db, ontology_id, resolved_object_code, instance_id, operation_code, actor,
+    )
+    if workflow_transition:
+        result["workflowTransition"] = workflow_transition
     result["decisionRecord"] = _record_execution_decision(platform_db, actor, operation_code, preflight, result)
     _audit_execution(platform_db, actor, operation, result)
     return result
@@ -234,6 +247,75 @@ def _load_api_headers(value: str | None) -> dict[str, str]:
     if not isinstance(parsed, dict):
         return {}
     return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
+
+
+def _check_workflow_state(
+    platform_db: Path | str,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+) -> dict[str, Any] | None:
+    try:
+        wf = get_workflow_by_object(platform_db, ontology_id, object_code)
+        if wf is None:
+            return None
+        workflow_id = wf["id"]
+        state = get_instance_state(platform_db, workflow_id, instance_id)
+        if state is None:
+            return {"workflowId": workflow_id, "workflowName": wf.get("name", ""), "status": "not_entered"}
+        actions = get_available_actions(platform_db, workflow_id, instance_id)
+        return {
+            "workflowId": workflow_id,
+            "workflowName": wf.get("name", ""),
+            "instanceId": instance_id,
+            "currentState": state.get("current_state", ""),
+            "stateEnteredAt": state.get("state_entered_at", ""),
+            "availableActions": [
+                {"actionCode": a.get("action_code"), "name": a.get("name"), "toState": a.get("to_state")}
+                for a in actions
+            ],
+        }
+    except Exception:
+        return None
+
+
+def _try_workflow_transition(
+    platform_db: Path | str,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    operation_code: str,
+    actor: str,
+) -> dict[str, Any] | None:
+    try:
+        wf = get_workflow_by_object(platform_db, ontology_id, object_code)
+        if wf is None:
+            return None
+        workflow_id = wf["id"]
+        state = get_instance_state(platform_db, workflow_id, instance_id)
+        if state is None:
+            return None
+        actions = get_available_actions(platform_db, workflow_id, instance_id)
+        auto_action = None
+        for a in actions:
+            if operation_code in a.get("action_code", ""):
+                auto_action = a
+                break
+        if auto_action is None:
+            return None
+        result = transition_instance(
+            platform_db, workflow_id, instance_id,
+            auto_action["action_code"], actor=actor,
+            reason=f"业务操作 {operation_code} 自动触发工作流转移",
+        )
+        return {
+            "fromState": auto_action.get("from_state"),
+            "toState": auto_action.get("to_state"),
+            "actionCode": auto_action.get("action_code"),
+            "instanceState": result,
+        }
+    except Exception:
+        return None
 
 
 def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, Any], result: dict[str, Any]) -> None:

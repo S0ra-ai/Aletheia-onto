@@ -404,6 +404,7 @@ def test_onboarding_pipeline_registers_scans_generates_ontology_and_reports_read
         "scan_metadata",
         "import_openapi",
         "generate_ontology",
+        "seed_permissions",
         "assess_readiness",
     ]
 

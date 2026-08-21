@@ -13,6 +13,7 @@ from .metadata import (
     scan_data_source,
 )
 from .ontology import generate_ontology_draft
+from .workflow_permission import seed_default_roles_and_policies
 
 
 def run_onboarding_pipeline(
@@ -82,6 +83,14 @@ def run_onboarding_pipeline(
                 {"ontologyId": ontology["id"], "blueprintId": ontology.get("blueprint", {}).get("id")},
             )
         )
+        # Default object level policies follow the modelled objects, so refresh
+        # them once a draft exists. Reported as its own step because it can fail
+        # independently of ontology generation.
+        try:
+            seed_default_roles_and_policies(platform_db)
+            steps.append(_step("seed_permissions", "completed", "已为新建业务对象初始化默认权限策略。", {}))
+        except Exception as error:
+            steps.append(_step("seed_permissions", "failed", f"默认权限策略初始化失败: {error}", {}))
     else:
         steps.append(_step("generate_ontology", "skipped", "已按请求跳过本体草案生成。", {}))
 
