@@ -8,30 +8,14 @@ from typing import Any
 
 from .adapters import get_adapter
 from .automation import preflight_operation
+from .config import ANSWER_CONFIDENCE, RESOLUTION_CONFIDENCE
 from .database import connect
 from .knowledge_base import build_reasoning_chain
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
+from .vocabulary import DomainVocabulary, ObjectTerm, load_vocabulary
 
-
-OBJECT_HINTS: tuple[tuple[str, str], ...] = (
-    ("合同", "contract"),
-    ("客户", "customer"),
-    ("付款", "payment_plan"),
-    ("收款", "payment_plan"),
-    ("发票", "invoice"),
-    ("设备", "equipment"),
-    ("工单", "work_order"),
-)
-OBJECT_LABELS = {
-    "contract": "合同",
-    "customer": "客户",
-    "payment_plan": "付款计划",
-    "invoice": "发票",
-    "equipment": "设备",
-    "work_order": "工单",
-}
 
 INTENT_COMPLIANCE = "compliance_assessment"
 INTENT_EXPLAIN = "explain_instance"
@@ -77,6 +61,9 @@ def query_natural_language(
         intent,
     )
 
+    vocabulary = load_vocabulary(platform_db, resolved.ontology_id, resolved.data_source_id)
+    example = _question_examples(vocabulary)
+
     if intent == INTENT_KNOWLEDGE_OVERVIEW:
         if resolved.data_source_id is None:
             raise ValueError("请选择已初始化的数据源")
@@ -84,18 +71,25 @@ def query_natural_language(
         object_rules = [rule for rule in chain.get("rules", []) if rule["scopeObjectCode"] == resolved.object_code]
         related = [relation for relation in chain.get("relations", []) if resolved.object_code in {relation["sourceObject"], relation["targetObject"]}]
         evidence = {"objectCode": resolved.object_code, "rules": object_rules, "relations": related, "reasoningSteps": chain.get("steps", [])}
-        answer = _answer_knowledge_overview(resolved.object_code, object_rules, related)
+        answer = _answer_knowledge_overview(resolved.object_code, object_rules, related, vocabulary)
     elif intent == INTENT_EXPLAIN:
         if not resolved.instance_id:
-            raise ValueError("请在问题中说明要解释的实例，例如：合同 1 是什么？")
+            raise ValueError(f"请在问题中说明要解释的实例，例如：{example['explain']}")
         evidence = explain_instance(platform_db, resolved.ontology_id, resolved.object_code, resolved.instance_id)
-        answer = _answer_explain(evidence)
+        answer = _answer_explain(evidence, vocabulary)
     elif intent == INTENT_PREFLIGHT:
         if not resolved.instance_id:
-            raise ValueError("请在问题中说明要预检的实例，例如：合同 3 能提交审批吗？")
+            raise ValueError(f"请在问题中说明要预检的实例，例如：{example['preflight']}")
         if resolved.data_source_id is None:
             raise ValueError("无法定位数据源，不能进行操作预检")
-        operation_code = str(model_interpretation.get("operationCode") or resolved.operation_code or _default_operation_code(normalized_question, resolved.object_code))
+        operation_code = str(
+            model_interpretation.get("operationCode")
+            or resolved.operation_code
+            or _default_operation_code(platform_db, normalized_question, resolved.object_code, resolved.data_source_id)
+            or ""
+        )
+        if not operation_code:
+            raise ValueError("该数据源尚未登记任何业务操作，无法进行操作预检")
         evidence = preflight_operation(
             platform_db,
             resolved.ontology_id,
@@ -114,17 +108,20 @@ def query_natural_language(
         )
     elif intent == INTENT_CONSISTENCY:
         evidence = assess_decision_consistency(platform_db, resolved.ontology_id, resolved.object_code, limit=20)
-        answer = _answer_consistency(evidence)
+        answer = _answer_consistency(evidence, vocabulary)
     elif intent == INTENT_COMPLIANCE:
         if not resolved.instance_id:
             evidence = assess_decision_consistency(platform_db, resolved.ontology_id, resolved.object_code, limit=20)
-            answer = _answer_overall_compliance(evidence)
+            answer = _answer_overall_compliance(evidence, vocabulary)
         else:
             evidence = assess_instance(platform_db, resolved.ontology_id, resolved.object_code, resolved.instance_id)
-            answer = _answer_assessment(evidence)
+            answer = _answer_assessment(evidence, vocabulary)
     else:
         evidence = {"hint": "未识别到明确意图"}
-        answer = "我还不能可靠理解这个问题。你可以尝试问：合同 1 是否合规？合同 3 能提交审批吗？合同整体决策是否一致？"
+        answer = (
+            "我还不能可靠理解这个问题。你可以尝试问："
+            f"{example['compliance']}？{example['preflight']}？{example['consistency']}？"
+        )
 
     used_model_summary = False
     if use_model and model_client.configured and evidence:
@@ -309,33 +306,120 @@ def _resolve_target(
     instance_id: str | None,
     intent: str,
 ) -> ResolvedTarget:
-    resolved_object = object_code or _detect_object_code(question) or "contract"
+    # The vocabulary is derived from what is actually modelled, so object
+    # detection works for any industry rather than a built-in list.
+    vocabulary = load_vocabulary(platform_db, ontology_id, data_source_id)
+    resolved_object = object_code or _detect_object_code(question, vocabulary)
+    instance_hint = instance_id or _extract_instance_hint(question, vocabulary)
+    if not resolved_object and instance_hint and not str(instance_hint).isdigit():
+        # A bare business code such as MZ-2026-001 identifies its own object:
+        # find which modelled object has a matching identifier column value.
+        resolved_object = _object_for_business_code(platform_db, vocabulary, str(instance_hint))
+    if not resolved_object:
+        default_term = vocabulary.default_object()
+        if default_term is None:
+            raise ValueError("尚未建模任何业务对象，请先接入数据源并生成本体草案")
+        resolved_object = default_term.code
     resolved_ontology = ontology_id or _latest_ontology_id(platform_db, data_source_id, resolved_object)
     resolved_source = data_source_id or _data_source_for_object(platform_db, resolved_ontology, resolved_object)
-    instance_hint = instance_id or _extract_instance_hint(question)
     resolved_instance = _resolve_instance_id(platform_db, resolved_ontology, resolved_object, instance_hint) if instance_hint else None
-    operation_code = _default_operation_code(question, resolved_object) if intent == INTENT_PREFLIGHT else None
+    operation_code = (
+        _default_operation_code(platform_db, question, resolved_object, resolved_source)
+        if intent == INTENT_PREFLIGHT
+        else None
+    )
     return ResolvedTarget(resolved_ontology, resolved_source, resolved_object, resolved_instance, operation_code)
 
 
-def _detect_object_code(question: str) -> str | None:
-    if re.search(r"\b[A-Z]{1,8}-\d{4}-\d{2,8}\b", question, re.IGNORECASE):
-        return "contract"
-    for keyword, code in OBJECT_HINTS:
-        if keyword in question:
-            return code
-    match = re.search(r"\b([a-zA-Z][a-zA-Z0-9_]{1,64})\b", question)
-    return match.group(1) if match else None
+def _object_for_business_code(
+    platform_db: Path | str,
+    vocabulary: DomainVocabulary,
+    business_code: str,
+) -> str | None:
+    """Find the business object whose identifier column holds this code.
+
+    Lets a user paste a document number without naming the object, without the
+    platform assuming which object business codes belong to.
+    """
+    for term in vocabulary.objects:
+        if not term.source_table or term.data_source_id is None:
+            continue
+        with connect(platform_db) as conn:
+            source = conn.execute(
+                "select source_type, connection_uri from data_source where id = ?",
+                (term.data_source_id,),
+            ).fetchone()
+            columns = [
+                row["column_name"]
+                for row in conn.execute(
+                    """
+                    select sc.column_name
+                    from source_column sc
+                    join source_table st on st.id = sc.source_table_id
+                    where st.data_source_id = ? and st.table_name = ?
+                    order by sc.ordinal
+                    """,
+                    (term.data_source_id, term.source_table),
+                ).fetchall()
+            ]
+        if source is None:
+            continue
+        candidates = _identifier_columns(columns)
+        if not candidates:
+            continue
+        try:
+            adapter = get_adapter(source["source_type"])
+            with adapter.runtime(source["connection_uri"]) as runtime:
+                for column in candidates:
+                    if runtime.fetch_related_one(term.source_table, column, business_code) is not None:
+                        return term.code
+        except Exception:
+            # An unreachable source must not break question routing.
+            continue
+    return None
 
 
-def _extract_instance_hint(question: str) -> str | None:
-    contract_no = re.search(r"\b([A-Z]{1,8}-\d{4}-\d{2,8})\b", question, re.IGNORECASE)
-    if contract_no:
-        return contract_no.group(1).upper()
-    specific = re.search(r"(?:合同|客户|付款计划|发票|设备|工单)\s*([0-9]+)\b", question)
-    if specific:
-        return specific.group(1)
-    generic = re.search(r"(?:实例|ID|id)\s*[:：]?\s*([0-9]+)\b", question)
+def _detect_object_code(question: str, vocabulary: DomainVocabulary) -> str | None:
+    """Resolve the referenced object against the modelled vocabulary."""
+    term = vocabulary.detect(question)
+    if term is not None:
+        return term.code
+    # A bare identifier may name an object that is not modelled yet; only accept
+    # it when it actually matches a known code.
+    known = set(vocabulary.codes())
+    for candidate in re.findall(r"\b([a-zA-Z][a-zA-Z0-9_]{1,64})\b", question):
+        if candidate in known:
+            return candidate
+    return None
+
+
+# A business document number: uppercase prefix, digits, separated by - or /.
+# Structural rather than domain specific, so it matches order, ticket and asset
+# numbers just as well as contract numbers.
+BUSINESS_CODE_PATTERN = re.compile(r"\b([A-Z][A-Z0-9]{0,9}[-/]\d{2,8}(?:[-/]\d{1,8})*)\b", re.IGNORECASE)
+
+
+def _extract_instance_hint(question: str, vocabulary: DomainVocabulary | None = None) -> str | None:
+    """Pull an instance identifier out of the question.
+
+    Business codes are matched by shape. Numeric ids are accepted after any
+    modelled object label, so the recognised prefixes grow with the ontology
+    instead of being fixed in code. The vocabulary is optional so early intent
+    detection, which runs before a target is resolved, can still use it.
+    """
+    business_code = BUSINESS_CODE_PATTERN.search(question)
+    if business_code:
+        return business_code.group(1).upper()
+
+    if vocabulary is not None:
+        labels = [term.name for term in vocabulary.objects if term.name]
+        labels.extend(term.code for term in vocabulary.objects if term.code)
+        for label in sorted(labels, key=len, reverse=True):
+            match = re.search(rf"{re.escape(label)}\s*#?([0-9]+)\b", question, re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+    generic = re.search(r"(?:实例|编号|ID|id)\s*[:：#]?\s*([0-9]+)\b", question)
     if generic:
         return generic.group(1)
     return None
@@ -439,24 +523,92 @@ def _resolve_instance_id(platform_db: Path | str, ontology_id: int, object_code:
     return hint
 
 
+# Column names that carry a human facing business identifier. The patterns are
+# naming conventions, not industry terms, so `contract_no`, `visit_no`,
+# `order_code` and `asset_number` are all recognised.
+IDENTIFIER_COLUMN_PATTERN = re.compile(
+    r"(^|_)(no|code|number|serial|ref|key)$|(_no|_code|_number|_serial|_ref)$|(编号|编码|单号)$",
+    re.IGNORECASE,
+)
+
+
 def _identifier_columns(columns: list[str]) -> list[str]:
-    preferred = ["contract_no", "code", "no", "number", "serial_no"]
-    lowered = {column.lower(): column for column in columns}
-    output = [lowered[item] for item in preferred if item in lowered]
-    output.extend(column for column in columns if column not in output and re.search(r"(_no|_code|number|编号|编码)$", column, re.IGNORECASE))
-    return output
+    """Columns likely to hold a business identifier, most specific first."""
+    exact = [column for column in columns if column.lower() in {"code", "no", "number", "serial_no"}]
+    suffixed = [
+        column
+        for column in columns
+        if column not in exact and IDENTIFIER_COLUMN_PATTERN.search(column)
+    ]
+    return exact + suffixed
 
 
-def _default_operation_code(question: str, object_code: str) -> str:
-    if "提交" in question or "审批" in question:
-        return "submit_contract" if object_code == "contract" else f"submit_{object_code}"
-    if "归档" in question:
-        return f"archive_{object_code}"
-    return f"submit_{object_code}"
+# Intent keywords map to the semantic action verbs used when registering a
+# business API. They describe how users phrase requests, not any one industry.
+ACTION_KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("提交", "送审", "报批"), ("submit", "apply", "request")),
+    (("审批", "批准", "通过"), ("approve", "confirm", "review")),
+    (("归档", "关闭", "结束"), ("archive", "close", "finish", "complete")),
+    (("取消", "作废", "撤销"), ("cancel", "void", "revoke")),
+)
 
 
-def _answer_explain(evidence: dict[str, Any]) -> str:
-    object_name = evidence.get("object", {}).get("name") or evidence.get("objectCode", "业务对象")
+def _default_operation_code(
+    platform_db: Path | str,
+    question: str,
+    object_code: str,
+    data_source_id: int | None,
+) -> str | None:
+    """Pick the registered operation that best matches the question.
+
+    Operations are resolved from `source_api` rather than assembled from string
+    templates, so a legacy system whose endpoint is `contract_submit_v2` or
+    `createWorkOrder` still resolves.
+    """
+    if data_source_id is None:
+        return None
+    with connect(platform_db) as conn:
+        rows = conn.execute(
+            """
+            select operation_code, semantic_action, name
+            from source_api
+            where data_source_id = ?
+            order by operation_code
+            """,
+            (data_source_id,),
+        ).fetchall()
+    if not rows:
+        return None
+
+    candidates = [dict(row) for row in rows]
+    # Prefer operations bound to this object through their semantic action.
+    scoped = [
+        item
+        for item in candidates
+        if item["semantic_action"].startswith(f"{object_code}.") or object_code in item["operation_code"]
+    ] or candidates
+
+    wanted_verbs: tuple[str, ...] = ()
+    for phrases, verbs in ACTION_KEYWORDS:
+        if any(phrase in question for phrase in phrases):
+            wanted_verbs = verbs
+            break
+
+    if wanted_verbs:
+        for item in scoped:
+            haystack = f"{item['operation_code']} {item['semantic_action']}".lower()
+            if any(verb in haystack for verb in wanted_verbs):
+                return item["operation_code"]
+
+    return scoped[0]["operation_code"]
+
+
+def _answer_explain(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
+    object_name = (
+        evidence.get("object", {}).get("name")
+        or vocabulary.label_for(str(evidence.get("objectCode", "")))
+        or "业务对象"
+    )
     instance_id = evidence.get("instanceId", "")
     source = evidence.get("source", {})
     attributes = evidence.get("attributes", [])
@@ -467,8 +619,13 @@ def _answer_explain(evidence: dict[str, Any]) -> str:
     return f"这是{object_name} {instance_id}。{suffix}如果你想继续看它的合规情况，我可以接着帮你检查。"
 
 
-def _answer_knowledge_overview(object_code: str, rules: list[dict[str, Any]], relations: list[dict[str, Any]]) -> str:
-    object_name = _object_label(object_code)
+def _answer_knowledge_overview(
+    object_code: str,
+    rules: list[dict[str, Any]],
+    relations: list[dict[str, Any]],
+    vocabulary: DomainVocabulary,
+) -> str:
+    object_name = vocabulary.label_for(object_code)
     if not rules and not relations:
         return f"目前还没有为{object_name}配置专门的业务规则或关联关系。"
     parts = []
@@ -495,10 +652,10 @@ def _friendly_recommendation(recommendation: str) -> str:
     return normalized if normalized.endswith("。") else f"{normalized}。"
 
 
-def _answer_assessment(evidence: dict[str, Any]) -> str:
+def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
     decision = evidence["decision"]["status"]
     recommendation = evidence["decision"]["recommendation"]
-    object_code = _object_label(evidence["semanticKernel"]["objectCode"])
+    object_code = vocabulary.label_for(evidence["semanticKernel"]["objectCode"])
     instance_id = evidence["semanticKernel"]["instanceId"]
     failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
     if not failed:
@@ -517,15 +674,15 @@ def _answer_preflight(evidence: dict[str, Any]) -> str:
     return f"实例 {instance_id} 现在还不宜执行这项操作，不建议自动执行。需要先处理：{rule_text}。"
 
 
-def _answer_consistency(evidence: dict[str, Any]) -> str:
+def _answer_consistency(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
     summary = evidence["summary"]
     return (
-        f"{_object_label(evidence['objectCode'])} 的批量决策一致性为 {evidence['status']}。"
+        f"{vocabulary.label_for(evidence['objectCode'])} 的批量决策一致性为 {evidence['status']}。"
         f"已评估 {evidence['assessed']} 条：通过 {summary['approved']}、复核 {summary['review']}、阻断 {summary['blocked']}、错误 {summary['errors']}。"
     )
 
 
-def _answer_overall_compliance(evidence: dict[str, Any]) -> str:
+def _answer_overall_compliance(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
     summary = evidence["summary"]
     if summary["blocked"] == 0 and summary["review"] == 0 and summary["errors"] == 0:
         verdict = "整体可视为合规"
@@ -533,10 +690,11 @@ def _answer_overall_compliance(evidence: dict[str, Any]) -> str:
         verdict = "存在阻断性不合规风险"
     else:
         verdict = "存在需要复核的合规风险"
+    object_label = vocabulary.label_for(evidence["objectCode"])
     return (
-        f"{_object_label(evidence['objectCode'])} 当前{verdict}。"
+        f"{object_label} 当前{verdict}。"
         f"已评估 {evidence['assessed']} 条：通过 {summary['approved']}、复核 {summary['review']}、阻断 {summary['blocked']}、错误 {summary['errors']}。"
-        "如需单份合同结论，请指定合同ID或合同编号。"
+        f"如需单条结论，请指定{object_label}的 ID 或业务编号。"
     )
 
 
@@ -553,19 +711,31 @@ def _next_actions(intent: str, evidence: dict[str, Any]) -> list[str]:
 
 def _confidence(intent: str, resolved: ResolvedTarget) -> float:
     if intent == INTENT_UNKNOWN:
-        return 0.2
-    score = 0.62
+        return RESOLUTION_CONFIDENCE.unknown_intent
+    score = RESOLUTION_CONFIDENCE.base
     if resolved.object_code:
-        score += 0.12
+        score += RESOLUTION_CONFIDENCE.object_bonus
     if resolved.instance_id:
-        score += 0.14
+        score += RESOLUTION_CONFIDENCE.instance_bonus
     if resolved.ontology_id:
-        score += 0.08
-    return min(score, 0.96)
+        score += RESOLUTION_CONFIDENCE.ontology_bonus
+    return min(score, RESOLUTION_CONFIDENCE.ceiling)
 
 
-def _object_label(object_code: str) -> str:
-    return OBJECT_LABELS.get(object_code, object_code)
+def _question_examples(vocabulary: DomainVocabulary) -> dict[str, str]:
+    """Build sample questions from the modelled vocabulary.
+
+    Prompts and error hints therefore reference the user's own business objects
+    instead of a built-in domain.
+    """
+    term = vocabulary.default_object()
+    label = term.label if term is not None else "业务对象"
+    return {
+        "explain": f"{label} 1 是什么",
+        "compliance": f"{label} 1 是否合规",
+        "preflight": f"{label} 1 能提交审批吗",
+        "consistency": f"{label}整体决策是否一致",
+    }
 
 
 def _extract_json_object(content: str) -> dict[str, Any]:

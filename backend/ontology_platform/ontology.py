@@ -3,63 +3,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
+from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .database import connect, last_insert_id
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
-
-
-NAME_HINTS = {
-    "customer": "客户",
-    "contract": "合同",
-    "payment_plan": "付款计划",
-    "invoice": "发票",
-    "equipment": "设备",
-    "work_order": "工单",
-    "inspection_record": "点检记录",
-    "spare_part": "备件",
-}
-
-ATTRIBUTE_HINTS = {
-    "id": "标识",
-    "customer_name": "客户名称",
-    "credit_status": "信用状态",
-    "industry": "行业",
-    "contract_no": "合同编号",
-    "customer_id": "客户",
-    "title": "标题",
-    "amount": "金额",
-    "status": "状态",
-    "signed_date": "签订日期",
-    "effective_date": "生效日期",
-    "end_date": "结束日期",
-    "plan_no": "付款计划编号",
-    "due_date": "到期日期",
-    "planned_amount": "计划金额",
-    "paid_amount": "已付金额",
-    "paid_date": "付款日期",
-    "invoice_no": "发票编号",
-    "invoice_amount": "发票金额",
-    "issued_date": "开票日期",
-    "created_at": "创建时间",
-    "equipment_code": "设备编号",
-    "equipment_name": "设备名称",
-    "location": "位置",
-    "criticality": "重要等级",
-    "work_order_no": "工单编号",
-    "equipment_id": "设备",
-    "fault_description": "故障描述",
-    "reported_at": "报修时间",
-    "closed_at": "关闭时间",
-    "inspection_date": "点检日期",
-    "result": "结果",
-    "part_code": "备件编号",
-    "part_name": "备件名称",
-    "stock_quantity": "库存数量",
-    "minimum_quantity": "最低库存",
-}
 
 
 def generate_ontology_draft(
@@ -80,15 +31,20 @@ def generate_ontology_draft(
         resolved_name = name or f"{resolved_domain}本体"
         ontology_id = _create_ontology(conn, resolved_name, resolved_domain)
         object_ids: dict[int, int] = {}
+        # Labels contributed by every registered blueprint, including user
+        # imported ones. This replaces a built-in table of industry terms, so a
+        # new domain gets good names by importing a blueprint rather than by
+        # changing platform code.
+        lexicon = _build_lexicon(platform_db)
 
         for table in tables:
-            object_id = _create_business_object(conn, ontology_id, table, blueprint)
+            object_id = _create_business_object(conn, ontology_id, table, blueprint, lexicon)
             object_ids[table["id"]] = object_id
             _create_table_mapping(conn, ontology_id, table, object_id, blueprint)
             columns = conn.execute("select * from source_column where source_table_id = ? order by ordinal", (table["id"],)).fetchall()
             for column in columns:
-                attribute_id = _create_attribute(conn, object_id, column, blueprint)
-                _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id, blueprint)
+                attribute_id = _create_attribute(conn, object_id, column, blueprint, lexicon)
+                _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id, blueprint, lexicon)
 
         foreign_keys = conn.execute(
             """
@@ -117,6 +73,29 @@ def generate_ontology_draft(
         summary = summarize_ontology(conn, ontology_id)
         summary["blueprint"] = blueprint.to_dict()
         return summary
+
+
+def resolve_ontology_for_object(platform_db: Path | str, object_code: str) -> int:
+    """Find the newest ontology that models the given business object.
+
+    Callers used to default to ontology id 1, which silently pointed at whatever
+    was created first and broke as soon as a second ontology existed.
+    """
+    with connect(platform_db) as conn:
+        row = conn.execute(
+            """
+            select o.id
+            from ontology o
+            join business_object bo on bo.ontology_id = o.id
+            where bo.code = ?
+            order by case o.status when 'published' then 0 else 1 end, o.id desc
+            limit 1
+            """,
+            (object_code,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"没有任何本体包含业务对象: {object_code}")
+        return int(row["id"])
 
 
 def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
@@ -359,7 +338,7 @@ def _export_jsonld(detail: dict[str, Any]) -> str:
         )
     document = {
         "@context": {
-            "ont": "https://ontology-platform.local/vocab#",
+            "ont": SEMANTIC_ASSET_NAMING.vocabulary_base,
             "name": "ont:name",
             "code": "ont:code",
             "domain": "ont:domain",
@@ -385,7 +364,7 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     ontology = detail["ontology"]
     base = _ontology_base_uri(ontology)
     lines = [
-        "@prefix ont: <https://ontology-platform.local/vocab#> .",
+        f"@prefix ont: <{SEMANTIC_ASSET_NAMING.vocabulary_base}> .",
         f"@prefix bp: <{base}> .",
         "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
         "",
@@ -485,10 +464,54 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
     return last_insert_id(conn)
 
 
-def _create_business_object(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
+@dataclass(frozen=True)
+class DraftLexicon:
+    """Naming hints available while generating a draft.
+
+    Sourced from registered industry blueprints so the platform carries no
+    built-in industry vocabulary of its own.
+    """
+
+    object_labels: dict[str, str]
+    attribute_labels: dict[str, str]
+
+    def object_label(self, *candidates: str) -> str:
+        for candidate in candidates:
+            if candidate and candidate in self.object_labels:
+                return self.object_labels[candidate]
+        return ""
+
+    def attribute_label(self, column_name: str) -> str:
+        return self.attribute_labels.get(column_name, "")
+
+    def knows_attribute(self, column_name: str) -> bool:
+        return column_name in self.attribute_labels
+
+
+def _build_lexicon(platform_db: Path | str) -> DraftLexicon:
+    from .vocabulary import blueprint_attribute_labels, blueprint_object_labels
+
+    return DraftLexicon(
+        object_labels=blueprint_object_labels(platform_db),
+        attribute_labels=blueprint_attribute_labels(platform_db),
+    )
+
+
+def _create_business_object(
+    conn: sqlite3.Connection,
+    ontology_id: int,
+    table: sqlite3.Row,
+    blueprint: IndustryBlueprint,
+    lexicon: DraftLexicon,
+) -> int:
     table_name = table["table_name"]
     code = _canonical_object_code(table_name, blueprint)
-    name = blueprint.object_hints.get(code) or blueprint.object_hints.get(table_name) or NAME_HINTS.get(code, _humanize(table_name))
+    name = (
+        blueprint.object_hints.get(code)
+        or blueprint.object_hints.get(table_name)
+        or lexicon.object_label(code, table_name)
+        or _humanize(table_name)
+    )
     conn.execute(
         """
         insert into business_object (ontology_id, code, name, description, source_table_id)
@@ -510,9 +533,19 @@ def _canonical_object_code(table_name: str, blueprint: IndustryBlueprint) -> str
     return next((candidate for candidate in candidates if candidate in blueprint.object_hints), code)
 
 
-def _create_attribute(conn: sqlite3.Connection, object_id: int, column: sqlite3.Row, blueprint: IndustryBlueprint) -> int:
+def _create_attribute(
+    conn: sqlite3.Connection,
+    object_id: int,
+    column: sqlite3.Row,
+    blueprint: IndustryBlueprint,
+    lexicon: DraftLexicon,
+) -> int:
     code = _to_code(column["column_name"])
-    name = blueprint.attribute_hints.get(column["column_name"]) or ATTRIBUTE_HINTS.get(column["column_name"], _humanize(column["column_name"]))
+    name = (
+        blueprint.attribute_hints.get(column["column_name"])
+        or lexicon.attribute_label(column["column_name"])
+        or _humanize(column["column_name"])
+    )
     conn.execute(
         """
         insert into business_attribute (object_id, code, name, data_type, required, source_column_id)
@@ -557,7 +590,11 @@ def _create_relation_from_foreign_key(conn: sqlite3.Connection, ontology_id: int
 
 
 def _create_table_mapping(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, object_id: int, blueprint: IndustryBlueprint) -> None:
-    confidence = 0.92 if table["table_name"] in blueprint.object_hints else 0.85
+    confidence = (
+        MAPPING_CONFIDENCE.blueprint_match
+        if table["table_name"] in blueprint.object_hints
+        else MAPPING_CONFIDENCE.structural_match
+    )
     conn.execute(
         """
         insert into semantic_mapping (ontology_id, mapping_type, source_ref, target_ref, confidence, status, evidence)
@@ -575,8 +612,14 @@ def _create_column_mapping(
     object_id: int,
     attribute_id: int,
     blueprint: IndustryBlueprint,
+    lexicon: DraftLexicon,
 ) -> None:
-    confidence = 0.92 if column["column_name"] in blueprint.attribute_hints else 0.9 if column["column_name"] in ATTRIBUTE_HINTS else 0.7
+    if column["column_name"] in blueprint.attribute_hints:
+        confidence = MAPPING_CONFIDENCE.blueprint_match
+    elif lexicon.knows_attribute(column["column_name"]):
+        confidence = MAPPING_CONFIDENCE.lexicon_match
+    else:
+        confidence = MAPPING_CONFIDENCE.weak_match
     conn.execute(
         """
         insert into semantic_mapping (ontology_id, mapping_type, source_ref, target_ref, confidence, status, evidence)
@@ -696,8 +739,8 @@ def _map_data_type(sql_type: str) -> str:
 
 
 def _ontology_base_uri(ontology: dict[str, Any]) -> str:
-    return f"https://ontology-platform.local/ontology/{ontology['id']}/v/{_uri_part(str(ontology['version']))}/"
-
+    base = SEMANTIC_ASSET_NAMING.ontology_base.rstrip("/")
+    return f"{base}/{ontology['id']}/v/{_uri_part(str(ontology['version']))}/"
 
     # Generated rules bypass the governance write path, so validate here too:
     # the kernel fails closed, and an unparseable generated rule would block
