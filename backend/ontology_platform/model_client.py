@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .database import connect
+from .config import MODEL_PROVIDER_DEFAULTS
 
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
@@ -28,12 +29,12 @@ class OpenRouterConfig:
     def from_env(cls) -> "OpenRouterConfig":
         return cls(
             api_key=os.getenv("OPENROUTER_API_KEY", ""),
-            model=os.getenv("OPENROUTER_MODEL", "~openai/gpt-latest"),
-            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/"),
+            model=MODEL_PROVIDER_DEFAULTS.model,
+            base_url=MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
             http_referer=os.getenv("OPENROUTER_HTTP_REFERER", ""),
-            app_title=os.getenv("OPENROUTER_APP_TITLE", "Ontology Transformation Platform"),
-            service_tier=os.getenv("OPENROUTER_SERVICE_TIER", "auto"),
-            timeout_seconds=float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30")),
+            app_title=MODEL_PROVIDER_DEFAULTS.app_title,
+            service_tier=MODEL_PROVIDER_DEFAULTS.service_tier,
+            timeout_seconds=MODEL_PROVIDER_DEFAULTS.timeout_seconds,
         )
 
     @classmethod

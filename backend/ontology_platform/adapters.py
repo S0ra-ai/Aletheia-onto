@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Iterator, Protocol
 from urllib.parse import urlparse
 
+from .config import QUERY_LIMITS
+
 
 @dataclass(frozen=True)
 class ColumnProfile:
@@ -316,7 +318,7 @@ def _profile_sqlite_column(conn: sqlite3.Connection, table_name: str, column_nam
     ).fetchall()
     samples = [row["value"] for row in sample_rows]
     null_ratio = 0 if row_count == 0 else null_count / row_count
-    enum_candidate = row_count > 0 and 1 < distinct_count <= min(20, max(3, row_count))
+    enum_candidate = _is_enum_candidate(row_count, distinct_count)
     return ColumnProfile(samples=samples, null_ratio=null_ratio, distinct_count=distinct_count, enum_candidate=enum_candidate)
 
 
@@ -407,7 +409,7 @@ def _profile_sql_column(conn: Any, table_name: str, column_name: str, row_count:
     null_count = int(null_rows[0]["count"]) if null_rows else 0
     distinct_count = int(distinct_rows[0]["count"]) if distinct_rows else 0
     null_ratio = 0 if row_count == 0 else null_count / row_count
-    enum_candidate = row_count > 0 and 1 < distinct_count <= min(20, max(3, row_count))
+    enum_candidate = _is_enum_candidate(row_count, distinct_count)
     return ColumnProfile(
         samples=[row["value"] for row in sample_rows],
         null_ratio=null_ratio,
@@ -521,6 +523,19 @@ def _optional_import(module_name: str, message: str) -> Any:
     except ImportError as error:
         raise RuntimeError(message) from error
 
+
+
+def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
+    """Decide whether a column looks like an enumeration.
+
+    A column qualifies when it has more than one distinct value but few enough
+    to read as a code list. Bounds are configurable because the right ceiling
+    depends on the source system.
+    """
+    if row_count <= 0 or distinct_count <= 1:
+        return False
+    ceiling = min(QUERY_LIMITS.enum_max_distinct, max(QUERY_LIMITS.enum_min_distinct, row_count))
+    return distinct_count <= ceiling
 
 def _connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
     return {

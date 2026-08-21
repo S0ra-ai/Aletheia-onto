@@ -4,6 +4,12 @@ __pycache__/
 *.pyc
 .DS_Store
 data/*.sqlite3
+data/*.sqlite3-wal
+data/*.sqlite3-shm
 backend/data/*.sqlite3
+backend/data/*.sqlite3-wal
+backend/data/*.sqlite3-shm
 test-projects/contract-system/data/*.sqlite3
+test-projects/contract-system/data/*.sqlite3-wal
+test-projects/contract-system/data/*.sqlite3-shm
 .run/

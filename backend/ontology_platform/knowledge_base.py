@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
+from .config import clamp_page_size
 from .database import connect
 from .metadata import scan_data_source
 from .ontology import generate_ontology_draft
@@ -20,7 +21,7 @@ def initialize_knowledge_base(platform_db: Path | str, data_source_id: int) -> d
 
 
 def browse_source_table(platform_db: Path | str, data_source_id: int, table_name: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
-    limit = max(1, min(int(limit), 200))
+    limit = clamp_page_size(limit)
     offset = max(0, int(offset))
     with connect(platform_db) as conn:
         source = conn.execute("select source_type, connection_uri from data_source where id = ?", (data_source_id,)).fetchone()
