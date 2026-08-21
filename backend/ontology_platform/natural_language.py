@@ -700,10 +700,27 @@ def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -
     failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
     if not failed:
         return f"{object_code} {instance_id} 目前没有发现明确的合规问题，可以按正常流程继续。{_friendly_recommendation(recommendation)}"
-    rule_text = "；".join(f"{rule['ruleName']}：{rule['explanation']}" for rule in failed[:3])
-    return (
-        f"{object_code} {instance_id} 还不适合直接通过。主要是{rule_text}。{_friendly_recommendation(recommendation)}"
-    )
+    # Markdown: a verdict is only useful if the reader can tell the rules apart.
+    # Each failed rule becomes its own bullet carrying the rule code, so the
+    # conclusion can be traced back to a named rule rather than to prose.
+    lines = [f"**{object_code} {instance_id} 还不适合直接通过。**", ""]
+    for rule in failed[:5]:
+        code = rule.get("ruleCode") or ""
+        marker = "🚫" if rule.get("severity") == "blocking" else "⚠️"
+        suffix = f"（规则 `{code}`）" if code else ""
+        lines.append(f"- {marker} **{rule['ruleName']}**{suffix}：{rule['explanation']}")
+    remaining = len(failed) - 5
+    if remaining > 0:
+        lines.append(f"- 另有 {remaining} 条规则未通过，可在决策留痕中查看完整清单。")
+    unevaluable = [rule for rule in failed if rule.get("skipped")]
+    if unevaluable:
+        lines += [
+            "",
+            f"> 其中 {len(unevaluable)} 条规则**无法在当前数据结构上求值**，"
+            "已按未通过处理（可能由字段更名等结构漂移导致），需人工复核规则表达式。",
+        ]
+    lines += ["", _friendly_recommendation(recommendation)]
+    return "\n".join(lines)
 
 
 def _answer_preflight(evidence: dict[str, Any]) -> str:
@@ -711,15 +728,32 @@ def _answer_preflight(evidence: dict[str, Any]) -> str:
     if evidence["allowed"]:
         return f"实例 {instance_id} 已经具备操作条件，可以继续执行。"
     failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
-    rule_text = "；".join(f"{rule['ruleName']}：{rule['explanation']}" for rule in failed[:3])
-    return f"实例 {instance_id} 现在还不宜执行这项操作，不建议自动执行。需要先处理：{rule_text}。"
+    lines = [f"**实例 {instance_id} 现在还不宜执行这项操作**，不建议自动执行。", "", "需要先处理："]
+    for rule in failed[:5]:
+        code = rule.get("ruleCode") or ""
+        suffix = f"（规则 `{code}`）" if code else ""
+        lines.append(f"- **{rule['ruleName']}**{suffix}：{rule['explanation']}")
+    remaining = len(failed) - 5
+    if remaining > 0:
+        lines.append(f"- 另有 {remaining} 条未通过。")
+    return "\n".join(lines)
 
 
 def _answer_consistency(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
     summary = evidence["summary"]
-    return (
-        f"{vocabulary.label_for(evidence['objectCode'])} 的批量决策一致性为 {evidence['status']}。"
-        f"已评估 {evidence['assessed']} 条：通过 {summary['approved']}、复核 {summary['review']}、阻断 {summary['blocked']}、错误 {summary['errors']}。"
+    # A distribution reads far better as a table than as a run-on sentence.
+    label = vocabulary.label_for(evidence["objectCode"])
+    return "\n".join(
+        [
+            f"**{label} 的批量决策一致性：{evidence['status']}**（已评估 {evidence['assessed']} 条）",
+            "",
+            "| 结果 | 数量 |",
+            "| --- | ---: |",
+            f"| 通过 | {summary['approved']} |",
+            f"| 需复核 | {summary['review']} |",
+            f"| 阻断 | {summary['blocked']} |",
+            f"| 求值错误 | {summary['errors']} |",
+        ]
     )
 
 
