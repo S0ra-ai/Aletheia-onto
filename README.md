@@ -183,7 +183,8 @@ flowchart TB
 | 结构漂移对比 | ✅ | `metadata.py` |
 | OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
 | 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
-| Oracle／SQL Server／达梦／人大金仓／REST／文件／MQ | 📋 | — |
+| **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
+| Oracle／SQL Server／达梦／人大金仓内置适配器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
 ### 本体与规则
 
@@ -192,6 +193,7 @@ flowchart TB
 | 按行业蓝图生成对象／属性／关系／映射候选 | ✅ | `ontology.py`、`industry_blueprints.py` |
 | 行业蓝图导入 | ✅ | `industry_blueprints.py` |
 | 规则引擎 AST 白名单沙箱求值 | ✅ | `semantic_kernel.py` |
+| **规则函数可注册**（不放宽沙箱） | ✅ | `semantic_kernel.py`、`registry.py` |
 | 规则 fail-closed 语义 | ✅ | `semantic_kernel.py` |
 | 写入时表达式校验（含未知字段提示） | ✅ | `governance.py`、`semantic_kernel.py` |
 | 语义资产导出 JSON-LD／Turtle | ✅ | `ontology.py` |
@@ -222,6 +224,7 @@ flowchart TB
 | 会话可撤销与过期，改密失效旧会话 | ✅ | `auth.py` |
 | 6 能力 × 6 角色 | ✅ | `auth.py` |
 | 集中式路由→能力策略表（未登记默认仅管理员） | ✅ | `access_policy.py` |
+| **插件可注册路由权限策略** | ✅ | `access_policy.py` |
 | 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
 | 权限行级过滤 `filter_expression` | ⚠️ | 有存储，`check_permission` **只原样返回** |
@@ -237,6 +240,7 @@ flowchart TB
 | 自然语言语义问答（意图路由、实例识别） | ✅ | `natural_language.py` |
 | 智能体角色按已接入领域运行时派生 | ✅ | `agent_roles.py`、`agent.py` |
 | 操作预检与写回执行（HTTP／HTTPS） | ✅ | `automation.py` |
+| **写回执行器可注册**（按 scheme 分发） | ✅ | `automation.py`、`registry.py` |
 | 模型层 OpenRouter 兼容，未配置密钥回退本地启发式 | ✅ | `model_client.py` |
 | 向量检索／嵌入／文档 RAG | 📋 | **零实现**，无 embedding／vector／chunk／rerank |
 | 文档知识库 | 📋 | `contract_documents.py` 只从 Word 抽规则，不建检索语料 |
@@ -245,7 +249,7 @@ flowchart TB
 | 定时调度器 | 📋 | 无任何 scheduler／cron |
 | 反馈闭环、满意度、转人工 | 📋 | — |
 | 跨源实体消解 | 📋 | — |
-| 写回执行器扩展（MQ／RPC／直写库／存储过程） | 📋 | 只支持 HTTP／HTTPS |
+| MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
 ## 当前限制
 
@@ -277,9 +281,9 @@ flowchart TB
 | 映射类型只有 `table_to_object` 与 `column_to_attribute`，**无值域映射** | `ontology.py` |
 | **无类型层级**（无 parent_object／subclass／inherit） | — |
 | 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
-| `ALLOWED_RULE_FUNCTIONS` 为冻结集合（5 个函数），**第三方无法注册** | `semantic_kernel.py:113` |
-| `get_adapter()` 硬编码 if/elif；`access_policy.RULES` 为模块级静态元组 | `adapters.py:74`、`access_policy.py` |
-| 写回执行器只支持 HTTP／HTTPS | `automation.py` |
+
+> 扩展点已不在此列：数据源适配器、规则函数、路由策略、写回执行器
+> 现已开放注册，见[扩展指南](docs/extending.md)。
 
 ### 工程限制
 
@@ -417,10 +421,11 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**128 个测试**，全绿。分布：
+**173 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
+| `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 26 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
