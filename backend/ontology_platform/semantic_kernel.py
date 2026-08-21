@@ -461,9 +461,6 @@ def build_runtime(
         (source_table["id"],),
     ).fetchone()
     primary_key = source_table["primary_key"] or "id"
-    if "," in primary_key:
-        raise ValueError("当前原型不支持复合主键实例研判")
-
     adapter = get_adapter(data_source["source_type"])
     with adapter.runtime(data_source["connection_uri"]) as runtime:
         record = runtime.fetch_one(source_table["table_name"], primary_key, instance_id)
@@ -712,8 +709,6 @@ def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code:
     if source_table is None:
         raise ValueError(f"业务对象未绑定来源表: {object_code}")
     primary_key = source_table["primary_key"] or "id"
-    if "," in primary_key:
-        raise ValueError("当前原型不支持复合主键批量一致性评估")
     data_source = platform.execute(
         "select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?",
         (source_table["id"],),
