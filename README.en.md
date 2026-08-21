@@ -49,6 +49,47 @@ use phrasing like "knowledge-base Q&A" to imply document RAG it does not have.
 The difference from Dify / FastGPT / LangChain is not retrieval quality. It is
 whether a conclusion can be interrogated.
 
+## Screenshots
+
+All captured from a running instance, not mockups. The data comes from the
+bundled synthetic examples and contains no real business information.
+
+### Semantic Q&A: verdict, governing rules, evidence
+
+![Semantic Q&A with evidence](docs/images/01-semantic-qa-with-evidence.png)
+
+Asking "is contract 1 compliant?" returns a verdict, the per-rule outcome with
+the reason for each, and a confidence score -- not a paragraph of prose. The
+agent role shown ("设备运维业务专家", equipment-maintenance expert) is derived at
+runtime from the onboarded domain; no industry roles are built in.
+
+### Data source onboarding and metadata scan
+
+![Data source onboarding](docs/images/02-data-source-onboarding.png)
+
+Tables, columns, types, foreign keys, enum candidates and a readiness score,
+scanned from an existing database. The password segment of the connection string
+is redacted.
+
+### Domain ontology and business objects
+
+![Ontology objects](docs/images/03-ontology-objects.png)
+
+### Governance and the release gate
+
+![Governance and release gate](docs/images/04-governance-release-gate.png)
+
+Publishing is refused while blocking gates are open; a `force` override is
+written to the audit log together with the count of failed gates.
+
+### Roles and object permissions
+
+![Roles and permissions](docs/images/05-roles-and-permissions.png)
+
+> ⚠️ The row-filter expression field visible here is **stored but inert** --
+> `check_permission` returns it verbatim and applies no filtering. See
+> [Current limitations](#current-limitations).
+
 ## Quick start
 
 Requires Python 3.9+ (Node.js 18+ for the frontend). Every command below was run in
