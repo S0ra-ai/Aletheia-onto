@@ -11,9 +11,7 @@ from typing import Any
 RULE_IF_PATTERN = re.compile(
     r"(?:当|若|如果|如)\s*(?P<condition>[^，,。]+?)\s*(?:时|，|,)\s*(?:则|需|应|必须|不得|禁止|可以)?\s*(?P<action>[^。]+)",
 )
-RULE_MUST_PATTERN = re.compile(
-    r"(?P<subject>[^，,。]{1,20})(?:需|应|必须|不得|禁止|可以)\s*(?P<action>[^。]+)"
-)
+RULE_MUST_PATTERN = re.compile(r"(?P<subject>[^，,。]{1,20})(?:需|应|必须|不得|禁止|可以)\s*(?P<action>[^。]+)")
 RULE_SEVERITY_KEYWORDS = {
     "blocking": ["必须", "不得", "禁止", "严禁"],
     "warning": ["应", "应当", "不应", "不宜", "需", "需要", "建议", "推荐"],
@@ -39,13 +37,10 @@ def _convert_doc_to_docx(content: bytes) -> tuple[bytes, str]:
         return docx_path.read_bytes(), docx_path.name
     except FileNotFoundError as error:
         raise ValueError(
-            "未检测到 LibreOffice，无法自动转换 .doc 文件。"
-            "请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。"
+            "未检测到 LibreOffice，无法自动转换 .doc 文件。请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。"
         ) from error
     except subprocess.TimeoutExpired as error:
-        raise ValueError(
-            "LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。"
-        ) from error
+        raise ValueError("LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。") from error
     finally:
         doc_path.unlink(missing_ok=True)
         docx_path.unlink(missing_ok=True)
@@ -98,7 +93,9 @@ def parse_rule_docx(
     free_text_rules = [] if table_rules or paragraph_rules else _extract_rules_from_free_text(paragraphs, default_scope)
     rules = _deduplicate_rules([*table_rules, *paragraph_rules, *free_text_rules])
     if not rules:
-        raise ValueError("未从 Word 文档中识别到规则。建议使用表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。")
+        raise ValueError(
+            "未从 Word 文档中识别到规则。建议使用表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。"
+        )
     file_bytes = content if content is not None else Path(path).read_bytes()
     return {
         "file": {
@@ -131,7 +128,9 @@ def _extract_rules_from_tables(tables: list[dict[str, Any]], default_scope: str 
         if "code" not in headers or "expression" not in headers:
             continue
         for row in table["rows"][1:]:
-            values = {headers[index]: row[index].strip() for index in range(min(len(headers), len(row))) if headers[index]}
+            values = {
+                headers[index]: row[index].strip() for index in range(min(len(headers), len(row))) if headers[index]
+            }
             rule = _normalize_rule(values, default_scope)
             if rule:
                 rules.append(rule)
@@ -172,16 +171,18 @@ def _extract_rules_from_free_text(paragraphs: list[str], default_scope: str = ""
             if code in seen_codes:
                 code = _slug_code(f"rule_{len(rules) + 1}_{hash(condition) % 1000}")
             seen_codes.add(code)
-            rules.append({
-                "code": code,
-                "name": f"规则_{len(rules) + 1}",
-                "ruleType": "validation",
-                "scopeObjectCode": scope,
-                "expression": _condition_to_expression(condition),
-                "severity": severity,
-                "naturalLanguage": f"如果{condition}，则{action}",
-                "status": "draft",
-            })
+            rules.append(
+                {
+                    "code": code,
+                    "name": f"规则_{len(rules) + 1}",
+                    "ruleType": "validation",
+                    "scopeObjectCode": scope,
+                    "expression": _condition_to_expression(condition),
+                    "severity": severity,
+                    "naturalLanguage": f"如果{condition}，则{action}",
+                    "status": "draft",
+                }
+            )
 
         for match in RULE_MUST_PATTERN.finditer(paragraph):
             subject = match.group("subject").strip()
@@ -194,16 +195,18 @@ def _extract_rules_from_free_text(paragraphs: list[str], default_scope: str = ""
             if code in seen_codes:
                 code = _slug_code(f"must_{len(rules) + 1}_{hash(subject) % 1000}")
             seen_codes.add(code)
-            rules.append({
-                "code": code,
-                "name": f"必须规则_{len(rules) + 1}",
-                "ruleType": "validation",
-                "scopeObjectCode": scope,
-                "expression": _condition_to_expression(f"{subject}未{action}"),
-                "severity": severity,
-                "naturalLanguage": f"{subject}需{action}",
-                "status": "draft",
-            })
+            rules.append(
+                {
+                    "code": code,
+                    "name": f"必须规则_{len(rules) + 1}",
+                    "ruleType": "validation",
+                    "scopeObjectCode": scope,
+                    "expression": _condition_to_expression(f"{subject}未{action}"),
+                    "severity": severity,
+                    "naturalLanguage": f"{subject}需{action}",
+                    "status": "draft",
+                }
+            )
 
     return rules
 
@@ -228,14 +231,24 @@ def _infer_scope(default_scope: str, *hints: str) -> str:
 
 def _condition_to_expression(condition: str) -> str:
     replacements = [
-        ("大于", " > "), ("小于", " < "), ("等于", " == "),
-        ("不为空", " != null"), ("为空", " == null"),
-        ("不包含", " not in "), ("包含", " in "),
-        ("超过", " > "), ("未超过", " <= "),
-        ("达到", " >= "), ("未达到", " < "),
-        ("属于", " in "), ("不属于", " not in "),
-        ("是", " == "), ("不是", " != "),
-        ("且", " and "), ("或", " or "), ("并", " and "),
+        ("大于", " > "),
+        ("小于", " < "),
+        ("等于", " == "),
+        ("不为空", " != null"),
+        ("为空", " == null"),
+        ("不包含", " not in "),
+        ("包含", " in "),
+        ("超过", " > "),
+        ("未超过", " <= "),
+        ("达到", " >= "),
+        ("未达到", " < "),
+        ("属于", " in "),
+        ("不属于", " not in "),
+        ("是", " == "),
+        ("不是", " != "),
+        ("且", " and "),
+        ("或", " or "),
+        ("并", " and "),
     ]
     expr = condition
     for zh, op in replacements:

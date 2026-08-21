@@ -84,7 +84,16 @@ def register_data_source(
                 api_headers = excluded.api_headers,
                 capabilities = excluded.capabilities
             """,
-            (name, domain, system_category, source_type, connection_uri, api_base_url, json.dumps(header_values, ensure_ascii=False), json.dumps(capability_values, ensure_ascii=False)),
+            (
+                name,
+                domain,
+                system_category,
+                source_type,
+                connection_uri,
+                api_base_url,
+                json.dumps(header_values, ensure_ascii=False),
+                json.dumps(capability_values, ensure_ascii=False),
+            ),
         )
         row = conn.execute(
             "select id, name, domain, system_category, source_type, connection_uri, api_base_url, capabilities from data_source where name = ?",
@@ -153,7 +162,13 @@ def register_source_api(
         ).fetchone()
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "register_source_api", "data_source", str(data_source_id), json.dumps({"operationCode": operation_code}, ensure_ascii=False)),
+            (
+                "system",
+                "register_source_api",
+                "data_source",
+                str(data_source_id),
+                json.dumps({"operationCode": operation_code}, ensure_ascii=False),
+            ),
         )
         return _row_to_source_api(row)
 
@@ -412,7 +427,9 @@ def check_data_source_connection(
     return test_connection(source_type, connection_uri)
 
 
-def check_business_api_gateway(platform_db: Path | str, data_source_id: int, timeout_seconds: float = 3) -> dict[str, Any]:
+def check_business_api_gateway(
+    platform_db: Path | str, data_source_id: int, timeout_seconds: float = 3
+) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
@@ -478,8 +495,14 @@ def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, 
             raise ValueError(f"数据源扫描失败: {error}") from error
 
         _delete_derived_drafts(platform, data_source_id)
-        platform.execute("delete from source_foreign_key where source_table_id in (select id from source_table where data_source_id = ?)", (data_source_id,))
-        platform.execute("delete from source_column where source_table_id in (select id from source_table where data_source_id = ?)", (data_source_id,))
+        platform.execute(
+            "delete from source_foreign_key where source_table_id in (select id from source_table where data_source_id = ?)",
+            (data_source_id,),
+        )
+        platform.execute(
+            "delete from source_column where source_table_id in (select id from source_table where data_source_id = ?)",
+            (data_source_id,),
+        )
         platform.execute("delete from source_table where data_source_id = ?", (data_source_id,))
 
         scanned_tables = []
@@ -497,7 +520,13 @@ def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, 
 
         platform.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "scan_metadata", "data_source", str(data_source_id), json.dumps(scanned_tables, ensure_ascii=False)),
+            (
+                "system",
+                "scan_metadata",
+                "data_source",
+                str(data_source_id),
+                json.dumps(scanned_tables, ensure_ascii=False),
+            ),
         )
         return {"dataSourceId": data_source_id, "tables": scanned_tables}
 
@@ -528,11 +557,11 @@ def analyze_schema_drift(platform_db: Path | str, data_source_id: int) -> dict[s
             raise ValueError(f"结构漂移分析失败: {error}") from error
 
         live_schema = {table.name: table for table in live_tables}
-        added_tables = [_table_snapshot(table) for name, table in sorted(live_schema.items()) if name not in stored_tables]
+        added_tables = [
+            _table_snapshot(table) for name, table in sorted(live_schema.items()) if name not in stored_tables
+        ]
         removed_tables = [
-            _stored_table_snapshot(table)
-            for name, table in sorted(stored_tables.items())
-            if name not in live_schema
+            _stored_table_snapshot(table) for name, table in sorted(stored_tables.items()) if name not in live_schema
         ]
         changed_tables = [
             change
@@ -612,7 +641,9 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def _readiness_check(code: str, name: str, passed: bool, evidence: str, remediation: str, weight: int) -> dict[str, Any]:
+def _readiness_check(
+    code: str, name: str, passed: bool, evidence: str, remediation: str, weight: int
+) -> dict[str, Any]:
     return {
         "code": code,
         "name": name,
@@ -641,7 +672,11 @@ def _load_api_headers(value: str | None) -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
+    return {
+        str(key): str(header_value)
+        for key, header_value in parsed.items()
+        if str(key).strip() and header_value is not None
+    }
 
 
 def _normalize_api_headers(headers: dict[str, str] | None) -> dict[str, str]:
@@ -709,14 +744,10 @@ def _compare_table(stored: dict[str, Any], live: SourceTableInfo) -> dict[str, A
     stored_columns = stored["columns"]
     live_columns = {column.name: column for column in live.columns}
     added_columns = [
-        _column_snapshot(column)
-        for name, column in sorted(live_columns.items())
-        if name not in stored_columns
+        _column_snapshot(column) for name, column in sorted(live_columns.items()) if name not in stored_columns
     ]
     removed_columns = [
-        _stored_column_snapshot(column)
-        for name, column in sorted(stored_columns.items())
-        if name not in live_columns
+        _stored_column_snapshot(column) for name, column in sorted(stored_columns.items()) if name not in live_columns
     ]
     changed_columns = [
         change
@@ -807,7 +838,9 @@ def _schema_drift_impacts(
     impacted_mappings = []
     for row in mappings:
         table_name, column_name = _parse_mapping_source_ref(row["source_ref"])
-        if table_name in affected_tables and (column_name is None or not affected_columns or (table_name, column_name) in affected_columns):
+        if table_name in affected_tables and (
+            column_name is None or not affected_columns or (table_name, column_name) in affected_columns
+        ):
             impacted_mappings.append(
                 {
                     "id": row["id"],
@@ -914,7 +947,9 @@ def _operation_code(path: str, method: str, operation: dict[str, Any]) -> str:
 
 
 def _semantic_action(operation_code: str, path: str) -> str:
-    path_parts = [part.strip("{}").replace("-", "_") for part in path.strip("/").split("/") if part and not part.startswith("{")]
+    path_parts = [
+        part.strip("{}").replace("-", "_") for part in path.strip("/").split("/") if part and not part.startswith("{")
+    ]
     object_code = path_parts[-1] if path_parts else operation_code.split("_", 1)[0]
     object_code = object_code[:-1] if object_code.endswith("s") else object_code
     action = operation_code
@@ -985,12 +1020,18 @@ def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) ->
             for row in platform.execute("select id from business_rule where ontology_id = ?", (ontology_id,)).fetchall()
         ]
         for rule_id in rule_ids:
-            platform.execute("delete from explanation_trace where inference_result_id in (select id from inference_result where rule_id = ?)", (rule_id,))
+            platform.execute(
+                "delete from explanation_trace where inference_result_id in (select id from inference_result where rule_id = ?)",
+                (rule_id,),
+            )
             platform.execute("delete from inference_result where rule_id = ?", (rule_id,))
         platform.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
         platform.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))
         platform.execute("delete from business_relation where ontology_id = ?", (ontology_id,))
-        platform.execute("delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)", (ontology_id,))
+        platform.execute(
+            "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
+            (ontology_id,),
+        )
         platform.execute("delete from business_object where ontology_id = ?", (ontology_id,))
         platform.execute("delete from ontology where id = ? and status = 'draft'", (ontology_id,))
 

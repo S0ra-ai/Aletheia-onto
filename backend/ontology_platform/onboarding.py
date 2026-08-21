@@ -33,11 +33,17 @@ def run_onboarding_pipeline(
     openapi_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
-    source = register_data_source(platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url, api_headers)
+    source = register_data_source(
+        platform_db, name, source_type, connection_uri, domain, system_category, capabilities, api_base_url, api_headers
+    )
     steps.append(_step("register_data_source", "completed", f"数据源已登记: {source.id}", {"dataSourceId": source.id}))
 
     connection = check_data_source_connection(platform_db, data_source_id=source.id)
-    steps.append(_step("test_connection", "completed" if connection["reachable"] else "failed", connection["message"], connection))
+    steps.append(
+        _step(
+            "test_connection", "completed" if connection["reachable"] else "failed", connection["message"], connection
+        )
+    )
     if not connection["reachable"]:
         readiness = assess_data_source_readiness(platform_db, source.id)
         return {
@@ -65,7 +71,9 @@ def run_onboarding_pipeline(
     api_import = None
     if openapi_url:
         api_import = import_openapi_operations_from_url(platform_db, source.id, openapi_url)
-        steps.append(_step("import_openapi", "completed", f"已从 URL 导入 {api_import['count']} 个业务 API。", api_import))
+        steps.append(
+            _step("import_openapi", "completed", f"已从 URL 导入 {api_import['count']} 个业务 API。", api_import)
+        )
     elif openapi_spec:
         api_import = import_openapi_operations(platform_db, source.id, openapi_spec)
         steps.append(_step("import_openapi", "completed", f"已导入 {api_import['count']} 个业务 API。", api_import))
@@ -95,7 +103,14 @@ def run_onboarding_pipeline(
         steps.append(_step("generate_ontology", "skipped", "已按请求跳过本体草案生成。", {}))
 
     readiness = assess_data_source_readiness(platform_db, source.id)
-    steps.append(_step("assess_readiness", "completed", f"接入准备度 {readiness['score']} 分，状态 {readiness['status']}。", readiness["summary"]))
+    steps.append(
+        _step(
+            "assess_readiness",
+            "completed",
+            f"接入准备度 {readiness['score']} 分，状态 {readiness['status']}。",
+            readiness["summary"],
+        )
+    )
     return {
         "dataSource": source.public_dict(),
         "connection": connection,

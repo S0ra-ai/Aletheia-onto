@@ -180,7 +180,9 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     inference_id,
                     runtime.ontology_version,
                     _json_dumps(_mapping_refs(platform, ontology_id, runtime.source_table)),
-                    _json_dumps({"table": runtime.source_table, "primaryKey": runtime.primary_key, "instanceId": instance_id}),
+                    _json_dumps(
+                        {"table": runtime.source_table, "primaryKey": runtime.primary_key, "instanceId": instance_id}
+                    ),
                     _json_dumps({"ruleId": rule["id"], "ruleCode": rule["code"]}),
                 ),
             )
@@ -210,7 +212,10 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
             instance_id=instance_id,
             input_ref={"objectCode": object_code, "instanceId": instance_id},
             rule_results=results,
-            evidence={"failedRules": [item["ruleCode"] for item in failed], "ontologyVersion": runtime.ontology_version},
+            evidence={
+                "failedRules": [item["ruleCode"] for item in failed],
+                "ontologyVersion": runtime.ontology_version,
+            },
             actor="semantic_kernel",
         )
         decision["decisionId"] = decision_record["decisionId"]
@@ -221,7 +226,14 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "assess_instance",
                 object_code,
                 instance_id,
-                _json_dumps({"ontologyId": ontology_id, "decision": decision["status"], "decisionId": decision["decisionId"], "failedRules": len(failed)}),
+                _json_dumps(
+                    {
+                        "ontologyId": ontology_id,
+                        "decision": decision["status"],
+                        "decisionId": decision["decisionId"],
+                        "failedRules": len(failed),
+                    }
+                ),
             ),
         )
         explanation = explain_instance(platform_db, ontology_id, object_code, instance_id)
@@ -373,7 +385,9 @@ def available_rule_names(platform_db: Path | str, ontology_id: int, object_code:
         return sorted(names)
 
 
-def build_runtime(platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str) -> SemanticRuntime:
+def build_runtime(
+    platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str
+) -> SemanticRuntime:
     ontology = platform.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
     if ontology is None:
         raise ValueError(f"本体不存在: {ontology_id}")
@@ -383,7 +397,9 @@ def build_runtime(platform: sqlite3.Connection, ontology_id: int, object_code: s
     ).fetchone()
     if business_object is None:
         raise ValueError(f"业务对象不存在: {object_code}")
-    source_table = platform.execute("select * from source_table where id = ?", (business_object["source_table_id"],)).fetchone()
+    source_table = platform.execute(
+        "select * from source_table where id = ?", (business_object["source_table_id"],)
+    ).fetchone()
     if source_table is None:
         raise ValueError(f"业务对象未绑定来源表: {object_code}")
     data_source = platform.execute(
@@ -612,8 +628,7 @@ def _decision_from_results(failed: list[dict[str, Any]]) -> dict[str, Any]:
             return {
                 "status": "review",
                 "recommendation": (
-                    "部分规则无法在当前数据结构上求值，已按未通过处理，"
-                    "应人工复核规则表达式与来源字段后再恢复自动化。"
+                    "部分规则无法在当前数据结构上求值，已按未通过处理，应人工复核规则表达式与来源字段后再恢复自动化。"
                 ),
             }
         return {
@@ -633,7 +648,9 @@ def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code:
     ).fetchone()
     if business_object is None:
         raise ValueError(f"业务对象不存在: {object_code}")
-    source_table = platform.execute("select * from source_table where id = ?", (business_object["source_table_id"],)).fetchone()
+    source_table = platform.execute(
+        "select * from source_table where id = ?", (business_object["source_table_id"],)
+    ).fetchone()
     if source_table is None:
         raise ValueError(f"业务对象未绑定来源表: {object_code}")
     primary_key = source_table["primary_key"] or "id"

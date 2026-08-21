@@ -24,9 +24,15 @@ def generate_ontology_draft(
         data_source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if data_source is None:
             raise ValueError(f"数据源不存在: {data_source_id}")
-        tables = conn.execute("select * from source_table where data_source_id = ? order by table_name", (data_source_id,)).fetchall()
+        tables = conn.execute(
+            "select * from source_table where data_source_id = ? order by table_name", (data_source_id,)
+        ).fetchall()
         table_names = [table["table_name"] for table in tables]
-        blueprint = get_industry_blueprint(blueprint_id, domain or data_source["domain"], platform_db) if blueprint_id else infer_industry_blueprint(table_names, domain or data_source["domain"], platform_db)
+        blueprint = (
+            get_industry_blueprint(blueprint_id, domain or data_source["domain"], platform_db)
+            if blueprint_id
+            else infer_industry_blueprint(table_names, domain or data_source["domain"], platform_db)
+        )
         resolved_domain = domain or data_source["domain"] or blueprint.domain
         resolved_name = name or f"{resolved_domain}本体"
         ontology_id = _create_ontology(conn, resolved_name, resolved_domain)
@@ -41,7 +47,9 @@ def generate_ontology_draft(
             object_id = _create_business_object(conn, ontology_id, table, blueprint, lexicon)
             object_ids[table["id"]] = object_id
             _create_table_mapping(conn, ontology_id, table, object_id, blueprint)
-            columns = conn.execute("select * from source_column where source_table_id = ? order by ordinal", (table["id"],)).fetchall()
+            columns = conn.execute(
+                "select * from source_column where source_table_id = ? order by ordinal", (table["id"],)
+            ).fetchall()
             for column in columns:
                 attribute_id = _create_attribute(conn, object_id, column, blueprint, lexicon)
                 _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id, blueprint, lexicon)
@@ -67,7 +75,10 @@ def generate_ontology_draft(
                 "generate_ontology_draft",
                 "ontology",
                 str(ontology_id),
-                json.dumps({"dataSourceId": data_source_id, "blueprintId": blueprint.id, "blueprintName": blueprint.name}, ensure_ascii=False),
+                json.dumps(
+                    {"dataSourceId": data_source_id, "blueprintId": blueprint.id, "blueprintName": blueprint.name},
+                    ensure_ascii=False,
+                ),
             ),
         )
         summary = summarize_ontology(conn, ontology_id)
@@ -109,8 +120,13 @@ def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str
         ).fetchone()
         if business_object is None:
             raise ValueError(f"业务对象不存在: {object_code}")
-        source_table = platform.execute("select * from source_table where id = ?", (business_object["source_table_id"],)).fetchone()
-        data_source = platform.execute("select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?", (source_table["id"],)).fetchone()
+        source_table = platform.execute(
+            "select * from source_table where id = ?", (business_object["source_table_id"],)
+        ).fetchone()
+        data_source = platform.execute(
+            "select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?",
+            (source_table["id"],),
+        ).fetchone()
         primary_key = source_table["primary_key"] or "id"
         if "," in primary_key:
             raise ValueError("当前原型不支持复合主键实例解释")
@@ -452,7 +468,10 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         conn.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
         conn.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))
         conn.execute("delete from business_relation where ontology_id = ?", (ontology_id,))
-        conn.execute("delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)", (ontology_id,))
+        conn.execute(
+            "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
+            (ontology_id,),
+        )
         conn.execute("delete from business_object where ontology_id = ?", (ontology_id,))
         return ontology_id
 
@@ -588,7 +607,9 @@ def _create_relation_from_foreign_key(conn: sqlite3.Connection, ontology_id: int
     )
 
 
-def _create_table_mapping(conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, object_id: int, blueprint: IndustryBlueprint) -> None:
+def _create_table_mapping(
+    conn: sqlite3.Connection, ontology_id: int, table: sqlite3.Row, object_id: int, blueprint: IndustryBlueprint
+) -> None:
     confidence = (
         MAPPING_CONFIDENCE.blueprint_match
         if table["table_name"] in blueprint.object_hints
@@ -599,7 +620,15 @@ def _create_table_mapping(conn: sqlite3.Connection, ontology_id: int, table: sql
         insert into semantic_mapping (ontology_id, mapping_type, source_ref, target_ref, confidence, status, evidence)
         values (?, ?, ?, ?, ?, ?, ?)
         """,
-        (ontology_id, "table_to_object", f"table:{table['table_name']}", f"business_object:{object_id}", confidence, "pending", f"由{blueprint.name}、表名和主键结构自动生成"),
+        (
+            ontology_id,
+            "table_to_object",
+            f"table:{table['table_name']}",
+            f"business_object:{object_id}",
+            confidence,
+            "pending",
+            f"由{blueprint.name}、表名和主键结构自动生成",
+        ),
     )
 
 

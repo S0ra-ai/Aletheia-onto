@@ -34,18 +34,42 @@ def main() -> None:
         api_base_url=api_base_url,
     )
     scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-    register_source_api(DEFAULT_PLATFORM_DB, source.id, "list_contracts", "查询合同列表", "GET", "/api/contracts", "contract.list")
-    register_source_api(DEFAULT_PLATFORM_DB, source.id, "search_contracts", "搜索合同", "GET", "/api/contracts/search", "contract.search")
-    register_source_api(DEFAULT_PLATFORM_DB, source.id, "get_contract", "查看合同详情", "GET", "/api/contracts/{id}", "contract.read")
-    register_source_api(DEFAULT_PLATFORM_DB, source.id, "download_contract_word", "下载合同Word文件", "GET", "/api/contracts/{id}/word", "contract.download")
-
-    bases = [item for item in list_knowledge_bases(DEFAULT_PLATFORM_DB) if item["dataSourceId"] == source.id]
-    ontology = bases[0] if bases else generate_ontology_draft(
+    register_source_api(
+        DEFAULT_PLATFORM_DB, source.id, "list_contracts", "查询合同列表", "GET", "/api/contracts", "contract.list"
+    )
+    register_source_api(
         DEFAULT_PLATFORM_DB,
         source.id,
-        name="示例合同管理本体",
-        domain="合同管理",
-        blueprint_id="contract-management",
+        "search_contracts",
+        "搜索合同",
+        "GET",
+        "/api/contracts/search",
+        "contract.search",
+    )
+    register_source_api(
+        DEFAULT_PLATFORM_DB, source.id, "get_contract", "查看合同详情", "GET", "/api/contracts/{id}", "contract.read"
+    )
+    register_source_api(
+        DEFAULT_PLATFORM_DB,
+        source.id,
+        "download_contract_word",
+        "下载合同Word文件",
+        "GET",
+        "/api/contracts/{id}/word",
+        "contract.download",
+    )
+
+    bases = [item for item in list_knowledge_bases(DEFAULT_PLATFORM_DB) if item["dataSourceId"] == source.id]
+    ontology = (
+        bases[0]
+        if bases
+        else generate_ontology_draft(
+            DEFAULT_PLATFORM_DB,
+            source.id,
+            name="示例合同管理本体",
+            domain="合同管理",
+            blueprint_id="contract-management",
+        )
     )
     with connect(DEFAULT_PLATFORM_DB) as conn:
         contract_object = conn.execute(
@@ -55,7 +79,9 @@ def main() -> None:
         ).fetchone()
     if contract_object is None or contract_object["code"] != "contract":
         raise RuntimeError("合同表未正确映射为 contract 业务对象")
-    print(f"[ok] 已接入 {SOURCE_NAME}: {len(scan['tables'])} 张表，本体 #{ontology.get('ontologyId') or ontology.get('id')}")
+    print(
+        f"[ok] 已接入 {SOURCE_NAME}: {len(scan['tables'])} 张表，本体 #{ontology.get('ontologyId') or ontology.get('id')}"
+    )
 
 
 if __name__ == "__main__":

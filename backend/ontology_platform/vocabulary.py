@@ -174,11 +174,7 @@ def load_vocabulary(
         for row in rows
     )
 
-    attribute_labels = {
-        row["column_name"]: row["name"]
-        for row in attribute_rows
-        if row["column_name"] and row["name"]
-    }
+    attribute_labels = {row["column_name"]: row["name"] for row in attribute_rows if row["column_name"] and row["name"]}
     return DomainVocabulary(objects=objects, attribute_labels=attribute_labels)
 
 

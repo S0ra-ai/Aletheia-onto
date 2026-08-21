@@ -417,6 +417,7 @@ SCHEMA_DEFINITIONS: tuple[dict[str, str], ...] = (
     _MODEL_CONFIG_DDL,
 )
 
+
 @dataclass(frozen=True)
 class ColumnMigration:
     """A column that must exist on an already-deployed platform database.
@@ -443,16 +444,46 @@ class ColumnMigration:
 
 
 COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
-    ColumnMigration("data_source", "domain", "text not null default ''", "text not null default ''", "varchar(255) not null default ''"),
-    ColumnMigration("data_source", "system_category", "text not null default 'database'", "text not null default 'database'", "varchar(100) not null default 'database'"),
+    ColumnMigration(
+        "data_source",
+        "domain",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "data_source",
+        "system_category",
+        "text not null default 'database'",
+        "text not null default 'database'",
+        "varchar(100) not null default 'database'",
+    ),
     ColumnMigration("data_source", "capabilities", "text not null default '[]'", "text not null default '[]'", "text"),
     ColumnMigration("data_source", "api_base_url", "text not null default ''", "text not null default ''", "text"),
     ColumnMigration("data_source", "api_headers", "text not null default '{}'", "text not null default '{}'", "text"),
     ColumnMigration("ontology", "published_at", "text", "timestamp", "datetime"),
-    ColumnMigration("semantic_mapping", "reviewer", "text not null default ''", "text not null default ''", "varchar(255) not null default ''"),
+    ColumnMigration(
+        "semantic_mapping",
+        "reviewer",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
     ColumnMigration("semantic_mapping", "reviewed_at", "text", "timestamp", "datetime"),
-    ColumnMigration("business_rule", "priority", "integer not null default 0", "integer not null default 0", "integer not null default 0"),
-    ColumnMigration("business_rule", "category", "text not null default ''", "text not null default ''", "varchar(255) not null default ''"),
+    ColumnMigration(
+        "business_rule",
+        "priority",
+        "integer not null default 0",
+        "integer not null default 0",
+        "integer not null default 0",
+    ),
+    ColumnMigration(
+        "business_rule",
+        "category",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
     ColumnMigration("business_rule", "effective_start", "text", "text", "date"),
     ColumnMigration("business_rule", "effective_end", "text", "text", "date"),
     ColumnMigration("business_rule", "depends_on", "text not null default '[]'", "text not null default '[]'", "text"),
@@ -466,7 +497,9 @@ def _existing_columns(conn: Any, table: str, db_type: str) -> set[str]:
             return {row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()}
         query = "select column_name from information_schema.columns where table_name = %s and table_schema = current_schema()"
         if normalized == "mysql":
-            query = "select column_name from information_schema.columns where table_name = %s and table_schema = database()"
+            query = (
+                "select column_name from information_schema.columns where table_name = %s and table_schema = database()"
+            )
         with conn.cursor() as cur:
             cur.execute(query, (table,))
             rows = cur.fetchall()

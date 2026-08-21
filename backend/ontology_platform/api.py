@@ -132,9 +132,7 @@ async def lifespan(app: FastAPI):
         if purged:
             logger.info("已清理 %s 个过期会话", purged)
     else:
-        logger.warning(
-            "认证已通过 ONTOLOGY_AUTH_DISABLED=1 关闭，所有接口可匿名访问。仅限本地开发使用。"
-        )
+        logger.warning("认证已通过 ONTOLOGY_AUTH_DISABLED=1 关闭，所有接口可匿名访问。仅限本地开发使用。")
     yield
 
 
@@ -490,7 +488,14 @@ def auth_access_policy() -> dict[str, object]:
 def bootstrap_demo() -> dict[str, object]:
     initialize_platform_db(DEFAULT_PLATFORM_DB)
     sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
-    source = register_data_source(DEFAULT_PLATFORM_DB, "合同管理样例系统", "sqlite", str(sample_path), domain="合同管理", system_category="database+api")
+    source = register_data_source(
+        DEFAULT_PLATFORM_DB,
+        "合同管理样例系统",
+        "sqlite",
+        str(sample_path),
+        domain="合同管理",
+        system_category="database+api",
+    )
     register_source_api(
         DEFAULT_PLATFORM_DB,
         source.id,
@@ -509,7 +514,14 @@ def bootstrap_demo() -> dict[str, object]:
 def bootstrap_equipment_demo() -> dict[str, object]:
     initialize_platform_db(DEFAULT_PLATFORM_DB)
     sample_path = create_equipment_sample_db(DEFAULT_EQUIPMENT_SAMPLE_DB)
-    source = register_data_source(DEFAULT_PLATFORM_DB, "设备运维样例系统", "sqlite", str(sample_path), domain="设备运维", system_category="database+api")
+    source = register_data_source(
+        DEFAULT_PLATFORM_DB,
+        "设备运维样例系统",
+        "sqlite",
+        str(sample_path),
+        domain="设备运维",
+        system_category="database+api",
+    )
     register_source_api(
         DEFAULT_PLATFORM_DB,
         source.id,
@@ -635,7 +647,9 @@ def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> di
 @app.post("/data-sources/{data_source_id}/apis/import-openapi-url")
 def import_openapi_apis_from_url(data_source_id: int, payload: OpenApiUrlImportCreate) -> dict[str, object]:
     try:
-        return import_openapi_operations_from_url(DEFAULT_PLATFORM_DB, data_source_id, payload.url, payload.timeoutSeconds)
+        return import_openapi_operations_from_url(
+            DEFAULT_PLATFORM_DB, data_source_id, payload.url, payload.timeoutSeconds
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -740,7 +754,9 @@ def get_knowledge_bases() -> dict[str, object]:
 @app.post("/ontologies/draft")
 def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
     try:
-        return generate_ontology_draft(DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain, payload.blueprintId)
+        return generate_ontology_draft(
+            DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain, payload.blueprintId
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -813,7 +829,9 @@ def review_ontology_mappings(
     principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
     try:
-        return bulk_review_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, payload.status, principal.actor, payload.note)
+        return bulk_review_semantic_mappings(
+            DEFAULT_PLATFORM_DB, ontology_id, payload.status, principal.actor, payload.note
+        )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -1015,7 +1033,9 @@ def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "p
 @app.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
 def explain_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
     try:
-        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        resolved = (
+            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        )
         return explain_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -1024,7 +1044,9 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: Opti
 @app.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
 def assess_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
     try:
-        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        resolved = (
+            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        )
         return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -1361,6 +1383,7 @@ class ToolExecutionReview(BaseModel):
 
 # -- Workflow Endpoints --
 
+
 @app.get("/workflows")
 def get_workflows(ontologyId: Optional[int] = None) -> dict[str, object]:
     return {"items": list_workflows(DEFAULT_PLATFORM_DB, ontologyId)}
@@ -1370,8 +1393,12 @@ def get_workflows(ontologyId: Optional[int] = None) -> dict[str, object]:
 def create_new_workflow(payload: WorkflowCreate) -> dict[str, object]:
     try:
         return create_workflow(
-            DEFAULT_PLATFORM_DB, payload.ontologyId, payload.objectCode,
-            payload.name, payload.description, payload.initialState,
+            DEFAULT_PLATFORM_DB,
+            payload.ontologyId,
+            payload.objectCode,
+            payload.name,
+            payload.description,
+            payload.initialState,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1403,8 +1430,14 @@ def delete_workflow_def(workflow_id: int) -> dict[str, object]:
 def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
     try:
         return add_workflow_state(
-            DEFAULT_PLATFORM_DB, workflow_id, payload.code, payload.name,
-            payload.description, payload.isTerminal, payload.color, payload.sortOrder,
+            DEFAULT_PLATFORM_DB,
+            workflow_id,
+            payload.code,
+            payload.name,
+            payload.description,
+            payload.isTerminal,
+            payload.color,
+            payload.sortOrder,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1414,9 +1447,16 @@ def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
 def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str, object]:
     try:
         return add_workflow_transition(
-            DEFAULT_PLATFORM_DB, workflow_id, payload.fromState, payload.toState,
-            payload.actionCode, payload.name, payload.guardExpression,
-            payload.requiresReview, payload.reviewRole, payload.sortOrder,
+            DEFAULT_PLATFORM_DB,
+            workflow_id,
+            payload.fromState,
+            payload.toState,
+            payload.actionCode,
+            payload.name,
+            payload.guardExpression,
+            payload.requiresReview,
+            payload.reviewRole,
+            payload.sortOrder,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1426,6 +1466,7 @@ def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str
 def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
     try:
         from .workflow_permission import enter_workflow
+
         return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1453,8 +1494,13 @@ def run_transition(
 ) -> dict[str, object]:
     try:
         return transition_instance(
-            DEFAULT_PLATFORM_DB, workflow_id, payload.instanceId,
-            payload.actionCode, principal.actor, payload.reason, payload.metadata,
+            DEFAULT_PLATFORM_DB,
+            workflow_id,
+            payload.instanceId,
+            payload.actionCode,
+            principal.actor,
+            payload.reason,
+            payload.metadata,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1466,6 +1512,7 @@ def get_instance_workflow_history(workflow_id: int, instance_id: str) -> dict[st
 
 
 # -- Permission Endpoints --
+
 
 @app.get("/permissions/roles")
 def get_permission_roles() -> dict[str, object]:
@@ -1489,9 +1536,15 @@ def get_permission_policies(roleId: Optional[int] = None) -> dict[str, object]:
 def upsert_policy(payload: PermissionPolicyUpsert) -> dict[str, object]:
     try:
         return upsert_permission_policy(
-            DEFAULT_PLATFORM_DB, payload.roleId, payload.objectCode,
-            payload.canRead, payload.canWrite, payload.canExecute, payload.canDelete,
-            payload.filterExpression, payload.description,
+            DEFAULT_PLATFORM_DB,
+            payload.roleId,
+            payload.objectCode,
+            payload.canRead,
+            payload.canWrite,
+            payload.canExecute,
+            payload.canDelete,
+            payload.filterExpression,
+            payload.description,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1504,6 +1557,7 @@ def check_permission_endpoint(payload: PermissionCheck) -> dict[str, object]:
 
 # -- Tool Endpoints --
 
+
 @app.get("/tools")
 def get_all_tools() -> dict[str, object]:
     return {"tools": list_tools(DEFAULT_PLATFORM_DB)}
@@ -1513,8 +1567,14 @@ def get_all_tools() -> dict[str, object]:
 def register_new_tool(payload: ToolRegister) -> dict[str, object]:
     try:
         return register_tool(
-            DEFAULT_PLATFORM_DB, payload.code, payload.name, payload.description,
-            payload.toolType, payload.inputSchema, payload.riskLevel, payload.requiresReview,
+            DEFAULT_PLATFORM_DB,
+            payload.code,
+            payload.name,
+            payload.description,
+            payload.toolType,
+            payload.inputSchema,
+            payload.riskLevel,
+            payload.requiresReview,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1524,8 +1584,11 @@ def register_new_tool(payload: ToolRegister) -> dict[str, object]:
 def authorize_tool_for_role(payload: ToolAuthorize) -> dict[str, object]:
     try:
         return authorize_tool(
-            DEFAULT_PLATFORM_DB, payload.roleId, payload.toolId,
-            payload.allowed, payload.maxCallsPerHour,
+            DEFAULT_PLATFORM_DB,
+            payload.roleId,
+            payload.toolId,
+            payload.allowed,
+            payload.maxCallsPerHour,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

@@ -12,7 +12,6 @@ import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-
 REDACTION = "***"
 
 _SENSITIVE_HEADER_PATTERN = re.compile(

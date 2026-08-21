@@ -29,14 +29,23 @@ def initialize_knowledge_base(platform_db: Path | str, data_source_id: int) -> d
             domain=source["domain"],
         )
     chain = build_reasoning_chain(platform_db, data_source_id)
-    return {"status": "initialized", "scan": {"tables": len(scan["tables"])}, "ontology": ontology, "reasoningChain": chain}
+    return {
+        "status": "initialized",
+        "scan": {"tables": len(scan["tables"])},
+        "ontology": ontology,
+        "reasoningChain": chain,
+    }
 
 
-def browse_source_table(platform_db: Path | str, data_source_id: int, table_name: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+def browse_source_table(
+    platform_db: Path | str, data_source_id: int, table_name: str, limit: int = 50, offset: int = 0
+) -> dict[str, Any]:
     limit = clamp_page_size(limit)
     offset = max(0, int(offset))
     with connect(platform_db) as conn:
-        source = conn.execute("select source_type, connection_uri from data_source where id = ?", (data_source_id,)).fetchone()
+        source = conn.execute(
+            "select source_type, connection_uri from data_source where id = ?", (data_source_id,)
+        ).fetchone()
         table = conn.execute(
             "select id from source_table where data_source_id = ? and table_name = ?", (data_source_id, table_name)
         ).fetchone()
@@ -74,21 +83,37 @@ def list_knowledge_bases(platform_db: Path | str) -> list[dict[str, Any]]:
         items = []
         for row in rows:
             item = dict(row)
-            objects = conn.execute("select code, name from business_object where ontology_id = ? order by id", (item["ontology_id"],)).fetchall()
-            items.append({
-                "dataSourceId": item["data_source_id"], "name": item["name"], "sourceType": item["source_type"],
-                "domain": item["domain"], "ontologyId": item["ontology_id"], "ontologyName": item["ontology_name"],
-                "version": item["version"], "status": item["status"],
-                "objects": [{"code": obj["code"], "name": obj["name"]} for obj in objects],
-                "objectCodes": [obj["code"] for obj in objects],
-            })
+            objects = conn.execute(
+                "select code, name from business_object where ontology_id = ? order by id", (item["ontology_id"],)
+            ).fetchall()
+            items.append(
+                {
+                    "dataSourceId": item["data_source_id"],
+                    "name": item["name"],
+                    "sourceType": item["source_type"],
+                    "domain": item["domain"],
+                    "ontologyId": item["ontology_id"],
+                    "ontologyName": item["ontology_name"],
+                    "version": item["version"],
+                    "status": item["status"],
+                    "objects": [{"code": obj["code"], "name": obj["name"]} for obj in objects],
+                    "objectCodes": [obj["code"] for obj in objects],
+                }
+            )
         return items
 
 
 def build_reasoning_chain(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
     bases = [item for item in list_knowledge_bases(platform_db) if item["dataSourceId"] == data_source_id]
     if not bases:
-        return {"dataSourceId": data_source_id, "initialized": False, "objects": [], "relations": [], "rules": [], "steps": []}
+        return {
+            "dataSourceId": data_source_id,
+            "initialized": False,
+            "objects": [],
+            "relations": [],
+            "rules": [],
+            "steps": [],
+        }
     base = bases[0]
     ontology_id = base["ontologyId"]
     with connect(platform_db) as conn:
@@ -97,27 +122,57 @@ def build_reasoning_chain(platform_db: Path | str, data_source_id: int) -> dict[
                from business_relation br
                join business_object source on source.id = br.source_object_id
                join business_object target on target.id = br.target_object_id
-               where br.ontology_id = ? order by br.id""", (ontology_id,)
+               where br.ontology_id = ? order by br.id""",
+            (ontology_id,),
         ).fetchall()
         rules = conn.execute(
             "select code, name, rule_type, scope_object_code, expression, severity, natural_language, status from business_rule where ontology_id = ? order by priority desc, id",
             (ontology_id,),
         ).fetchall()
-    relation_items = [{"code": row["code"], "name": row["name"], "relationType": row["relation_type"], "sourceObject": row["source_code"], "targetObject": row["target_code"]} for row in relations]
-    rule_items = [{"code": row["code"], "name": row["name"], "ruleType": row["rule_type"], "scopeObjectCode": row["scope_object_code"], "expression": row["expression"], "severity": row["severity"], "naturalLanguage": row["natural_language"], "status": row["status"]} for row in rules]
+    relation_items = [
+        {
+            "code": row["code"],
+            "name": row["name"],
+            "relationType": row["relation_type"],
+            "sourceObject": row["source_code"],
+            "targetObject": row["target_code"],
+        }
+        for row in relations
+    ]
+    rule_items = [
+        {
+            "code": row["code"],
+            "name": row["name"],
+            "ruleType": row["rule_type"],
+            "scopeObjectCode": row["scope_object_code"],
+            "expression": row["expression"],
+            "severity": row["severity"],
+            "naturalLanguage": row["natural_language"],
+            "status": row["status"],
+        }
+        for row in rules
+    ]
     steps = [{"type": "source_resolution", "label": "根据问题定位数据源与业务对象"}]
     if relation_items:
         steps.append({"type": "relation_traversal", "label": f"沿 {len(relation_items)} 条本体关系装载关联对象"})
     if rule_items:
         steps.append({"type": "rule_evaluation", "label": f"执行 {len(rule_items)} 条版本化业务规则"})
     steps.append({"type": "evidence_explanation", "label": "输出原始数据、关系路径、命中规则和结论"})
-    return {**base, "initialized": True, "objects": base["objects"], "relations": relation_items, "rules": rule_items, "steps": steps}
+    return {
+        **base,
+        "initialized": True,
+        "objects": base["objects"],
+        "relations": relation_items,
+        "rules": rule_items,
+        "steps": steps,
+    }
 
 
 def _scanned_columns(platform_db: Path | str, data_source_id: int, table_name: str) -> list[str]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """select sc.column_name from source_column sc join source_table st on st.id = sc.source_table_id
-               where st.data_source_id = ? and st.table_name = ? order by sc.ordinal""", (data_source_id, table_name)
+               where st.data_source_id = ? and st.table_name = ? order by sc.ordinal""",
+            (data_source_id, table_name),
         ).fetchall()
         return [row["column_name"] for row in rows]

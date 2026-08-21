@@ -440,6 +440,7 @@ def init_workflow_and_permission_schema(conn: Any) -> None:
 # Workflow Definition CRUD
 # ============================================================
 
+
 def create_workflow(
     platform_db: Path | str,
     ontology_id: int,
@@ -466,12 +467,18 @@ def get_workflow(platform_db: Path | str, workflow_id: int) -> dict[str, Any]:
         if wf is None:
             raise ValueError(f"工作流 {workflow_id} 不存在")
         result = dict(wf)
-        result["states"] = [dict(r) for r in conn.execute(
-            "select * from workflow_state where workflow_id = ? order by sort_order", (workflow_id,)
-        ).fetchall()]
-        result["transitions"] = [dict(r) for r in conn.execute(
-            "select * from workflow_transition where workflow_id = ? order by sort_order", (workflow_id,)
-        ).fetchall()]
+        result["states"] = [
+            dict(r)
+            for r in conn.execute(
+                "select * from workflow_state where workflow_id = ? order by sort_order", (workflow_id,)
+            ).fetchall()
+        ]
+        result["transitions"] = [
+            dict(r)
+            for r in conn.execute(
+                "select * from workflow_transition where workflow_id = ? order by sort_order", (workflow_id,)
+            ).fetchall()
+        ]
         return result
 
 
@@ -507,6 +514,7 @@ def delete_workflow(platform_db: Path | str, workflow_id: int) -> None:
 # State Management
 # ============================================================
 
+
 def add_workflow_state(
     platform_db: Path | str,
     workflow_id: int,
@@ -523,7 +531,9 @@ def add_workflow_state(
             (workflow_id, code, name, description, 1 if is_terminal else 0, color, sort_order),
         )
         conn.commit()
-        row = conn.execute("select * from workflow_state where workflow_id = ? and code = ?", (workflow_id, code)).fetchone()
+        row = conn.execute(
+            "select * from workflow_state where workflow_id = ? and code = ?", (workflow_id, code)
+        ).fetchone()
         return dict(row)
 
 
@@ -544,7 +554,17 @@ def add_workflow_transition(
             """insert into workflow_transition
             (workflow_id, from_state, to_state, action_code, name, guard_expression, requires_review, review_role, sort_order)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (workflow_id, from_state, to_state, action_code, name, guard_expression, 1 if requires_review else 0, review_role, sort_order),
+            (
+                workflow_id,
+                from_state,
+                to_state,
+                action_code,
+                name,
+                guard_expression,
+                1 if requires_review else 0,
+                review_role,
+                sort_order,
+            ),
         )
         conn.commit()
         row = conn.execute(
@@ -557,6 +577,7 @@ def add_workflow_transition(
 # ============================================================
 # Instance State Machine
 # ============================================================
+
 
 def enter_workflow(
     platform_db: Path | str,
@@ -730,6 +751,7 @@ def _seed_default_transitions(conn: Any, workflow_id: int) -> None:
 # Permission CRUD
 # ============================================================
 
+
 def create_role(
     platform_db: Path | str,
     code: str,
@@ -773,15 +795,31 @@ def upsert_permission_policy(
             conn.execute(
                 """update permission_policy set can_read=?, can_write=?, can_execute=?, can_delete=?,
                 filter_expression=?, description=? where role_id=? and object_code=?""",
-                (1 if can_read else 0, 1 if can_write else 0, 1 if can_execute else 0, 1 if can_delete else 0,
-                 filter_expression, description, role_id, object_code),
+                (
+                    1 if can_read else 0,
+                    1 if can_write else 0,
+                    1 if can_execute else 0,
+                    1 if can_delete else 0,
+                    filter_expression,
+                    description,
+                    role_id,
+                    object_code,
+                ),
             )
         else:
             conn.execute(
                 """insert into permission_policy (role_id, object_code, can_read, can_write, can_execute, can_delete, filter_expression, description)
                 values (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (role_id, object_code, 1 if can_read else 0, 1 if can_write else 0, 1 if can_execute else 0, 1 if can_delete else 0,
-                 filter_expression, description),
+                (
+                    role_id,
+                    object_code,
+                    1 if can_read else 0,
+                    1 if can_write else 0,
+                    1 if can_execute else 0,
+                    1 if can_delete else 0,
+                    filter_expression,
+                    description,
+                ),
             )
         conn.commit()
         row = conn.execute(
@@ -839,6 +877,7 @@ def list_policies(platform_db: Path | str, role_id: int | None = None) -> list[d
 # Tool Definition & Authorization
 # ============================================================
 
+
 def register_tool(
     platform_db: Path | str,
     code: str,
@@ -853,8 +892,15 @@ def register_tool(
         conn.execute(
             """insert into tool_definition (code, name, description, tool_type, input_schema, risk_level, requires_review)
             values (?, ?, ?, ?, ?, ?, ?)""",
-            (code, name, description, tool_type, json.dumps(input_schema or {}, ensure_ascii=False),
-             risk_level, 1 if requires_review else 0),
+            (
+                code,
+                name,
+                description,
+                tool_type,
+                json.dumps(input_schema or {}, ensure_ascii=False),
+                risk_level,
+                1 if requires_review else 0,
+            ),
         )
         tid = last_insert_id(conn)
         conn.commit()
@@ -904,7 +950,9 @@ def check_tool_authorization(
 ) -> dict[str, Any]:
     with connect(platform_db) as conn:
         role = conn.execute("select id from permission_role where code = ?", (role_code,)).fetchone()
-        tool = conn.execute("select id, risk_level, requires_review from tool_definition where code = ?", (tool_code,)).fetchone()
+        tool = conn.execute(
+            "select id, risk_level, requires_review from tool_definition where code = ?", (tool_code,)
+        ).fetchone()
         if role is None:
             return {"allowed": False, "reason": f"角色 '{role_code}' 不存在"}
         if tool is None:
@@ -946,9 +994,19 @@ def log_tool_execution(
             """insert into tool_execution_log
             (tool_id, tool_code, agent_role, object_code, instance_id, input_args, result_summary, status, error, duration_ms, requires_review)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (tool_id, tool_code, agent_role, object_code, instance_id,
-             json.dumps(input_args or {}, ensure_ascii=False), result_summary,
-             status, error, duration_ms, 1 if requires_review else 0),
+            (
+                tool_id,
+                tool_code,
+                agent_role,
+                object_code,
+                instance_id,
+                json.dumps(input_args or {}, ensure_ascii=False),
+                result_summary,
+                status,
+                error,
+                duration_ms,
+                1 if requires_review else 0,
+            ),
         )
         lid = last_insert_id(conn)
         conn.commit()
@@ -1028,8 +1086,7 @@ def seed_default_roles_and_policies(platform_db: Path | str) -> None:
     # defaults follow whichever domain was onboarded instead of a built-in list.
     with connect(platform_db) as conn:
         objects = [
-            row["code"]
-            for row in conn.execute("select distinct code from business_object order by code").fetchall()
+            row["code"] for row in conn.execute("select distinct code from business_object order by code").fetchall()
         ]
     if not objects:
         # Nothing modelled yet; object policies are seeded again on a later call
@@ -1057,7 +1114,13 @@ def seed_default_roles_and_policies(platform_db: Path | str) -> None:
 
     tools = list_tools(platform_db)
     tool_map = {t["code"]: t["id"] for t in tools}
-    ai_tools = ["explain_instance", "assess_instance", "preflight_operation", "knowledge_overview", "decision_consistency"]
+    ai_tools = [
+        "explain_instance",
+        "assess_instance",
+        "preflight_operation",
+        "knowledge_overview",
+        "decision_consistency",
+    ]
     for tool_code in ai_tools:
         if tool_code in tool_map and "ai_agent" in role_ids:
             try:

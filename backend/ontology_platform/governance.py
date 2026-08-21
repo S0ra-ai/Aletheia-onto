@@ -6,7 +6,6 @@ from typing import Any
 
 from .database import connect, last_insert_id
 
-
 VALID_MAPPING_STATUSES = {"pending", "confirmed", "rejected"}
 VALID_ONTOLOGY_STATUSES = {"draft", "reviewing", "published", "deprecated"}
 VALID_RULE_TYPES = {"validation", "derivation", "transition", "risk", "recommendation", "permission"}
@@ -167,9 +166,7 @@ def publish_ontology(
     blockers = [gate for gate in readiness["gates"] if gate["severity"] == "blocker" and not gate["passed"]]
     if blockers and not force:
         summary = "；".join(f"{gate['name']}: {gate['evidence']}" for gate in blockers[:5])
-        raise ValueError(
-            f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{summary}"
-        )
+        raise ValueError(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{summary}")
 
     with connect(platform_db) as conn:
         conn.execute(
@@ -246,7 +243,9 @@ def derive_ontology_version(
         attribute_id_map: dict[int, int] = {}
         _copy_business_objects(conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map)
         _copy_business_relations(conn, source_ontology_id, new_ontology_id, object_id_map)
-        mapping_count = _copy_semantic_mappings(conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map, source["version"])
+        mapping_count = _copy_semantic_mappings(
+            conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map, source["version"]
+        )
         rule_count = _copy_business_rules(conn, source_ontology_id, new_ontology_id)
 
         conn.execute(
@@ -345,11 +344,25 @@ def update_business_rule(
                 priority = ?, category = ?, effective_start = ?, effective_end = ?, depends_on = ?
             where id = ? and ontology_id = ?
             """,
-            (code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends, rule_id, ontology_id),
+            (
+                code,
+                name,
+                rule_type,
+                scope_object_code,
+                expression,
+                severity,
+                natural_language,
+                status,
+                priority,
+                category,
+                effective_start,
+                effective_end,
+                depends,
+                rule_id,
+                ontology_id,
+            ),
         )
-        rule = conn.execute(
-            "select * from business_rule where id = ?", (rule_id,)
-        ).fetchone()
+        rule = conn.execute("select * from business_rule where id = ?", (rule_id,)).fetchone()
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
             (
@@ -363,7 +376,9 @@ def update_business_rule(
         return dict(rule)
 
 
-def delete_business_rule(platform_db: Path | str, ontology_id: int, rule_id: int, actor: str = "system") -> dict[str, Any]:
+def delete_business_rule(
+    platform_db: Path | str, ontology_id: int, rule_id: int, actor: str = "system"
+) -> dict[str, Any]:
     with connect(platform_db) as conn:
         ontology = _require_ontology(conn, ontology_id)
         if ontology["status"] == "published":
@@ -470,7 +485,22 @@ def upsert_business_rule(
                 effective_end = excluded.effective_end,
                 depends_on = excluded.depends_on
             """,
-            (ontology_id, code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends),
+            (
+                ontology_id,
+                code,
+                name,
+                rule_type,
+                scope_object_code,
+                expression,
+                severity,
+                natural_language,
+                status,
+                priority,
+                category,
+                effective_start,
+                effective_end,
+                depends,
+            ),
         )
         rule = conn.execute(
             "select * from business_rule where ontology_id = ? and code = ?",

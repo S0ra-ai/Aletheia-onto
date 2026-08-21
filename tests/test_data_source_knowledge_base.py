@@ -49,8 +49,16 @@ def test_user_can_browse_registered_database_rows(tmp_path: Path) -> None:
 def test_uploaded_rules_appear_in_data_source_reasoning_chain(tmp_path: Path) -> None:
     platform_db, source, ontology = _initialized_source(tmp_path)
     upsert_business_rule(
-        platform_db, ontology["id"], "custom_contract_review", "自定义合同复核", "risk",
-        "contract", "amount > 500000", "warning", "金额超过 50 万元需要复核。", actor="tester",
+        platform_db,
+        ontology["id"],
+        "custom_contract_review",
+        "自定义合同复核",
+        "risk",
+        "contract",
+        "amount > 500000",
+        "warning",
+        "金额超过 50 万元需要复核。",
+        actor="tester",
     )
 
     chain = build_reasoning_chain(platform_db, source.id)
@@ -76,13 +84,24 @@ def test_chat_candidates_only_include_initialized_data_sources(tmp_path: Path) -
 def test_chat_can_answer_knowledge_base_rule_questions(tmp_path: Path) -> None:
     platform_db, source, ontology = _initialized_source(tmp_path)
     upsert_business_rule(
-        platform_db, ontology["id"], "manual_review", "人工复核规则", "risk", "contract",
-        "amount > 500000", "warning", "大额业务需要人工复核。", actor="tester",
+        platform_db,
+        ontology["id"],
+        "manual_review",
+        "人工复核规则",
+        "risk",
+        "contract",
+        "amount > 500000",
+        "warning",
+        "大额业务需要人工复核。",
+        actor="tester",
     )
 
     result = query_natural_language(
-        platform_db, "这个数据源的合同有哪些规则？",
-        data_source_id=source.id, object_code="contract", use_model=False,
+        platform_db,
+        "这个数据源的合同有哪些规则？",
+        data_source_id=source.id,
+        object_code="contract",
+        use_model=False,
     )
 
     assert result["intent"] == "knowledge_overview"
@@ -98,7 +117,9 @@ def test_plural_contract_table_uses_canonical_contract_object_code(tmp_path: Pat
     platform_db = tmp_path / "platform.sqlite3"
     source_db = tmp_path / "plural-contracts.sqlite3"
     with sqlite3.connect(source_db) as conn:
-        conn.execute("create table contracts (id integer primary key, contract_no text, total_amount real, status text)")
+        conn.execute(
+            "create table contracts (id integer primary key, contract_no text, total_amount real, status text)"
+        )
         conn.execute("insert into contracts values (1, 'CG-2024-001', 120000, 'active')")
     initialize_platform_db(platform_db)
     source = register_data_source(platform_db, "复数表合同库", "sqlite", str(source_db), domain="合同管理")
@@ -113,7 +134,11 @@ def test_local_fallback_answer_uses_business_language(tmp_path: Path) -> None:
     platform_db, source, ontology = _initialized_source(tmp_path)
 
     result = query_natural_language(
-        platform_db, "合同 1 是否合规？", ontology["id"], source.id, use_model=False,
+        platform_db,
+        "合同 1 是否合规？",
+        ontology["id"],
+        source.id,
+        use_model=False,
     )
 
     assert "本体内核" not in result["answer"]

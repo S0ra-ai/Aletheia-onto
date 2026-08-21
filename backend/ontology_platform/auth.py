@@ -277,7 +277,13 @@ def create_user(
         )
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            (actor, "create_user", "platform_user", normalized, json.dumps({"roleCode": role_code}, ensure_ascii=False)),
+            (
+                actor,
+                "create_user",
+                "platform_user",
+                normalized,
+                json.dumps({"roleCode": role_code}, ensure_ascii=False),
+            ),
         )
         row = conn.execute(
             "select id, username, display_name, role_code, status, created_at from platform_user where username = ?",
@@ -444,9 +450,7 @@ def resolve_principal(platform_db: Path | str, token: str) -> Principal:
 
 def authorize(principal: Principal, capability: str) -> None:
     if not principal.can(capability):
-        raise AuthorizationError(
-            f"角色 {principal.role_code} 缺少所需权限 {capability}"
-        )
+        raise AuthorizationError(f"角色 {principal.role_code} 缺少所需权限 {capability}")
 
 
 def purge_expired_sessions(platform_db: Path | str) -> int:

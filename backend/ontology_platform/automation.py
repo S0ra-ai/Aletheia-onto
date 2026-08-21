@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
 import urllib.error
 import urllib.request
+from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin
 
 from .database import connect
@@ -74,7 +74,11 @@ def preflight_operation(
         operation_code=operation_code,
         input_ref={"dataSourceId": data_source_id, "operationCode": operation_code, "instanceId": instance_id},
         rule_results=assessment["ruleResults"],
-        evidence={"allowed": allowed, "nextAction": preflight["nextAction"], "assessmentDecisionId": assessment["decision"].get("decisionId")},
+        evidence={
+            "allowed": allowed,
+            "nextAction": preflight["nextAction"],
+            "assessmentDecisionId": assessment["decision"].get("decisionId"),
+        },
         actor="semantic_kernel",
     )
     preflight["decisionRecord"] = decision_record
@@ -168,7 +172,12 @@ def execute_operation(
     }
     resolved_object_code = preflight["target"]["objectCode"]
     workflow_transition = _try_workflow_transition(
-        platform_db, ontology_id, resolved_object_code, instance_id, operation_code, actor,
+        platform_db,
+        ontology_id,
+        resolved_object_code,
+        instance_id,
+        operation_code,
+        actor,
     )
     if workflow_transition:
         result["workflowTransition"] = workflow_transition
@@ -194,13 +203,19 @@ def _next_action(allowed: bool, decision_status: str) -> str:
 
 
 def _render_operation_path(path: str, instance_id: str, payload: dict[str, Any]) -> str:
-    rendered = path.replace("{id}", str(instance_id)).replace("{instanceId}", str(instance_id)).replace("{instance_id}", str(instance_id))
+    rendered = (
+        path.replace("{id}", str(instance_id))
+        .replace("{instanceId}", str(instance_id))
+        .replace("{instance_id}", str(instance_id))
+    )
     for key, value in payload.items():
         rendered = rendered.replace("{" + key + "}", str(value))
     return rendered
 
 
-def _invoke_http_operation(base_url: str, execution_plan: dict[str, Any], timeout_seconds: float, headers: dict[str, str] | None = None) -> dict[str, Any]:
+def _invoke_http_operation(
+    base_url: str, execution_plan: dict[str, Any], timeout_seconds: float, headers: dict[str, str] | None = None
+) -> dict[str, Any]:
     url = urljoin(base_url.rstrip("/") + "/", execution_plan["path"].lstrip("/"))
     body = json.dumps(execution_plan["payload"], ensure_ascii=False).encode("utf-8")
     request_headers = {"Content-Type": "application/json", **(headers or {})}
@@ -246,7 +261,11 @@ def _load_api_headers(value: str | None) -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {str(key): str(header_value) for key, header_value in parsed.items() if str(key).strip() and header_value is not None}
+    return {
+        str(key): str(header_value)
+        for key, header_value in parsed.items()
+        if str(key).strip() and header_value is not None
+    }
 
 
 def _check_workflow_state(
@@ -304,8 +323,11 @@ def _try_workflow_transition(
         if auto_action is None:
             return None
         result = transition_instance(
-            platform_db, workflow_id, instance_id,
-            auto_action["action_code"], actor=actor,
+            platform_db,
+            workflow_id,
+            instance_id,
+            auto_action["action_code"],
+            actor=actor,
             reason=f"业务操作 {operation_code} 自动触发工作流转移",
         )
         return {

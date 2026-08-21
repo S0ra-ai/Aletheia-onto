@@ -104,17 +104,25 @@ def clinic(tmp_path: Path) -> dict[str, object]:
     seed_default_tools(platform_db)
     upsert_industry_blueprint(platform_db, CLINIC_BLUEPRINT)
 
-    source = register_data_source(
-        platform_db, "宠物诊疗系统", "sqlite", str(legacy_db), domain="宠物诊疗"
-    )
+    source = register_data_source(platform_db, "宠物诊疗系统", "sqlite", str(legacy_db), domain="宠物诊疗")
     scan_data_source(platform_db, source.id)
     register_source_api(
-        platform_db, source.id, "closeVisitRecord", "关闭诊疗记录",
-        "POST", "/visits/{id}/close", "consultation.close",
+        platform_db,
+        source.id,
+        "closeVisitRecord",
+        "关闭诊疗记录",
+        "POST",
+        "/visits/{id}/close",
+        "consultation.close",
     )
     register_source_api(
-        platform_db, source.id, "applyVisitReview", "提交诊疗复核",
-        "POST", "/visits/{id}/apply", "consultation.submit",
+        platform_db,
+        source.id,
+        "applyVisitReview",
+        "提交诊疗复核",
+        "POST",
+        "/visits/{id}/apply",
+        "consultation.submit",
     )
     ontology = generate_ontology_draft(platform_db, source.id, blueprint_id="veterinary-clinic")
     seed_default_roles_and_policies(platform_db)
@@ -298,13 +306,9 @@ def test_identifier_columns_recognise_conventions_not_industry_names() -> None:
         ("MZ-2026-001 能提交审批吗", "applyVisitReview"),
     ],
 )
-def test_operations_resolve_from_registered_apis(
-    clinic: dict[str, object], question: str, expected: str
-) -> None:
+def test_operations_resolve_from_registered_apis(clinic: dict[str, object], question: str, expected: str) -> None:
     """Endpoint names follow no `submit_<object>` convention here."""
-    resolved = _default_operation_code(
-        clinic["platform_db"], question, "consultation", clinic["source_id"]
-    )
+    resolved = _default_operation_code(clinic["platform_db"], question, "consultation", clinic["source_id"])
     assert resolved == expected
 
 
@@ -342,8 +346,11 @@ def test_agent_prompt_lists_only_modelled_objects(clinic: dict[str, object]) -> 
 
 def test_custom_agent_role_can_be_persisted(clinic: dict[str, object]) -> None:
     upsert_agent_role(
-        clinic["platform_db"], "clinic-advisor", "诊疗顾问",
-        description="专注宠物诊疗复核", domain="宠物诊疗",
+        clinic["platform_db"],
+        "clinic-advisor",
+        "诊疗顾问",
+        description="专注宠物诊疗复核",
+        domain="宠物诊疗",
     )
     role_ids = {role.id for role in list_agent_roles(clinic["platform_db"])}
     assert "clinic-advisor" in role_ids

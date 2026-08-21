@@ -17,7 +17,14 @@ from ontology_platform.semantic_kernel import assess_instance
 def main() -> None:
     initialize_platform_db(DEFAULT_PLATFORM_DB)
     sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
-    source = register_data_source(DEFAULT_PLATFORM_DB, "合同管理样例系统", "sqlite", str(sample_path), domain="合同管理", system_category="database+api")
+    source = register_data_source(
+        DEFAULT_PLATFORM_DB,
+        "合同管理样例系统",
+        "sqlite",
+        str(sample_path),
+        domain="合同管理",
+        system_category="database+api",
+    )
     register_source_api(
         DEFAULT_PLATFORM_DB,
         source.id,
@@ -34,7 +41,15 @@ def main() -> None:
     print("已创建合同管理样例库:", sample_path)
     print("已注册数据源:", source)
     print("元数据扫描结果:", scan)
-    print("本体草案:", {"id": ontology["id"], "objects": len(ontology["objects"]), "relations": len(ontology["relations"]), "rules": len(ontology["rules"])})
+    print(
+        "本体草案:",
+        {
+            "id": ontology["id"],
+            "objects": len(ontology["objects"]),
+            "relations": len(ontology["relations"]),
+            "rules": len(ontology["rules"]),
+        },
+    )
     print("合同 1 语义研判:", assessment["decision"])
 
 

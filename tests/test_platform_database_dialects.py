@@ -250,7 +250,9 @@ def test_mysql_platform_database_persists_control_plane_writes(tmp_path: Path, m
     assert total == 1
 
 
-def test_postgresql_platform_database_creates_schema_and_persists_writes(tmp_path: Path, postgres_platform_db: str) -> None:
+def test_postgresql_platform_database_creates_schema_and_persists_writes(
+    tmp_path: Path, postgres_platform_db: str
+) -> None:
     database_module.configure_platform_db("postgresql", postgres_platform_db)
     initialize_platform_db()
 

@@ -95,12 +95,8 @@ class SemanticAssetNaming:
     the default is a clearly non-routable placeholder.
     """
 
-    vocabulary_base: str = _str_env(
-        "ONTOLOGY_VOCABULARY_BASE_IRI", "https://ontology-platform.local/vocab#"
-    )
-    ontology_base: str = _str_env(
-        "ONTOLOGY_ASSET_BASE_IRI", "https://ontology-platform.local/ontology"
-    )
+    vocabulary_base: str = _str_env("ONTOLOGY_VOCABULARY_BASE_IRI", "https://ontology-platform.local/vocab#")
+    ontology_base: str = _str_env("ONTOLOGY_ASSET_BASE_IRI", "https://ontology-platform.local/ontology")
 
 
 @dataclass(frozen=True)

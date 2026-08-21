@@ -81,11 +81,51 @@ BLUEPRINTS: dict[str, IndustryBlueprint] = {
             "issued_date": "开票日期",
         },
         rule_templates=(
-            RuleTemplate("contract_amount_positive", "合同金额必须大于 0", "validation", "contract", "amount > 0", "blocking", "合同金额必须大于 0。"),
-            RuleTemplate("effective_contract_signed", "已生效合同必须有签订日期", "validation", "contract", "status != 'effective' or signed_date != null", "blocking", "当合同状态为已生效时，签订日期不能为空。"),
-            RuleTemplate("blacklist_customer_warning", "黑名单客户合同风险", "risk", "contract", "customer.credit_status != 'blacklist'", "warning", "客户为黑名单时，新签或存量合同需要风险复核。"),
-            RuleTemplate("payment_plan_amount_match", "付款计划总额应等于合同金额", "validation", "contract", "sum(payment_plan.planned_amount) == amount", "warning", "付款计划总额应等于合同金额。"),
-            RuleTemplate("overdue_payment_warning", "逾期付款风险", "risk", "payment_plan", "status != 'overdue'", "warning", "付款计划已逾期，需提示履约风险。"),
+            RuleTemplate(
+                "contract_amount_positive",
+                "合同金额必须大于 0",
+                "validation",
+                "contract",
+                "amount > 0",
+                "blocking",
+                "合同金额必须大于 0。",
+            ),
+            RuleTemplate(
+                "effective_contract_signed",
+                "已生效合同必须有签订日期",
+                "validation",
+                "contract",
+                "status != 'effective' or signed_date != null",
+                "blocking",
+                "当合同状态为已生效时，签订日期不能为空。",
+            ),
+            RuleTemplate(
+                "blacklist_customer_warning",
+                "黑名单客户合同风险",
+                "risk",
+                "contract",
+                "customer.credit_status != 'blacklist'",
+                "warning",
+                "客户为黑名单时，新签或存量合同需要风险复核。",
+            ),
+            RuleTemplate(
+                "payment_plan_amount_match",
+                "付款计划总额应等于合同金额",
+                "validation",
+                "contract",
+                "sum(payment_plan.planned_amount) == amount",
+                "warning",
+                "付款计划总额应等于合同金额。",
+            ),
+            RuleTemplate(
+                "overdue_payment_warning",
+                "逾期付款风险",
+                "risk",
+                "payment_plan",
+                "status != 'overdue'",
+                "warning",
+                "付款计划已逾期，需提示履约风险。",
+            ),
         ),
         table_keywords=("contract", "customer", "payment", "invoice"),
         capability_tags=("contract-risk", "payment-control", "approval-preflight"),
@@ -119,9 +159,33 @@ BLUEPRINTS: dict[str, IndustryBlueprint] = {
             "minimum_quantity": "最低库存",
         },
         rule_templates=(
-            RuleTemplate("critical_equipment_open_fault", "重要设备存在未关闭工单风险", "risk", "equipment", "criticality != 'high' or count(work_order.status == 'open') == 0", "warning", "重要设备存在未关闭工单时，需要优先处理。"),
-            RuleTemplate("closed_work_order_has_closed_at", "已关闭工单必须有关闭时间", "validation", "work_order", "status != 'closed' or closed_at != null", "blocking", "工单关闭时必须记录关闭时间。"),
-            RuleTemplate("spare_part_stock_floor", "备件库存不能低于最低库存", "risk", "spare_part", "stock_quantity >= minimum_quantity", "warning", "备件库存低于最低库存时，需要补货。"),
+            RuleTemplate(
+                "critical_equipment_open_fault",
+                "重要设备存在未关闭工单风险",
+                "risk",
+                "equipment",
+                "criticality != 'high' or count(work_order.status == 'open') == 0",
+                "warning",
+                "重要设备存在未关闭工单时，需要优先处理。",
+            ),
+            RuleTemplate(
+                "closed_work_order_has_closed_at",
+                "已关闭工单必须有关闭时间",
+                "validation",
+                "work_order",
+                "status != 'closed' or closed_at != null",
+                "blocking",
+                "工单关闭时必须记录关闭时间。",
+            ),
+            RuleTemplate(
+                "spare_part_stock_floor",
+                "备件库存不能低于最低库存",
+                "risk",
+                "spare_part",
+                "stock_quantity >= minimum_quantity",
+                "warning",
+                "备件库存低于最低库存时，需要补货。",
+            ),
         ),
         table_keywords=("equipment", "work_order", "inspection", "spare_part"),
         capability_tags=("fault-risk", "work-order-preflight", "inventory-warning"),
@@ -154,7 +218,9 @@ def list_industry_blueprints(platform_db: Path | str | None = None) -> list[dict
     return [blueprint.to_dict() for blueprint in blueprints.values()]
 
 
-def get_industry_blueprint(blueprint_id: str | None, domain: str | None = None, platform_db: Path | str | None = None) -> IndustryBlueprint:
+def get_industry_blueprint(
+    blueprint_id: str | None, domain: str | None = None, platform_db: Path | str | None = None
+) -> IndustryBlueprint:
     blueprints = dict(BLUEPRINTS)
     if platform_db is not None:
         blueprints.update(_custom_blueprints(platform_db))
@@ -171,7 +237,9 @@ def get_industry_blueprint(blueprint_id: str | None, domain: str | None = None, 
     return blueprints["generic-enterprise"]
 
 
-def infer_industry_blueprint(table_names: list[str], domain: str | None = None, platform_db: Path | str | None = None) -> IndustryBlueprint:
+def infer_industry_blueprint(
+    table_names: list[str], domain: str | None = None, platform_db: Path | str | None = None
+) -> IndustryBlueprint:
     if domain:
         try:
             return get_industry_blueprint(None, domain, platform_db)
@@ -185,7 +253,9 @@ def infer_industry_blueprint(table_names: list[str], domain: str | None = None, 
     best_score = 0
     for blueprint in blueprints.values():
         score = sum(1 for keyword in blueprint.table_keywords if keyword in table_text)
-        if score > best_score or (score == best_score and score > 0 and blueprint.source == "custom" and best_blueprint.source != "custom"):
+        if score > best_score or (
+            score == best_score and score > 0 and blueprint.source == "custom" and best_blueprint.source != "custom"
+        ):
             best_score = score
             best_blueprint = blueprint
     return best_blueprint
@@ -226,7 +296,13 @@ def upsert_industry_blueprint(platform_db: Path | str, payload: dict[str, Any]) 
         )
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "upsert_industry_blueprint", "industry_blueprint", blueprint.id, json.dumps({"domain": blueprint.domain}, ensure_ascii=False)),
+            (
+                "system",
+                "upsert_industry_blueprint",
+                "industry_blueprint",
+                blueprint.id,
+                json.dumps({"domain": blueprint.domain}, ensure_ascii=False),
+            ),
         )
     return blueprint.to_dict()
 

@@ -33,8 +33,6 @@ from .workflow_permission import check_tool_authorization, log_tool_execution
 logger = logging.getLogger(__name__)
 
 
-
-
 def get_agent_roles(platform_db: Path | str) -> list[dict[str, Any]]:
     """Roles available for the domains that have actually been onboarded."""
     return [role.public_dict() for role in list_agent_roles(platform_db)]
@@ -148,12 +146,13 @@ def _llm_agent_chat(
                         "role": "user",
                         "content": (
                             "以下是工具调用返回的精确数据，请基于这些数据完善你的回答，"
-                            "用自然、专业的语言直接回应用户的问题：\n"
-                            + _compact_json(tool_results)
+                            "用自然、专业的语言直接回应用户的问题：\n" + _compact_json(tool_results)
                         ),
                     },
                 ]
-                followup = timeout_client.chat(followup_messages, purpose="agent_chat_followup", session_id=session_id or "ontology-agent")
+                followup = timeout_client.chat(
+                    followup_messages, purpose="agent_chat_followup", session_id=session_id or "ontology-agent"
+                )
                 if followup.content.strip():
                     clean_answer = followup.content.strip()
 
@@ -288,7 +287,9 @@ def _build_agent_context(platform_db: Path | str, data_source_id: int | None) ->
         }
 
 
-def _build_knowledge_context(platform_db: Path | str, data_source_id: int | None, object_code: str | None) -> dict[str, Any]:
+def _build_knowledge_context(
+    platform_db: Path | str, data_source_id: int | None, object_code: str | None
+) -> dict[str, Any]:
     bases = list_knowledge_bases(platform_db)
     if data_source_id:
         bases = [b for b in bases if b["dataSourceId"] == data_source_id]
@@ -305,11 +306,12 @@ def _build_knowledge_context(platform_db: Path | str, data_source_id: int | None
     if object_code and data_source_id:
         try:
             chain = build_reasoning_chain(platform_db, data_source_id)
-            result["rules"] = [
-                rule for rule in chain.get("rules", []) if rule.get("scopeObjectCode") == object_code
-            ][:10]
+            result["rules"] = [rule for rule in chain.get("rules", []) if rule.get("scopeObjectCode") == object_code][
+                :10
+            ]
             result["relations"] = [
-                rel for rel in chain.get("relations", [])
+                rel
+                for rel in chain.get("relations", [])
                 if object_code in {rel.get("sourceObject"), rel.get("targetObject")}
             ][:10]
         except Exception:
@@ -331,7 +333,7 @@ def _extract_tool_calls(content: str) -> list[dict[str, Any]]:
 
 
 def _strip_tool_calls(content: str) -> str:
-    cleaned = re.sub(r'\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*"args"\s*:\s*\{[^{}]*\}[^{}]*\}', '', content, flags=re.DOTALL)
+    cleaned = re.sub(r'\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*"args"\s*:\s*\{[^{}]*\}[^{}]*\}', "", content, flags=re.DOTALL)
     return cleaned.strip()
 
 
@@ -358,23 +360,27 @@ def _execute_tool_calls(
 
         auth_result = check_tool_authorization(platform_db, auth_role, tool_name)
         if not auth_result.get("allowed", False):
-            results.append({
-                "tool": tool_name,
-                "args": args,
-                "error": f"工具未授权: {auth_result.get('reason', '无权限')}",
-                "authBlocked": True,
-            })
+            results.append(
+                {
+                    "tool": tool_name,
+                    "args": args,
+                    "error": f"工具未授权: {auth_result.get('reason', '无权限')}",
+                    "authBlocked": True,
+                }
+            )
             continue
 
         t0 = _time.monotonic()
         try:
             oc = args.get("objectCode") or object_code or fallback_object
             if not oc:
-                results.append({
-                    "tool": tool_name,
-                    "args": args,
-                    "error": "尚未建模任何业务对象，请先接入数据源并生成本体草案",
-                })
+                results.append(
+                    {
+                        "tool": tool_name,
+                        "args": args,
+                        "error": "尚未建模任何业务对象，请先接入数据源并生成本体草案",
+                    }
+                )
                 continue
             if tool_name == "explain_instance":
                 iid = args.get("instanceId", "")
@@ -396,11 +402,13 @@ def _execute_tool_calls(
                 # `submit_<object>` name that the legacy system may not use.
                 op = args.get("operationCode") or _resolve_operation_code(platform_db, sid, oc)
                 if not op:
-                    results.append({
-                        "tool": tool_name,
-                        "args": args,
-                        "error": f"业务对象 {oc} 尚未登记可执行的业务操作",
-                    })
+                    results.append(
+                        {
+                            "tool": tool_name,
+                            "args": args,
+                            "error": f"业务对象 {oc} 尚未登记可执行的业务操作",
+                        }
+                    )
                     continue
                 if oid and sid and iid:
                     result = preflight_operation(platform_db, oid, sid, op, iid, oc)
@@ -410,12 +418,21 @@ def _execute_tool_calls(
                 if sid:
                     chain = build_reasoning_chain(platform_db, sid)
                     rules = [r for r in chain.get("rules", []) if r.get("scopeObjectCode") == oc]
-                    relations = [r for r in chain.get("relations", []) if oc in {r.get("sourceObject"), r.get("targetObject")}]
-                    results.append({
-                        "tool": tool_name,
-                        "args": args,
-                        "result": {"objectCode": oc, "rules": rules[:10], "relations": relations[:10], "steps": chain.get("steps", [])[:5]},
-                    })
+                    relations = [
+                        r for r in chain.get("relations", []) if oc in {r.get("sourceObject"), r.get("targetObject")}
+                    ]
+                    results.append(
+                        {
+                            "tool": tool_name,
+                            "args": args,
+                            "result": {
+                                "objectCode": oc,
+                                "rules": rules[:10],
+                                "relations": relations[:10],
+                                "steps": chain.get("steps", [])[:5],
+                            },
+                        }
+                    )
             elif tool_name == "decision_consistency":
                 oid = _find_ontology_id(platform_db, data_source_id, oc)
                 if oid:
@@ -433,12 +450,16 @@ def _execute_tool_calls(
         requires_rev = bool(auth_result.get("requiresReview", False))
         try:
             log_tool_execution(
-                str(platform_db), tool_name, agent_role=role_id,
+                str(platform_db),
+                tool_name,
+                agent_role=role_id,
                 object_code=object_code or "",
                 instance_id=args.get("instanceId", ""),
                 input_args=args,
                 result_summary=err_msg or "ok",
-                status=st, error=err_msg, duration_ms=elapsed_ms,
+                status=st,
+                error=err_msg,
+                duration_ms=elapsed_ms,
                 requires_review=requires_rev,
             )
         except Exception as log_error:

@@ -48,15 +48,27 @@ def query_natural_language(
         raise ValueError("问题不能为空")
 
     model_client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
-    model_interpretation = _interpret_with_model(platform_db, _client_with_timeout(model_client, 12), normalized_question, history or []) if use_model else {}
+    model_interpretation = (
+        _interpret_with_model(platform_db, _client_with_timeout(model_client, 12), normalized_question, history or [])
+        if use_model
+        else {}
+    )
     intent = str(model_interpretation.get("intent") or _detect_intent(normalized_question))
     resolved = _resolve_target(
         platform_db,
         normalized_question,
-        int(ontology_id or model_interpretation.get("ontologyId")) if (ontology_id or model_interpretation.get("ontologyId")) else None,
-        int(data_source_id or model_interpretation.get("dataSourceId")) if (data_source_id or model_interpretation.get("dataSourceId")) else None,
-        str(object_code or model_interpretation.get("objectCode")) if (object_code or model_interpretation.get("objectCode")) else None,
-        str(instance_id or model_interpretation.get("instanceId")) if (instance_id or model_interpretation.get("instanceId")) else None,
+        int(ontology_id or model_interpretation.get("ontologyId"))
+        if (ontology_id or model_interpretation.get("ontologyId"))
+        else None,
+        int(data_source_id or model_interpretation.get("dataSourceId"))
+        if (data_source_id or model_interpretation.get("dataSourceId"))
+        else None,
+        str(object_code or model_interpretation.get("objectCode"))
+        if (object_code or model_interpretation.get("objectCode"))
+        else None,
+        str(instance_id or model_interpretation.get("instanceId"))
+        if (instance_id or model_interpretation.get("instanceId"))
+        else None,
         intent,
     )
 
@@ -68,8 +80,17 @@ def query_natural_language(
             raise ValueError("请选择已初始化的数据源")
         chain = build_reasoning_chain(platform_db, resolved.data_source_id)
         object_rules = [rule for rule in chain.get("rules", []) if rule["scopeObjectCode"] == resolved.object_code]
-        related = [relation for relation in chain.get("relations", []) if resolved.object_code in {relation["sourceObject"], relation["targetObject"]}]
-        evidence = {"objectCode": resolved.object_code, "rules": object_rules, "relations": related, "reasoningSteps": chain.get("steps", [])}
+        related = [
+            relation
+            for relation in chain.get("relations", [])
+            if resolved.object_code in {relation["sourceObject"], relation["targetObject"]}
+        ]
+        evidence = {
+            "objectCode": resolved.object_code,
+            "rules": object_rules,
+            "relations": related,
+            "reasoningSteps": chain.get("steps", []),
+        }
         answer = _answer_knowledge_overview(resolved.object_code, object_rules, related, vocabulary)
     elif intent == INTENT_EXPLAIN:
         if not resolved.instance_id:
@@ -124,7 +145,15 @@ def query_natural_language(
 
     used_model_summary = False
     if use_model and model_client.configured and evidence:
-        summarized = _summarize_with_model(_client_with_timeout(model_client, 12), normalized_question, answer, intent, resolved, evidence, history or [])
+        summarized = _summarize_with_model(
+            _client_with_timeout(model_client, 12),
+            normalized_question,
+            answer,
+            intent,
+            resolved,
+            evidence,
+            history or [],
+        )
         if summarized:
             answer = summarized
             used_model_summary = True
@@ -247,7 +276,9 @@ def _summarize_with_model(
 
 
 def _detect_intent(question: str) -> str:
-    if re.search(r"(有哪些|列出|介绍|概览|知识库).*(规则|关系|本体|对象)|(规则|关系|本体|对象).*(有哪些|是什么|概览)", question):
+    if re.search(
+        r"(有哪些|列出|介绍|概览|知识库).*(规则|关系|本体|对象)|(规则|关系|本体|对象).*(有哪些|是什么|概览)", question
+    ):
         return INTENT_KNOWLEDGE_OVERVIEW
     if re.search(r"(能否|是否可以|可不可以|能不能|可以).*(提交|审批|执行|自动化|调用)", question):
         return INTENT_PREFLIGHT
@@ -321,7 +352,9 @@ def _resolve_target(
         resolved_object = default_term.code
     resolved_ontology = ontology_id or _latest_ontology_id(platform_db, data_source_id, resolved_object)
     resolved_source = data_source_id or _data_source_for_object(platform_db, resolved_ontology, resolved_object)
-    resolved_instance = _resolve_instance_id(platform_db, resolved_ontology, resolved_object, instance_hint) if instance_hint else None
+    resolved_instance = (
+        _resolve_instance_id(platform_db, resolved_ontology, resolved_object, instance_hint) if instance_hint else None
+    )
     operation_code = (
         _default_operation_code(platform_db, question, resolved_object, resolved_source)
         if intent == INTENT_PREFLIGHT
@@ -534,11 +567,7 @@ IDENTIFIER_COLUMN_PATTERN = re.compile(
 def _identifier_columns(columns: list[str]) -> list[str]:
     """Columns likely to hold a business identifier, most specific first."""
     exact = [column for column in columns if column.lower() in {"code", "no", "number", "serial_no"}]
-    suffixed = [
-        column
-        for column in columns
-        if column not in exact and IDENTIFIER_COLUMN_PATTERN.search(column)
-    ]
+    suffixed = [column for column in columns if column not in exact and IDENTIFIER_COLUMN_PATTERN.search(column)]
     return exact + suffixed
 
 
@@ -629,7 +658,9 @@ def _answer_knowledge_overview(
     parts = []
     if rules:
         descriptions = [
-            f"{rule.get('name')}（{rule.get('naturalLanguage')}）" if rule.get("naturalLanguage") else str(rule.get("name"))
+            f"{rule.get('name')}（{rule.get('naturalLanguage')}）"
+            if rule.get("naturalLanguage")
+            else str(rule.get("name"))
             for rule in rules
         ]
         parts.append(f"我会重点检查{'、'.join(descriptions)}")
@@ -658,7 +689,9 @@ def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -
     if not failed:
         return f"{object_code} {instance_id} 目前没有发现明确的合规问题，可以按正常流程继续。{_friendly_recommendation(recommendation)}"
     rule_text = "；".join(f"{rule['ruleName']}：{rule['explanation']}" for rule in failed[:3])
-    return f"{object_code} {instance_id} 还不适合直接通过。主要是{rule_text}。{_friendly_recommendation(recommendation)}"
+    return (
+        f"{object_code} {instance_id} 还不适合直接通过。主要是{rule_text}。{_friendly_recommendation(recommendation)}"
+    )
 
 
 def _answer_preflight(evidence: dict[str, Any]) -> str:

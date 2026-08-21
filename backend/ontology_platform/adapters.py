@@ -48,32 +48,24 @@ class SourceForeignKeyInfo:
 class DatabaseAdapter(Protocol):
     source_type: str
 
-    def test_connection(self, connection_uri: str) -> dict[str, Any]:
-        ...
+    def test_connection(self, connection_uri: str) -> dict[str, Any]: ...
 
-    def scan(self, connection_uri: str) -> list[SourceTableInfo]:
-        ...
+    def scan(self, connection_uri: str) -> list[SourceTableInfo]: ...
 
     @contextmanager
-    def runtime(self, connection_uri: str) -> Iterator["RuntimeDatabase"]:
-        ...
+    def runtime(self, connection_uri: str) -> Iterator["RuntimeDatabase"]: ...
 
 
 class RuntimeDatabase(Protocol):
-    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
-        ...
+    def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]: ...
 
-    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
-        ...
+    def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]: ...
 
-    def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
-        ...
+    def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None: ...
 
-    def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
-        ...
+    def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None: ...
 
-    def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]:
-        ...
+    def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]: ...
 
 
 SUPPORTED_SOURCE_TYPES = ("sqlite", "postgresql", "mysql")
@@ -240,13 +232,22 @@ class SQLRuntime:
         return rows, int(total_row["row_count"])
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
-        return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s", (instance_id,))
+        return self._fetch_one(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s",
+            (instance_id,),
+        )
 
     def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
-        return self._fetch_one(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s", (value,))
+        return self._fetch_one(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            (value,),
+        )
 
     def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]:
-        return self._fetch_all(f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s", (value,))
+        return self._fetch_all(
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            (value,),
+        )
 
     def _fetch_one(self, query: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
         rows = self._fetch_all(query, params)
@@ -303,11 +304,17 @@ def _scan_sqlite_table(conn: sqlite3.Connection, table_name: str) -> SourceTable
     )
 
 
-def _profile_sqlite_column(conn: sqlite3.Connection, table_name: str, column_name: str, row_count: int) -> ColumnProfile:
+def _profile_sqlite_column(
+    conn: sqlite3.Connection, table_name: str, column_name: str, row_count: int
+) -> ColumnProfile:
     quoted_table = f'"{table_name}"'
     quoted_column = f'"{column_name}"'
-    null_count = conn.execute(f"select count(*) as count from {quoted_table} where {quoted_column} is null").fetchone()["count"]
-    distinct_count = conn.execute(f"select count(distinct {quoted_column}) as count from {quoted_table}").fetchone()["count"]
+    null_count = conn.execute(f"select count(*) as count from {quoted_table} where {quoted_column} is null").fetchone()[
+        "count"
+    ]
+    distinct_count = conn.execute(f"select count(distinct {quoted_column}) as count from {quoted_table}").fetchone()[
+        "count"
+    ]
     sample_rows = conn.execute(
         f"""
         select distinct {quoted_column} as value from {quoted_table}
@@ -318,7 +325,9 @@ def _profile_sqlite_column(conn: sqlite3.Connection, table_name: str, column_nam
     samples = [row["value"] for row in sample_rows]
     null_ratio = 0 if row_count == 0 else null_count / row_count
     enum_candidate = _is_enum_candidate(row_count, distinct_count)
-    return ColumnProfile(samples=samples, null_ratio=null_ratio, distinct_count=distinct_count, enum_candidate=enum_candidate)
+    return ColumnProfile(
+        samples=samples, null_ratio=null_ratio, distinct_count=distinct_count, enum_candidate=enum_candidate
+    )
 
 
 def _scan_information_schema(conn: Any, dialect: str) -> list[SourceTableInfo]:
@@ -523,7 +532,6 @@ def _optional_import(module_name: str, message: str) -> Any:
         raise RuntimeError(message) from error
 
 
-
 def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
     """Decide whether a column looks like an enumeration.
 
@@ -535,6 +543,7 @@ def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
         return False
     ceiling = min(QUERY_LIMITS.enum_max_distinct, max(QUERY_LIMITS.enum_min_distinct, row_count))
     return distinct_count <= ceiling
+
 
 def _connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
     return {
