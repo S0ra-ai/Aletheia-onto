@@ -278,13 +278,13 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**173 tests**, all passing:
+**174 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | extension registries, doubling as the third-party conformance suite |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
-| `test_api_authentication.py` | 26 | auth, sessions, capability policy, trusted actor |
+| `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |
 | `test_rule_engine_safety.py` | 17 | sandbox escapes, fail-closed, release gate |
 | `test_platform_database_dialects.py` | 10 | all three dialects as platform store |

@@ -464,13 +464,13 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**173 个测试**，全绿。分布：
+**174 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
-| `test_api_authentication.py` | 26 | 认证、会话、能力策略、actor 可信 |
+| `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
 | `test_rule_engine_safety.py` | 17 | 沙箱逃逸、fail-closed 语义、发布门禁 |
 | `test_platform_database_dialects.py` | 10 | 三方言作为平台库 |
