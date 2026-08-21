@@ -41,7 +41,7 @@ def run_onboarding_pipeline(
     if not connection["reachable"]:
         readiness = assess_data_source_readiness(platform_db, source.id)
         return {
-            "dataSource": source.__dict__,
+            "dataSource": source.public_dict(),
             "connection": connection,
             "apiGateway": None,
             "scan": None,
@@ -97,7 +97,7 @@ def run_onboarding_pipeline(
     readiness = assess_data_source_readiness(platform_db, source.id)
     steps.append(_step("assess_readiness", "completed", f"接入准备度 {readiness['score']} 分，状态 {readiness['status']}。", readiness["summary"]))
     return {
-        "dataSource": source.__dict__,
+        "dataSource": source.public_dict(),
         "connection": connection,
         "apiGateway": api_gateway,
         "scan": scan,
