@@ -14,7 +14,12 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # Must match the python_version in pyproject.toml. Running mypy on a
+          # newer interpreter while configured for 3.9 makes it parse installed
+          # third-party code (anyio) with 3.9 syntax rules and fail on `match`.
+          # 3.9 is also the minimum version the README claims to support, so
+          # linting against it is what we actually promise.
+          python-version: "3.9"
           cache: pip
 
       - name: 安装依赖
