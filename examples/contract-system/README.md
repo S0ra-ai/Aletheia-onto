@@ -1,6 +1,12 @@
-# 合同管理系统接入测试样例
+# 示例：合同管理系统
 
-这是一个用于本体改造研发平台接入测试的传统合同管理系统。它模拟企业已有业务系统，包含：
+一个模拟「企业已有业务系统」的最小合同管理系统，用于演示 Aletheia 的接入流程：
+扫描元数据 → 生成本体草案 → 配置规则 → 输出可核验的语义研判。
+
+> **数据全部为合成示例。** 其中的公司名、联系人（张三／李四）、手机号
+> （138xxxx 段）、邮箱与统一社会信用代码均为虚构占位，不对应任何真实主体。
+
+包含：
 
 - SQLite 业务数据库：客户、合同、付款计划、发票、审批记录、合同变更记录。
 - FastAPI 业务接口：合同查询、合同审批提交、付款确认、发票、Word 合同文档下载。
@@ -11,7 +17,7 @@
 ## 启动
 
 ```bash
-cd test-projects/contract-system
+cd examples/contract-system
 ./start.sh
 ```
 
@@ -25,7 +31,8 @@ cd test-projects/contract-system
 
 - 数据源名称：`Word合同管理测试系统`
 - 数据库类型：`sqlite`
-- 数据库连接地址：`/Users/s0ra/code/本体通用系统/test-projects/contract-system/data/contracts.sqlite3`
+- 数据库连接地址：`<仓库根目录>/examples/contract-system/data/contracts.sqlite3`
+  （`start.sh` 首次运行时生成；请填写你本机的绝对路径）
 - 业务领域：`合同管理`
 - 系统分类：`database+api`
 - 业务 API 基址：`http://127.0.0.1:8001`

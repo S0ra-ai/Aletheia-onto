@@ -13,15 +13,15 @@ from ontology_platform.metadata import register_data_source, register_source_api
 from ontology_platform.ontology import generate_ontology_draft
 
 
-SOURCE_NAME = "OpenCode MySQL+Word合同测试项目"
+SOURCE_NAME = "示例 MySQL+Word 合同项目"
 
 
 def main() -> None:
     database_uri = os.getenv(
-        "OPENCODE_CONTRACT_DATABASE_URI",
+        "EXAMPLE_CONTRACT_DATABASE_URI",
         "mysql://root@127.0.0.1:3306/contract_platform?charset=utf8mb4",
     )
-    api_base_url = os.getenv("OPENCODE_CONTRACT_API_URL", "http://127.0.0.1:8010")
+    api_base_url = os.getenv("EXAMPLE_CONTRACT_API_URL", "http://127.0.0.1:8010")
 
     initialize_platform_db(DEFAULT_PLATFORM_DB)
     source = register_data_source(
@@ -44,7 +44,7 @@ def main() -> None:
     ontology = bases[0] if bases else generate_ontology_draft(
         DEFAULT_PLATFORM_DB,
         source.id,
-        name="OpenCode合同管理本体",
+        name="示例合同管理本体",
         domain="合同管理",
         blueprint_id="contract-management",
     )
