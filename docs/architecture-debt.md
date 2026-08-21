@@ -8,14 +8,14 @@
 
 ## 1. 全局状态：一个进程只能有一个平台实例
 
-`backend/ontology_platform/database.py:22`
+`backend/ontology_platform/database.py:20`
 
 ```python
 _platform_adapter: Optional["PlatformAdapter"] = None
 ```
 
-模块级全局单例，由 `configure_platform_database()` 写入（`database.py:50`），
-被 `connect()` 与 `initialize_platform_db()` 读取（`database.py:558`、`569`）。
+模块级全局单例，由 `configure_platform_db()` 写入（`database.py:48`），
+被 `connect()` 与 `initialize_platform_db()` 读取（`database.py:589`、`600`）。
 
 后果：**一个进程无法同时运行两个不同配置的平台实例。** 这直接堵死两件事：
 
@@ -41,15 +41,15 @@ _platform_adapter: Optional["PlatformAdapter"] = None
 
 | 位置 | 延迟导入的目标 |
 |---|---|
-| `database.py:29` | `config.MODEL_PROVIDER_DEFAULTS` |
-| `governance.py:23` | `semantic_kernel.validate_rule_expression` |
-| `governance.py:217` | `release_readiness.assess_ontology_release_readiness` |
-| `ontology.py:492` | `vocabulary.blueprint_*_labels` |
-| `ontology.py:705` | `semantic_kernel.validate_rule_expression` |
-| `vocabulary.py:190`、`203` | `industry_blueprints.list_industry_blueprints` |
-| `agent.py:216` | `natural_language.query_natural_language` |
-| `api.py:1429` | `workflow_permission.enter_workflow` |
-| `auth.py:184`、`agent_roles.py:99`、`workflow_permission.py:422` | `database._{sqlite,postgresql,mysql}_ddl` |
+| `database.py:27` | `config.MODEL_PROVIDER_DEFAULTS` |
+| `governance.py:22` | `semantic_kernel.validate_rule_expression` |
+| `governance.py:214` | `release_readiness.assess_ontology_release_readiness` |
+| `ontology.py:510` | `vocabulary.blueprint_*_labels` |
+| `ontology.py:733` | `semantic_kernel.validate_rule_expression` |
+| `vocabulary.py:186`、`199` | `industry_blueprints.list_industry_blueprints` |
+| `agent.py:209` | `natural_language.query_natural_language` |
+| `api.py:1468` | `workflow_permission.enter_workflow` |
+| `auth.py:183`、`agent_roles.py:98`、`workflow_permission.py:421` | `database._{sqlite,postgresql,mysql}_ddl` |
 
 最后三处同时暴露了问题 5：三个模块都要伸手进 `database.py` 拿私有的
 DDL 辅助函数，因为它们各自手写建表语句。
@@ -86,7 +86,7 @@ SQLite 的 `text`）只会在对应后端上暴露。
 需拆 `APIRouter` 并加 `/v1` 前缀。没有版本前缀意味着一旦有外部调用方，
 任何破坏性变更都无处安放。
 
-`api.py:1247` 还有一处模块中段的 import 块（工作流与权限的 20 多个符号），
+`api.py:1268` 还有一处模块中段的 import 块（工作流与权限的 20 多个符号），
 拆分时应一并整理到文件头部。
 
 ## 7. 扩展点硬编码
@@ -95,8 +95,8 @@ SQLite 的 `text`）只会在对应后端上暴露。
 
 | 位置 | 现状 | 应为 |
 |---|---|---|
-| `adapters.py:83` `get_adapter()` | 硬编码 if/elif，三种类型 | 注册表 + entry points |
-| `semantic_kernel.py:110` `ALLOWED_RULE_FUNCTIONS` | `frozenset({"sum","len","count","any","all"})` | 可注册，带沙箱审计 |
+| `adapters.py:74` `get_adapter()` | 硬编码 if/elif，三种类型 | 注册表 + entry points |
+| `semantic_kernel.py:113` `ALLOWED_RULE_FUNCTIONS` | `frozenset({"sum","len","count","any","all"})` | 可注册，带沙箱审计 |
 | `access_policy.py` `RULES` | 模块级静态元组 | 插件可注册路由与能力 |
 | `automation.py` 写回执行器 | 只支持 HTTP/HTTPS | 执行器 SPI |
 
