@@ -212,9 +212,7 @@ By design, not bugs. These are the next phase's work.
 | Constraint | Location |
 |---|---|
 | `business_object.source_table_id` is a single FK: **one object, one table** | `database.py:363` |
-| **Composite primary keys unsupported**, three explicit raises | `ontology.py:132`, `semantic_kernel.py:416`, `semantic_kernel.py:663` |
 | `relation_type` is hardcoded `"references"`; **no cardinality, no many-to-many** | `ontology.py:606` |
-| Only `table_to_object` and `column_to_attribute` mappings; **no value-domain mapping** | `ontology.py` |
 | **No type hierarchy** (no parent_object / subclass / inherit) | — |
 | Rules scope to a single object; **no cross-object aggregation** | `semantic_kernel.py` |
 | `ALLOWED_RULE_FUNCTIONS` is frozen (5 functions); **third parties cannot register** | `semantic_kernel.py:113` |
@@ -281,11 +279,13 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**177 tests**, all passing:
+**221 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | extension registries, doubling as the third-party conformance suite |
+| `test_composite_instance_keys.py` | 31 | composite keys end to end, instance-key round-trips |
+| `test_value_domain_mapping.py` | 13 | value domain mapping and backwards compatibility |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

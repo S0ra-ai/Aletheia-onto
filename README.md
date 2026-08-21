@@ -180,7 +180,7 @@ flowchart TB
     subgraph L5["📋 规划中，尚无实现"]
         RAG["文档摄取与检索"]
         TENANT["多租户隔离"]
-        RESOLVER["实例解析器 SPI<br/>多表 / 复合主键 / 跨源"]
+        RESOLVER["实例解析器 SPI<br/>多表 join / 判别列分区 / 跨源"]
         CHAN["渠道接入"]
     end
 
@@ -245,7 +245,9 @@ flowchart TB
 | 业务对象／属性／关系手工 CRUD | ⚠️ | 无端点，只能重新生成草案或审核映射 |
 | 规则依赖 `depends_on` | ⚠️ | 有读写，求值时不使用，仅按 `priority` 排序 |
 | 本体导入（SHACL／reasoner／命名空间管理） | 📋 | 只能导出 |
-| 值域映射、类型层级、关系基数、跨对象聚合 | 📋 | 见[结构性表达力约束](#结构性表达力约束) |
+| 值域映射 `value_to_state`（走审核流程） | ✅ | `value_mapping.py` |
+| 复合主键（实例键抽象） | ✅ | `instance_key.py` |
+| 类型层级、关系基数、跨对象聚合 | 📋 | 见[结构性表达力约束](#结构性表达力约束) |
 
 ### 治理与留痕
 
@@ -321,9 +323,7 @@ flowchart TB
 | 约束 | 位置 |
 |---|---|
 | `business_object.source_table_id` 是单外键，**一个对象只能绑一张表** | `database.py:363`（表定义） |
-| **复合主键完全不支持**，三处显式 `raise ValueError` | `ontology.py:132`、`semantic_kernel.py:416`、`semantic_kernel.py:663` |
 | `relation_type` 恒为硬编码 `"references"`，只能由外键派生，**无基数、无多对多** | `ontology.py:606` |
-| 映射类型只有 `table_to_object` 与 `column_to_attribute`，**无值域映射** | `ontology.py` |
 | **无类型层级**（无 parent_object／subclass／inherit） | — |
 | 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
 
@@ -466,11 +466,13 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**177 个测试**，全绿。分布：
+**221 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
+| `test_composite_instance_keys.py` | 31 | 复合主键端到端 + 实例键往返 |
+| `test_value_domain_mapping.py` | 13 | 值域映射与向后兼容 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
