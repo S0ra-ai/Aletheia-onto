@@ -165,8 +165,8 @@ def publish_ontology(
     readiness = _assess_release_gates(platform_db, ontology_id)
     blockers = [gate for gate in readiness["gates"] if gate["severity"] == "blocker" and not gate["passed"]]
     if blockers and not force:
-        summary = "；".join(f"{gate['name']}: {gate['evidence']}" for gate in blockers[:5])
-        raise ValueError(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{summary}")
+        blocker_summary = "；".join(f"{gate['name']}: {gate['evidence']}" for gate in blockers[:5])
+        raise ValueError(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{blocker_summary}")
 
     with connect(platform_db) as conn:
         conn.execute(

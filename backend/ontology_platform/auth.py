@@ -379,7 +379,7 @@ def login(
             raise AuthenticationError("用户已被禁用")
 
         token = secrets.token_urlsafe(TOKEN_BYTES)
-        ttl = float(ttl_hours or os.environ.get("ONTOLOGY_SESSION_TTL_HOURS", DEFAULT_SESSION_TTL_HOURS))
+        ttl = float(ttl_hours or os.environ.get("ONTOLOGY_SESSION_TTL_HOURS") or DEFAULT_SESSION_TTL_HOURS)
         expires_at = _now() + timedelta(hours=ttl)
         conn.execute(
             "insert into user_session (token_hash, user_id, expires_at, last_seen_at) values (?, ?, ?, ?)",

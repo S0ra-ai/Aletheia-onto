@@ -157,7 +157,7 @@ def _llm_agent_chat(
                     clean_answer = followup.content.strip()
 
         intent = _infer_intent_from_answer(clean_answer, message)
-        evidence = _build_answer_evidence(tool_calls, tool_results if tool_calls else {})
+        evidence = _build_answer_evidence(tool_calls, tool_results if tool_calls else [])
         confidence = (
             ANSWER_CONFIDENCE.grounded
             if clean_answer and not clean_answer.startswith("我暂时")
@@ -562,13 +562,16 @@ def _infer_intent_from_answer(answer: str, question: str) -> str:
     return INTENT_UNKNOWN
 
 
-def _build_answer_evidence(tool_calls: list[dict[str, Any]], tool_results: dict[str, Any]) -> dict[str, Any]:
+def _build_answer_evidence(
+    tool_calls: list[dict[str, Any]],
+    tool_results: list[dict[str, Any]],
+) -> dict[str, Any]:
     if not tool_calls:
         return {"source": "llm_reasoning"}
     return {
         "source": "tool_enhanced",
         "toolsUsed": [c["tool"] for c in tool_calls],
-        "toolResults": tool_results if isinstance(tool_results, list) else [],
+        "toolResults": tool_results,
     }
 
 

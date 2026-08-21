@@ -33,6 +33,26 @@ class ResolvedTarget:
     operation_code: str | None = None
 
 
+def _first_int(*candidates: Any) -> int | None:
+    """First candidate that is present, coerced to int.
+
+    The caller's explicit argument wins over the model's interpretation, and an
+    absent value stays None rather than becoming 0.
+    """
+    for candidate in candidates:
+        if candidate:
+            return int(candidate)
+    return None
+
+
+def _first_str(*candidates: Any) -> str | None:
+    """First candidate that is present, coerced to str."""
+    for candidate in candidates:
+        if candidate:
+            return str(candidate)
+    return None
+
+
 def query_natural_language(
     platform_db: Path | str,
     question: str,
@@ -57,18 +77,10 @@ def query_natural_language(
     resolved = _resolve_target(
         platform_db,
         normalized_question,
-        int(ontology_id or model_interpretation.get("ontologyId"))
-        if (ontology_id or model_interpretation.get("ontologyId"))
-        else None,
-        int(data_source_id or model_interpretation.get("dataSourceId"))
-        if (data_source_id or model_interpretation.get("dataSourceId"))
-        else None,
-        str(object_code or model_interpretation.get("objectCode"))
-        if (object_code or model_interpretation.get("objectCode"))
-        else None,
-        str(instance_id or model_interpretation.get("instanceId"))
-        if (instance_id or model_interpretation.get("instanceId"))
-        else None,
+        _first_int(ontology_id, model_interpretation.get("ontologyId")),
+        _first_int(data_source_id, model_interpretation.get("dataSourceId")),
+        _first_str(object_code, model_interpretation.get("objectCode")),
+        _first_str(instance_id, model_interpretation.get("instanceId")),
         intent,
     )
 

@@ -34,16 +34,19 @@ class RelatedValues(list[Any]):
     def __ne__(self, other: object) -> list[bool]:  # type: ignore[override]
         return [value != other for value in self]
 
-    def __lt__(self, other: object) -> list[bool]:
+    # Comparisons deliberately broadcast element-wise so a rule can say
+    # `payment_plan.amount > 0` against every related row. That is incompatible
+    # with list's own comparison signature, hence the overrides.
+    def __lt__(self, other: object) -> list[bool]:  # type: ignore[override]
         return [_safe_compare(value, other, "lt") for value in self]
 
-    def __le__(self, other: object) -> list[bool]:
+    def __le__(self, other: object) -> list[bool]:  # type: ignore[override]
         return [_safe_compare(value, other, "le") for value in self]
 
-    def __gt__(self, other: object) -> list[bool]:
+    def __gt__(self, other: object) -> list[bool]:  # type: ignore[override]
         return [_safe_compare(value, other, "gt") for value in self]
 
-    def __ge__(self, other: object) -> list[bool]:
+    def __ge__(self, other: object) -> list[bool]:  # type: ignore[override]
         return [_safe_compare(value, other, "ge") for value in self]
 
 
@@ -236,7 +239,9 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 ),
             ),
         )
-        explanation = explain_instance(platform_db, ontology_id, object_code, instance_id)
+        # Distinct from the per-rule `explanation` string built in the loop
+        # above: this is the structured instance explanation.
+        instance_explanation = explain_instance(platform_db, ontology_id, object_code, instance_id)
         return {
             "semanticKernel": {
                 "ontologyId": ontology_id,
@@ -244,7 +249,7 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "objectCode": object_code,
                 "instanceId": instance_id,
             },
-            "explanation": explanation,
+            "explanation": instance_explanation,
             "relatedContext": _serializable_related(runtime.related),
             "ruleResults": results,
             "decision": decision,
