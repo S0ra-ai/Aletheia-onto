@@ -1,19 +1,33 @@
 import React, { useState } from 'react';
-import { Layout, Menu, theme } from 'antd';
+import { Button, Dropdown, Layout, Menu, Space, Tag, theme } from 'antd';
 import {
   DatabaseOutlined,
   SettingOutlined,
-  MessageOutlined,
+  ThunderboltOutlined,
+  ApartmentOutlined,
+  SafetyOutlined,
+  LogoutOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useAuth } from '../auth/useAuth';
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: '系统管理员',
+  ontology_engineer: '本体工程师',
+  business_expert: '业务专家',
+  operator: '操作员',
+  analyst: '分析师',
+  ai_agent: 'AI 智能体',
+};
 
 const { Header, Sider, Content } = Layout;
 
 const menuItems = [
   {
     key: '/chat',
-    icon: <MessageOutlined />,
-    label: '对话',
+    icon: <ThunderboltOutlined />,
+    label: '智能体对话',
   },
   {
     key: '/datasource',
@@ -25,12 +39,23 @@ const menuItems = [
     icon: <SettingOutlined />,
     label: '模型配置',
   },
+  {
+    key: '/workflow',
+    icon: <ApartmentOutlined />,
+    label: '工作流管理',
+  },
+  {
+    key: '/permission',
+    icon: <SafetyOutlined />,
+    label: '权限管理',
+  },
 ];
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, signOut } = useAuth();
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
@@ -82,7 +107,28 @@ const MainLayout: React.FC = () => {
           <div style={{ fontSize: 16, fontWeight: 500 }}>
             本体改造研发平台
           </div>
-          <div style={{ color: '#666' }}>v0.1.0</div>
+          <Space size="middle">
+            <Tag color="blue">{ROLE_LABELS[user?.roleCode ?? ''] ?? user?.roleCode}</Tag>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'logout',
+                    icon: <LogoutOutlined />,
+                    label: '退出登录',
+                    onClick: async () => {
+                      await signOut();
+                      navigate('/login', { replace: true });
+                    },
+                  },
+                ],
+              }}
+            >
+              <Button type="text" icon={<UserOutlined />}>
+                {user?.displayName || user?.username}
+              </Button>
+            </Dropdown>
+          </Space>
         </Header>
         <Content style={{ margin: 24 }}>
           <div style={{

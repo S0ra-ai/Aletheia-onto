@@ -1,16 +1,43 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
-from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
+from .auth import (
+    AuthenticationError,
+    AuthorizationError,
+    CAP_ADMIN,
+    CAP_EXECUTE,
+    CAP_PUBLISH,
+    CAP_REVIEW,
+    CAP_WRITE,
+    Principal,
+    ROLE_CAPABILITIES,
+    authorize,
+    change_password,
+    create_user,
+    ensure_bootstrap_admin,
+    init_auth_schema,
+    list_users,
+    login,
+    logout,
+    purge_expired_sessions,
+    resolve_principal,
+    set_user_status,
+)
 from .automation import execute_operation, preflight_operation
 from .coverage import build_semantic_coverage
 from .contract_documents import parse_rule_docx_bytes
+from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
 from .governance import (
@@ -53,13 +80,33 @@ from .model_client import (
     test_model_config,
     update_model_config,
 )
+from .agent import agent_chat, get_agent_roles
+from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
+from .workflow_permission import (
+    init_workflow_and_permission_schema,
+    seed_default_tools,
+    seed_default_roles_and_policies,
+)
 from .natural_language import query_natural_language
 from .onboarding import run_onboarding_pipeline
 from .operation_bindings import assess_operation_bindings
-from .ontology import export_ontology_asset, explain_instance, generate_ontology_draft, list_ontologies, summarize_ontology
+from .ontology import (
+    explain_instance,
+    export_ontology_asset,
+    generate_ontology_draft,
+    list_ontologies,
+    resolve_ontology_for_object,
+    summarize_ontology,
+)
 from .release_readiness import assess_ontology_release_readiness
 from .sample_data import DEFAULT_EQUIPMENT_SAMPLE_DB, DEFAULT_SAMPLE_DB, create_contract_sample_db, create_equipment_sample_db
-from .semantic_kernel import assess_decision_consistency, assess_instance
+from .semantic_kernel import (
+    assess_decision_consistency,
+    assess_instance,
+    available_rule_names,
+    validate_rule_expression,
+)
+from .vocabulary import default_object_code_for_ontology
 
 
 @asynccontextmanager
@@ -71,10 +118,112 @@ async def lifespan(app: FastAPI):
         initialize_platform_db()
     else:
         initialize_platform_db(DEFAULT_PLATFORM_DB)
+    # Schema creation must not be silently swallowed: a missing table turns
+    # into a confusing 500 on first use instead of a clear startup failure.
+    with connect(DEFAULT_PLATFORM_DB) as conn:
+        init_workflow_and_permission_schema(conn)
+        init_auth_schema(conn)
+        init_agent_role_schema(conn)
+    seed_default_tools(DEFAULT_PLATFORM_DB)
+    seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
+    if AUTH_ENABLED:
+        ensure_bootstrap_admin(DEFAULT_PLATFORM_DB)
+        purged = purge_expired_sessions(DEFAULT_PLATFORM_DB)
+        if purged:
+            logger.info("已清理 %s 个过期会话", purged)
+    else:
+        logger.warning(
+            "认证已通过 ONTOLOGY_AUTH_DISABLED=1 关闭，所有接口可匿名访问。仅限本地开发使用。"
+        )
     yield
 
 
-app = FastAPI(title="本体改造研发平台", version="0.1.0", lifespan=lifespan)
+logger = logging.getLogger(__name__)
+
+# Authentication is on by default; it can only be disabled explicitly for local
+# development, and the app logs loudly when it is.
+AUTH_ENABLED = os.environ.get("ONTOLOGY_AUTH_DISABLED", "").strip().lower() not in {"1", "true", "yes"}
+
+DEV_ADMIN_PRINCIPAL = Principal(user_id=0, username="dev-anonymous", display_name="开发匿名用户", role_code="admin")
+
+app = FastAPI(title="本体改造研发平台", version="0.2.0", lifespan=lifespan)
+
+_allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "ONTOLOGY_ALLOWED_ORIGINS",
+        "http://127.0.0.1:3000,http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+def _bearer_token(request: Request) -> str:
+    header = request.headers.get("Authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return ""
+
+
+@app.middleware("http")
+async def enforce_access_policy(request: Request, call_next):
+    """Authenticate every request and check the route's capability.
+
+    Doing this in one middleware, driven by access_policy, means a newly added
+    endpoint is protected by default rather than by remembering to annotate it.
+    """
+    if request.method == "OPTIONS" or is_public(request.url.path):
+        return await call_next(request)
+
+    if not AUTH_ENABLED:
+        request.state.principal = DEV_ADMIN_PRINCIPAL
+        return await call_next(request)
+
+    try:
+        principal = resolve_principal(DEFAULT_PLATFORM_DB, _bearer_token(request))
+    except AuthenticationError as error:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": str(error), "code": "unauthenticated"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as error:  # pragma: no cover - unexpected auth backend failure
+        logger.exception("鉴权失败: %s", error)
+        return JSONResponse(status_code=500, content={"detail": "鉴权服务异常", "code": "auth_error"})
+
+    capability = required_capability(request.method, request.url.path)
+    try:
+        authorize(principal, capability)
+    except AuthorizationError as error:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(error),
+                "code": "forbidden",
+                "requiredCapability": capability,
+                "roleCode": principal.role_code,
+            },
+        )
+
+    request.state.principal = principal
+    return await call_next(request)
+
+
+def current_principal(request: Request) -> Principal:
+    """The authenticated caller, for handlers that need the acting identity."""
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        if not AUTH_ENABLED:
+            return DEV_ADMIN_PRINCIPAL
+        raise HTTPException(status_code=401, detail="缺少访问令牌")
+    return principal
 
 
 class DataSourceCreate(BaseModel):
@@ -162,6 +311,11 @@ class DecisionConsistencyCreate(BaseModel):
     limit: int = 50
 
 
+class RuleExpressionValidateCreate(BaseModel):
+    expression: str
+    scopeObjectCode: Optional[str] = None
+
+
 class NaturalLanguageQueryCreate(BaseModel):
     question: str
     ontologyId: Optional[int] = None
@@ -174,30 +328,36 @@ class NaturalLanguageQueryCreate(BaseModel):
 
 class OperationExecuteCreate(OperationPreflightCreate):
     payload: dict[str, object] = Field(default_factory=dict)
-    actor: str = "semantic_kernel"
     dryRun: bool = True
     timeoutSeconds: float = 10
 
 
+class AgentChatCreate(BaseModel):
+    message: str
+    # Unset means "let the platform pick a role from the onboarded domains".
+    roleId: Optional[str] = None
+    dataSourceId: Optional[int] = None
+    objectCode: Optional[str] = None
+    history: list[dict[str, str]] = Field(default_factory=list)
+    sessionId: Optional[str] = None
+
+
 class MappingReviewCreate(BaseModel):
     status: str
-    reviewer: str = "system"
     note: str = ""
 
 
 class BulkMappingReviewCreate(BaseModel):
     status: str
-    reviewer: str = "system"
     note: str = ""
 
 
 class OntologyPublishCreate(BaseModel):
-    publisher: str = "system"
+    force: bool = False
 
 
 class OntologyDeriveCreate(BaseModel):
     version: str
-    actor: str = "system"
 
 
 class BusinessRuleCreate(BaseModel):
@@ -208,7 +368,6 @@ class BusinessRuleCreate(BaseModel):
     expression: str
     severity: str
     naturalLanguage: str
-    actor: str = "system"
     status: str = "published"
     priority: int = 0
     category: str = ""
@@ -220,6 +379,111 @@ class BusinessRuleCreate(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ============================================================
+# Authentication
+# ============================================================
+
+
+class LoginCreate(BaseModel):
+    username: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    roleCode: str = "analyst"
+    displayName: str = ""
+
+
+class UserStatusUpdate(BaseModel):
+    status: str
+
+
+class PasswordChange(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+
+@app.post("/auth/login")
+def auth_login(payload: LoginCreate) -> dict[str, object]:
+    try:
+        return login(DEFAULT_PLATFORM_DB, payload.username, payload.password)
+    except AuthenticationError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request) -> dict[str, object]:
+    return logout(DEFAULT_PLATFORM_DB, _bearer_token(request))
+
+
+@app.get("/auth/me")
+def auth_me(principal: Principal = Depends(current_principal)) -> dict[str, object]:
+    return principal.public_dict()
+
+
+@app.post("/auth/change-password")
+def auth_change_password(
+    payload: PasswordChange,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return change_password(DEFAULT_PLATFORM_DB, principal.username, payload.currentPassword, payload.newPassword)
+    except AuthenticationError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/auth/users")
+def auth_list_users() -> dict[str, object]:
+    return {"items": list_users(DEFAULT_PLATFORM_DB), "roles": sorted(ROLE_CAPABILITIES)}
+
+
+@app.post("/auth/users")
+def auth_create_user(
+    payload: UserCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return create_user(
+            DEFAULT_PLATFORM_DB,
+            payload.username,
+            payload.password,
+            payload.roleCode,
+            payload.displayName,
+            actor=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.patch("/auth/users/{username}/status")
+def auth_set_user_status(
+    username: str,
+    payload: UserStatusUpdate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return set_user_status(DEFAULT_PLATFORM_DB, username, payload.status, actor=principal.actor)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/auth/access-policy")
+def auth_access_policy() -> dict[str, object]:
+    """Effective route-to-capability policy, for review."""
+    return {
+        "authEnabled": AUTH_ENABLED,
+        "roles": {role: sorted(caps) for role, caps in ROLE_CAPABILITIES.items()},
+        "rules": describe_policy(),
+        "publicPaths": sorted(PUBLIC_PATHS),
+    }
 
 
 @app.post("/demo/bootstrap")
@@ -238,7 +502,7 @@ def bootstrap_demo() -> dict[str, object]:
     )
     scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
     ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
-    return {"dataSource": source.__dict__, "scan": scan, "ontology": ontology}
+    return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 
 @app.post("/demo/bootstrap/equipment")
@@ -257,7 +521,7 @@ def bootstrap_equipment_demo() -> dict[str, object]:
     )
     scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
     ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
-    return {"dataSource": source.__dict__, "scan": scan, "ontology": ontology}
+    return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 
 @app.post("/data-sources")
@@ -276,7 +540,7 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return source.__dict__
+    return source.public_dict()
 
 
 @app.post("/onboarding/run")
@@ -531,25 +795,37 @@ def get_ontology_mappings(ontology_id: int, status: Optional[str] = None) -> dic
 
 
 @app.post("/semantic-mappings/{mapping_id}/review")
-def review_mapping(mapping_id: int, payload: MappingReviewCreate) -> dict[str, object]:
+def review_mapping(
+    mapping_id: int,
+    payload: MappingReviewCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
-        return review_semantic_mapping(DEFAULT_PLATFORM_DB, mapping_id, payload.status, payload.reviewer, payload.note)
+        return review_semantic_mapping(DEFAULT_PLATFORM_DB, mapping_id, payload.status, principal.actor, payload.note)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.post("/ontologies/{ontology_id}/mappings/review")
-def review_ontology_mappings(ontology_id: int, payload: BulkMappingReviewCreate) -> dict[str, object]:
+def review_ontology_mappings(
+    ontology_id: int,
+    payload: BulkMappingReviewCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
-        return bulk_review_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, payload.status, payload.reviewer, payload.note)
+        return bulk_review_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, payload.status, principal.actor, payload.note)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.post("/ontologies/{ontology_id}/publish")
-def publish_ontology_version(ontology_id: int, payload: OntologyPublishCreate) -> dict[str, object]:
+def publish_ontology_version(
+    ontology_id: int,
+    payload: OntologyPublishCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
-        return publish_ontology(DEFAULT_PLATFORM_DB, ontology_id, payload.publisher)
+        return publish_ontology(DEFAULT_PLATFORM_DB, ontology_id, principal.actor, payload.force)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -563,9 +839,13 @@ def get_ontology_release_readiness(ontology_id: int) -> dict[str, object]:
 
 
 @app.post("/ontologies/{ontology_id}/derive")
-def derive_ontology_draft(ontology_id: int, payload: OntologyDeriveCreate) -> dict[str, object]:
+def derive_ontology_draft(
+    ontology_id: int,
+    payload: OntologyDeriveCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
-        return derive_ontology_version(DEFAULT_PLATFORM_DB, ontology_id, payload.version, payload.actor)
+        return derive_ontology_version(DEFAULT_PLATFORM_DB, ontology_id, payload.version, principal.actor)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -579,7 +859,11 @@ def get_business_rules(ontology_id: int) -> dict[str, object]:
 
 
 @app.post("/ontologies/{ontology_id}/rules")
-def create_or_update_business_rule(ontology_id: int, payload: BusinessRuleCreate) -> dict[str, object]:
+def create_or_update_business_rule(
+    ontology_id: int,
+    payload: BusinessRuleCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
         return upsert_business_rule(
             DEFAULT_PLATFORM_DB,
@@ -591,7 +875,7 @@ def create_or_update_business_rule(ontology_id: int, payload: BusinessRuleCreate
             payload.expression,
             payload.severity,
             payload.naturalLanguage,
-            payload.actor,
+            principal.actor,
             payload.status,
             payload.priority,
             payload.category,
@@ -608,15 +892,20 @@ async def import_business_rules_from_word(
     ontology_id: int,
     file: UploadFile = File(...),
     apply: bool = Form(True),
-    actor: str = Form("rule_word_import"),
+    defaultScope: str = Form(""),
+    principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
+    actor = principal.actor
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="文件内容为空")
     try:
-        parsed = parse_rule_docx_bytes(file.filename, content)
+        # Rules that omit a scope fall back to an object from this ontology,
+        # never to a built-in business object code.
+        resolved_scope = defaultScope or default_object_code_for_ontology(DEFAULT_PLATFORM_DB, ontology_id)
+        parsed = parse_rule_docx_bytes(file.filename, content, default_scope=resolved_scope)
         imported = []
         errors = []
         if apply:
@@ -659,6 +948,15 @@ async def import_business_rules_from_word(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
+@app.post("/ontologies/{ontology_id}/rules/validate-expression")
+def validate_ontology_rule_expression(ontology_id: int, payload: RuleExpressionValidateCreate) -> dict[str, object]:
+    """Statically check a rule expression before it is saved."""
+    available: Optional[list[str]] = None
+    if payload.scopeObjectCode:
+        available = available_rule_names(DEFAULT_PLATFORM_DB, ontology_id, payload.scopeObjectCode)
+    return validate_rule_expression(payload.expression, available)
+
+
 @app.get("/ontologies/{ontology_id}/rules/{rule_id}")
 def get_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
     try:
@@ -668,7 +966,12 @@ def get_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
 
 
 @app.put("/ontologies/{ontology_id}/rules/{rule_id}")
-def update_ontology_rule(ontology_id: int, rule_id: int, payload: BusinessRuleCreate) -> dict[str, object]:
+def update_ontology_rule(
+    ontology_id: int,
+    rule_id: int,
+    payload: BusinessRuleCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
         return update_business_rule(
             DEFAULT_PLATFORM_DB,
@@ -681,7 +984,7 @@ def update_ontology_rule(ontology_id: int, rule_id: int, payload: BusinessRuleCr
             payload.expression,
             payload.severity,
             payload.naturalLanguage,
-            payload.actor,
+            principal.actor,
             payload.status,
             payload.priority,
             payload.category,
@@ -710,17 +1013,19 @@ def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "p
 
 
 @app.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
-def explain_object_instance(object_code: str, instance_id: str, ontologyId: int = 1) -> dict[str, object]:
+def explain_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
     try:
-        return explain_instance(DEFAULT_PLATFORM_DB, ontologyId, object_code, instance_id)
+        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        return explain_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
-def assess_object_instance(object_code: str, instance_id: str, ontologyId: int = 1) -> dict[str, object]:
+def assess_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
     try:
-        return assess_instance(DEFAULT_PLATFORM_DB, ontologyId, object_code, instance_id)
+        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -756,6 +1061,62 @@ def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
+@app.get("/agent/roles")
+def list_agent_roles() -> dict[str, object]:
+    return {"roles": get_agent_roles(DEFAULT_PLATFORM_DB)}
+
+
+class AgentRoleUpsert(BaseModel):
+    code: str
+    name: str
+    description: str = ""
+    domain: str = ""
+    systemPrompt: str = ""
+    dataSourceId: Optional[int] = None
+
+
+@app.post("/agent/roles")
+def create_or_update_agent_role(
+    payload: AgentRoleUpsert,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Persist a custom agent role for domains needing bespoke wording."""
+    try:
+        return upsert_agent_role(
+            DEFAULT_PLATFORM_DB,
+            payload.code,
+            payload.name,
+            payload.description,
+            payload.domain,
+            payload.systemPrompt,
+            payload.dataSourceId,
+            actor=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.delete("/agent/roles/{code}")
+def remove_agent_role(code: str, principal: Principal = Depends(current_principal)) -> dict[str, object]:
+    return delete_agent_role(DEFAULT_PLATFORM_DB, code, actor=principal.actor)
+
+
+@app.post("/agent/chat")
+def chat_with_agent(payload: AgentChatCreate) -> dict[str, object]:
+    try:
+        return agent_chat(
+            DEFAULT_PLATFORM_DB,
+            payload.message,
+            payload.roleId,
+            payload.dataSourceId,
+            payload.objectCode,
+            payload.history,
+            payload.sessionId,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.post("/automation/operations/{operation_code}/preflight")
 def preflight_business_operation(operation_code: str, payload: OperationPreflightCreate) -> dict[str, object]:
     try:
@@ -772,7 +1133,11 @@ def preflight_business_operation(operation_code: str, payload: OperationPrefligh
 
 
 @app.post("/automation/operations/{operation_code}/execute")
-def execute_business_operation(operation_code: str, payload: OperationExecuteCreate) -> dict[str, object]:
+def execute_business_operation(
+    operation_code: str,
+    payload: OperationExecuteCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
         return execute_operation(
             DEFAULT_PLATFORM_DB,
@@ -782,7 +1147,7 @@ def execute_business_operation(operation_code: str, payload: OperationExecuteCre
             payload.instanceId,
             payload.objectCode,
             payload.payload,
-            payload.actor,
+            principal.actor,
             payload.dryRun,
             payload.timeoutSeconds,
         )
@@ -874,11 +1239,326 @@ def decisions(limit: int = 50) -> dict[str, object]:
     return {"items": list_decisions(DEFAULT_PLATFORM_DB, limit)}
 
 
+# ============================================================
+# Workflow & Permission Management
+# ============================================================
+
+from .workflow_permission import (
+    add_workflow_state,
+    add_workflow_transition,
+    authorize_tool,
+    check_permission,
+    check_tool_authorization,
+    create_role,
+    create_workflow,
+    delete_workflow,
+    get_available_actions,
+    get_instance_history,
+    get_instance_state,
+    get_workflow,
+    get_workflow_by_object,
+    list_pending_reviews,
+    list_policies,
+    list_roles,
+    list_tools,
+    list_workflows,
+    log_tool_execution,
+    register_tool,
+    review_tool_execution,
+    transition_instance,
+    upsert_permission_policy,
+)
+
+
+class WorkflowCreate(BaseModel):
+    ontologyId: int
+    objectCode: str
+    name: str
+    description: str = ""
+    initialState: str = "draft"
+
+
+class WorkflowStateAdd(BaseModel):
+    code: str
+    name: str
+    description: str = ""
+    isTerminal: bool = False
+    color: str = "#666666"
+    sortOrder: int = 0
+
+
+class WorkflowTransitionAdd(BaseModel):
+    fromState: str
+    toState: str
+    actionCode: str
+    name: str
+    guardExpression: str = ""
+    requiresReview: bool = False
+    reviewRole: str = ""
+    sortOrder: int = 0
+
+
+class WorkflowTransitionRun(BaseModel):
+    instanceId: str
+    actionCode: str
+    reason: str = ""
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class WorkflowEnterInstance(BaseModel):
+    objectCode: str
+    instanceId: str
+
+
+class RoleCreate(BaseModel):
+    code: str
+    name: str
+    description: str = ""
+    isSystem: bool = False
+
+
+class PermissionPolicyUpsert(BaseModel):
+    roleId: int
+    objectCode: str
+    canRead: bool = True
+    canWrite: bool = False
+    canExecute: bool = False
+    canDelete: bool = False
+    filterExpression: str = ""
+    description: str = ""
+
+
+class PermissionCheck(BaseModel):
+    roleCode: str
+    objectCode: str
+    operation: str = "read"
+
+
+class ToolRegister(BaseModel):
+    code: str
+    name: str
+    description: str = ""
+    toolType: str = "function"
+    inputSchema: dict[str, object] = Field(default_factory=dict)
+    riskLevel: str = "low"
+    requiresReview: bool = False
+
+
+class ToolAuthorize(BaseModel):
+    roleId: int
+    toolId: int
+    allowed: bool = True
+    maxCallsPerHour: int = 100
+
+
+class ToolAuthCheck(BaseModel):
+    roleCode: str
+    toolCode: str
+
+
+class ToolExecutionReview(BaseModel):
+    decision: str
+
+
+# -- Workflow Endpoints --
+
+@app.get("/workflows")
+def get_workflows(ontologyId: Optional[int] = None) -> dict[str, object]:
+    return {"items": list_workflows(DEFAULT_PLATFORM_DB, ontologyId)}
+
+
+@app.post("/workflows")
+def create_new_workflow(payload: WorkflowCreate) -> dict[str, object]:
+    try:
+        return create_workflow(
+            DEFAULT_PLATFORM_DB, payload.ontologyId, payload.objectCode,
+            payload.name, payload.description, payload.initialState,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/workflows/{workflow_id}")
+def get_workflow_detail(workflow_id: int) -> dict[str, object]:
+    try:
+        return get_workflow(DEFAULT_PLATFORM_DB, workflow_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/workflows/by-object/{ontology_id}/{object_code}")
+def get_workflow_for_object(ontology_id: int, object_code: str) -> dict[str, object]:
+    wf = get_workflow_by_object(DEFAULT_PLATFORM_DB, ontology_id, object_code)
+    if wf is None:
+        raise HTTPException(status_code=404, detail="该业务对象未配置工作流")
+    return wf
+
+
+@app.delete("/workflows/{workflow_id}")
+def delete_workflow_def(workflow_id: int) -> dict[str, object]:
+    delete_workflow(DEFAULT_PLATFORM_DB, workflow_id)
+    return {"deleted": True}
+
+
+@app.post("/workflows/{workflow_id}/states")
+def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
+    try:
+        return add_workflow_state(
+            DEFAULT_PLATFORM_DB, workflow_id, payload.code, payload.name,
+            payload.description, payload.isTerminal, payload.color, payload.sortOrder,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/workflows/{workflow_id}/transitions")
+def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str, object]:
+    try:
+        return add_workflow_transition(
+            DEFAULT_PLATFORM_DB, workflow_id, payload.fromState, payload.toState,
+            payload.actionCode, payload.name, payload.guardExpression,
+            payload.requiresReview, payload.reviewRole, payload.sortOrder,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/workflows/{workflow_id}/enter")
+def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
+    try:
+        from .workflow_permission import enter_workflow
+        return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/workflows/{workflow_id}/instances/{instance_id}")
+def get_instance_workflow_state(workflow_id: int, instance_id: str) -> dict[str, object]:
+    state = get_instance_state(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="实例不在工作流中")
+    return state
+
+
+@app.get("/workflows/{workflow_id}/instances/{instance_id}/actions")
+def get_instance_available_actions(workflow_id: int, instance_id: str) -> dict[str, object]:
+    actions = get_available_actions(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
+    return {"actions": actions}
+
+
+@app.post("/workflows/{workflow_id}/transitions/run")
+def run_transition(
+    workflow_id: int,
+    payload: WorkflowTransitionRun,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return transition_instance(
+            DEFAULT_PLATFORM_DB, workflow_id, payload.instanceId,
+            payload.actionCode, principal.actor, payload.reason, payload.metadata,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/workflows/{workflow_id}/instances/{instance_id}/history")
+def get_instance_workflow_history(workflow_id: int, instance_id: str) -> dict[str, object]:
+    return {"items": get_instance_history(DEFAULT_PLATFORM_DB, workflow_id, instance_id)}
+
+
+# -- Permission Endpoints --
+
+@app.get("/permissions/roles")
+def get_permission_roles() -> dict[str, object]:
+    return {"roles": list_roles(DEFAULT_PLATFORM_DB)}
+
+
+@app.post("/permissions/roles")
+def create_permission_role(payload: RoleCreate) -> dict[str, object]:
+    try:
+        return create_role(DEFAULT_PLATFORM_DB, payload.code, payload.name, payload.description, payload.isSystem)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/permissions/policies")
+def get_permission_policies(roleId: Optional[int] = None) -> dict[str, object]:
+    return {"policies": list_policies(DEFAULT_PLATFORM_DB, roleId)}
+
+
+@app.post("/permissions/policies")
+def upsert_policy(payload: PermissionPolicyUpsert) -> dict[str, object]:
+    try:
+        return upsert_permission_policy(
+            DEFAULT_PLATFORM_DB, payload.roleId, payload.objectCode,
+            payload.canRead, payload.canWrite, payload.canExecute, payload.canDelete,
+            payload.filterExpression, payload.description,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/permissions/check")
+def check_permission_endpoint(payload: PermissionCheck) -> dict[str, object]:
+    return check_permission(DEFAULT_PLATFORM_DB, payload.roleCode, payload.objectCode, payload.operation)
+
+
+# -- Tool Endpoints --
+
+@app.get("/tools")
+def get_all_tools() -> dict[str, object]:
+    return {"tools": list_tools(DEFAULT_PLATFORM_DB)}
+
+
+@app.post("/tools")
+def register_new_tool(payload: ToolRegister) -> dict[str, object]:
+    try:
+        return register_tool(
+            DEFAULT_PLATFORM_DB, payload.code, payload.name, payload.description,
+            payload.toolType, payload.inputSchema, payload.riskLevel, payload.requiresReview,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/tools/authorize")
+def authorize_tool_for_role(payload: ToolAuthorize) -> dict[str, object]:
+    try:
+        return authorize_tool(
+            DEFAULT_PLATFORM_DB, payload.roleId, payload.toolId,
+            payload.allowed, payload.maxCallsPerHour,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/tools/check-auth")
+def check_tool_auth(payload: ToolAuthCheck) -> dict[str, object]:
+    return check_tool_authorization(DEFAULT_PLATFORM_DB, payload.roleCode, payload.toolCode)
+
+
+@app.get("/tools/pending-reviews")
+def get_pending_reviews(limit: int = 50) -> dict[str, object]:
+    return {"items": list_pending_reviews(DEFAULT_PLATFORM_DB, limit)}
+
+
+@app.post("/tools/logs/{log_id}/review")
+def review_execution(
+    log_id: int,
+    payload: ToolExecutionReview,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return review_tool_execution(DEFAULT_PLATFORM_DB, log_id, principal.actor, payload.decision)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.get("/files")
 def files() -> dict[str, str]:
     config = get_platform_config()
     return {
         "platformDbType": config.db_type,
-        "platformDb": config.connection_uri or str(Path(DEFAULT_PLATFORM_DB).resolve()),
+        "platformDb": redact_connection_uri(config.connection_uri) or str(Path(DEFAULT_PLATFORM_DB).resolve()),
         "sampleDb": str(Path(DEFAULT_SAMPLE_DB).resolve()),
     }

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { clearSession, getToken } from '../auth/session';
+import type { AuthUser } from '../auth/session';
 import type {
   DataSource,
   DataSourceCreate,
@@ -34,6 +36,17 @@ import type {
   KnowledgeBase,
   SourceTableRows,
   ReasoningChain,
+  AgentRole,
+  AgentChatPayload,
+  AgentChatResult,
+  WorkflowDefinition,
+  WorkflowInstance,
+  WorkflowHistoryItem,
+  PermissionRole,
+  PermissionPolicy,
+  ToolDefinition,
+  ToolExecutionLog,
+  ToolAuthorization,
 } from '../types';
 
 const api = axios.create({
@@ -43,6 +56,81 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Attach the bearer token to every request, and surface auth failures in one
+// place instead of at each call site.
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const detail = error?.response?.data?.detail;
+    if (status === 401) {
+      clearSession();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login');
+      }
+      return Promise.reject(new Error(detail || '登录已失效，请重新登录。'));
+    }
+    if (status === 403) {
+      const capability = error?.response?.data?.requiredCapability;
+      return Promise.reject(
+        new Error(detail || `当前角色无权执行该操作${capability ? `（需要 ${capability}）` : ''}。`),
+      );
+    }
+    if (detail) {
+      return Promise.reject(new Error(detail));
+    }
+    return Promise.reject(error);
+  },
+);
+
+export const authApi = {
+  login: async (username: string, password: string): Promise<{ token: string; user: AuthUser }> => {
+    const { data } = await api.post('/auth/login', { username, password });
+    return { token: data.token, user: data.user as AuthUser };
+  },
+  logout: async (): Promise<void> => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      clearSession();
+    }
+  },
+  me: async (): Promise<AuthUser> => {
+    const { data } = await api.get('/auth/me');
+    return data as AuthUser;
+  },
+  changePassword: async (currentPassword: string, newPassword: string): Promise<{ message: string }> => {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return data;
+  },
+  listUsers: async (): Promise<{ items: unknown[]; roles: string[] }> => {
+    const { data } = await api.get('/auth/users');
+    return data;
+  },
+  createUser: async (payload: {
+    username: string;
+    password: string;
+    roleCode: string;
+    displayName?: string;
+  }): Promise<unknown> => {
+    const { data } = await api.post('/auth/users', payload);
+    return data;
+  },
+  setUserStatus: async (username: string, status: 'active' | 'disabled'): Promise<unknown> => {
+    const { data } = await api.patch(`/auth/users/${encodeURIComponent(username)}/status`, { status });
+    return data;
+  },
+};
 
 const normalizeDataSource = (item: any): DataSource => ({
   id: item.id,
@@ -345,6 +433,19 @@ export const semanticApi = {
   },
 };
 
+// 智能体 API
+export const agentApi = {
+  roles: async (): Promise<AgentRole[]> => {
+    const { data } = await api.get('/agent/roles');
+    return (data.roles || []) as AgentRole[];
+  },
+
+  chat: async (payload: AgentChatPayload): Promise<AgentChatResult> => {
+    const { data } = await api.post('/agent/chat', payload);
+    return data as AgentChatResult;
+  },
+};
+
 // 自动化 API
 export const automationApi = {
   preflight: async (
@@ -481,6 +582,147 @@ export const aiApi = {
   getOntologyReasoningChain: async (dataSourceId: number): Promise<OntologyReasoningChainResult> => {
     const { data } = await api.post(`/ai/data-sources/${dataSourceId}/ontology-reasoning-chain`);
     return data as OntologyReasoningChainResult;
+  },
+};
+
+// 工作流 API
+export const workflowApi = {
+  list: async (ontologyId?: number): Promise<WorkflowDefinition[]> => {
+    const params = ontologyId ? { ontologyId } : {};
+    const { data } = await api.get('/workflows', { params });
+    return (data.items || []) as WorkflowDefinition[];
+  },
+
+  get: async (id: number): Promise<WorkflowDefinition> => {
+    const { data } = await api.get(`/workflows/${id}`);
+    return data as WorkflowDefinition;
+  },
+
+  getByObject: async (ontologyId: number, objectCode: string): Promise<WorkflowDefinition> => {
+    const { data } = await api.get(`/workflows/by-object/${ontologyId}/${objectCode}`);
+    return data as WorkflowDefinition;
+  },
+
+  create: async (payload: {
+    ontologyId: number; objectCode: string; name: string;
+    description?: string; initialState?: string;
+  }): Promise<WorkflowDefinition> => {
+    const { data } = await api.post('/workflows', payload);
+    return data as WorkflowDefinition;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/workflows/${id}`);
+  },
+
+  enterInstance: async (workflowId: number, payload: {
+    objectCode: string; instanceId: string;
+  }): Promise<WorkflowInstance> => {
+    const { data } = await api.post(`/workflows/${workflowId}/enter`, payload);
+    return data as WorkflowInstance;
+  },
+
+  getInstanceState: async (workflowId: number, instanceId: string): Promise<WorkflowInstance> => {
+    const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}`);
+    return data as WorkflowInstance;
+  },
+
+  getAvailableActions: async (workflowId: number, instanceId: string): Promise<Array<{
+    actionCode: string; name: string; toState: string;
+  }>> => {
+    const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}/actions`);
+    return (data.actions || []) as Array<{ actionCode: string; name: string; toState: string }>;
+  },
+
+  transition: async (workflowId: number, payload: {
+    instanceId: string; actionCode: string; actor?: string; reason?: string;
+  }): Promise<WorkflowInstance> => {
+    const { data } = await api.post(`/workflows/${workflowId}/transitions/run`, payload);
+    return data as WorkflowInstance;
+  },
+
+  getInstanceHistory: async (workflowId: number, instanceId: string): Promise<WorkflowHistoryItem[]> => {
+    const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}/history`);
+    return (data.items || []) as WorkflowHistoryItem[];
+  },
+};
+
+// 权限 API
+export const permissionApi = {
+  getRoles: async (): Promise<PermissionRole[]> => {
+    const { data } = await api.get('/permissions/roles');
+    return (data.roles || []) as PermissionRole[];
+  },
+
+  createRole: async (payload: {
+    code: string; name: string; description?: string; isSystem?: boolean;
+  }): Promise<PermissionRole> => {
+    const { data } = await api.post('/permissions/roles', payload);
+    return data as PermissionRole;
+  },
+
+  getPolicies: async (roleId?: number): Promise<PermissionPolicy[]> => {
+    const params = roleId ? { roleId } : {};
+    const { data } = await api.get('/permissions/policies', { params });
+    return (data.policies || []) as PermissionPolicy[];
+  },
+
+  upsertPolicy: async (payload: {
+    roleId: number; objectCode: string; canRead?: boolean; canWrite?: boolean;
+    canExecute?: boolean; canDelete?: boolean; filterExpression?: string; description?: string;
+  }): Promise<PermissionPolicy> => {
+    const { data } = await api.post('/permissions/policies', payload);
+    return data as PermissionPolicy;
+  },
+
+  check: async (payload: {
+    roleCode: string; objectCode: string; operation?: string;
+  }): Promise<{ allowed: boolean; reason?: string }> => {
+    const { data } = await api.post('/permissions/check', payload);
+    return data as { allowed: boolean; reason?: string };
+  },
+};
+
+// 工具管理 API
+export const toolApi = {
+  list: async (): Promise<ToolDefinition[]> => {
+    const { data } = await api.get('/tools');
+    return (data.tools || []) as ToolDefinition[];
+  },
+
+  register: async (payload: {
+    code: string; name: string; description?: string; toolType?: string;
+    inputSchema?: Record<string, unknown>; riskLevel?: string; requiresReview?: boolean;
+  }): Promise<ToolDefinition> => {
+    const { data } = await api.post('/tools', payload);
+    return data as ToolDefinition;
+  },
+
+  authorize: async (payload: {
+    roleId: number; toolId: number; allowed?: boolean; maxCallsPerHour?: number;
+  }): Promise<ToolAuthorization> => {
+    const { data } = await api.post('/tools/authorize', payload);
+    return data as ToolAuthorization;
+  },
+
+  checkAuth: async (payload: {
+    roleCode: string; toolCode: string;
+  }): Promise<{ allowed: boolean; reason?: string; riskLevel?: string }> => {
+    const { data } = await api.post('/tools/check-auth', payload);
+    return data as { allowed: boolean; reason?: string; riskLevel?: string };
+  },
+
+  getPendingReviews: async (limit?: number): Promise<ToolExecutionLog[]> => {
+    const params = limit ? { limit } : {};
+    const { data } = await api.get('/tools/pending-reviews', { params });
+    return (data.items || []) as ToolExecutionLog[];
+  },
+
+  reviewExecution: async (logId: number, payload: {
+    reviewer: string; decision: string;
+  }): Promise<ToolExecutionLog> => {
+    const { data } = await api.post(`/tools/logs/${logId}/review`, payload);
+    return data as ToolExecutionLog;
   },
 };
 

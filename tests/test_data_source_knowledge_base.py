@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 import sys
 
@@ -8,11 +9,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.database import initialize_platform_db
 from ontology_platform.governance import upsert_business_rule
-from ontology_platform.knowledge_base import browse_source_table, build_reasoning_chain, list_knowledge_bases
+from ontology_platform.knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
 from ontology_platform.metadata import register_data_source, scan_data_source
 from ontology_platform.natural_language import query_natural_language
 from ontology_platform.ontology import generate_ontology_draft
 from ontology_platform.sample_data import create_contract_sample_db
+from ontology_platform.semantic_kernel import SemanticRuntime, assess_instance
 
 
 def _initialized_source(tmp_path: Path):
@@ -111,3 +113,51 @@ def test_local_fallback_answer_uses_business_language(tmp_path: Path) -> None:
 
     assert "本体内核" not in result["answer"]
     assert "当前研判为" not in result["answer"]
+
+
+def test_assessment_serializes_date_values_from_external_sources(tmp_path: Path, monkeypatch) -> None:
+    platform_db, source, ontology = _initialized_source(tmp_path)
+
+    def fake_runtime(platform, ontology_id: int, object_code: str, instance_id: str) -> SemanticRuntime:
+        record = {
+            "id": 1,
+            "contract_no": "CG-2024-001",
+            "title": "测试合同",
+            "amount": 120000,
+            "status": "effective",
+            "signed_date": date(2024, 1, 15),
+        }
+        return SemanticRuntime(
+            ontology_id=ontology_id,
+            ontology_version=ontology["version"],
+            object_code=object_code,
+            object_name="合同",
+            source_table="contract",
+            primary_key="id",
+            instance_id=instance_id,
+            data_source_id=source.id,
+            data_source_uri=source.connection_uri,
+            record=record,
+            context=dict(record),
+            related={},
+        )
+
+    monkeypatch.setattr("ontology_platform.semantic_kernel.build_runtime", fake_runtime)
+
+    result = assess_instance(platform_db, ontology["id"], "contract", "1")
+
+    assert result["semanticKernel"]["instanceId"] == "1"
+    assert result["ruleResults"]
+
+
+def test_initializing_same_domain_sources_uses_distinct_ontology_names(tmp_path: Path) -> None:
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    for index in (1, 2):
+        source_db = tmp_path / f"contracts-{index}.sqlite3"
+        create_contract_sample_db(source_db)
+        source = register_data_source(platform_db, f"合同系统{index}", "sqlite", str(source_db), domain="合同管理")
+        initialize_knowledge_base(platform_db, source.id)
+
+    names = {item["ontologyName"] for item in list_knowledge_bases(platform_db)}
+    assert names == {"合同系统1本体", "合同系统2本体"}
