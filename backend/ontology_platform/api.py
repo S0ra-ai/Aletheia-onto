@@ -12,7 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
+from .access_policy import (
+    PUBLIC_PATHS,
+    VERSION_PREFIXES,
+    describe_policy,
+    is_public,
+    required_capability,
+)
 from .agent import agent_chat, get_agent_roles
 from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
 from .aggregation import (
@@ -214,6 +220,11 @@ DEV_ADMIN_PRINCIPAL = Principal(user_id=0, username="dev-anonymous", display_nam
 
 app = FastAPI(title="本体改造研发平台", version="0.2.0", lifespan=lifespan)
 
+# The version this build serves under a prefix. Taken from access_policy so the router
+# and the authorization matcher can never disagree about which prefix exists -- a
+# mismatch would mean a served route with no policy entry.
+VERSION_PREFIX = VERSION_PREFIXES[0]
+
 _allowed_origins = [
     origin.strip()
     for origin in os.environ.get(
@@ -229,6 +240,41 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def mount_versioned_routes(application: FastAPI) -> None:
+    """Serve every route under `/v1` as well as bare.
+
+    Called once after all routes are declared. Without a version prefix there is
+    nowhere to put a breaking change: the first external caller freezes the current
+    shape permanently. Serving both means existing callers -- including this repo's own
+    frontend -- keep working while new ones pin `/v1`.
+
+    Routes are re-registered rather than the app being mounted as a sub-application,
+    because a sub-application does not inherit the parent's middleware, and the
+    middleware is what authenticates and authorizes every request. A `/v1` tree without
+    it would be an unauthenticated copy of the whole API.
+
+    `include_in_schema=False` on the copies keeps OpenAPI showing each operation once,
+    so generated clients do not get two of everything.
+    """
+    from fastapi.routing import APIRoute
+
+    for route in list(application.routes):
+        if not isinstance(route, APIRoute) or route.path.startswith(VERSION_PREFIX):
+            continue
+        if route.path in ("/openapi.json", "/docs", "/redoc"):
+            continue
+        application.router.add_api_route(
+            f"{VERSION_PREFIX}{route.path}",
+            route.endpoint,
+            methods=list(route.methods or []),
+            name=f"v1_{route.name}",
+            response_model=route.response_model,
+            status_code=route.status_code,
+            dependencies=list(route.dependencies),
+            include_in_schema=False,
+        )
 
 
 def _bearer_token(request: Request) -> str:
@@ -2298,3 +2344,7 @@ def files() -> dict[str, str]:
         "platformDb": redact_connection_uri(config.connection_uri) or str(Path(DEFAULT_PLATFORM_DB).resolve()),
         "sampleDb": str(Path(DEFAULT_SAMPLE_DB).resolve()),
     }
+
+
+# Must be last: it copies whatever routes exist at the time it runs.
+mount_versioned_routes(app)

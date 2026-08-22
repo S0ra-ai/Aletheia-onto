@@ -4,6 +4,16 @@ Authorization lives in one table instead of being spread across 80+ endpoint
 signatures, so the effective policy can be reviewed and tested as data. The
 matcher is deny-by-default: an unlisted route requires admin, which means a new
 endpoint cannot accidentally ship unprotected.
+
+## Version prefixes are stripped before matching
+
+Every route is served both bare (`/ontologies/1`) and under `/v1`, so existing
+callers keep working while new ones pin a version. The prefix is removed here rather
+than duplicated in every rule -- and that is a security property, not tidiness: a
+policy list that only matched the bare form would leave `/v1/auth/users` unmatched,
+which the deny-by-default fallback would then treat as admin-only. That fails safe,
+but the reverse mistake on a *public* path would not, so the stripping happens in one
+place that is tested.
 """
 
 from __future__ import annotations
@@ -54,6 +64,25 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
 )
 
 ANY_METHOD = ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+# Version prefixes recognised on incoming paths. Adding `/v2` later means adding it
+# here, not re-writing the rule table.
+VERSION_PREFIXES: tuple[str, ...] = ("/v1",)
+
+
+def strip_version_prefix(path: str) -> str:
+    """The path as the rule table declares it, with any version prefix removed.
+
+    `/v1` alone maps to `/`, not to the empty string, so a bare version root still
+    looks like a path and cannot accidentally match a rule anchored at `^$`.
+    """
+    for prefix in VERSION_PREFIXES:
+        if path == prefix:
+            return "/"
+        if path.startswith(prefix + "/"):
+            return path[len(prefix) :]
+    return path
+
 
 # Order matters: the first match wins, so specific rules precede generic ones.
 RULES: tuple[Rule, ...] = (
@@ -198,7 +227,7 @@ def load_policy_plugins() -> list[str]:
 def required_capability(method: str, path: str) -> str:
     """Return the capability needed for a request, defaulting to admin."""
     normalized_method = method.upper()
-    normalized_path = path.rstrip("/") or "/"
+    normalized_path = strip_version_prefix(path).rstrip("/") or "/"
     for rule in (*_PLUGIN_RULES, *RULES):
         if normalized_method in rule.methods and rule.pattern.match(normalized_path):
             return rule.capability
@@ -206,7 +235,13 @@ def required_capability(method: str, path: str) -> str:
 
 
 def is_public(path: str) -> bool:
-    normalized = path.rstrip("/") or "/"
+    """Whether a path is reachable without a token.
+
+    The version prefix is stripped first, so `/v1/health` is public exactly as
+    `/health` is. Without this the versioned login endpoint would demand a token to
+    obtain a token.
+    """
+    normalized = strip_version_prefix(path).rstrip("/") or "/"
     return normalized in PUBLIC_PATHS or normalized.startswith("/docs")
 
 
