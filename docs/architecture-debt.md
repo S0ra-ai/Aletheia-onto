@@ -120,6 +120,10 @@ SQLite 的 `text`）只会在对应后端上暴露。
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
   → 实例键抽象（`instance_key.py`，ADR-0008）
+- ~~`guard_expression` / `filter_expression` / `depends_on` 有存储但从不求值~~
+  → 三者均已真实生效且 fail-closed（`workflow_permission.py`、`semantic_kernel.py`）
+- ~~`permission_policy` 缺本体维度，同名对象共享策略~~
+  → 按 `(role_id, ontology_id, object_code)` 索引，`0` 为通配以兼容既有部署
 - ~~护城河第三段缺失：无文档检索，判定给不出条款依据~~
   → 锚定本体的文档知识层（`knowledge_documents.py`、`retrieval.py`，ADR-0009）
 - ~~无值域映射，规则只能写魔法值~~

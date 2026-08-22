@@ -51,13 +51,14 @@
 
 这些是当前设计的边界，**不是漏洞**，但部署时必须知道：
 
-- `permission_policy.filter_expression` 有存储但**未生效**：
-  `check_permission` 只原样返回该表达式，不做行级过滤。
-  不要依赖它做数据隔离。
-- `workflow_transition.guard_expression` 有存储但**转移时从不求值**。
-  不要依赖它做状态流转的准入控制。
-- `permission_policy` 只按裸 `object_code` 建索引，**无本体维度**：
-  两个本体定义同名对象时会共享同一条策略。
+- `permission_policy.filter_expression` **现已生效**：向 `check_permission`
+  传入 `instance_id` 时会在规则沙箱中求值，无法求值则拒绝访问。
+  **但仍需注意**：不传 `instance_id` 时只做能力校验，返回的
+  `filterApplied: False` 表示行级过滤未参与判断——调用方必须检查该字段。
+- `workflow_transition.guard_expression` **现已生效**：transition 时求值，
+  无法求值则阻止流转。
+- `permission_policy` 现按 `(role_id, ontology_id, object_code)` 建索引。
+  `ontology_id = 0` 表示通配，用于兼容既有单本体部署。
 - **无多租户隔离。** 31 张表没有租户概念，一个部署实例服务一个组织。
 - `ONTOLOGY_AUTH_DISABLED=1` 会关闭全部认证，使所有接口可匿名访问。
   仅限本地开发；启用时启动日志会打印警告。

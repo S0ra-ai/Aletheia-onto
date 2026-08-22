@@ -314,7 +314,7 @@ flowchart TB
 | 决策留痕四层记录 | ✅ | `decisions.py`、`semantic_kernel.py` |
 | 语义覆盖度报告 | ✅ | `coverage.py` |
 | 实例工作流状态与历史 | ✅ | `workflow_permission.py` |
-| 工作流 `guard_expression` | ⚠️ | 有存储有接口，transition 时**从不求值** |
+| 工作流 `guard_expression` | ✅ | transition 时真实求值，fail-closed |
 | 工作流与本体版本联动 | ⚠️ | derive 新版本**不复制**工作流配置 |
 | 列表端点分页 | ⚠️ | 基本无分页（audit-log 等少数除外） |
 
@@ -329,8 +329,8 @@ flowchart TB
 | **插件可注册路由权限策略** | ✅ | `access_policy.py` |
 | 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
-| 权限行级过滤 `filter_expression` | ⚠️ | 有存储，`check_permission` **只原样返回** |
-| 权限策略本体维度 | ⚠️ | 只按裸 `object_code` 索引，**同名对象共享策略**（已知缺陷） |
+| 权限行级过滤 `filter_expression` | ✅ | `check_permission` 传入实例时真实求值 |
+| 权限策略本体维度 | ✅ | 按 `(role, ontology, object)` 索引，0 表示通配 |
 | 多租户／租户隔离 | 📋 | 31 张表零租户概念 |
 | 数据字典、部门／岗位数据权限 | 📋 | — |
 
@@ -369,13 +369,10 @@ flowchart TB
 
 这类最危险，因为接口看起来能用：
 
-- **`workflow_transition.guard_expression`** —— 有存储有接口，transition 时从不求值。
-  不要依赖它做状态流转准入。
-- **`permission_policy.filter_expression`** —— 有存储，`check_permission` 只原样返回，
-  不做行级过滤。不要依赖它做数据隔离。
-- **`business_rule.depends_on`** —— 有读写，求值时完全不用，只按 `priority` 排序。
-- **`permission_policy` 缺本体维度** —— 只按裸 `object_code` 建索引，
-  两个本体定义同名对象时会共享同一条策略。**已知缺陷。**
+> 此前列在本节的四项已修复：`guard_expression`、`filter_expression`、
+> `depends_on` 现已真实生效，`permission_policy` 已带本体维度。三者均为
+> fail-closed：无法求值时拒绝而非放行。
+
 - **工作流与本体版本脱钩** —— `derive` 新版本不复制工作流配置。
 - **元模型文档超前** —— `docs/02` 画了 Event 与 State，schema 中无对应表。
 
@@ -529,7 +526,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**283 个测试**，全绿。分布：
+**311 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -539,6 +536,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_custom_model_endpoints.py` | 21 | 自定义模型端点兼容性 |
 | `test_workbench_and_graph.py` | 14 | 工作台聚合与图谱投影 |
 | `test_document_knowledge.py` | 27 | 条款切分、锚定检索、带引用答案 |
+| `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
