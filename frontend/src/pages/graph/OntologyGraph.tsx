@@ -123,9 +123,15 @@ const OntologyGraphPage: React.FC = () => {
       try {
         const items = await ontologyApi.list();
         setOntologies(items);
-        // Prefer an ontology that actually has objects; an empty graph tells the
-        // user nothing about whether the feature works.
-        if (items.length) setSelected(items[items.length - 1].id);
+        // Default to the ontology with the most objects rather than simply the
+        // newest: an empty or two-node graph tells the user nothing about
+        // whether the feature works, and published-but-empty versions exist.
+        if (items.length) {
+          const richest = [...items].sort(
+            (a, b) => (b.objectCount ?? 0) - (a.objectCount ?? 0),
+          )[0];
+          setSelected(richest.id);
+        }
       } catch {
         message.error('加载本体列表失败');
       }

@@ -291,6 +291,8 @@ export interface Ontology {
   status: string;
   createdAt?: string;
   publishedAt?: string | null;
+  /** Number of modelled business objects; distinguishes a real ontology from an empty one. */
+  objectCount?: number;
 }
 
 export interface OntologyDraftCreate {

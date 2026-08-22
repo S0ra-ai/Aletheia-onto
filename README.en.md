@@ -54,6 +54,14 @@ whether a conclusion can be interrogated.
 All captured from a running instance, not mockups. The data comes from the
 bundled synthetic examples and contains no real business information.
 
+### Workbench: what to do next, in one screen
+
+![Workbench](docs/images/06-workbench.png)
+
+Action items are ordered blockers-first and each one links to the screen that
+resolves it. Every figure is a read-only projection of existing tables, so the
+workbench cannot disagree with the screens it summarises.
+
 ### Semantic Q&A: verdict, governing rules, evidence
 
 ![Semantic Q&A with evidence](docs/images/01-semantic-qa-with-evidence.png)
@@ -92,6 +100,36 @@ written to the audit log together with the count of failed gates.
 > ⚠️ The row-filter expression field visible here is **stored but inert** --
 > `check_permission` returns it verbatim and applies no filtering. See
 > [Current limitations](#current-limitations).
+
+### Knowledge graph preview
+
+![Knowledge graph preview](docs/images/07-knowledge-graph.png)
+
+An ontology is a graph, but every other screen renders it as tables, which hides
+the problems a reviewer needs to see: isolated objects nothing points at,
+self-referencing hierarchies, and clusters that produce no verdict. Colour encodes
+a diagnosis rather than decoration -- red for unbound to a source table, amber for
+carries no rules. The relation-expressiveness limitation is stated in the view
+itself: `relation_type` is always `references`, with no cardinality and no
+many-to-many.
+
+### Model configuration for custom endpoints
+
+![Model configuration](docs/images/08-model-config.png)
+
+The platform speaks the OpenAI chat-completions protocol, so any service
+implementing it works. A configurable base URL alone is not enough, because
+providers differ in how they pass credentials and which extra body fields they
+tolerate:
+
+| Setting | Problem it solves |
+|---|---|
+| Auth style (bearer / api-key / custom / none) | Azure uses an `api-key` header; local servers often need no key |
+| Provider extras toggle | vLLM and LM Studio reject unknown body fields with a 400 |
+| Extra headers (JSON) | Some gateways require a tenant or group identifier |
+
+Presets ship for OpenRouter, OpenAI, relay gateways, Azure, self-hosted vLLM and
+DashScope, and the screen shows the full URL that will actually be called.
 
 ## Quick start
 
@@ -279,13 +317,15 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**221 tests**, all passing:
+**256 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | extension registries, doubling as the third-party conformance suite |
 | `test_composite_instance_keys.py` | 31 | composite keys end to end, instance-key round-trips |
 | `test_value_domain_mapping.py` | 13 | value domain mapping and backwards compatibility |
+| `test_custom_model_endpoints.py` | 21 | custom model endpoint compatibility |
+| `test_workbench_and_graph.py` | 14 | workbench aggregation and graph projection |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |
