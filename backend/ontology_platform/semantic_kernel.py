@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 
 from .adapters import RuntimeDatabase, get_adapter
 from .config import clamp_page_size, clamp_sample_size
@@ -16,6 +17,8 @@ from .decisions import record_decision_in_connection
 from .ontology import explain_instance
 from .registry import Registry, load_entry_point_plugins
 from .value_mapping import load_value_mappings_in_connection, state_for
+
+logger = logging.getLogger(__name__)
 
 
 class RowObject:
@@ -229,9 +232,24 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
             (ontology_id, object_code, today, today),
         ).fetchall()
 
+        # Honour declared dependencies. `depends_on` was read and written but
+        # never used during evaluation, so a rule that only makes sense after a
+        # prerequisite passed could run first and produce a misleading failure.
+        rules = order_rules_by_dependency(rules)
+        satisfied: set[str] = set()
+
         results = []
         for rule in rules:
-            passed, error = _evaluate_rule(rule["expression"], runtime.context)
+            blocked_by = _unsatisfied_dependencies(rule, satisfied)
+            passed: bool
+            error: str | None
+            if blocked_by:
+                # A dependency that did not pass makes this rule's verdict
+                # meaningless, so report it as not passed with the reason rather
+                # than evaluating it against a precondition known to be false.
+                passed, error = False, (f"前置规则未通过：{'、'.join(blocked_by)}")
+            else:
+                passed, error = _evaluate_rule(rule["expression"], runtime.context)
             skipped = error is not None
             # Fail closed: an expression that cannot be evaluated (renamed
             # column, type mismatch, bad syntax) must not be reported as a
@@ -295,6 +313,8 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     "naturalLanguage": rule["natural_language"],
                 }
             )
+            if decision_passed:
+                satisfied.add(rule["code"])
 
         failed = [result for result in results if not result["passed"]]
         decision = _decision_from_results(failed)
@@ -575,6 +595,91 @@ def _load_related_context(
         related[foreign_key["child_table"]] = RelatedRows(rows)
 
     return related
+
+
+def parse_depends_on(raw: Any) -> list[str]:
+    """Read the stored dependency list, tolerating malformed values.
+
+    Stored as a JSON array of rule codes. A malformed value degrades to "no
+    dependencies" rather than breaking assessment: losing an ordering hint is
+    recoverable, refusing to evaluate any rule is not.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(code).strip() for code in raw if str(code).strip()]
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(code).strip() for code in parsed if str(code).strip()]
+
+
+def order_rules_by_dependency(rules: Sequence[Any]) -> list[Any]:
+    """Topologically order rules so prerequisites evaluate first.
+
+    Ties keep the existing ordering (priority desc, severity, code), so behaviour
+    is unchanged for the common case where nothing declares a dependency.
+
+    Cycles are broken rather than raised: a cyclic declaration is a modelling
+    mistake, but refusing to assess the instance at all would turn a bad hint into
+    an outage. Rules in a cycle are appended in their original order and the cycle
+    is logged.
+    """
+    by_code = {rule["code"]: rule for rule in rules}
+    remaining = list(rules)
+    ordered: list[Any] = []
+    placed: set[str] = set()
+
+    while remaining:
+        progressed = False
+        deferred = []
+        for rule in remaining:
+            # Only dependencies that exist in this scope can gate ordering; a
+            # reference to an unknown or out-of-scope code is ignored here and
+            # surfaced at evaluation time instead.
+            pending = [
+                code
+                for code in parse_depends_on(rule["depends_on"] if "depends_on" in rule.keys() else None)  # noqa: SIM118
+                if code in by_code and code not in placed and code != rule["code"]
+            ]
+            if pending:
+                deferred.append(rule)
+            else:
+                ordered.append(rule)
+                placed.add(rule["code"])
+                progressed = True
+        if not progressed:
+            logger.warning(
+                "规则依赖存在循环，已按原顺序追加: %s",
+                "、".join(str(rule["code"]) for rule in deferred),
+            )
+            ordered.extend(deferred)
+            break
+        remaining = deferred
+    return ordered
+
+
+def _unsatisfied_dependencies(rule: Any, satisfied: set[str]) -> list[str]:
+    """Declared prerequisites that have not passed in this run."""
+    declared = parse_depends_on(rule["depends_on"] if "depends_on" in rule.keys() else None)  # noqa: SIM118
+    return [code for code in declared if code and code not in satisfied]
+
+
+def evaluate_rule_expression(expression: str, context: dict[str, Any]) -> tuple[bool, str | None]:
+    """Evaluate an expression in the rule sandbox.
+
+    Public entry point for callers outside the rule engine -- currently workflow
+    transition guards. Exposed deliberately rather than letting other modules
+    reach for the private `_evaluate_rule`, so there is exactly one sandbox to
+    audit and guards inherit its hardening.
+
+    Returns (passed, error). A non-None error means the expression could not be
+    evaluated; callers are expected to treat that as *not passed* (ADR-0002).
+    """
+    return _evaluate_rule(expression, context)
 
 
 def _evaluate_rule(expression: str, context: dict[str, Any]) -> tuple[bool, str | None]:

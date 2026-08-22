@@ -517,6 +517,17 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "integer not null default 1",
         "integer not null default 1",
     ),
+    # permission_policy previously keyed on a bare object_code, so two ontologies
+    # defining the same code shared one policy row. Existing rows get 0, meaning
+    # "any ontology", which preserves their current behaviour; new rows carry a
+    # real ontology id.
+    ColumnMigration(
+        "permission_policy",
+        "ontology_id",
+        "integer not null default 0",
+        "integer not null default 0",
+        "integer not null default 0",
+    ),
 )
 
 

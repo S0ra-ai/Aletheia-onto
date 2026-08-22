@@ -232,10 +232,10 @@ cd frontend && npm install && npm run dev
 | Agent roles derived from onboarded domains | ✅ | `agent_roles.py` |
 | Operation preflight and HTTP writeback | ✅ | `automation.py` |
 | JSON-LD / Turtle export | ✅ | `ontology.py` |
-| Workflow `guard_expression` | ⚠️ | stored and exposed, **never evaluated** |
-| Permission `filter_expression` | ⚠️ | stored, `check_permission` **returns it verbatim** |
-| Rule `depends_on` | ⚠️ | read and written, **unused** during evaluation |
-| Permission policy ontology dimension | ⚠️ | keyed on bare `object_code`; same-named objects **share a policy** |
+| Workflow `guard_expression` | ✅ | evaluated on transition, fail-closed |
+| Permission `filter_expression` | ✅ | evaluated when an instance is supplied |
+| Rule `depends_on` | ✅ | topologically ordered; dependents skip when a prerequisite fails |
+| Permission policy ontology dimension | ✅ | keyed on (role, ontology, object); 0 means any |
 | Manual CRUD for objects/attributes/relations | ⚠️ | no endpoints |
 | List endpoint pagination | ⚠️ | mostly absent |
 | Document knowledge base (clause chunking, citations) | ✅ | `knowledge_documents.py` |
@@ -339,7 +339,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**283 tests**, all passing:
+**311 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -349,6 +349,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_custom_model_endpoints.py` | 21 | custom model endpoint compatibility |
 | `test_workbench_and_graph.py` | 14 | workbench aggregation and graph projection |
 | `test_document_knowledge.py` | 27 | clause chunking, anchored retrieval, cited answers |
+| `test_inert_fields_activated.py` | 28 | guards, row filters, rule dependencies, policy scoping |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

@@ -21,6 +21,69 @@ def _uuid() -> str:
     return uuid.uuid4().hex[:16]
 
 
+def _row_value(row: Any, column: str, default: Any = None) -> Any:
+    """Read a column that an older schema may not have.
+
+    Guard and filter expressions were added by migration, so a database created
+    by an earlier build can legitimately lack them.
+    """
+    try:
+        value = row[column]
+    except (KeyError, IndexError, TypeError):
+        return default
+    return default if value is None else value
+
+
+def _evaluate_guard(
+    platform_db: Path | str,
+    expression: str,
+    *,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+) -> dict[str, Any]:
+    """Evaluate a transition guard against the instance's live data.
+
+    Reuses the rule engine's AST-allowlist sandbox rather than adding a second
+    expression evaluator: one sandbox to audit, and guards automatically inherit
+    every hardening applied there.
+
+    Fail-closed, per ADR-0002. If the instance cannot be loaded or the expression
+    cannot be evaluated, the guard does not pass. A guard that silently succeeds
+    when its data is missing is worse than no guard, because operators believe the
+    gate is active.
+    """
+    from .semantic_kernel import build_runtime, evaluate_rule_expression
+
+    if not object_code:
+        return {
+            "expression": expression,
+            "passed": False,
+            "reason": "工作流未绑定业务对象，无法求值流转守卫。",
+        }
+    try:
+        with connect(platform_db) as data_conn:
+            runtime = build_runtime(data_conn, ontology_id, object_code, instance_id)
+        passed, error = evaluate_rule_expression(expression, runtime.context)
+    except Exception as error:
+        return {
+            "expression": expression,
+            "passed": False,
+            "reason": f"守卫求值失败（已按未通过处理）: {error}",
+        }
+    if error is not None:
+        return {
+            "expression": expression,
+            "passed": False,
+            "reason": f"守卫表达式无法求值（已按未通过处理）: {error}",
+        }
+    return {
+        "expression": expression,
+        "passed": bool(passed),
+        "reason": "守卫条件满足。" if passed else "守卫条件不满足。",
+    }
+
+
 SCHEMA_SQL: tuple[dict[str, str], ...] = (
     {
         "sqlite": """
@@ -256,7 +319,8 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             can_delete integer not null default 0,
             filter_expression text not null default '',
             description text not null default '',
-            unique(role_id, object_code)
+            ontology_id integer not null default 0,
+            unique(role_id, ontology_id, object_code)
         )""",
         "postgresql": """
         create table if not exists permission_policy (
@@ -269,7 +333,8 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             can_delete boolean not null default false,
             filter_expression text not null default '',
             description text not null default '',
-            unique(role_id, object_code)
+            ontology_id integer not null default 0,
+            unique(role_id, ontology_id, object_code)
         )""",
         "mysql": """
         create table if not exists permission_policy (
@@ -282,7 +347,8 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             can_delete tinyint not null default 0,
             filter_expression text not null default (''),
             description text not null default (''),
-            unique(role_id, object_code)
+            ontology_id integer not null default 0,
+            unique key uniq_policy (role_id, ontology_id, object_code)
         )""",
     },
     {
@@ -661,6 +727,30 @@ def transition_instance(
         if transition is None:
             raise ValueError(f"当前状态 '{current}' 不允许执行动作 '{action_code}'")
         to_state = transition["to_state"]
+
+        # Evaluate the transition guard. This field was previously stored and
+        # exposed through the API but never evaluated, so a workflow that looked
+        # gated was not. Fail-closed like the rule engine (ADR-0002): a guard that
+        # cannot be evaluated blocks the transition rather than waving it through,
+        # because the alternative silently disables a control that operators
+        # believe is active.
+        guard = (_row_value(transition, "guard_expression") or "").strip()
+        guard_result: dict[str, Any] | None = None
+        if guard:
+            workflow = conn.execute(
+                "select ontology_id, object_code from workflow_definition where id = ?",
+                (workflow_id,),
+            ).fetchone()
+            guard_result = _evaluate_guard(
+                platform_db,
+                guard,
+                ontology_id=int(workflow["ontology_id"]) if workflow else 0,
+                object_code=workflow["object_code"] if workflow else "",
+                instance_id=instance_id,
+            )
+            if not guard_result["passed"]:
+                raise ValueError(f"流转守卫未通过，动作 '{action_code}' 被阻止：{guard_result['reason']}")
+
         now = _now()
         conn.execute(
             "update instance_workflow set current_state = ?, state_entered_at = ?, updated_at = ? where id = ?",
@@ -668,7 +758,21 @@ def transition_instance(
         )
         conn.execute(
             "insert into workflow_history (instance_workflow_id, from_state, to_state, action_code, actor, reason, metadata) values (?, ?, ?, ?, ?, ?, ?)",
-            (iw_id, current, to_state, action_code, actor, reason, json.dumps(metadata or {}, ensure_ascii=False)),
+            (
+                iw_id,
+                current,
+                to_state,
+                action_code,
+                actor,
+                reason,
+                json.dumps(
+                    # Record the guard outcome so an auditor can see the gate ran
+                    # and on what data, not merely that the transition happened.
+                    {**(metadata or {}), **({"guard": guard_result} if guard_result else {})},
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            ),
         )
         conn.commit()
         return _get_instance_state(conn, iw_id)
@@ -785,16 +889,24 @@ def upsert_permission_policy(
     can_delete: bool = False,
     filter_expression: str = "",
     description: str = "",
+    ontology_id: int = 0,
 ) -> dict[str, Any]:
+    """Create or update an object-level policy.
+
+    `ontology_id` defaults to 0, meaning "any ontology". That keeps existing
+    single-ontology deployments working unchanged while allowing two ontologies
+    that define the same object code to hold distinct policies -- the defect
+    recorded in docs/architecture-debt.md.
+    """
     with connect(platform_db) as conn:
         existing = conn.execute(
-            "select id from permission_policy where role_id = ? and object_code = ?",
-            (role_id, object_code),
+            "select id from permission_policy where role_id = ? and object_code = ? and ontology_id = ?",
+            (role_id, object_code, ontology_id),
         ).fetchone()
         if existing:
             conn.execute(
                 """update permission_policy set can_read=?, can_write=?, can_execute=?, can_delete=?,
-                filter_expression=?, description=? where role_id=? and object_code=?""",
+                filter_expression=?, description=? where role_id=? and object_code=? and ontology_id=?""",
                 (
                     1 if can_read else 0,
                     1 if can_write else 0,
@@ -804,12 +916,13 @@ def upsert_permission_policy(
                     description,
                     role_id,
                     object_code,
+                    ontology_id,
                 ),
             )
         else:
             conn.execute(
-                """insert into permission_policy (role_id, object_code, can_read, can_write, can_execute, can_delete, filter_expression, description)
-                values (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """insert into permission_policy (role_id, object_code, can_read, can_write, can_execute, can_delete, filter_expression, description, ontology_id)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     role_id,
                     object_code,
@@ -819,6 +932,7 @@ def upsert_permission_policy(
                     1 if can_delete else 0,
                     filter_expression,
                     description,
+                    ontology_id,
                 ),
             )
         conn.commit()
@@ -834,15 +948,38 @@ def check_permission(
     role_code: str,
     object_code: str,
     operation: str = "read",
+    *,
+    ontology_id: int | None = None,
+    instance_id: str = "",
 ) -> dict[str, Any]:
+    """Decide whether a role may perform an operation on an object.
+
+    When `instance_id` is supplied and the policy carries a row filter, the filter
+    is actually evaluated against that instance. Previously the expression was
+    returned verbatim and never applied, which meant a deployment could believe it
+    had row-level isolation while having none -- the reason this was flagged in
+    SECURITY.md rather than merely listed as unfinished.
+
+    Callers that omit `instance_id` get `filterExpression` plus
+    `filterApplied: False`, so "I did not evaluate this" is distinguishable from
+    "there was nothing to evaluate".
+    """
     with connect(platform_db) as conn:
         role = conn.execute("select id from permission_role where code = ?", (role_code,)).fetchone()
         if role is None:
             return {"allowed": False, "reason": f"角色 '{role_code}' 不存在"}
-        policy = conn.execute(
-            "select * from permission_policy where role_id = ? and object_code = ?",
-            (int(role["id"]), object_code),
-        ).fetchone()
+        # Prefer a policy scoped to this ontology over the wildcard (ontology_id
+        # 0), so two ontologies sharing an object code no longer share a policy.
+        # Ordering by ontology_id desc puts the specific match first.
+        candidates = conn.execute(
+            """
+            select * from permission_policy
+            where role_id = ? and object_code = ? and ontology_id in (?, 0)
+            order by ontology_id desc
+            """,
+            (int(role["id"]), object_code, ontology_id or 0),
+        ).fetchall()
+        policy = candidates[0] if candidates else None
         if policy is None:
             return {"allowed": False, "reason": f"角色 '{role_code}' 对对象 '{object_code}' 无策略"}
         col = f"can_{operation}"
@@ -850,13 +987,69 @@ def check_permission(
         # *values*, not its column names, so removing it would silently deny
         # every permission.
         allowed = bool(policy[col]) if col in policy.keys() else False  # noqa: SIM118
-        return {
-            "allowed": allowed,
-            "roleCode": role_code,
-            "objectCode": object_code,
-            "operation": operation,
-            "filterExpression": policy["filter_expression"] or None,
-        }
+        filter_expression = (_row_value(policy, "filter_expression") or "").strip()
+
+    result: dict[str, Any] = {
+        "allowed": allowed,
+        "roleCode": role_code,
+        "objectCode": object_code,
+        "operation": operation,
+        "filterExpression": filter_expression or None,
+        "filterApplied": False,
+    }
+    if not allowed or not filter_expression:
+        return result
+
+    if not instance_id:
+        # The capability check passed but the row filter has not been evaluated.
+        # Say so explicitly instead of implying a full decision.
+        result["reason"] = "已通过能力校验；未提供实例标识，行级过滤未求值。"
+        return result
+
+    resolved_ontology = ontology_id
+    if resolved_ontology is None:
+        resolved_ontology = _resolve_policy_ontology(platform_db, object_code)
+
+    # Same sandbox and the same fail-closed stance as rule evaluation: a filter
+    # that cannot be evaluated denies access.
+    verdict = _evaluate_guard(
+        platform_db,
+        filter_expression,
+        ontology_id=resolved_ontology or 0,
+        object_code=object_code,
+        instance_id=instance_id,
+    )
+    result["filterApplied"] = True
+    result["instanceId"] = instance_id
+    result["allowed"] = bool(verdict["passed"])
+    result["reason"] = verdict["reason"]
+    return result
+
+
+def _resolve_policy_ontology(platform_db: Path | str, object_code: str) -> int | None:
+    """Find the ontology owning an object code.
+
+    permission_policy is keyed on a bare object_code with no ontology dimension,
+    so two ontologies defining the same code share one policy row. That defect is
+    recorded in README and docs/architecture-debt.md; this resolves the most
+    recently created match and reports ambiguity to the caller's log rather than
+    guessing silently.
+    """
+    with connect(platform_db) as conn:
+        rows = conn.execute(
+            "select ontology_id from business_object where code = ? order by ontology_id desc",
+            (object_code,),
+        ).fetchall()
+    if not rows:
+        return None
+    if len(rows) > 1:
+        logger.warning(
+            "对象编码 %s 在 %d 个本体中重复，权限策略缺少本体维度，已取最新本体 %s。",
+            object_code,
+            len(rows),
+            rows[0]["ontology_id"],
+        )
+    return int(rows[0]["ontology_id"])
 
 
 def list_policies(platform_db: Path | str, role_id: int | None = None) -> list[dict[str, Any]]:
