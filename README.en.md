@@ -131,6 +131,18 @@ Retrieval narrows by anchor *before* ranking, which is the opposite of searching
 everything and inspecting the hits. That ordering is what makes a citation
 attributable rather than merely similar.
 
+### Feedback loop
+
+![Feedback loop](docs/images/10-feedback-loop.png)
+
+Ratings attach to a specific message and its decision record -- "this verdict is
+wrong" is only actionable when you know which verdict.
+
+Two deliberate omissions: there is no average satisfaction score, because an
+average does not tell you which answer to fix; and there is no one-click "apply
+correction", because a correction is one user's claim rather than a new rule, and
+promoting it goes through governance (ADR-0002).
+
 ### Model configuration for custom endpoints
 
 ![Model configuration](docs/images/08-model-config.png)
@@ -244,9 +256,10 @@ cd frontend && npm install && npm run dev
 | Embedding model SPI (hashed n-gram default) | ✅ | `retrieval.py` |
 | Cited verdicts | ✅ | `natural_language.py` |
 | Bundled vector database integration | 📋 | register via SPI |
-| Conversation persistence | 📋 | history passed in per call, not stored |
+| Conversation persistence | ✅ | `conversations.py` |
+| Feedback loop (rating / correction / escalation) | ✅ | `conversations.py` |
 | Multi-tenancy | 📋 | 31 tables have no tenant concept |
-| Channel integrations, scheduler, feedback loop | 📋 | none |
+| Channel integrations, scheduler | 📋 | none |
 | Ontology import (SHACL / reasoner) | 📋 | export only |
 | Cross-source entity resolution | 📋 | none |
 
@@ -339,7 +352,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**311 tests**, all passing:
+**346 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -350,6 +363,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_workbench_and_graph.py` | 14 | workbench aggregation and graph projection |
 | `test_document_knowledge.py` | 27 | clause chunking, anchored retrieval, cited answers |
 | `test_inert_fields_activated.py` | 28 | guards, row filters, rule dependencies, policy scoping |
+| `test_conversations_and_feedback.py` | 35 | conversation persistence, feedback attribution, escalation |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

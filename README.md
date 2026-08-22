@@ -126,6 +126,20 @@ BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的�
 检索顺序是**先按锚定收窄候选，再排序**——这与「全库检索后看命中什么」方向相反，
 也是引用可归因而非仅相似的原因。
 
+### 反馈闭环
+
+![反馈闭环](docs/images/10-feedback-loop.png)
+
+用户对判定结论的评价会**锚定到具体消息与决策记录**——「这个判定不对」只有在
+知道是哪个判定时才可行动。
+
+两处刻意不做的设计：
+
+1. **不提供满意度平均分。** 平均分不告诉你该修哪一条;按评价分类计数、
+   「结论错误」排在最前，才是可行动的。
+2. **不提供「一键应用纠正」。** 纠正是一方主张而非新规则，
+   要成为规则或知识条目须走治理流程（ADR-0002）。
+
 ### 模型配置：适配自定义订阅
 
 ![模型配置](docs/images/08-model-config.png)
@@ -354,10 +368,11 @@ flowchart TB
 | 嵌入模型 SPI（默认哈希 n-gram） | ✅ | `retrieval.py` |
 | 带引用的判定答案（护城河第三段） | ✅ | `natural_language.py` |
 | 向量数据库内置集成（pgvector／Milvus） | 📋 | 未内置，可通过 SPI 注册 |
-| 多轮对话持久化 | 📋 | history 由调用方每次传入，不落库 |
+| 多轮对话持久化 | ✅ | `conversations.py`，刷新不丢上下文 |
+| 反馈闭环（满意度／纠正／转人工） | ✅ | `conversations.py` |
+| 反馈锚定到决策记录 | ✅ | `conversations.py` |
 | 渠道接入（企微／钉钉／飞书／网页挂件） | 📋 | — |
 | 定时调度器 | 📋 | 无任何 scheduler／cron |
-| 反馈闭环、满意度、转人工 | 📋 | — |
 | 跨源实体消解 | 📋 | — |
 | MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
@@ -526,7 +541,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**311 个测试**，全绿。分布：
+**346 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -537,6 +552,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_workbench_and_graph.py` | 14 | 工作台聚合与图谱投影 |
 | `test_document_knowledge.py` | 27 | 条款切分、锚定检索、带引用答案 |
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
+| `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |

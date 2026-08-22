@@ -120,6 +120,8 @@ SQLite 的 `text`）只会在对应后端上暴露。
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
   → 实例键抽象（`instance_key.py`，ADR-0008）
+- ~~会话不落库、无反馈闭环，答案对错无法追溯~~
+  → `conversations.py`：会话持久化 + 反馈锚定决策记录 + 转人工
 - ~~`guard_expression` / `filter_expression` / `depends_on` 有存储但从不求值~~
   → 三者均已真实生效且 fail-closed（`workflow_permission.py`、`semantic_kernel.py`）
 - ~~`permission_policy` 缺本体维度，同名对象共享策略~~

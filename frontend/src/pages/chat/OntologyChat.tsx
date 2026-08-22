@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { SendOutlined, UserOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { agentApi, knowledgeBaseApi } from '../../api';
+import { agentApi, conversationApi, knowledgeBaseApi } from '../../api';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { AgentRole, AgentChatResult, KnowledgeBase } from '../../types';
 
@@ -13,6 +13,9 @@ type ChatMessage = {
   content: string;
   result?: AgentChatResult;
   roleId?: string;
+  /** Backend message id, required to attach feedback to this specific answer. */
+  messageId?: number;
+  feedbackGiven?: string;
 };
 
 // Role avatars come from the backend, which derives them from the domain name.
@@ -60,6 +63,7 @@ const preferredObjectCode = (knowledgeBase?: KnowledgeBase) => knowledgeBase?.ob
 const OntologyChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
+  const [sessionId, setSessionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [roles, setRoles] = useState<AgentRole[]>([]);
   // Empty until roles load: the available roles depend on which domains have
@@ -104,14 +108,18 @@ const OntologyChat: React.FC = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
 
-  const history = useMemo(
-    () =>
-      messages
-        .filter(item => item.id !== 'welcome')
-        .slice(-10)
-        .map(item => ({ role: item.role, content: item.content })),
-    [messages],
-  );
+  const handleFeedback = async (item: ChatMessage, rating: string) => {
+    if (!item.messageId) return;
+    try {
+      await conversationApi.submitFeedback(item.messageId, { rating });
+      setMessages(prev => prev.map(m => (m.id === item.id ? { ...m, feedbackGiven: rating } : m)));
+      message.success(
+        rating === 'incorrect' ? '已记录：该结论被标记为错误，将进入复核队列' : '感谢反馈',
+      );
+    } catch {
+      message.error('提交反馈失败');
+    }
+  };
 
   const quickPrompts = buildQuickPrompts(selectedKnowledgeBase);
 
@@ -134,8 +142,13 @@ const OntologyChat: React.FC = () => {
         roleId: selectedRoleId,
         dataSourceId,
         objectCode: objectCode || undefined,
-        history,
+        // History now comes from the stored conversation, so a refresh no longer
+        // loses the thread. Passing the session id is what links the turns.
+        sessionId: sessionId || undefined,
       });
+      if (result.sessionId && result.sessionId !== sessionId) {
+        setSessionId(result.sessionId);
+      }
 
       setMessages(prev => [
         ...prev,
@@ -145,6 +158,7 @@ const OntologyChat: React.FC = () => {
           content: result.answer,
           result,
           roleId: result.roleId,
+          messageId: result.messageId,
         },
       ]);
     } catch (error) {
@@ -270,6 +284,27 @@ const OntologyChat: React.FC = () => {
                     >
                       <MarkdownMessage content={item.content} inverted={isUser} />
                     </div>
+                    {!isUser && item.messageId && (
+                      <div style={{ marginTop: 6 }}>
+                        {item.feedbackGiven ? (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            已反馈：{item.feedbackGiven === 'helpful' ? '有帮助' : item.feedbackGiven === 'unhelpful' ? '没有帮助' : '结论错误'}
+                          </Text>
+                        ) : (
+                          <Space size={4}>
+                            <Button size="small" type="text" onClick={() => void handleFeedback(item, 'helpful')}>
+                              有帮助
+                            </Button>
+                            <Button size="small" type="text" onClick={() => void handleFeedback(item, 'unhelpful')}>
+                              没帮助
+                            </Button>
+                            <Button size="small" type="text" danger onClick={() => void handleFeedback(item, 'incorrect')}>
+                              结论错误
+                            </Button>
+                          </Space>
+                        )}
+                      </div>
+                    )}
                     {item.result && (
                       <div style={{ marginTop: 8 }}>
                         <Space wrap size={[6, 6]}>

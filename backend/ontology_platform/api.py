@@ -33,6 +33,17 @@ from .auth import (
 )
 from .automation import execute_operation, preflight_operation
 from .contract_documents import parse_rule_docx_bytes
+from .conversations import (
+    escalate_conversation,
+    feedback_summary,
+    get_conversation,
+    init_conversation_schema,
+    list_conversations,
+    list_feedback,
+    resolve_feedback,
+    set_conversation_status,
+    submit_feedback,
+)
 from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
@@ -136,6 +147,7 @@ async def lifespan(app: FastAPI):
         init_auth_schema(conn)
         init_agent_role_schema(conn)
         init_knowledge_schema(conn)
+        init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:
@@ -1146,7 +1158,10 @@ def remove_agent_role(code: str, principal: Principal = Depends(current_principa
 
 
 @app.post("/agent/chat")
-def chat_with_agent(payload: AgentChatCreate) -> dict[str, object]:
+def chat_with_agent(
+    payload: AgentChatCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
     try:
         return agent_chat(
             DEFAULT_PLATFORM_DB,
@@ -1154,8 +1169,11 @@ def chat_with_agent(payload: AgentChatCreate) -> dict[str, object]:
             payload.roleId,
             payload.dataSourceId,
             payload.objectCode,
-            payload.history,
+            # None lets the stored history load; an explicit list still wins, so a
+            # caller managing its own context is unaffected.
+            payload.history or None,
             payload.sessionId,
+            actor=principal.actor,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1324,6 +1342,117 @@ def review_entry(
             rule_code=payload.ruleCode,
             reviewer=principal.actor,
         )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class FeedbackCreate(BaseModel):
+    rating: str
+    comment: str = ""
+    correction: str = ""
+    objectCode: str = ""
+    ruleCode: str = ""
+
+
+class FeedbackResolve(BaseModel):
+    resolution: str = "resolved"
+
+
+class EscalationCreate(BaseModel):
+    assignee: str = ""
+    reason: str = ""
+
+
+class ConversationStatusUpdate(BaseModel):
+    status: str
+
+
+@app.get("/conversations")
+def conversations(status: str = "", limit: int = 50) -> dict[str, object]:
+    return {"items": list_conversations(DEFAULT_PLATFORM_DB, status=status, limit=limit)}
+
+
+@app.get("/conversations/{session_id}")
+def conversation_detail(session_id: str) -> dict[str, object]:
+    try:
+        return get_conversation(DEFAULT_PLATFORM_DB, session_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/conversations/{session_id}/escalate")
+def escalate(
+    session_id: str,
+    payload: EscalationCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Hand a conversation to a human."""
+    try:
+        return escalate_conversation(
+            DEFAULT_PLATFORM_DB,
+            session_id,
+            assignee=payload.assignee,
+            reason=payload.reason,
+            actor=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.patch("/conversations/{session_id}/status")
+def update_conversation_status(
+    session_id: str,
+    payload: ConversationStatusUpdate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return set_conversation_status(DEFAULT_PLATFORM_DB, session_id, payload.status, actor=principal.actor)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/conversations/messages/{message_id}/feedback")
+def create_feedback(
+    message_id: int,
+    payload: FeedbackCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Record a verdict on one answer.
+
+    Corrections are stored, never auto-applied: promoting one to a rule or a
+    knowledge entry goes through governance.
+    """
+    try:
+        return submit_feedback(
+            DEFAULT_PLATFORM_DB,
+            message_id,
+            payload.rating,
+            comment=payload.comment,
+            correction=payload.correction,
+            object_code=payload.objectCode,
+            rule_code=payload.ruleCode,
+            actor=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/feedback")
+def feedback_items(status: str = "", rating: str = "", limit: int = 100) -> dict[str, object]:
+    return {
+        "items": list_feedback(DEFAULT_PLATFORM_DB, status=status, rating=rating, limit=limit),
+        "summary": feedback_summary(DEFAULT_PLATFORM_DB),
+    }
+
+
+@app.post("/feedback/{feedback_id}/resolve")
+def resolve_feedback_item(
+    feedback_id: int,
+    payload: FeedbackResolve,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return resolve_feedback(DEFAULT_PLATFORM_DB, feedback_id, resolution=payload.resolution, actor=principal.actor)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

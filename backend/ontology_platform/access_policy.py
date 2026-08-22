@@ -105,6 +105,13 @@ RULES: tuple[Rule, ...] = (
     # entry as judgement evidence is a governance review.
     _rule(("POST",), r"/ontologies/[0-9]+/knowledge/documents", CAP_WRITE, "上传知识文档"),
     _rule(("POST",), r"/knowledge/entries/[0-9]+/review", CAP_REVIEW, "审核知识条目"),
+    # Submitting feedback is something any authenticated reader can do -- the
+    # point of a feedback loop is that the person who saw the answer can report
+    # it. Resolving feedback and escalating are governance actions.
+    _rule(("POST",), r"/conversations/messages/[0-9]+/feedback", CAP_READ, "提交答案反馈"),
+    _rule(("POST",), r"/conversations/[^/]+/escalate", CAP_REVIEW, "转人工"),
+    _rule(("PATCH",), r"/conversations/[^/]+/status", CAP_REVIEW, "变更会话状态"),
+    _rule(("POST",), r"/feedback/[0-9]+/resolve", CAP_REVIEW, "处理反馈"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 
