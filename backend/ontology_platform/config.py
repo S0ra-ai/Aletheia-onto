@@ -60,6 +60,9 @@ class QueryLimits:
     max_consistency_sample: int = _int_env("ONTOLOGY_MAX_CONSISTENCY_SAMPLE", 200)
     enum_max_distinct: int = _int_env("ONTOLOGY_ENUM_MAX_DISTINCT", 20)
     enum_min_distinct: int = _int_env("ONTOLOGY_ENUM_MIN_DISTINCT", 3)
+    # Distinct values kept per column when profiling. Small on purpose: samples are a
+    # modelling hint shown to a reviewer, and a scan runs this query once per column.
+    column_profile_samples: int = _int_env("ONTOLOGY_COLUMN_PROFILE_SAMPLES", 5)
 
 
 @dataclass(frozen=True)

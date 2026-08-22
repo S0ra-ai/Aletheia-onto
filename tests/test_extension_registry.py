@@ -105,7 +105,17 @@ def test_empty_name_is_rejected() -> None:
 
 
 def test_builtin_adapters_are_registered() -> None:
-    assert set(supported_source_types()) == {"sqlite", "postgresql", "mysql"}
+    """The types available with no driver installed and nothing registered.
+
+    Asserted as an exact set rather than a subset: a type appearing here without a test
+    proving it works is a support claim nobody checked, and a type silently *dis*appearing
+    would look to a user like the platform lost a capability.
+
+    CSV is built in because it needs no driver. Oracle / SQL Server / 达梦 / 人大金仓 are
+    declared in `generic_sql_adapter.BUNDLED_SPECS` and activate only when their driver is
+    installed, so they are deliberately absent here.
+    """
+    assert set(supported_source_types()) == {"sqlite", "postgresql", "mysql", "csv"}
 
 
 @pytest.mark.parametrize(
