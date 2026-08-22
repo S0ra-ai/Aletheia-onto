@@ -652,7 +652,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**949 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
+**977 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable, and the wheel build runs only in CI.
 
 | File | Count | Covers |
@@ -672,6 +672,7 @@ no server is reachable, and the wheel build runs only in CI.
 | `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_answer_regression.py` | 28 | answer regression: every conclusion cites evidence, routing is stable, answers agree with verdicts |
 | `test_deployment_preflight.py` | 41 | preflight: unauthenticated exposure, wildcard CORS, SQLite with workers, image and compose artefacts |
 | `test_conformance_suites.py` | 44 | executable contracts for five extension points, with a negative case per property |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | dialect profiles, generic DB-API adapter, proven against a real PostgreSQL onboarded by declaration alone |

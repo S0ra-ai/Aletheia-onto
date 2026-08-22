@@ -485,6 +485,7 @@ _不是_：算法、模型、策略引擎脚本。
 | **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
 | **可执行一致性契约随包发布**（5 个扩展点，第三方可自验） | ✅ | `conformance.py` |
 | **部署前自检**（免鉴权暴露等静默误配置在流水线阶段被拦） | ✅ | `deployment.py`、`deploy/` |
+| **问答回归测试集**（断言结构性属性，不锚定措辞） | ✅ | `tests/test_answer_regression.py` |
 | **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
 | **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
 | Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
@@ -817,7 +818,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**949 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+**977 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
 自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -837,6 +838,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_answer_regression.py` | 28 | 问答回归：结论必带依据、意图路由确定、问答与判定一致、无模型可用 |
 | `test_deployment_preflight.py` | 41 | 部署前自检：免鉴权暴露、CORS 通配、SQLite 多进程、镜像与编排产物 |
 | `test_conformance_suites.py` | 44 | 5 个扩展点的可执行契约，含每条属性的反例（证明契约能抓错） |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
