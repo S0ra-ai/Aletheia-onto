@@ -5,12 +5,13 @@ import json
 import logging
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from .adapters import RuntimeDatabase, get_adapter
+from .aggregation import aggregate_context, compute_aggregates, load_aggregate_specs
 from .config import clamp_page_size, clamp_sample_size
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
@@ -126,6 +127,10 @@ class SemanticRuntime:
     record: dict[str, Any]
     context: dict[str, Any]
     related: dict[str, Any]
+    # Cross-object aggregates, kept so a verdict can state what an aggregate was
+    # rather than only the number it produced. Defaulted so existing constructions
+    # keep working.
+    aggregates: dict[str, Any] = field(default_factory=dict)
 
 
 ALLOWED_AST_NODES = (
@@ -586,11 +591,22 @@ def build_runtime(
         # reports that as a blocking violation, turning a wiring detail into a
         # wrong verdict.
         context: dict[str, Any] = _wrap_resolver_children(record)
-        related = _load_related_context(platform, runtime, data_source["id"], source_table, primary_key, record)
+        related = _load_related_context(
+            platform, runtime, ontology_id, data_source["id"], source_table, primary_key, record
+        )
         # Resolver-provided children take precedence: they were declared
         # explicitly, whereas foreign-key discovery is inferred.
         for name, value in related.items():
             context.setdefault(name, value)
+
+        # Cross-object aggregates (generality #5). Computed here, inside the
+        # runtime block, because they read the same data source. Only successful
+        # ones enter the context: a referenced-but-uncomputable aggregate must
+        # raise NameError so the rule fails closed with a reason, rather than
+        # comparing a threshold against a fabricated zero.
+        aggregate_specs = load_aggregate_specs(platform, ontology_id, object_code)
+        aggregate_results = compute_aggregates(runtime, aggregate_specs, record) if aggregate_specs else {}
+        context.update(aggregate_context(aggregate_results))
 
     # Confirmed value mappings let a rule be written in business language
     # (status == '生效中') instead of against a legacy code (status == 'A').
@@ -613,18 +629,33 @@ def build_runtime(
         record=record,
         context=context,
         related=related,
+        aggregates={name: result.as_dict() for name, result in aggregate_results.items()},
     )
 
 
 def _load_related_context(
     platform: sqlite3.Connection,
     runtime: RuntimeDatabase,
+    ontology_id: int,
     data_source_id: int,
     source_table: sqlite3.Row,
     primary_key: str,
     record: dict[str, Any],
 ) -> dict[str, Any]:
     related: dict[str, Any] = {}
+    # Rules are written in ontology language, so a related object must be
+    # addressable by its business object code -- `customer.credit_status` -- and
+    # not only by the physical table name that happens to back it (`customers`).
+    # Both keys are exposed: dropping the table name would break rules already
+    # written against it, and the blueprint templates use the object code.
+    object_codes = _related_object_codes(platform, ontology_id, data_source_id)
+
+    def _publish(table_name: str, value: Any) -> None:
+        related[table_name] = value
+        code = object_codes.get(table_name)
+        if code and code != table_name:
+            related[code] = value
+
     direct_foreign_keys = platform.execute(
         "select * from source_foreign_key where source_table_id = ?",
         (source_table["id"],),
@@ -635,7 +666,7 @@ def _load_related_context(
             continue
         row = runtime.fetch_related_one(foreign_key["target_table"], foreign_key["target_column"], value)
         if row is not None:
-            related[foreign_key["target_table"]] = RowObject(row)
+            _publish(foreign_key["target_table"], RowObject(row))
 
     reverse_foreign_keys = platform.execute(
         """
@@ -650,9 +681,28 @@ def _load_related_context(
     current_key = record.get(primary_key)
     for foreign_key in reverse_foreign_keys:
         rows = runtime.fetch_related_many(foreign_key["child_table"], foreign_key["column_name"], current_key)
-        related[foreign_key["child_table"]] = RelatedRows(rows)
+        _publish(foreign_key["child_table"], RelatedRows(rows))
 
     return related
+
+
+def _related_object_codes(platform: sqlite3.Connection, ontology_id: int, data_source_id: int) -> dict[str, str]:
+    """Physical table name -> business object code, for this ontology's objects.
+
+    Only objects of the same ontology are considered: a table reachable in the
+    data source but not modelled has no object code, so it stays addressable by
+    its table name alone.
+    """
+    rows = platform.execute(
+        """
+        select st.table_name as table_name, bo.code as code
+        from business_object bo
+        join source_table st on st.id = bo.source_table_id
+        where bo.ontology_id = ? and st.data_source_id = ?
+        """,
+        (ontology_id, data_source_id),
+    ).fetchall()
+    return {row["table_name"]: row["code"] for row in rows}
 
 
 def parse_depends_on(raw: Any) -> list[str]:

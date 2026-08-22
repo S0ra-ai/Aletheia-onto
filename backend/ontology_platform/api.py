@@ -15,6 +15,13 @@ from pydantic import BaseModel, Field
 from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
 from .agent import agent_chat, get_agent_roles
 from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
+from .aggregation import (
+    AggregateSpec,
+    AggregationError,
+    define_aggregate,
+    init_aggregate_schema,
+    list_aggregates,
+)
 from .auth import (
     ROLE_CAPABILITIES,
     AuthenticationError,
@@ -162,6 +169,7 @@ async def lifespan(app: FastAPI):
         init_auth_schema(conn)
         init_agent_role_schema(conn)
         init_knowledge_schema(conn)
+        init_aggregate_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -1589,6 +1597,63 @@ def set_object_resolver(
 @app.get("/resolvers")
 def resolvers() -> dict[str, object]:
     return {"kinds": list(supported_resolver_kinds())}
+
+
+class AggregateDefine(BaseModel):
+    name: str
+    function: str
+    targetTable: str
+    targetColumn: str
+    groupColumn: str
+    valueColumn: str = ""
+    excludeSelf: bool = False
+    selfColumn: str = ""
+    filterColumn: str = ""
+    filterValue: str = ""
+    description: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/aggregates")
+def ontology_aggregates(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    """Cross-object aggregates available to rules."""
+    return {"items": list_aggregates(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/aggregates")
+def define_object_aggregate(
+    ontology_id: int,
+    object_code: str,
+    payload: AggregateDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare an aggregate that rules for this object may reference by name.
+
+    Validated before storage, so an invalid definition is refused here rather than
+    surfacing later as a failed assessment.
+    """
+    spec = AggregateSpec(
+        name=payload.name,
+        function=payload.function,
+        target_table=payload.targetTable,
+        target_column=payload.targetColumn,
+        group_column=payload.groupColumn,
+        value_column=payload.valueColumn,
+        exclude_self=payload.excludeSelf,
+        self_column=payload.selfColumn,
+        filter_column=payload.filterColumn,
+        filter_value=payload.filterValue,
+    )
+    try:
+        return define_aggregate(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            spec,
+            description=payload.description,
+            actor=principal.actor,
+        )
+    except AggregationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/workbench")

@@ -118,6 +118,9 @@ RULES: tuple[Rule, ...] = (
     # Changing how an object resolves its instances alters what every rule for
     # that object evaluates against, so it is a modelling write.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/resolver", CAP_WRITE, "配置实例解析器"),
+    # An aggregate becomes part of what every rule for that object evaluates
+    # against, so declaring one is a modelling write.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/aggregates", CAP_WRITE, "定义跨对象聚合"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 
