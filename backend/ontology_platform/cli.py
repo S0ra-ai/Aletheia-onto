@@ -13,6 +13,7 @@ aletheia assess <obj> <id>   # produce a verdict, with its reasons
 aletheia demo            # all of the above against a built-in sample system
 aletheia serve           # run the HTTP API
 aletheia doctor          # report what is configured and what is missing
+aletheia verify          # run a conformance suite against an extension you registered
 ```
 
 ## Design decisions
@@ -360,6 +361,54 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Run a conformance suite against a registered extension.
+
+    The point of shipping this as a command rather than only as a library: an integrator
+    verifying a plugin should not have to write a test harness first, and requiring pytest
+    to validate a plugin is a barrier for exactly the person who most needs the check.
+    """
+    from .conformance import (
+        check_data_source_adapter,
+        check_embedding_model,
+        check_retrieval_backend,
+        describe_suites,
+    )
+
+    if args.list or not args.suite:
+        _print({"suites": describe_suites(), "note": f"用法: {PROGRAM} verify <suite> [--source-type X | --name Y]"})
+        return 0
+
+    suite = args.suite
+    if suite == "data_source_adapter":
+        if not args.source_type or not args.uri:
+            return _fail("data_source_adapter 契约需要 --source-type 与 --uri（契约是行为性的，必须连上真实数据源）")
+        from .adapters import get_adapter
+
+        report = check_data_source_adapter(
+            get_adapter(args.source_type), args.uri, subject=args.source_type, expected_table=args.table
+        )
+    elif suite == "retrieval_backend":
+        from .retrieval import get_retrieval_backend
+
+        name = args.name or ""
+        report = check_retrieval_backend(get_retrieval_backend(name), subject=name or "default")
+    elif suite == "embedding_model":
+        from .retrieval import get_embedding_model
+
+        name = args.name or ""
+        report = check_embedding_model(get_embedding_model(name), subject=name or "default")
+    else:
+        return _fail(
+            f"{suite} 契约需要一个活的被测对象，无法从命令行构造。"
+            f"请在代码中调用 ontology_platform.conformance.check_{suite}()，见 docs/extending.md。"
+        )
+
+    _print(report.as_dict())
+    # Non-zero on failure so this works as a CI gate without extra scripting.
+    return 0 if report.conformant else 1
+
+
 def _version() -> str:
     from . import __version__
 
@@ -433,6 +482,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="报告当前配置、已安装 extra 与已注册扩展点")
     doctor.set_defaults(func=cmd_doctor)
+
+    verify = sub.add_parser("verify", help="对已注册的扩展运行一致性契约（失败时退出码非 0，可作 CI 门禁）")
+    verify.add_argument("suite", nargs="?", default="", help="契约名称，留空或加 --list 查看全部")
+    verify.add_argument("--list", action="store_true", help="列出全部契约及其对应扩展点")
+    verify.add_argument("--source-type", default="", help="data_source_adapter 契约：被测数据源类型")
+    verify.add_argument("--uri", default="", help="data_source_adapter 契约：连接串（需含至少一表一行）")
+    verify.add_argument("--table", default="", help="data_source_adapter 契约：期望扫描到的表名")
+    verify.add_argument("--name", default="", help="检索后端／嵌入模型契约：已注册名称，留空用默认")
+    verify.set_defaults(func=cmd_verify)
 
     return parser
 

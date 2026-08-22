@@ -473,6 +473,70 @@ customer.credit_status != 'blacklist'
 `aletheia assess` 会在 `evaluationError` 里写明是哪个名字不存在，
 因此这类情形可以被发现，而不是变成一个说不清的判定。
 
+## 14. 验证你的实现：一致性契约
+
+**先跑契约，再上生产。** 契约随包发布，不需要 clone 本仓库、也不需要 pytest：
+
+```bash
+aletheia verify --list                                    # 全部契约与对应扩展点
+aletheia verify data_source_adapter --source-type mydb --uri "mydb://host/db" --table contracts
+aletheia verify retrieval_backend --name pgvector
+aletheia verify embedding_model --name my-model
+```
+
+失败时退出码为 1，因此可以直接当 CI 门禁用。
+
+需要活的被测对象的契约（实例解析器、写回执行器）在代码中调用：
+
+```python
+from ontology_platform.conformance import check_instance_resolver
+from ontology_platform.adapters import get_adapter
+
+with get_adapter("sqlite").runtime("/path/to/db.sqlite3") as runtime:
+    report = check_instance_resolver(MyResolver(spec), runtime, subject="my_resolver")
+
+print(report.summary())
+report.raise_for_failures()   # 抛 ConformanceError（继承 AssertionError），可直接用在测试里
+```
+
+### 契约检查的是什么
+
+**只检查内核真正依赖的属性。** 每一项都对应一个具体的错误后果，
+失败信息会把后果一起说出来——不该让实现者去猜某条规则为什么重要。
+
+| 契约 | 检查项数 | 最容易写错的一项 |
+|---|:--:|---|
+| `instance_resolver` | 9 | `list_ids()` 的 token 必须能被自己的 `fetch()` 接受 |
+| `data_source_adapter` | 9 | `fetch_primary_keys()` 给出的键必须能被 `fetch_one()` 取回 |
+| `retrieval_backend` | 6 | 不得返回候选集之外的条目 |
+| `embedding_model` | 4 | 同一输入必须返回同一向量 |
+| `writeback_executor` | 3 | 结果必须表明写回效果 |
+
+### 为什么往返闭合被单独强调
+
+适配器上真正会发生的 bug 不是崩溃，而是**不对称**：
+
+`list_ids()` 发出的 token 自己的 `fetch()` 不接受——这能通过实现者想得到的每一个单元测试，
+然后在批量研判时**静默地什么都不返回**，而单实例研判看起来完全正常。
+这类失败最难定位，因此契约把每一对往返都显式检查。
+
+### 必需项与建议项
+
+`required` 失败意味着**正常运行下会产出错误结果**；
+`advisory` 意味着能用但少了一项能力（例如非表数据源无法报告 `tables()`，
+于是漂移检测覆盖不到它）。
+两者刻意区分：混在一起会让报告无法用于「能不能上线」的判断。
+
+### 契约不是 API 稳定承诺
+
+注册表仍是实验性的（[ADR-0007](adr/0007-extension-registry-without-api-stability.md)）。
+稳定的是**被要求的行为**，不是要求它的函数签名。
+
+> 内核自身的全部实现（4 种解析器、SQLite／CSV 适配器、BM25／嵌入检索后端、
+> 数据库写回执行器）都在 CI 中跑同一套契约。
+> 只对作者自己的例子成立的契约会漂移成「要求平台自己都不做的事」，
+> 那样第一个跑它的集成方拿到的失败是我们造成的。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：

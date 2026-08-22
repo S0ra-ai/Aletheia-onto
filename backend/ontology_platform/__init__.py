@@ -28,6 +28,7 @@ verdict = assess_instance(platform_db, ontology["ontology"]["id"], "contract", "
 | 治理与发布 | `governance`, `release_readiness` |
 | 多租户 | `tenancy` |
 | 扩展注册 | `registry` — 见 docs/extending.md |
+| 扩展一致性契约 | `conformance` — 第三方自验实现是否符合内核依赖的属性 |
 | HTTP 层 | `api` — 需要 `[web]` extra |
 
 ## Stability
@@ -76,6 +77,12 @@ __all__ = [
     "register_database_target",
     "register_unit",
     "register_executor",
+    # Conformance: verify an implementation against what the kernel relies on
+    "check_data_source_adapter",
+    "check_instance_resolver",
+    "check_retrieval_backend",
+    "check_embedding_model",
+    "check_writeback_executor",
 ]
 
 
@@ -113,6 +120,11 @@ def __getattr__(name: str) -> object:
         "register_database_target": "db_executors",
         "register_unit": "derived_attributes",
         "register_executor": "automation",
+        "check_data_source_adapter": "conformance",
+        "check_instance_resolver": "conformance",
+        "check_retrieval_backend": "conformance",
+        "check_embedding_model": "conformance",
+        "check_writeback_executor": "conformance",
     }
     module_name = sources.get(name)
     if module_name is None:

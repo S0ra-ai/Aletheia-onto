@@ -612,7 +612,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**851 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
+**902 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable, and the wheel build runs only in CI.
 
 | File | Count | Covers |
@@ -632,11 +632,12 @@ no server is reachable, and the wheel build runs only in CI.
 | `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_conformance_suites.py` | 44 | executable contracts for five extension points, with a negative case per property |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | dialect profiles, generic DB-API adapter, proven against a real PostgreSQL onboarded by declaration alone |
 | `test_file_and_rest_sources.py` | 46 | CSV type/key inference, declared REST sources, end to end to a verdict |
 | `test_database_writeback.py` | 35 | declared statements, bound values, WHERE required, zero rows is a failure, real writes and rollback |
 | `test_temporal_validity.py` | 35 | half-open windows, backdated inserts, as-of verdicts use past values, absence is not interpolated |
-| `test_cli.py` | 22 | CLI loop, release gate not bypassable, errors without tracebacks |
+| `test_cli.py` | 29 | CLI loop, release gate not bypassable, errors without tracebacks |
 | `test_api_versioning.py` | 20 | `/v1` and bare paths authorize identically, public paths survive versioning, no endpoint silently lands on the admin default |
 | `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |
 | `test_module_boundaries.py` | 6 | no import cycles, no cross-module private imports, resolvable `__all__` |

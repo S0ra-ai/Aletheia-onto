@@ -321,3 +321,68 @@ def test_an_error_is_a_message_not_a_traceback(capsys, platform_db) -> None:
     assert code == 1
     assert "Traceback" not in captured.err
     assert "aletheia:" in captured.err
+
+
+# -- verify: the conformance gate --
+
+
+def test_verify_lists_every_suite_with_its_extension_point(capsys) -> None:
+    """An integrator needs to know which entry point group a suite corresponds to, or they
+    can verify an implementation they never registered."""
+    payload = _json(capsys, "verify", "--list")
+    suites = {item["suite"]: item for item in payload["suites"]}
+    assert len(suites) >= 5
+    for item in suites.values():
+        assert item["extensionPoint"].startswith("aletheia.")
+
+
+def test_verify_without_a_suite_shows_the_list_rather_than_failing(capsys) -> None:
+    payload = _json(capsys, "verify")
+    assert payload["suites"]
+
+
+def test_verify_passes_for_a_builtin_backend(capsys) -> None:
+    payload = _json(capsys, "verify", "retrieval_backend")
+    assert payload["conformant"] is True
+    assert payload["checked"] > 0
+
+
+def test_verify_checks_a_data_source_adapter_against_a_real_source(capsys, tmp_path) -> None:
+    """The contract is behavioural, so it needs a live source -- a signature check would miss
+    exactly the asymmetries that matter."""
+    directory = tmp_path / "extract"
+    directory.mkdir()
+    (directory / "things.csv").write_text("id,name\n1,alpha\n", encoding="utf-8")
+    payload = _json(
+        capsys, "verify", "data_source_adapter", "--source-type", "csv", "--uri", str(directory), "--table", "things"
+    )
+    assert payload["conformant"] is True
+
+
+def test_verify_refuses_a_data_source_suite_without_a_source(capsys) -> None:
+    code, _, error = _run(capsys, "verify", "data_source_adapter")
+    assert code == 1
+    assert "--source-type" in error
+
+
+def test_verify_points_at_the_library_for_suites_needing_a_live_subject(capsys) -> None:
+    """Resolvers and executors need a runtime or a request object, so the CLI says where to
+    go rather than pretending it can construct one."""
+    code, _, error = _run(capsys, "verify", "instance_resolver")
+    assert code == 1
+    assert "conformance" in error
+
+
+def test_verify_exits_non_zero_for_a_non_conformant_implementation(capsys) -> None:
+    """Most of the value is being usable as a CI gate, which needs the exit code."""
+    import random
+
+    from ontology_platform.retrieval import register_embedding_model
+
+    register_embedding_model("cli-random", lambda text: [random.random()], replace=True)
+    code, out, _ = _run(capsys, "verify", "embedding_model", "--name", "cli-random")
+    assert code == 1
+    payload = json.loads(out)
+    assert payload["conformant"] is False
+    # The failure names the consequence, not just the rule.
+    assert any(item["why"] for item in payload["failures"])

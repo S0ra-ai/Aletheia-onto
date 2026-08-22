@@ -20,6 +20,7 @@
 | [0013](0013-derived-attributes-and-units.md) | 派生属性与单位量纲 | Accepted |
 | [0014](0014-type-hierarchy-and-business-events.md) | 类型层级与业务事件 | Accepted |
 | [0015](0015-open-data-sources-and-temporal-validity.md) | 数据源与写回通道开放，以及时态生效期 | Accepted |
+| [0016](0016-shipped-conformance-suites.md) | 一致性契约随包发布 | Accepted |
 
 格式：Context（处境）／Decision（决定）／Alternatives considered（被否决的方案）／
 Consequences（后果，含负面）。

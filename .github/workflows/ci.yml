@@ -294,6 +294,36 @@ jobs:
           print('回溯判定标注了时刻:', payload['asOf'])
           "
 
+      - name: 一致性契约随包发布且可从命令行运行
+        # The contract has to be reachable by a third party. `tests/` is not in the wheel, so
+        # a contract living only there is exactly as unavailable as prose in an ADR.
+        run: |
+          /tmp/clean/bin/aletheia verify --list
+          mkdir -p /tmp/verify_src
+          printf 'id,name\n1,alpha\n' > /tmp/verify_src/things.csv
+          /tmp/clean/bin/aletheia verify data_source_adapter \
+            --source-type csv --uri /tmp/verify_src --table things
+          /tmp/clean/bin/aletheia verify retrieval_backend
+          /tmp/clean/bin/aletheia verify embedding_model
+
+      - name: 契约对不合规实现返回非零退出码
+        # Otherwise it cannot be used as a CI gate, which is most of its value.
+        run: |
+          cat > /tmp/broken_plugin.py <<'PY'
+          import sys
+          from ontology_platform.conformance import check_embedding_model
+          # Non-deterministic: two identical questions would cite different documents, so a
+          # verdict stops being reproducible.
+          import random
+          report = check_embedding_model(lambda text: [random.random()], subject="random")
+          print(report.summary())
+          sys.exit(0 if report.conformant else 1)
+          PY
+          if /tmp/clean/bin/python /tmp/broken_plugin.py; then
+            echo "不合规实现却通过了契约"; exit 1
+          fi
+          echo "契约正确拒绝了不合规实现"
+
       - name: doctor 说明未激活的数据源需要哪个驱动
         # "Why is Oracle not in the list" must be answerable without reading the source.
         run: |

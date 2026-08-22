@@ -483,6 +483,7 @@ _不是_：算法、模型、策略引擎脚本。
 | OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
 | 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
 | **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
+| **可执行一致性契约随包发布**（5 个扩展点，第三方可自验） | ✅ | `conformance.py` |
 | **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
 | **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
 | Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
@@ -815,7 +816,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**851 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+**902 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
 自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -835,11 +836,12 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_conformance_suites.py` | 44 | 5 个扩展点的可执行契约，含每条属性的反例（证明契约能抓错） |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
 | `test_file_and_rest_sources.py` | 46 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
 | `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
 | `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
-| `test_cli.py` | 22 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
+| `test_cli.py` | 29 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
