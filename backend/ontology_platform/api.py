@@ -64,6 +64,13 @@ from .governance import (
 )
 from .graph_view import build_ontology_graph
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
+from .instance_resolver import (
+    ResolverError,
+    ResolverSpec,
+    configure_object_resolver,
+    get_object_resolver,
+    supported_resolver_kinds,
+)
 from .kernel_package import build_kernel_package, export_kernel_package
 from .knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
 from .knowledge_documents import (
@@ -1529,6 +1536,59 @@ def tenant_stats(tenant: str) -> dict[str, object]:
         return tenant_statistics(tenant_context(_tenant_base_context(), tenant))
     except TenantError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class ResolverConfigure(BaseModel):
+    kind: str
+    table: str = ""
+    primaryKey: str = "id"
+    joins: list[dict[str, str]] = Field(default_factory=list)
+    discriminatorColumn: str = ""
+    discriminatorValue: str = ""
+    query: str = ""
+    idColumn: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/resolver")
+def object_resolver(ontology_id: int, object_code: str) -> dict[str, object]:
+    """The instance resolver in effect for a business object."""
+    try:
+        return get_object_resolver(DEFAULT_PLATFORM_DB, ontology_id, object_code)
+    except ResolverError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/resolver")
+def set_object_resolver(
+    ontology_id: int,
+    object_code: str,
+    payload: ResolverConfigure,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Attach a resolver so an object is no longer limited to one table.
+
+    The spec is validated before storage, so an invalid configuration fails here
+    rather than later as a failed assessment.
+    """
+    spec = ResolverSpec(
+        kind=payload.kind,
+        table=payload.table,
+        primary_key=payload.primaryKey,
+        joins=payload.joins,
+        discriminator_column=payload.discriminatorColumn,
+        discriminator_value=payload.discriminatorValue,
+        query=payload.query,
+        id_column=payload.idColumn,
+    )
+    try:
+        return configure_object_resolver(DEFAULT_PLATFORM_DB, ontology_id, object_code, spec, actor=principal.actor)
+    except ResolverError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/resolvers")
+def resolvers() -> dict[str, object]:
+    return {"kinds": list(supported_resolver_kinds())}
 
 
 @app.get("/workbench")

@@ -334,7 +334,10 @@ flowchart TB
 | 本体导入（SHACL／reasoner／命名空间管理） | 📋 | 只能导出 |
 | 值域映射 `value_to_state`（走审核流程） | ✅ | `value_mapping.py` |
 | 复合主键（实例键抽象） | ✅ | `instance_key.py` |
+| **实例解析器**：主从表／判别列分区／自定义 SQL | ✅ | `instance_resolver.py` |
+| 解析器可注册（第三方策略） | ✅ | `instance_resolver.py` |
 | 类型层级、关系基数、跨对象聚合 | 📋 | 见[结构性表达力约束](#结构性表达力约束) |
+| 跨源实例解析（一个对象跨两个数据源） | 📋 | 需先做跨源实体消解 |
 
 ### 治理与留痕
 
@@ -417,7 +420,6 @@ flowchart TB
 
 | 约束 | 位置 |
 |---|---|
-| `business_object.source_table_id` 是单外键，**一个对象只能绑一张表** | `database.py:363`（表定义） |
 | `relation_type` 恒为硬编码 `"references"`，只能由外键派生，**无基数、无多对多** | `ontology.py:606` |
 | **无类型层级**（无 parent_object／subclass／inherit） | — |
 | 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
@@ -563,7 +565,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**411 个测试**，全绿。分布：
+**468 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -577,6 +579,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
+| `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
