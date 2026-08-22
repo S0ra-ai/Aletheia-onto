@@ -112,6 +112,9 @@ RULES: tuple[Rule, ...] = (
     _rule(("POST",), r"/conversations/[^/]+/escalate", CAP_REVIEW, "转人工"),
     _rule(("PATCH",), r"/conversations/[^/]+/status", CAP_REVIEW, "变更会话状态"),
     _rule(("POST",), r"/feedback/[0-9]+/resolve", CAP_REVIEW, "处理反馈"),
+    # Provisioning a tenant creates schemas and tables, which is strictly an
+    # administrative act.
+    _rule(("POST",), r"/tenants", CAP_ADMIN, "开通租户"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

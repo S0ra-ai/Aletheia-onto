@@ -181,6 +181,26 @@ register_embedding_model("bge-m3", lambda text: my_model.encode(text).tolist())
 
 查询已注册项：`supported_retrieval_backends()`、`supported_embedding_models()`
 
+## 6. 多租户上下文
+
+扩展若要访问平台数据，应通过上下文而非硬编码路径，否则在多租户部署下会读到
+错误的租户数据。
+
+```python
+from ontology_platform.context import use_context
+from ontology_platform.tenancy import tenant_context, require_tenant, scope_query
+
+ctx = tenant_context(base_context, "acme")
+with use_context(ctx):
+    tenant = require_tenant()          # 无法确定租户时抛错，而非猜测
+    query, params = scope_query("select * from data_source", ())
+    with ctx.connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+```
+
+**要点：** `require_tenant()` 是 fail-closed 的。若你的扩展在无上下文时也要能跑，
+请显式处理 `TenantError`，不要退化为「读所有租户」。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：

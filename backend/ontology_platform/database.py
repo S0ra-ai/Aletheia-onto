@@ -86,14 +86,20 @@ def _default_uri(db_type: str) -> str:
     return str(DEFAULT_PLATFORM_DB)
 
 
-def _create_adapter(db_type: str, connection_uri: str) -> PlatformAdapter:
+def _create_adapter(db_type: str, connection_uri: str, schema: str = "") -> PlatformAdapter:
+    """Build a platform adapter.
+
+    `schema` carries per-tenant routing (ADR-0006). SQLite ignores it: it has no
+    schema concept, so a tenant is a separate file and the routing already lives in
+    the connection URI.
+    """
     normalized = db_type.lower()
     if normalized == "sqlite":
         return SQLitePlatformAdapter(connection_uri)
     if normalized in ("postgresql", "postgres"):
-        return PostgreSQLPlatformAdapter(connection_uri)
+        return PostgreSQLPlatformAdapter(connection_uri, schema=schema)
     if normalized == "mysql":
-        return MySQLPlatformAdapter(connection_uri)
+        return MySQLPlatformAdapter(connection_uri, schema=schema)
     raise ValueError(f"不支持的平台数据库类型: {db_type}")
 
 
@@ -280,15 +286,27 @@ class SQLitePlatformAdapter:
 class PostgreSQLPlatformAdapter:
     db_type = "postgresql"
 
-    def __init__(self, connection_uri: str = ""):
+    def __init__(self, connection_uri: str = "", schema: str = ""):
         self.connection_uri = connection_uri or "postgresql://localhost:5432/ontology_platform"
+        # Set on every connection rather than baked into the URI, so one adapter
+        # cannot be pointed at another tenant's schema after the fact.
+        self.schema = schema
 
     def connect(self) -> Any:
         psycopg = importlib.import_module("psycopg")
         rows = importlib.import_module("psycopg.rows")
         # The whole platform accesses columns by name (row["id"]); psycopg
         # returns tuples unless a dict row factory is configured.
-        return psycopg.connect(self.connection_uri, connect_timeout=5, row_factory=rows.dict_row)
+        conn = psycopg.connect(self.connection_uri, connect_timeout=5, row_factory=rows.dict_row)
+        if self.schema:
+            # First isolation layer (ADR-0006): the tenant's rows are the only ones
+            # visible on this connection, so a query that forgets its tenant filter
+            # still cannot read across tenants. The identifier is validated by
+            # tenancy.schema_for() because search_path cannot take a bind parameter.
+            with conn.cursor() as cur:
+                cur.execute(f'set search_path to "{self.schema}", public')
+            conn.commit()
+        return conn
 
     def init_schema(self, conn: Any) -> None:
         # Postgres aborts the whole transaction on the first error, so each
@@ -316,8 +334,9 @@ class PostgreSQLPlatformAdapter:
 class MySQLPlatformAdapter:
     db_type = "mysql"
 
-    def __init__(self, connection_uri: str = ""):
+    def __init__(self, connection_uri: str = "", schema: str = ""):
         self.connection_uri = connection_uri or "mysql://root:password@localhost:3306/ontology_platform"
+        self.schema = schema
 
     def connect(self) -> Any:
         pymysql = importlib.import_module("pymysql")
@@ -325,6 +344,11 @@ class MySQLPlatformAdapter:
         options["connect_timeout"] = 5
         options["cursorclass"] = pymysql.cursors.DictCursor
         options["charset"] = "utf8mb4"
+        # MySQL's isolation unit is the database, so route by connecting to the
+        # tenant's database directly rather than issuing `use` afterwards -- that
+        # leaves no window where the connection points at the wrong place.
+        if self.schema:
+            options["database"] = self.schema
         return pymysql.connect(**options)
 
     def init_schema(self, conn: Any) -> None:
