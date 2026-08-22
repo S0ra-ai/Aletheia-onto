@@ -1215,7 +1215,15 @@ def assess_object_decision_consistency(object_code: str, payload: DecisionConsis
 
 
 @app.post("/semantic/natural-language/query")
-def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object]:
+def ask_semantic_kernel(
+    payload: NaturalLanguageQueryCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Answer a question, filtering citations by what the caller may read.
+
+    The role comes from the authenticated identity, never from the request body: a caller
+    who could name their own role would grant themselves any document.
+    """
     try:
         return query_natural_language(
             DEFAULT_PLATFORM_DB,
@@ -1226,6 +1234,7 @@ def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object
             payload.instanceId,
             payload.history,
             payload.useModel,
+            role_code=principal.role_code,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1288,6 +1297,10 @@ def chat_with_agent(
             payload.history or None,
             payload.sessionId,
             actor=principal.actor,
+            # Citations are filtered by what this caller may read. Taken from the
+            # authenticated identity, never from the payload's `roleId` -- that names an
+            # agent persona, which is not an authorisation.
+            role_code=principal.role_code,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

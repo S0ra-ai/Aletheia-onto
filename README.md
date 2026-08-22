@@ -553,6 +553,7 @@ _不是_：算法、模型、策略引擎脚本。
 | 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
 | 权限行级过滤 `filter_expression` | ✅ | `check_permission` 传入实例时真实求值 |
+| **检索期权限过滤**（引用不得越过调用者可读的对象） | ✅ | `retrieval.py`：锚定后、排序前，判定失败按拒绝 |
 | 权限策略本体维度 | ✅ | 按 `(role, ontology, object)` 索引，0 表示通配 |
 | 多租户隔离（独立 schema + `tenant_id` 双保险） | ✅ | `tenancy.py` |
 | 租户开通与枚举 | ✅ | `tenancy.py` |
@@ -818,7 +819,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**977 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+**989 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
 自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -838,6 +839,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤：越权引用被丢弃、判定失败按拒绝、过滤在排序之前 |
 | `test_answer_regression.py` | 28 | 问答回归：结论必带依据、意图路由确定、问答与判定一致、无模型可用 |
 | `test_deployment_preflight.py` | 41 | 部署前自检：免鉴权暴露、CORS 通配、SQLite 多进程、镜像与编排产物 |
 | `test_conformance_suites.py` | 44 | 5 个扩展点的可执行契约，含每条属性的反例（证明契约能抓错） |

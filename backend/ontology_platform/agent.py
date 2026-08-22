@@ -69,6 +69,7 @@ def agent_chat(
     session_id: str | None = None,
     actor: str = "",
     persist: bool = True,
+    role_code: str = "",
 ) -> dict[str, Any]:
     """Answer one turn, persisting the exchange by default.
 
@@ -105,7 +106,9 @@ def agent_chat(
     history = history or []
 
     if not model_client.configured:
-        result = _fallback_agent_chat(platform_db, message, role, data_source_id, object_code, history)
+        result = _fallback_agent_chat(
+            platform_db, message, role, data_source_id, object_code, history, role_code=role_code
+        )
     else:
         result = _llm_agent_chat(
             platform_db, model_client, message, role, data_source_id, object_code, history, session_id
@@ -281,6 +284,8 @@ def _fallback_agent_chat(
     data_source_id: int | None,
     object_code: str | None,
     history: list[dict[str, str]],
+    *,
+    role_code: str = "",
 ) -> dict[str, Any]:
     intent = detect_intent(message)
     try:
@@ -291,6 +296,9 @@ def _fallback_agent_chat(
             object_code=object_code,
             history=history,
             use_model=False,
+            # The permission role, not the agent role: citations must be filtered by what
+            # the *caller* may read, and an agent persona is not an authorisation.
+            role_code=role_code,
         )
         answer = result.get("answer", "")
         # Frame the answer in the role's own domain rather than matching against

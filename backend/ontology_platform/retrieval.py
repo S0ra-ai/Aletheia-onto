@@ -22,12 +22,15 @@ Stability: experimental (ADR-0007).
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
 from .registry import Registry, load_entry_point_plugins
+
+logger = logging.getLogger(__name__)
 
 _CJK = r"\u4e00-\u9fff"
 _WORD_RE = re.compile(rf"[a-zA-Z0-9_]+|[{_CJK}]+")
@@ -277,6 +280,64 @@ def retrieve(
 ) -> list[RetrievalHit]:
     """Rank anchor-filtered candidates using the selected backend."""
     return get_retrieval_backend(backend)(query, entries, limit)
+
+
+def filter_entries_for_role(
+    platform_db: Any,
+    entries: Sequence[dict[str, Any]],
+    *,
+    role_code: str,
+    ontology_id: int,
+) -> list[dict[str, Any]]:
+    """Drop entries whose anchor object the role may not read.
+
+    Anchoring makes a citation *attributable*; it does not make it *permitted*. An entry
+    anchored to an object the caller cannot read is still an object they cannot read, and
+    surfacing its text in an answer discloses exactly what the object permission was
+    protecting. Retrieval-time filtering is the last place to stop that -- once the text is
+    in the answer, it has been disclosed.
+
+    Applied here rather than in `load_confirmed_entries` because storage should not need to
+    know the permission model; that coupling is what makes a policy change require a
+    schema change.
+
+    Fails closed: an entry whose permission cannot be evaluated is dropped. Losing a
+    citation degrades an answer, whereas including one leaks a document -- the two failures
+    are not symmetric (ADR-0002).
+    """
+    if not role_code:
+        # No identity means no basis for disclosure. Callers that legitimately have no role
+        # -- an internal maintenance task -- pass the entries straight to `retrieve`.
+        logger.warning("检索期未提供角色，按 fail-closed 丢弃全部候选条目")
+        return []
+
+    from .workflow_permission import check_permission
+
+    permitted: list[dict[str, Any]] = []
+    # One decision per distinct anchor rather than per entry: a document can contribute
+    # dozens of chunks, and re-deciding for each would multiply the policy reads.
+    verdicts: dict[str, bool] = {}
+    for entry in entries:
+        anchor = str(entry.get("objectCode") or "")
+        if not anchor:
+            # An entry with no object anchor is ontology-level text. It is reachable by
+            # anyone who can read the ontology, which they demonstrably can -- they got a
+            # verdict for it.
+            permitted.append(entry)
+            continue
+        if anchor not in verdicts:
+            try:
+                decision = check_permission(platform_db, role_code, anchor, "read", ontology_id=ontology_id)
+                verdicts[anchor] = bool(decision.get("allowed"))
+            except Exception as error:
+                logger.warning("检索期权限判定失败，按拒绝处理 (%s): %s", anchor, error)
+                verdicts[anchor] = False
+        if verdicts[anchor]:
+            permitted.append(entry)
+    dropped = len(entries) - len(permitted)
+    if dropped:
+        logger.info("检索期权限过滤丢弃了 %s 条候选条目", dropped)
+    return permitted
 
 
 # Built-in implementations, registered at import so the defaults always exist.

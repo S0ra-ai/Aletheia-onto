@@ -15,7 +15,7 @@ from .knowledge_base import build_reasoning_chain
 from .knowledge_documents import load_confirmed_entries
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
-from .retrieval import retrieve
+from .retrieval import filter_entries_for_role, retrieve
 from .semantic_kernel import assess_decision_consistency, assess_instance
 from .vocabulary import DomainVocabulary, load_vocabulary
 
@@ -67,6 +67,7 @@ def query_natural_language(
     instance_id: str | None = None,
     history: list[dict[str, str]] | None = None,
     use_model: bool = True,
+    role_code: str = "",
 ) -> dict[str, Any]:
     normalized_question = " ".join(question.strip().split())
     if not normalized_question:
@@ -163,6 +164,7 @@ def query_natural_language(
                 rule_codes=[
                     rule.get("ruleCode", "") for rule in evidence.get("ruleResults", []) if not rule.get("passed")
                 ],
+                role_code=role_code,
             )
             answer = _answer_assessment(evidence, vocabulary, citations)
             if citations:
@@ -731,12 +733,18 @@ def _retrieve_citations(
     object_code: str = "",
     rule_codes: Iterable[str] = (),
     limit: int = 3,
+    role_code: str = "",
 ) -> list[dict[str, Any]]:
     """Find confirmed knowledge entries backing the rules under discussion.
 
     Anchoring comes first: candidates are narrowed to entries declared for this
     object or these rules, and only then ranked. That ordering is what makes a
     citation attributable rather than merely similar (ADR-0009).
+
+    Permission filtering comes between the two. Anchoring makes a citation
+    *attributable*; it does not make it *permitted*. An entry anchored to an object the
+    caller cannot read is still an object they cannot read, and putting its text in an
+    answer discloses exactly what the object permission was protecting.
 
     Failures are swallowed deliberately -- the knowledge tables are optional, and
     a deployment without them must still get its verdict. A missing citation
@@ -753,6 +761,12 @@ def _retrieve_citations(
             )
         if not entries:
             return []
+        # Between anchoring and ranking: dropping a permitted-set violation *after*
+        # ranking would already have used forbidden text to decide what to show.
+        if role_code:
+            entries = filter_entries_for_role(platform_db, entries, role_code=role_code, ontology_id=ontology_id)
+            if not entries:
+                return []
         # Prefer entries anchored to a failed rule; fall back to object-level
         # entries only when no rule-specific text exists.
         rule_anchored = [entry for entry in entries if entry.get("ruleCode") in codes]
