@@ -134,21 +134,31 @@ CI 会构建 wheel、在干净环境裸装、校验内核零第三方依赖并�
 | 5 | ~~跨对象规则与聚合~~ | — | ✅ **已完成**：声明式具名聚合，fail-closed 且带行数上限（`aggregation.py`，ADR-0012） |
 | 6 | ~~类型层级（继承／子类型）~~ | — | ✅ **已完成**：沿声明链确定性展开，覆盖需显式声明（`type_hierarchy.py`，ADR-0014） |
 | 7 | ~~派生属性（计算字段）~~ | — | ✅ **已完成**：复用规则沙箱，多趟求值（`derived_attributes.py`，ADR-0013） |
-| 8 | 时态与生效期 | 高 | 可能需独立设计 |
+| 8 | ~~时态与生效期~~ | — | ✅ **已完成**：属性级版本 + as-of 判定，区分有效时间与事务时间（`temporal.py`，ADR-0015） |
 | 9 | ~~Event／State 一等公民~~ | — | ✅ **已完成**：只追加事件流 + 状态流转镜像为统一时间线（`events.py`，ADR-0014） |
 | 10 | ~~单位与量纲~~ | — | ✅ **已完成**：同量纲换算、跨量纲拒绝（`derived_attributes.py`，ADR-0013） |
 | 11 | 规则函数可注册 | 低 | 解除 `ALLOWED_RULE_FUNCTIONS` 冻结 |
 
 > #11 与数据源／写回执行器／路由策略的可注册性已完成，见
 > [扩展指南](docs/extending.md) 与 [ADR-0007](docs/adr/0007-extension-registry-without-api-stability.md)。
-| 12 | 数据源扩展 | — | Oracle／SQL Server／达梦／人大金仓／REST／文件／MQ。B 端刚需 |
-| 13 | 写回执行器扩展 | 中 | MQ／RPC／直写库／存储过程 |
 
-> **元模型已闭合。** `docs/02-核心元模型设计.md` 画出的对象、属性、关系、
-> Event、State、Rule、Mapping 现已全部有实现。
+| # | 项 | 成本 | 说明 |
+|--:|---|:--:|---|
+| 12 | ~~数据源扩展~~ | — | ✅ **已完成**：方言 profile + 通用 DB-API 适配器（Oracle／SQL Server／达梦／人大金仓／openGauss 已内置声明）、CSV 目录、REST／OpenAPI（`sql_dialects.py`、`generic_sql_adapter.py`、`file_adapter.py`、`rest_adapter.py`，ADR-0015） |
+| 13 | ~~写回执行器扩展~~ | — | ✅ **已完成**：直写库与存储过程，语句声明、值绑定、无 WHERE 拒绝（`db_executors.py`，ADR-0015） |
+
+> **通用性清单已全部完成，元模型闭合。**
+> `docs/02-核心元模型设计.md` 画出的对象、属性、关系、Event、State、Rule、Mapping
+> 加上时态，现已全部有实现。
 >
-> 🚧 **剩余 #8、#12 与「跨源」阻塞于跨源实体消解与连接管理**：
-> 时态存储与新数据源都要先确定跨源实例如何对齐。
+> 🚧 **剩余空白：跨源实体消解。** 一个对象仍不能跨两个数据源，聚合也不能跨源。
+> 这不是连接管理问题——它需要先回答「两个源里的哪两行是同一个业务实例」，
+> 而那个判断本身需要可核验，否则跨源判定无法解释。
+>
+> ⚠️ **内置的 Oracle／SQL Server／达梦／人大金仓声明未在 CI 中实测**：
+> 驱动与客户端库无法在 CI 环境安装。通用路径以真实 PostgreSQL 作为
+> 「一个平台没有专用适配器的库」实证（`tests/test_sql_dialects_and_generic_adapter.py`），
+> 但具体方言细节需要首个真实部署确认。
 
 ### 逃生舱
 

@@ -253,6 +253,35 @@ jobs:
           /tmp/clean/bin/pip install "$(echo dist/*.whl)[web]"
           /tmp/clean/bin/python -c "from ontology_platform.api import app; print('HTTP 层可导入')"
 
+      - name: 裸装即可用 CSV 数据源
+        # CSV needs no driver, so it must be available without any extra. It is also the
+        # source a first evaluation uses -- getting production database credentials takes
+        # weeks, an extract takes an afternoon.
+        run: |
+          mkdir -p /tmp/extract
+          printf 'id,name,credit_status\n1,甲公司,normal\n' > /tmp/extract/customers.csv
+          printf 'id,customer_id,amount,status\n1,1,500,effective\n' > /tmp/extract/contracts.csv
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 init > /dev/null
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 \
+            connect /tmp/extract --type csv --name 导出文件 --domain 合同管理
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 model 1
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 assess 1 contract 1
+
+      - name: doctor 说明未激活的数据源需要哪个驱动
+        # "Why is Oracle not in the list" must be answerable without reading the source.
+        run: |
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 doctor > /tmp/doctor.json
+          python -c "
+          import json
+          report = json.load(open('/tmp/doctor.json'))
+          declared = {item['sourceType']: item for item in report['declaredSqlSources']}
+          assert {'oracle', 'sqlserver', 'dameng', 'kingbase'} <= set(declared), declared
+          for item in declared.values():
+              assert item['available'] or item['hint'], item
+          assert 'csv' in report['sourceTypes'], report['sourceTypes']
+          print('doctor 报告完整，已声明数据源:', sorted(declared))
+          "
+
   frontend:
     name: 前端类型检查与构建
     runs-on: ubuntu-latest

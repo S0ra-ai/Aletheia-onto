@@ -323,11 +323,137 @@ PostgreSQL 上一条失败语句会中止整个事务，
 `verify_declared_names()` 防的是另一种错：改了 DDL 却忘改 `table_names`，
 会让探测对存在的表报「未配置」，**于是功能静默返回空结果而不是报错**。
 
+## 10. 接一个新的 SQL 数据库
+
+**不需要写适配器。** `information_schema` 是标准，扫描器完全共用；
+差异只有 6 个，声明为 `SqlDialect`：
+
+```python
+from ontology_platform.generic_sql_adapter import DriverSpec, register_sql_source
+from ontology_platform.sql_dialects import SqlDialect, get_dialect, register_dialect
+
+register_dialect(SqlDialect(
+    name="gaussdb",
+    current_schema_expression="current_schema()",  # 或 database()／sys_context(...)
+    quote_open='"', quote_close='"',
+    paramstyle="format",                            # format(%s)／qmark(?)／numeric(:1)
+    row_limit_style="limit_offset",                 # 或 fetch_first（Oracle／SQL Server／达梦）
+    catalog_uppercases_identifiers=False,           # Oracle／达梦 为 True
+    foreign_keys_via_referenced_columns=False,      # MySQL 为 True
+))
+
+register_sql_source(DriverSpec(
+    source_type="gaussdb",
+    dialect=get_dialect("gaussdb"),
+    module="psycopg2",
+    install_hint="GaussDB 接入需要安装 psycopg2。",
+    passes_uri_positionally=True,   # 驱动把整个连接串作为第一个位置参数
+))
+```
+
+这就是全部。它随即获得元数据扫描、列剖析、外键发现、实例解析、
+全部规则能力与运行时读取。
+
+### 三个容易踩的点
+
+**`catalog_uppercases_identifiers` 写错的后果是静默的。**
+Oracle 与达梦在目录里把未加引号的标识符折成大写，
+查 `contracts` 匹配不到任何行——于是表看起来**没有列**，而不是报错。
+
+**分页语法。** 硬编码 `limit n` 在 Oracle／SQL Server／达梦上会失败，
+而列剖析会吞掉查询异常，于是每一列都会「剖析为空」而不是抛错。
+
+**连接串的参数名各驱动不同**：psycopg 叫 `conninfo`、oracledb 叫 `dsn`、
+sqlite3 是位置参数。猜错会得到 `invalid connection option "dsn"`，
+看起来像配置错误而不是声明错误。因此有 `passes_uri_positionally`。
+
+### 内置声明
+
+Oracle／SQL Server／达梦／人大金仓／openGauss 已在
+`generic_sql_adapter.BUNDLED_SPECS` 中声明，驱动装上后
+`register_bundled_sql_sources()` 即会激活。
+`aletheia doctor` 会列出每个的驱动与安装提示。
+
+> ⚠️ 这些声明**未在 CI 中实测**：驱动与客户端库无法在 CI 环境安装。
+> 通用路径本身以真实 PostgreSQL 做了「声明式接入一个无专用适配器的库」的实证。
+
+## 11. 数据库写回执行器
+
+这是最危险的扩展点，因此约束最严。
+
+```python
+from ontology_platform.db_executors import DatabaseTarget, SqlWriteback, register_database_target
+
+register_database_target(DatabaseTarget(
+    scheme="orders",
+    connection_uri="postgresql://user:pass@host/orders",
+    dialect_name="postgresql",
+    driver_module="psycopg2",
+    writebacks={
+        "approve": SqlWriteback(
+            name="approve", kind="update", table="contracts",
+            columns=("status",), key_columns=("id",),
+            dialect_name="postgresql",
+        ),
+    },
+))
+```
+
+此后 `orders://` 成为可用的写回协议，操作路径末段选择写回名。
+
+### 平台会拒绝什么
+
+| 拒绝 | 理由 |
+|---|---|
+| 无 `keyColumns` 的 update／delete | 缺 WHERE 会改写整张表，而事后从判定记录看不出这一点 |
+| 含分号或多语句 | 绕过单语句审计 |
+| DDL 与权限语句（drop／alter／grant…） | 自动化用于推进业务状态，不用于变更结构 |
+| 未显式 `allowDelete=True` 的删除 | 销毁数据需要单独的授权决定 |
+| 缺失的参数值 | 静默变成 NULL 是「更新时把不该动的列清空」的成因 |
+| 请求提供的连接串 | 那会让调用方把自动化指向任何可达的数据库 |
+
+**语句由声明提供标识符，由请求提供值，且值一律绑定。**
+从操作载荷拼 SQL 会造出一个从 HTTP 请求体可达的注入面。
+
+**影响 0 行默认按失败处理**：UPDATE 匹配到 0 行意味着目标实例不在或条件写错。
+确实幂等的写回显式声明 `requireAffectedRows=False`。
+
+## 12. 声明一个 REST 数据源
+
+REST 响应没有可发现的模式，因此字段必须声明——
+从一次响应采样出的模式会随响应变化，引用它的判定不可复现。
+
+```python
+from ontology_platform.rest_adapter import RestResource, RestSpec, register_rest_source
+
+register_rest_source(RestSpec(
+    source_type="crm",
+    resources=(
+        RestResource(
+            name="customers",
+            list_path="/api/customers",
+            detail_path="/api/customers/{id}",
+            primary_key="id",
+            fields=("id", "name", "credit_status"),
+            field_types={"id": "integer"},
+            items_path="data.items",   # 响应被包裹时指明行列表位置
+        ),
+    ),
+))
+```
+
+已有 OpenAPI 文档时用 `register_openapi_source(source_type, document)`——
+那仍然是声明，只是由 API 的所有者写的。
+
+**未声明的字段不会下发**：声明就是契约，
+把响应里的一切透传会让规则可用的名字取决于当下的载荷。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
 
-- 跨源实例解析（一个对象跨两个数据源）—— 需先做跨源实体消解
+- 跨源实例解析（一个对象跨两个数据源）—— 需先回答「两个源里哪两行是同一个业务实例」，
+  且该判断本身必须可核验，否则跨源判定无法解释
 - 认证后端（SSO／LDAP）
 - 事件钩子
 - 渠道接入

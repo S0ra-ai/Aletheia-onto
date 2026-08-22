@@ -46,6 +46,7 @@ from .rule_sandbox import (
     register_rule_function,
     validate_rule_expression,
 )
+from .temporal import normalize_instant, values_as_of
 from .type_hierarchy import expand, inherited_rule_scopes
 from .value_mapping import load_value_mappings_in_connection
 
@@ -98,6 +99,11 @@ class SemanticRuntime:
     # Derived attributes, kept so a verdict can state the expression behind a
     # computed value rather than only the number.
     derived: dict[str, Any] = field(default_factory=dict)
+    # The instant this runtime was built for, and which attributes came from history.
+    # Empty for a present-tense assessment. Recorded because a verdict about a past moment
+    # must say which moment, or it cannot be told apart from one about now.
+    as_of: str = ""
+    temporal_values: dict[str, Any] = field(default_factory=dict)
 
 
 # Rule functions callable from a business rule expression.
@@ -113,10 +119,26 @@ class SemanticRuntime:
 # Attribute access is needed to reach related rows (payment_plan.amount), but
 # dunder attributes are the entry point for sandbox escapes via __class__,
 # __globals__ and friends.
-def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
+def assess_instance(
+    platform_db: Path | str,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    *,
+    as_of: Any = None,
+) -> dict[str, Any]:
+    """Assess one instance, optionally as of a past moment.
+
+    `as_of` answers the question a compliance audit actually asks: was the January
+    approval correct *given what was known in January*. Re-assessing against today's
+    values answers a different question and returns a confidently wrong answer.
+    """
     with connect(platform_db) as platform:
-        runtime = build_runtime(platform, ontology_id, object_code, instance_id)
-        today = date.today().isoformat()
+        runtime = build_runtime(platform, ontology_id, object_code, instance_id, as_of=as_of)
+        # Rule validity windows are evaluated against the assessed moment, not against
+        # today: a rule that was not yet in force in January must not judge a January
+        # approval, and one since retired must still explain a verdict it produced.
+        today = runtime.as_of[:10] if runtime.as_of else date.today().isoformat()
         # Rules apply to the object *and to every declared ancestor* (generality #6).
         # Without this, a rule that governs all customers has to be copied onto each
         # subtype -- and the copies drift, so the same business question gets two
@@ -247,11 +269,16 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
             ontology_id=ontology_id,
             object_code=object_code,
             instance_id=instance_id,
-            input_ref={"objectCode": object_code, "instanceId": instance_id},
+            # `asOf` belongs in the input reference, not only the evidence: it is part of
+            # *what was asked*, and a stored verdict that did not record it could later be
+            # mistaken for a judgement about the present.
+            input_ref={"objectCode": object_code, "instanceId": instance_id, "asOf": runtime.as_of},
             rule_results=results,
             evidence={
                 "failedRules": [item["ruleCode"] for item in failed],
                 "ontologyVersion": runtime.ontology_version,
+                "asOf": runtime.as_of,
+                "temporalAttributes": sorted(runtime.temporal_values),
             },
             actor="semantic_kernel",
         )
@@ -282,6 +309,10 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "ontologyVersion": runtime.ontology_version,
                 "objectCode": object_code,
                 "instanceId": instance_id,
+                # Empty for a present-tense assessment. A verdict about a past moment must
+                # say which moment, or it is indistinguishable from one about now.
+                "asOf": runtime.as_of,
+                "temporalAttributes": sorted(runtime.temporal_values),
             },
             "explanation": instance_explanation,
             "relatedContext": _serializable_related(runtime.related),
@@ -469,7 +500,12 @@ def resolver_for(business_object: Any, source_table: Any) -> Any:
 
 
 def build_runtime(
-    platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str
+    platform: sqlite3.Connection,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    *,
+    as_of: Any = None,
 ) -> SemanticRuntime:
     ontology = platform.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
     if ontology is None:
@@ -499,6 +535,19 @@ def build_runtime(
         record = resolver.fetch(runtime, instance_id)
         if record is None:
             raise ValueError(f"实例不存在: {object_code}/{instance_id}")
+        # Temporal assessment (generality #8). Recorded history overrides the live row for
+        # the attributes it covers, *before* anything derived from them is computed -- so
+        # aggregates, units and derived attributes all see the as-of values rather than a
+        # mix of past and present, which would be a verdict about no particular moment.
+        #
+        # Attributes with no version covering that instant are left at the live value
+        # rather than removed: the platform records only what it observed, and dropping
+        # them would turn "we have no history for this field" into "this field was empty",
+        # which is a different and false claim.
+        temporal_values: dict[str, Any] = {}
+        if as_of is not None:
+            temporal_values = values_as_of(platform, ontology_id, object_code, instance_id, as_of)
+            record = {**record, **temporal_values}
         # Wrap resolver-provided child rows the way foreign-key discovery does.
         # Without this a rule reading `order_line.amount` receives a plain list and
         # fails with "'list' object has no attribute 'amount'"; fail-closed then
@@ -567,6 +616,8 @@ def build_runtime(
         related=related,
         aggregates={name: result.as_dict() for name, result in aggregate_results.items()},
         derived={code: result.as_dict() for code, result in derived_results.items()},
+        as_of=normalize_instant(as_of, what="as-of 时间点") if as_of is not None else "",
+        temporal_values=temporal_values,
     )
 
 

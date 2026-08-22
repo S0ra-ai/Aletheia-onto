@@ -446,10 +446,17 @@ hatches**, not from reasoning power (ADR-0005).
 | **Unified timeline** (workflow transitions mirrored in) | ✅ | `events.py` |
 | **Installable package with a CLI** (`aletheia init/connect/model/assess/...`) | ✅ | `cli.py`, `pyproject.toml` |
 | **`/v1` path prefix** (same middleware and policy as bare paths) | ✅ | `api.py`, `access_policy.py` |
+| **SQL dialect profiles** (six differences declared as data, not branches) | ✅ | `sql_dialects.py` |
+| **Generic DB-API adapter** — a new SQL database is a declaration, not an adapter | ✅ | `generic_sql_adapter.py` |
+| Oracle / SQL Server / 达梦 / 人大金仓 / openGauss declarations | ⚠️ | declared with dialects; usable once the driver is installed, but **CI cannot install the drivers, so untested** |
+| **CSV / TSV directory source** (types and keys inferred, foreign keys never guessed) | ✅ | `file_adapter.py` |
+| **REST / OpenAPI source** (fields declared, never sampled) | ✅ | `rest_adapter.py` |
+| **Attribute-level temporality** (valid time and transaction time kept apart) | ✅ | `temporal.py` |
+| **As-of assessment** (past values, and the rules in force at the time) | ✅ | `temporal.py`, `semantic_kernel.py` |
+| **Direct-database and stored-procedure writeback** (declared statements, bound values, WHERE required) | ✅ | `db_executors.py` |
 | Channel integrations, scheduler | 📋 | none |
 | Ontology import (SHACL / reasoner) | 📋 | export only |
-| Cross-source entity resolution | 📋 | none |
-| Temporal validity on attributes | 📋 | rules have validity windows, attributes do not |
+| Cross-source entity resolution | 📋 | none — needs a verifiable answer to "which two rows are the same instance" |
 | Split into multiple PyPI distributions | 📋 | single package + extras for now |
 
 ## Current limitations
@@ -469,10 +476,12 @@ By design, not bugs. These are the next phase's work.
 
 | Constraint | Location |
 |---|---|
-| **No temporal dimension**: attributes have a current value, no validity period or history | — |
-| **No cross-source anything**: one object cannot span two data sources, and aggregates cannot either. Blocked on cross-source entity resolution | `instance_resolver.py`, `aggregation.py` |
+| **No cross-source anything**: one object cannot span two data sources, and aggregates cannot either. Needs a verifiable answer to "which two rows are the same instance" first, or a cross-source verdict cannot be explained | `instance_resolver.py`, `aggregation.py` |
+| **History covers only what the platform observed**: a source that overwrites values in place still lost its own history. `coverage` reports the window it can actually answer for | `temporal.py` |
 | **Aggregates compute in Python**, not pushed down as SQL. Buys identical behaviour across all three dialects; costs a row cap | `aggregation.py` |
 | **Relation classification depends on schema quality**: a database without foreign keys or NOT NULL gets the weakest classification | `relations.py` |
+| **CSV and REST never infer foreign keys**: relation semantics require declared structure, and a relation resting on a naming coincidence cannot be explained | `file_adapter.py`, `rest_adapter.py` |
+| **CSV reads the whole file per query**: fine at extract scale, wrong at warehouse scale | `file_adapter.py` |
 | Type hierarchy caps at 16 levels; derivation at 5 passes | `type_hierarchy.py`, `derived_attributes.py` |
 | **No full OWL/DL reasoning**, no open-world assumption | deliberate, see [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) |
 
@@ -581,7 +590,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**672 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
+**839 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
 wheel build that only runs in CI):
 
 | File | Count | Covers |
@@ -601,6 +610,10 @@ wheel build that only runs in CI):
 | `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_sql_dialects_and_generic_adapter.py` | 54 | dialect profiles, generic DB-API adapter, proven against a real PostgreSQL onboarded by declaration alone |
+| `test_file_and_rest_sources.py` | 43 | CSV type/key inference, declared REST sources, end to end to a verdict |
+| `test_database_writeback.py` | 35 | declared statements, bound values, WHERE required, zero rows is a failure, real writes and rollback |
+| `test_temporal_validity.py` | 35 | half-open windows, backdated inserts, as-of verdicts use past values, absence is not interpolated |
 | `test_cli.py` | 19 | CLI loop, release gate not bypassable, errors without tracebacks |
 | `test_api_versioning.py` | 17 | `/v1` and bare paths authorize identically, public paths survive versioning |
 | `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |

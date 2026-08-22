@@ -464,7 +464,11 @@ _不是_：算法、模型、策略引擎脚本。
 | OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
 | 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
 | **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
-| Oracle／SQL Server／达梦／人大金仓内置适配器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
+| **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
+| **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
+| Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
+| **CSV／TSV 目录数据源**（类型与主键推断，外键不猜） | ✅ | `file_adapter.py` |
+| **REST／OpenAPI 数据源**（字段声明式，非采样） | ✅ | `rest_adapter.py` |
 
 ### 本体与规则
 
@@ -508,6 +512,10 @@ _不是_：算法、模型、策略引擎脚本。
 | **业务事件**（声明类型、只追加、带载荷与来源时间） | ✅ | `events.py` |
 | **统一时间线**（状态流转自动镜像，实例只有一条时间线） | ✅ | `events.py`、`workflow_permission.py` |
 | **事件计数**（「上个月被驳回多少次」无需读文本） | ✅ | `events.py` |
+| **属性级时态**（版本化、有效时间与事务时间分离） | ✅ | `temporal.py` |
+| **as-of 判定**（按当时的值与当时生效的规则回溯判定） | ✅ | `temporal.py`、`semantic_kernel.py` |
+| **历史覆盖区间上报**（区间外为「未知」，不是「无变化」） | ✅ | `temporal.py` |
+| **直写库／存储过程写回**（语句声明、值绑定、无 WHERE 拒绝） | ✅ | `db_executors.py` |
 | 工作流与本体版本联动 | ⚠️ | derive 新版本**不复制**工作流配置 |
 | 列表端点分页 | ⚠️ | 基本无分页（audit-log 等少数除外） |
 
@@ -578,18 +586,22 @@ _不是_：算法、模型、策略引擎脚本。
 
 | 约束 | 位置 |
 |---|---|
-| **无时态**：属性没有生效期与历史值，只有当前值。规则有生效期，属性没有 | — |
-| **跨源不支持**：一个对象不能跨两个数据源，聚合也不能跨源。阻塞于跨源实体消解 | `instance_resolver.py`、`aggregation.py` |
+| **跨源不支持**：一个对象不能跨两个数据源，聚合也不能跨源。需先回答「两源里哪两行是同一实例」，且该判断本身必须可核验 | `instance_resolver.py`、`aggregation.py` |
+| **时态只覆盖平台观测到的区间**：原地覆盖值的源系统丢掉的历史无法重建。`coverage` 会明确上报可回答区间 | `temporal.py` |
 | **聚合在 Python 内计算**，不下推 SQL。换来三方言行为一致，代价是行数上限 | `aggregation.py` |
 | **关系分类依赖 schema 声明质量**：不写外键、不写 NOT NULL 的库只能得到最弱分类 | `relations.py` |
+| **CSV 与 REST 不推断外键**：关系语义要求结构是声明的，从命名巧合推出的关系无法解释 | `file_adapter.py`、`rest_adapter.py` |
+| **CSV 每次查询整文件读取**：适合导出规模，不适合仓库规模 | `file_adapter.py` |
 | **类型层级上限 16 层**，派生链上限 5 趟 | `type_hierarchy.py`、`derived_attributes.py` |
 | **不做完整 OWL/DL 推理**，不做开放世界假设 | 刻意，见 [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) |
 
-> 关系基数、类型层级、跨对象聚合、派生属性、单位量纲、业务事件均已不在此列，
+> 关系基数、类型层级、跨对象聚合、派生属性、单位量纲、业务事件、时态生效期、
+> 数据源与写回通道扩展均已不在此列，
 > 见[本体与规则](#本体与规则)能力矩阵与
 > [ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)、
 > [ADR-0013](docs/adr/0013-derived-attributes-and-units.md)、
-> [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)。
+> [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)、
+> [ADR-0015](docs/adr/0015-open-data-sources-and-temporal-validity.md)。
 > 扩展点也不在此列：数据源适配器、规则函数、路由策略、写回执行器
 > 现已开放注册，见[扩展指南](docs/extending.md)。
 
@@ -784,7 +796,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**672 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
+**839 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
 以及仅在 CI 上执行的 wheel 构建）。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -804,6 +816,10 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
+| `test_file_and_rest_sources.py` | 43 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
+| `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
+| `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
 | `test_cli.py` | 19 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 17 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏 |
 | `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |

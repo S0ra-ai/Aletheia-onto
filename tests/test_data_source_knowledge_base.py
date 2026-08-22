@@ -148,7 +148,9 @@ def test_local_fallback_answer_uses_business_language(tmp_path: Path) -> None:
 def test_assessment_serializes_date_values_from_external_sources(tmp_path: Path, monkeypatch) -> None:
     platform_db, source, ontology = _initialized_source(tmp_path)
 
-    def fake_runtime(platform, ontology_id: int, object_code: str, instance_id: str) -> SemanticRuntime:
+    def fake_runtime(platform, ontology_id: int, object_code: str, instance_id: str, **_kwargs) -> SemanticRuntime:
+        # `**_kwargs` absorbs keyword-only options such as `as_of`: this double exists to
+        # inject a date-typed value, not to mirror the real signature.
         record = {
             "id": 1,
             "contract_no": "CG-2024-001",

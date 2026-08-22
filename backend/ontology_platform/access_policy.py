@@ -167,6 +167,15 @@ RULES: tuple[Rule, ...] = (
         CAP_WRITE,
         "记录业务事件",
     ),
+    # Attribute history is append-only and feeds as-of verdicts, so recording a version is
+    # a write. It is not a modelling change, but it does change what a past-tense
+    # assessment concludes.
+    _rule(
+        ("POST",),
+        r"/ontologies/[0-9]+/objects/[^/]+/instances/[^/]+/versions",
+        CAP_WRITE,
+        "记录属性历史版本",
+    ),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

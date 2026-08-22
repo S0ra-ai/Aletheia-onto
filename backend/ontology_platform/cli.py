@@ -81,7 +81,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     """Create the platform database and the bootstrap administrator."""
     from .auth import ensure_bootstrap_admin
     from .database import connect, initialize_platform_db
-    from .events import init_event_schema
 
     platform_db = _platform_db(args)
     initialize_platform_db(platform_db)
@@ -89,7 +88,6 @@ def cmd_init(args: argparse.Namespace) -> int:
     # is not missing tables that only the HTTP server's startup would have created.
     with connect(platform_db) as conn:
         _init_optional_schemas(conn)
-        init_event_schema(conn)
     credentials = ensure_bootstrap_admin(platform_db)
     _print(
         {
@@ -111,7 +109,9 @@ def _init_optional_schemas(conn: Any) -> None:
     from .aggregation import init_aggregate_schema
     from .auth import init_auth_schema
     from .conversations import init_conversation_schema
+    from .events import init_event_schema
     from .knowledge_documents import init_knowledge_schema
+    from .temporal import init_temporal_schema
     from .workflow_permission import init_workflow_and_permission_schema
 
     for initialise in (
@@ -121,6 +121,8 @@ def _init_optional_schemas(conn: Any) -> None:
         init_knowledge_schema,
         init_aggregate_schema,
         init_conversation_schema,
+        init_event_schema,
+        init_temporal_schema,
     ):
         initialise(conn)
 
@@ -181,7 +183,9 @@ def cmd_assess(args: argparse.Namespace) -> int:
     from .semantic_kernel import assess_instance
 
     platform_db = _platform_db(args)
-    result = assess_instance(platform_db, args.ontology_id, args.object_code, args.instance_id)
+    result = assess_instance(
+        platform_db, args.ontology_id, args.object_code, args.instance_id, as_of=args.as_of or None
+    )
     if args.verbose:
         _print(result)
         return 0
@@ -191,6 +195,8 @@ def cmd_assess(args: argparse.Namespace) -> int:
     _print(
         {
             "decision": result.get("decision", {}).get("status"),
+            # Echoed so a past-tense verdict cannot be mistaken for one about now.
+            "asOf": result.get("semanticKernel", {}).get("asOf") or None,
             "recommendation": result.get("decision", {}).get("recommendation"),
             "failedRules": [
                 {
@@ -296,10 +302,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     are active -- the three things that account for most "it does nothing" reports.
     """
     from .adapters import supported_source_types
+    from .automation import supported_executor_schemes
     from .database import get_platform_config
+    from .generic_sql_adapter import describe_bundled_sql_sources, register_bundled_sql_sources
     from .instance_resolver import supported_resolver_kinds
     from .rule_sandbox import allowed_rule_function_names
     from .schema import dialect_of
+    from .sql_dialects import known_dialects
 
     platform_db = _platform_db(args)
     config = get_platform_config()
@@ -311,12 +320,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         except ImportError:
             extras[extra] = "missing"
 
+    # Activating first means the report reflects what a deployment can actually reach, not
+    # merely what the catalogue lists.
+    register_bundled_sql_sources(replace=True)
     report: dict[str, Any] = {
         "version": _version(),
         "platformDb": str(platform_db),
         "platformDbType": config.db_type,
         "extras": extras,
         "sourceTypes": list(supported_source_types()),
+        # Declared but inactive SQL sources, with the driver each needs. "Why is Oracle not
+        # in the list" is the most common question here, so it is answered rather than
+        # requiring someone to read the source.
+        "declaredSqlSources": [
+            {
+                "sourceType": item["sourceType"],
+                "driver": item["driverModule"],
+                "available": item["driverAvailable"],
+                "hint": "" if item["driverAvailable"] else item["installHint"],
+            }
+            for item in describe_bundled_sql_sources()
+        ],
+        "sqlDialects": list(known_dialects()),
+        "writebackSchemes": list(supported_executor_schemes()),
         "resolverKinds": list(supported_resolver_kinds()),
         "ruleFunctions": sorted(allowed_rule_function_names()),
     }
@@ -377,6 +403,11 @@ def build_parser() -> argparse.ArgumentParser:
     assess.add_argument("object_code")
     assess.add_argument("instance_id")
     assess.add_argument("--verbose", action="store_true", help="输出完整证据而非仅判定与未通过规则")
+    assess.add_argument(
+        "--as-of",
+        default="",
+        help="按该时间点的历史值判定（YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS），用于回答「当时是否合规」",
+    )
     assess.set_defaults(func=cmd_assess)
 
     publish = sub.add_parser("publish", help="发布本体版本（受发布门禁约束）")

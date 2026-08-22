@@ -162,6 +162,12 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
+from .temporal import (
+    TemporalError,
+    init_temporal_schema,
+    instance_history,
+    record_attribute_version,
+)
 from .tenancy import (
     TenantError,
     list_tenants,
@@ -197,6 +203,7 @@ async def lifespan(app: FastAPI):
         init_knowledge_schema(conn)
         init_aggregate_schema(conn)
         init_event_schema(conn)
+        init_temporal_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -1166,12 +1173,25 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: Opti
 
 
 @app.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
-def assess_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
+def assess_object_instance(
+    object_code: str,
+    instance_id: str,
+    ontologyId: Optional[int] = None,
+    asOf: str = "",
+) -> dict[str, object]:
+    """Assess one instance, optionally as of a past moment.
+
+    `asOf` is what a compliance audit actually asks: was the January approval correct given
+    what was known in January. Assessing against today's values answers a different
+    question, so the moment is echoed in the response and stored with the decision.
+    """
     try:
         resolved = (
             ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
         )
-        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
+        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
+    except TemporalError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -1895,6 +1915,50 @@ def instance_events(
 ) -> dict[str, object]:
     """One instance's event history, newest first."""
     return instance_timeline(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, limit)
+
+
+class AttributeVersionRecord(BaseModel):
+    attributeCode: str
+    value: object = None
+    validFrom: str = ""
+    source: str = ""
+
+
+@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+def record_instance_attribute_version(
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    payload: AttributeVersionRecord,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Record a new value for one attribute, closing the version it supersedes.
+
+    Append-only: nothing is overwritten, so a verdict recorded earlier still cites a value
+    that exists.
+    """
+    try:
+        return record_attribute_version(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            instance_id,
+            payload.attributeCode,
+            payload.value,
+            valid_from=payload.validFrom or None,
+            actor=principal.actor,
+            source=payload.source,
+        )
+    except TemporalError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+def instance_attribute_history(
+    ontology_id: int, object_code: str, instance_id: str, attributeCode: str = ""
+) -> dict[str, object]:
+    """One instance's attribute history, with the window it can actually answer for."""
+    return instance_history(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, attribute_code=attributeCode)
 
 
 @app.get("/ontologies/{ontology_id}/hierarchy")
