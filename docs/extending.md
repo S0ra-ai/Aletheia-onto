@@ -247,6 +247,82 @@ register_resolver("cross_source", CrossSourceResolver)
 平台只做三项限制：必须以 `select`/`with` 开头、不含分号、标识列名经校验。
 这是**刻意的信任决定**:接入遗留系统时建议使用只读账号。
 
+## 8. 单位与量纲
+
+属性可以声明单位，同量纲比较自动换算。内置单位覆盖货币刻度、时长、
+质量、长度与比率——刻意保持小而领域中立，
+行业专有单位由部署方注册，理由同 [ADR-0003](adr/0003-no-builtin-domain-vocabulary.md)。
+
+```python
+from ontology_platform.derived_attributes import Unit, register_unit
+
+register_unit(Unit(code="jin", name="斤", dimension="mass", to_canonical=500.0))
+```
+
+`to_canonical` 是「1 个该单位等于多少个该量纲的规范单位」。
+换算统一经规范单位而非两两系数：N 个单位只需 N 个系数而不是 N²，
+且只有一处需要核对。
+
+覆盖已有单位必须显式传 `replace=True`——**静默重定义「吨」
+会改变所有已存值的含义，且不留任何记录**。
+
+新量纲需要恰好一个 `to_canonical == 1.0` 的单位，否则该量纲无法换算。
+
+### 跨量纲不会被换算
+
+`convert(1, "day", "kilogram")` 抛错而不是返回 1。
+这通常意味着建模有误，静默透传数字会让由此得出的判定看起来完全有效。
+
+## 9. 建表：SchemaBundle
+
+插件自带的表通过 `SchemaBundle` 声明，而不是自己写「按方言挑 DDL 再执行」的循环。
+
+```python
+from ontology_platform.schema import SchemaBundle
+
+SCHEMA = SchemaBundle(
+    name="my_plugin",
+    tables=(
+        {
+            "sqlite": "create table if not exists my_table (id integer primary key, note text not null default '')",
+            "postgresql": "create table if not exists my_table (id serial primary key, note text not null default '')",
+            "mysql": "create table if not exists my_table (id integer primary key auto_increment, note text)",
+        },
+    ),
+    indexes=(
+        {
+            "sqlite": "create index if not exists idx_my_table_note on my_table (note)",
+            "postgresql": "create index if not exists idx_my_table_note on my_table (note)",
+            # MySQL 没有 `create index if not exists`
+            "mysql": "create index idx_my_table_note on my_table (note)",
+        },
+    ),
+    table_names=("my_table",),
+)
+SCHEMA.verify_declared_names()   # 导入时校验声明与 DDL 一致
+
+
+def init_my_schema(conn):
+    SCHEMA.apply(conn)
+```
+
+### 为什么表和索引分开声明
+
+两者的失败方式不同：`create table if not exists` 在三方言上都幂等，
+而 MySQL 没有 `create index if not exists`，重跑会抛错。
+放在一个列表里会迫使每个调用方去嗅探语句文本来判断错误是否预期——
+而这正是此前在 8 个模块副本之间漂移掉的那个检查。
+
+### 表存在性用目录探测，不要捕获异常
+
+特性 schema 可选时，用 `SCHEMA.has_tables(conn)` 而不是 `try/except`。
+PostgreSQL 上一条失败语句会中止整个事务，
+同一连接上后续每条命令都会以 `InFailedSqlTransaction` 失败
+（同 [ADR-0004](adr/0004-three-platform-dialects.md)）。
+
+`verify_declared_names()` 防的是另一种错：改了 DDL 却忘改 `table_names`，
+会让探测对存在的表报「未配置」，**于是功能静默返回空结果而不是报错**。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
@@ -255,6 +331,15 @@ register_resolver("cross_source", CrossSourceResolver)
 - 认证后端（SSO／LDAP）
 - 事件钩子
 - 渠道接入
+- 关系分类策略（目前是固定的结构化规则，见
+  [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md)）
+- 聚合函数（`sum`／`count`／`min`／`max`／`avg`，需要窗口函数请改用
+  `custom_sql` 解析器）
+
+> **事件钩子刻意不开放。** 事件是记录而非触发器：能触发自动化的事件
+> 会让回放历史重新执行业务动作。需要「事件驱动动作」请走
+> `automation.py` 的写回执行器，由决策驱动
+> （[ADR-0014](adr/0014-type-hierarchy-and-business-events.md)）。
 
 这些的形状取决于第二个真实用例，过早冻结会产生错误 API
 （[ADR-0001](adr/0001-three-repo-distribution.md) Consequences）。

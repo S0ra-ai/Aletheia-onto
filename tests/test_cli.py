@@ -240,6 +240,23 @@ def test_demo_runs_the_whole_loop(capsys, tmp_path) -> None:
     assert payload["objectCode"], "样例对象编码应从蓝图词汇中发现，而不是硬编码"
 
 
+def test_quiet_demo_emits_exactly_one_document(capsys, tmp_path) -> None:
+    """A caller parsing the output wants one document, not a concatenated stream --
+    splitting one is fiddly enough that everyone gets it slightly wrong."""
+    code, out, _ = _run(
+        capsys,
+        "--platform-db",
+        str(tmp_path / "demo.sqlite3"),
+        "demo",
+        "--quiet",
+        "--sample-db",
+        str(tmp_path / "sample.sqlite3"),
+    )
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["decision"] in {"approved", "review", "blocked"}
+
+
 def test_doctor_reports_configuration_and_extension_points(capsys, platform_db) -> None:
     """The three things that account for most "it does nothing" reports."""
     _json(capsys, "--platform-db", str(platform_db), "init")

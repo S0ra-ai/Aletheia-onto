@@ -191,6 +191,68 @@ jobs:
         if: always()
         run: cat /tmp/quickstart.log
 
+  packaging:
+    name: 打包与裸装闭环（无任何 extra）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # The minimum version README claims, so "installable on 3.9" is verified
+          # rather than assumed.
+          python-version: "3.9"
+          cache: pip
+
+      - name: 构建 wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: 在干净环境安装（不带 extra）
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+
+      - name: 校验内核确实零第三方依赖
+        # If the kernel had picked up a dependency, pip would have installed it here.
+        # Only pip's own bootstrap packages are expected.
+        run: |
+          installed=$(/tmp/clean/bin/pip list --format=freeze | grep -v -E '^(pip|setuptools|wheel|aletheia-onto)=' || true)
+          if [ -n "$installed" ]; then
+            echo "内核引入了意外的第三方依赖:"; echo "$installed"; exit 1
+          fi
+
+      - name: 裸装跑通完整闭环
+        # The strongest single check that the kernel is usable without a web server:
+        # 接入 → 建模 → 判定, with no extras installed at all.
+        run: |
+          /tmp/clean/bin/aletheia --version
+          # `--quiet` emits exactly one JSON document, so this parses without splitting
+          # a concatenated stream.
+          /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 \
+            demo --quiet --sample-db /tmp/sample.sqlite3 > /tmp/demo.json
+          cat /tmp/demo.json
+          python -c "
+          import json, sys
+          payload = json.load(open('/tmp/demo.json'))
+          assert payload['decision'] in {'approved', 'review', 'blocked'}, payload
+          print('裸装闭环通过，判定:', payload['decision'])
+          "
+
+      - name: 缺少 web extra 时给出可执行提示而非 traceback
+        run: |
+          output=$(/tmp/clean/bin/aletheia serve 2>&1 || true)
+          echo "$output"
+          echo "$output" | grep -q "web extra" || { echo "未给出安装提示"; exit 1; }
+          echo "$output" | grep -q "Traceback" && { echo "泄漏了 traceback"; exit 1; }
+          exit 0
+
+      - name: 带 web extra 时可启动
+        run: |
+          /tmp/clean/bin/pip install "$(echo dist/*.whl)[web]"
+          /tmp/clean/bin/python -c "from ontology_platform.api import app; print('HTTP 层可导入')"
+
   frontend:
     name: 前端类型检查与构建
     runs-on: ubuntu-latest

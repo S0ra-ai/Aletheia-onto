@@ -1,6 +1,6 @@
 # ROADMAP
 
-**当前处于阶段一：仓库规范化。**
+**当前状态：内核元模型已闭合，包可安装，CLI 可用。**
 本文件描述方向，不描述已实现的能力。已实现能力见
 [README 能力矩阵](README.md#能力矩阵)，未实现项见
 [当前限制](README.md#当前限制)。
@@ -15,15 +15,26 @@
 | `aletheia-scaffold` | 官方脚手架 | fork，随便改 |
 | `aletheia-cli` | 脚手架与代码生成器 | 当工具用 |
 
-规划 PyPI 分包：`aletheia-core`（本体、规则、决策）、
-`aletheia-web`（FastAPI 层）、`aletheia-admin`（管理界面）、
-`aletheia-starter-*`（按场景预置的组合包）。
-
 完整取舍与被否决方案见
 [ADR-0001](docs/adr/0001-three-repo-distribution.md)。
 
-> **现在不会创建空的分包目录或占位模块。** 分包边界依赖于隔离模型的决定，
-> 提前建目录只会产生需要推倒的结构。
+**当前已发布形态：单包 `aletheia-onto` + optional extras。**
+
+```
+pip install aletheia-onto            # 内核，零第三方依赖
+pip install 'aletheia-onto[web]'     # + FastAPI 层
+pip install 'aletheia-onto[all]'     # + PostgreSQL／MySQL／文档解析
+```
+
+extras 承载了未来分包的接缝，但不预先冻结边界：只装内核的用户，
+日后迁到 `aletheia-core` 不需要改 import。
+
+规划中的 PyPI 分包：`aletheia-core`（本体、规则、决策）、
+`aletheia-web`（FastAPI 层）、`aletheia-admin`（管理界面）、
+`aletheia-starter-*`（按场景预置的组合包）。
+
+> 🚧 **分包本身仍延后**，阻塞于 SPI 形状（阶段 D 需要第二个真实用例）。
+> **现在不会创建空的分包目录或占位模块**——提前建目录只会产生需要推倒的结构。
 
 ## 框架化阶段
 
@@ -59,7 +70,17 @@ Dify 的同类产品，失去差异化。
 
 **进度：** 上下文对象已落地（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)），
 全局单例已移除，**阶段 B 的硬前置已解除**。
-仍待完成：156 处签名迁移、12 处循环依赖、公私边界、DDL 迁 Alembic。
+
+✅ **循环依赖已清零。** 19 处函数内 import 提升到顶层；规则沙箱抽为
+`rule_sandbox.py`，解开 `ontology ↔ semantic_kernel`。唯一保留的环是
+`context ↔ database`（必然同包）。
+✅ **公私边界已建立。** 跨模块私有引用清零，关键模块声明 `__all__`。
+✅ **DDL 调度已统一**到 `schema.SchemaBundle`，8 处重复实现合并为一处。
+
+两项不变量由 `tests/test_module_boundaries.py` 守住——
+只靠文档记录的约束会一次一个「顺手的延迟 import」地退化。
+
+🚧 仍待完成：172 处 `platform_db` 签名迁移、DDL 迁 Alembic（依赖分包边界）。
 
 逐项工作清单见 [docs/architecture-debt.md](docs/architecture-debt.md)。
 
@@ -74,12 +95,22 @@ Dify 的同类产品，失去差异化。
 
 ### 阶段 E 分包发版
 
-pyproject 分包、entry points 自动发现、Alembic 迁移按插件归属、
-OpenAPI 生成前端类型、`/v1` 前缀。
+✅ **已完成：可安装、可版本化。**
+`pyproject` 声明分发元数据与 optional extras、`py.typed`（PEP 561）、
+`/v1` 前缀（裸路径与版本路径共用同一套鉴权中间件与权限策略）、
+entry points 自动发现（`registry.py`）。
+CI 会构建 wheel、在干净环境裸装、校验内核零第三方依赖并跑通完整闭环。
+
+🚧 仍待完成：拆成多个分发包、Alembic 迁移按插件归属、OpenAPI 生成前端类型。
+前两项阻塞于 SPI 形状（阶段 D）。
 
 ### 阶段 F 脚手架与生成器
 
-scaffold 仓库、CLI、代码生成器。
+✅ **CLI 已完成**（`cli.py`）：`init` / `connect` / `model` / `assess` /
+`publish` / `demo` / `serve` / `doctor`。
+`publish` 受发布门禁约束，且**待审核映射无法用 `--force` 跳过**。
+
+🚧 仍待完成：scaffold 仓库、代码生成器。
 
 ### 阶段 G 交付配套
 

@@ -57,6 +57,20 @@ def _fail(message: str) -> int:
     return 1
 
 
+def _silent(command: Any, args: argparse.Namespace) -> int:
+    """Run a subcommand without letting it print.
+
+    Used so a composite command emits exactly one JSON document. Suppressing output is
+    better than asking the caller to split a stream of concatenated documents, which is
+    fiddly enough that everyone gets it slightly wrong.
+    """
+    import contextlib
+    import io
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        return int(command(args))
+
+
 def _platform_db(args: argparse.Namespace) -> Any:
     from .database import DEFAULT_PLATFORM_DB
 
@@ -217,7 +231,13 @@ def cmd_demo(args: argparse.Namespace) -> int:
     from .vocabulary import default_object_code_for_ontology
 
     platform_db = _platform_db(args)
-    cmd_init(args)
+    if not args.quiet:
+        cmd_init(args)
+    else:
+        # The demo prints one document per step by default, which is what a person
+        # wants. A caller parsing the output wants exactly one, so `--quiet` suppresses
+        # the init report rather than making the consumer split the stream.
+        _silent(cmd_init, args)
     sample_path = create_contract_sample_db(Path(args.sample_db) if args.sample_db else DEFAULT_SAMPLE_DB)
     source = register_data_source(
         platform_db,
@@ -331,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--platform-db",
         default="",
-        help="平台库路径或连接串（默认取 ONTOLOGY_PLATFORM_DB 或内置路径）",
+        help="平台库路径（默认：源码 checkout 下为 ./data，已安装包为 ~/.aletheia，可用 ONTOLOGY_DATA_DIR 覆盖目录）",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -367,6 +387,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")
+    demo.add_argument(
+        "--quiet",
+        action="store_true",
+        help="只输出最终结果文档（便于脚本解析；初始化产生的引导口令仍会写入日志）",
+    )
     demo.set_defaults(func=cmd_demo)
 
     serve = sub.add_parser("serve", help="启动 HTTP 服务")

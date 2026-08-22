@@ -21,7 +21,30 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATA_DIR = Path("data")
+
+def _default_data_dir() -> Path:
+    """Where the platform database lives when nothing says otherwise.
+
+    A bare relative `data/` is right when running from a checkout -- it keeps a
+    development database next to the code and out of the user's home. It is wrong for
+    an installed package: the path then depends on the working directory, so the same
+    command finds a different database (or an empty one) depending on where it was run.
+    That failure is quiet, which makes it worse than an error.
+
+    So: `ONTOLOGY_DATA_DIR` wins if set; otherwise `data/` when a checkout is detected
+    (a sibling `backend/` directory), and `~/.aletheia` when not.
+    """
+    override = os.environ.get("ONTOLOGY_DATA_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    # `parents[2]` is the repository root when this file is at backend/ontology_platform/.
+    checkout_root = Path(__file__).resolve().parents[2]
+    if (checkout_root / "backend" / "ontology_platform").is_dir():
+        return checkout_root / "data"
+    return Path.home() / ".aletheia"
+
+
+DEFAULT_DATA_DIR = _default_data_dir()
 DEFAULT_PLATFORM_DB = DEFAULT_DATA_DIR / "platform.sqlite3"
 
 _platform_db_type: str = "sqlite"

@@ -179,7 +179,49 @@ BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的�
 
 ## 快速开始
 
-需要 Python 3.9+（前端另需 Node.js 18+）。以下命令在干净 clone 中逐条实测通过。
+需要 Python 3.9+（前端另需 Node.js 18+）。以下命令均在干净环境中实测通过。
+
+### 作为包安装
+
+内核**零第三方依赖**，不装 web 服务器也能跑通完整闭环。
+
+```bash
+pip install aletheia-onto          # 内核：本体、规则、判定、留痕
+pip install 'aletheia-onto[all]'   # 加上 HTTP 层、PostgreSQL／MySQL、文档解析
+```
+
+```bash
+aletheia demo      # 用内置样例系统跑通：接入 → 建模 → 判定
+aletheia doctor    # 报告当前配置、已安装 extra 与已注册扩展点
+```
+
+`aletheia demo` 的输出（内核裸装，无任何 extra）：
+
+```json
+{
+  "platformDb": "~/.aletheia/platform.sqlite3",
+  "ontologyId": 1,
+  "objectCode": "contract",
+  "decision": "approved",
+  "next": "aletheia serve  # 打开 http://127.0.0.1:8000/docs"
+}
+```
+
+接自己的系统：
+
+```bash
+aletheia init
+aletheia connect postgresql://user:pass@host/db --domain 合同管理
+aletheia model 1
+aletheia assess 1 contract 1
+```
+
+`aletheia assess` 只输出判定与未通过的规则；完整证据用 `--verbose`，
+或从决策留痕里查。`aletheia publish` 受发布门禁约束，
+**待审核的语义映射无法用 `--force` 跳过**——在没人看过的映射上发布，
+会让由它得出的每个判定都无法追责。
+
+### 从源码运行
 
 ```bash
 git clone git@github.com:S0ra-ai/Aletheia-onto.git && cd Aletheia-onto
@@ -192,6 +234,9 @@ ONTOLOGY_ADMIN_PASSWORD=change-me-please .venv/bin/python -m uvicorn \
 
 - 健康检查 `http://127.0.0.1:8000/health` → `{"status":"ok"}`
 - API 文档 `http://127.0.0.1:8000/docs`
+
+每个端点同时以裸路径与 `/v1` 前缀提供（`/ontologies/1` 与 `/v1/ontologies/1`），
+两条路径经过同一套鉴权中间件与同一份权限策略。新接入方请固定 `/v1`。
 
 默认平台库是 SQLite，**无需任何外部数据库服务**。
 未设置 `ONTOLOGY_ADMIN_PASSWORD` 时会生成随机管理员口令并打印在启动日志中。
@@ -551,18 +596,21 @@ _不是_：算法、模型、策略引擎脚本。
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- 156 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
+- 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 98 个端点，无 `/v1` 前缀。
-- 前端 `types/index.ts` 手写 889 行镜像后端模型；后端存在 camelCase／snake_case 双发。
-- DDL 分散在 4 个模块各自手写三方言。
+- `api.py` 单文件 130 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+- DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
+  因此阻塞于分包边界。
+- **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
+  extras 承载了未来分包的接缝但不冻结边界。
 
 架构层面的前置技术债逐项定位见 [`docs/architecture-debt.md`](docs/architecture-debt.md)。
 路线与阻塞条件见 [`ROADMAP.md`](ROADMAP.md)。
 
 ## 设计决策
 
-四项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
+九项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
 
 ### 1. 规则引擎 fail-closed
 
@@ -609,6 +657,56 @@ _不是_：算法、模型、策略引擎脚本。
 
 证据：[ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) ·
 [Non-Goals](ROADMAP.md#non-goals)
+
+### 5. 关系语义只从声明结构推断，绝不看数据分布
+
+从采样推断出的关系会在数据变化时改变含义，引用它的判定就不可复现。
+每条关系都记录它所依据的结构事实——**没有依据的分类无法被审阅**，
+运维要纠正一条生成的关系，必须先知道它为何被这样分类。
+
+证据：`tests/test_relation_expressiveness.py` ·
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+### 6. 聚合是声明的数据，不是规则里的内联查询
+
+「为什么」的答案必须是一份运维能读、能审阅、能随语义资产导出的定义，
+而不是一句没人审过的 join。算不出来的聚合让规则失败，
+而不是拿阈值去和一个伪造的 0 比较。
+
+读行后在 Python 内计算而非下推聚合 SQL——**牺牲下推性能，换三方言行为完全一致**，
+代价是行数上限，且触顶会上报而非静默截断。
+
+证据：`tests/test_cross_object_aggregation.py` ·
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+### 7. 单位同量纲换算，跨量纲直接拒绝
+
+没有单位时，万元与元混用会让 `合同金额 500 > 额度 1000000` 得出「未超额」——
+**用正确数据产出的错误判定**。跨量纲（时长比质量）抛错而非原样透传数字，
+因为那通常意味着建模有误，静默透传会让由此得出的判定看起来完全有效。
+
+汇率被刻意排除：汇率是随时间变化的数据，内嵌一个会让判定不可复现。
+
+证据：`tests/test_derived_attributes_and_units.py` ·
+[ADR-0013](docs/adr/0013-derived-attributes-and-units.md)
+
+### 8. 规则覆盖必须显式声明，不靠同名推断
+
+同名有歧义——两个团队可能各自取到同一个 code，而推断会**静默停用其中一个团队的管控**。
+削弱继承来的规则是允许的，因为存在合法业务例外（国资交易对手豁免信用审查）；
+**不可见地**削弱则不允许。
+
+证据：`tests/test_type_hierarchy_and_events.py` ·
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
+
+### 9. 事件是记录，绝不是触发器
+
+能触发自动化的事件会让审计轨迹承载副作用，于是回放历史（回补、纠错、迁移）
+会重新执行业务动作。只追加也是同一个理由：记错的事件靠补偿事件纠正，
+删除会留下一个无法解释自己如何形成的状态。
+
+证据：`tests/test_type_hierarchy_and_events.py` ·
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
 
 ## 配置
 
@@ -686,7 +784,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**468 个测试**，全绿。分布：
+**672 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
+以及仅在 CI 上执行的 wheel 构建）。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -701,6 +800,14 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
 | `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
+| `test_cross_object_aggregation.py` | 46 | 聚合定义校验、fail-closed、行数上限、端到端 |
+| `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
+| `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
+| `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_cli.py` | 19 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
+| `test_api_versioning.py` | 17 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏 |
+| `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
+| `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
