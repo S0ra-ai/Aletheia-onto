@@ -11,6 +11,7 @@ from typing import Any
 from .agent_roles import AgentRole, build_system_prompt, list_agent_roles, resolve_agent_role
 from .automation import preflight_operation
 from .config import ANSWER_CONFIDENCE
+from .conversations import append_message, ensure_conversation, load_history
 from .database import connect
 from .knowledge_base import build_reasoning_chain, list_knowledge_bases
 from .model_client import OpenRouterClient, OpenRouterConfig
@@ -65,19 +66,94 @@ def agent_chat(
     object_code: str | None = None,
     history: list[dict[str, str]] | None = None,
     session_id: str | None = None,
+    actor: str = "",
+    persist: bool = True,
 ) -> dict[str, Any]:
+    """Answer one turn, persisting the exchange by default.
+
+    History used to come only from the caller, so a page refresh lost the thread
+    and nothing linked an answer to the question that produced it. When
+    `session_id` is given and `persist` is on, the stored history is used and both
+    turns are recorded.
+
+    An explicitly supplied `history` still wins, so existing callers that manage
+    their own context are unaffected. `persist=False` exists for callers that must
+    not write -- previews and tests.
+    """
     role = resolve_agent_role(platform_db, role_id)
     # A derived role knows its data source; honour it when the caller did not
     # pin one explicitly.
     if data_source_id is None:
         data_source_id = role.data_source_id
     model_client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
+
+    conversation: dict[str, Any] | None = None
+    if persist:
+        conversation = ensure_conversation(
+            platform_db,
+            session_id,
+            role_id=role.id,
+            data_source_id=data_source_id,
+            object_code=object_code or "",
+            actor=actor,
+        )
+        session_id = conversation["sessionId"]
+        if history is None:
+            history = load_history(platform_db, session_id)
+        append_message(platform_db, session_id, "user", message, actor=actor)
     history = history or []
 
     if not model_client.configured:
-        return _fallback_agent_chat(platform_db, message, role, data_source_id, object_code, history)
+        result = _fallback_agent_chat(platform_db, message, role, data_source_id, object_code, history)
+    else:
+        result = _llm_agent_chat(
+            platform_db, model_client, message, role, data_source_id, object_code, history, session_id
+        )
 
-    return _llm_agent_chat(platform_db, model_client, message, role, data_source_id, object_code, history, session_id)
+    if conversation is not None:
+        stored = append_message(
+            platform_db,
+            session_id or conversation["sessionId"],
+            "assistant",
+            str(result.get("answer") or ""),
+            intent=str(result.get("intent") or ""),
+            confidence=result.get("confidence"),
+            # Carry the decision id and citations so feedback can reach the
+            # verdict and the clause behind it.
+            decision_id=_decision_id_from(result),
+            citations=_citations_from(result),
+            actor=actor,
+        )
+        result = {
+            **result,
+            "sessionId": conversation["sessionId"],
+            "conversationId": conversation["id"],
+            "messageId": stored["messageId"],
+        }
+    return result
+
+
+def _decision_id_from(result: dict[str, Any]) -> str:
+    """Pull the decision id out of whichever evidence shape produced it."""
+    evidence = result.get("evidence")
+    if not isinstance(evidence, dict):
+        return ""
+    record = evidence.get("decisionRecord")
+    if isinstance(record, dict) and record.get("decisionId"):
+        return str(record["decisionId"])
+    decision = evidence.get("decision")
+    if isinstance(decision, dict) and decision.get("decisionId"):
+        return str(decision["decisionId"])
+    return ""
+
+
+def _citations_from(result: dict[str, Any]) -> list[dict[str, Any]]:
+    evidence = result.get("evidence")
+    if isinstance(evidence, dict):
+        citations = evidence.get("citations")
+        if isinstance(citations, list):
+            return citations
+    return []
 
 
 def _llm_agent_chat(

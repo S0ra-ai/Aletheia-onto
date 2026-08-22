@@ -20,6 +20,7 @@ import OntologyChat from './pages/chat/OntologyChat';
 import WorkbenchPage from './pages/workbench';
 import OntologyGraphPage from './pages/graph/OntologyGraph';
 import KnowledgeBasePage from './pages/knowledge/KnowledgeBase';
+import FeedbackConsolePage from './pages/feedback/FeedbackConsole';
 import WorkflowManager from './pages/workflow/WorkflowManager';
 import PermissionManager from './pages/permission/PermissionManager';
 
@@ -42,6 +43,7 @@ const App: React.FC = () => {
               <Route path="workbench" element={<WorkbenchPage />} />
               <Route path="graph" element={<OntologyGraphPage />} />
               <Route path="knowledge" element={<KnowledgeBasePage />} />
+              <Route path="feedback" element={<FeedbackConsolePage />} />
               <Route path="chat" element={<OntologyChat />} />
               <Route path="datasource" element={<DataSourceList />} />
               <Route path="datasource/:id" element={<DataSourceDetail />} />

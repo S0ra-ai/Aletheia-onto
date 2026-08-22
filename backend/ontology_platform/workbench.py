@@ -70,8 +70,9 @@ def build_workbench(platform_db: Path | str, decision_limit: int = 8) -> dict[st
         rules = _rule_summary(conn)
         decisions = _recent_decisions(conn, decision_limit)
         knowledge = _knowledge_summary(conn)
+        feedback = _feedback_counts(conn)
 
-    action_items = _action_items(data_sources, ontologies, governance, rules)
+    action_items = _action_items(data_sources, ontologies, governance, rules, feedback)
     return {
         "generatedAt": _now_iso(),
         "dataSources": data_sources,
@@ -80,6 +81,7 @@ def build_workbench(platform_db: Path | str, decision_limit: int = 8) -> dict[st
         "rules": rules,
         "decisions": decisions,
         "knowledge": knowledge,
+        "feedback": feedback,
         "actionItems": action_items,
         "summary": {
             "blockers": sum(1 for item in action_items if item["severity"] == "blocker"),
@@ -230,11 +232,35 @@ def _knowledge_summary(conn: Any) -> dict[str, Any]:
     }
 
 
+def _feedback_counts(conn: Any) -> dict[str, Any]:
+    """Answer feedback and escalations.
+
+    Raw counts, not an average score: an average does not tell you which answer to
+    fix, and a report of "incorrect" is the single most actionable signal here.
+    """
+    by_rating = {
+        row["rating"]: int(row["count"])
+        for row in _rows(conn, "select rating, count(*) as count from answer_feedback group by rating")
+    }
+    return {
+        "total": sum(by_rating.values()),
+        "byRating": by_rating,
+        "helpful": by_rating.get("helpful", 0),
+        "unhelpful": by_rating.get("unhelpful", 0),
+        "incorrect": by_rating.get("incorrect", 0),
+        "openItems": _scalar(conn, "select count(*) from answer_feedback where status = 'open'"),
+        "corrections": _scalar(conn, "select count(*) from answer_feedback where correction != ''"),
+        "conversations": _scalar(conn, "select count(*) from conversation"),
+        "escalated": _scalar(conn, "select count(*) from conversation where status = 'escalated'"),
+    }
+
+
 def _action_items(
     data_sources: dict[str, Any],
     ontologies: dict[str, Any],
     governance: dict[str, Any],
     rules: dict[str, Any],
+    feedback: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Turn counts into things a person can act on.
 
@@ -334,6 +360,42 @@ def _action_items(
                 "detail": "这些实例等待人工确认后才能继续流转。",
                 "count": governance["reviewableTransitions"],
                 "route": "/workflow",
+            }
+        )
+
+    # An answer reported as incorrect is the strongest signal the platform gets:
+    # a human looked at a verdict and said it was wrong.
+    if feedback.get("incorrect"):
+        items.append(
+            {
+                "code": "incorrect_answers_reported",
+                "severity": "blocker",
+                "title": f"{feedback['incorrect']} 条回答被标记为错误",
+                "detail": "用户认为判定结论有误，应复核相关规则或知识条目。",
+                "count": feedback["incorrect"],
+                "route": "/feedback",
+            }
+        )
+    if feedback.get("escalated"):
+        items.append(
+            {
+                "code": "escalated_conversations",
+                "severity": "warning",
+                "title": f"{feedback['escalated']} 个会话已转人工",
+                "detail": "这些会话等待人工接手处理。",
+                "count": feedback["escalated"],
+                "route": "/conversations",
+            }
+        )
+    elif feedback.get("openItems"):
+        items.append(
+            {
+                "code": "open_feedback",
+                "severity": "info",
+                "title": f"{feedback['openItems']} 条反馈待处理",
+                "detail": "包含未处理的满意度反馈与纠正建议。",
+                "count": feedback["openItems"],
+                "route": "/feedback",
             }
         )
 

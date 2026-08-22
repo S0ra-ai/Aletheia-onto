@@ -53,6 +53,9 @@ import type {
   KnowledgeEntry,
   KnowledgeEntryList,
   KnowledgeIngestResult,
+  Conversation,
+  AnswerFeedback,
+  FeedbackSummary,
 } from '../types';
 
 const api = axios.create({
@@ -783,6 +786,52 @@ export const knowledgeApi = {
   ): Promise<KnowledgeEntry> => {
     const { data } = await api.post(`/knowledge/entries/${entryId}/review`, payload);
     return data as KnowledgeEntry;
+  },
+};
+
+// 会话与反馈 API
+export const conversationApi = {
+  list: async (params: { status?: string; limit?: number } = {}): Promise<Conversation[]> => {
+    const { data } = await api.get('/conversations', { params });
+    return (data.items || []) as Conversation[];
+  },
+
+  get: async (sessionId: string): Promise<Conversation> => {
+    const { data } = await api.get(`/conversations/${encodeURIComponent(sessionId)}`);
+    return data as Conversation;
+  },
+
+  escalate: async (sessionId: string, payload: { assignee?: string; reason?: string }) => {
+    const { data } = await api.post(`/conversations/${encodeURIComponent(sessionId)}/escalate`, payload);
+    return data;
+  },
+
+  setStatus: async (sessionId: string, status: string) => {
+    const { data } = await api.patch(`/conversations/${encodeURIComponent(sessionId)}/status`, { status });
+    return data;
+  },
+
+  submitFeedback: async (
+    messageId: number,
+    payload: { rating: string; comment?: string; correction?: string; objectCode?: string; ruleCode?: string },
+  ) => {
+    const { data } = await api.post(`/conversations/messages/${messageId}/feedback`, payload);
+    return data;
+  },
+};
+
+export const feedbackApi = {
+  list: async (params: { status?: string; rating?: string; limit?: number } = {}): Promise<{
+    items: AnswerFeedback[];
+    summary: FeedbackSummary;
+  }> => {
+    const { data } = await api.get('/feedback', { params });
+    return data as { items: AnswerFeedback[]; summary: FeedbackSummary };
+  },
+
+  resolve: async (feedbackId: number, resolution = 'resolved') => {
+    const { data } = await api.post(`/feedback/${feedbackId}/resolve`, { resolution });
+    return data;
   },
 };
 

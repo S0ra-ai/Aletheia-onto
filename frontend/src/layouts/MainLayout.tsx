@@ -14,6 +14,7 @@ import {
   FileProtectOutlined,
   AuditOutlined,
   BookOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
@@ -77,6 +78,11 @@ const menuItems = [
     key: '/chat',
     icon: <ThunderboltOutlined />,
     label: '智能体对话',
+  },
+  {
+    key: '/feedback',
+    icon: <MessageOutlined />,
+    label: '反馈闭环',
   },
   {
     key: '/workflow',

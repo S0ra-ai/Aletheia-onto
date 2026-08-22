@@ -753,6 +753,10 @@ export interface AgentChatResult {
   answer: string;
   intent: string;
   confidence: number;
+  /** Set when the exchange was persisted; needed to attach feedback. */
+  sessionId?: string;
+  conversationId?: number;
+  messageId?: number;
   resolved: {
     dataSourceId?: number | null;
     objectCode?: string | null;
@@ -1073,4 +1077,67 @@ export interface KnowledgeIngestResult {
   warnings: string[];
   citations: string[];
   note: string;
+}
+
+// -- 会话与反馈 --
+
+export interface AnswerFeedback {
+  id: number;
+  messageId: number;
+  conversationId: number;
+  rating: 'helpful' | 'unhelpful' | 'incorrect';
+  comment: string;
+  correction: string;
+  decisionId: string;
+  objectCode: string;
+  ruleCode: string;
+  status: string;
+  actor: string;
+  resolvedBy: string;
+  resolvedAt: string;
+  createdAt: string;
+}
+
+export interface ConversationMessage {
+  id: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  intent: string;
+  confidence: number | null;
+  /** Links the answer to the verdict it produced, so feedback is attributable. */
+  decisionId: string;
+  citations: Array<{ citation: string; documentTitle: string; ruleCode: string }>;
+  actor: string;
+  createdAt: string;
+  feedback: AnswerFeedback[];
+}
+
+export interface Conversation {
+  id: number;
+  sessionId: string;
+  title: string;
+  roleId: string;
+  dataSourceId: number | null;
+  ontologyId: number | null;
+  objectCode: string;
+  status: 'active' | 'escalated' | 'resolved' | 'closed';
+  actor: string;
+  escalatedTo: string;
+  escalationReason: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  messages?: ConversationMessage[];
+}
+
+export interface FeedbackSummary {
+  total: number;
+  byRating: Record<string, number>;
+  helpful: number;
+  unhelpful: number;
+  incorrect: number;
+  openItems: number;
+  corrections: number;
+  escalatedConversations: number;
+  conversations: number;
 }
