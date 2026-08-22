@@ -408,6 +408,8 @@ flowchart TB
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
+- 156 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
+  但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
 - `api.py` 单文件 98 个端点，无 `/v1` 前缀。
 - 前端 `types/index.ts` 手写 889 行镜像后端模型；后端存在 camelCase／snake_case 双发。
 - DDL 分散在 4 个模块各自手写三方言。
@@ -541,7 +543,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**346 个测试**，全绿。分布：
+**369 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -553,6 +555,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_document_knowledge.py` | 27 | 条款切分、锚定检索、带引用答案 |
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
+| `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |

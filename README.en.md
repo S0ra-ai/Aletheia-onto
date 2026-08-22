@@ -352,7 +352,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**346 tests**, all passing:
+**369 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -364,6 +364,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_document_knowledge.py` | 27 | clause chunking, anchored retrieval, cited answers |
 | `test_inert_fields_activated.py` | 28 | guards, row filters, rule dependencies, policy scoping |
 | `test_conversations_and_feedback.py` | 35 | conversation persistence, feedback attribution, escalation |
+| `test_platform_context.py` | 23 | multi-instance isolation, thread binding, compatibility |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

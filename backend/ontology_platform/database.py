@@ -7,8 +7,11 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Protocol
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from .context import ContextLike
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +44,36 @@ class PlatformDbConfig:
 
 
 def get_platform_config() -> PlatformDbConfig:
+    """The active platform database configuration.
+
+    Reads from the current context so it reports what will actually be used,
+    including a request-scoped binding, rather than only the process-wide values.
+    """
+    from .context import current_context
+
+    context = current_context()
+    if context is not None:
+        return PlatformDbConfig(db_type=context.db_type, connection_uri=context.connection_uri)
     return PlatformDbConfig(db_type=_platform_db_type, connection_uri=_platform_db_uri)
 
 
 def configure_platform_db(db_type: str, connection_uri: str = "") -> None:
+    """Configure the process-wide platform database.
+
+    Retained as the entry point application startup already calls. It now sets the
+    default *context* rather than a bare adapter global; the module-level values
+    are kept in step so anything still reading them sees the same configuration.
+    """
     global _platform_db_type, _platform_db_uri, _platform_adapter
+    from .context import configure_default_context
+
     _platform_db_type = db_type
     _platform_db_uri = connection_uri if connection_uri else _default_uri(db_type)
-    _platform_adapter = _create_adapter(db_type, _platform_db_uri)
+    context = configure_default_context(db_type, _platform_db_uri)
+    # Keep the legacy global pointing at the same adapter instance, so a caller
+    # that reaches for it directly cannot end up on a different connection than
+    # the context-aware path uses.
+    _platform_adapter = context.adapter
 
 
 def _default_uri(db_type: str) -> str:
@@ -626,37 +651,23 @@ def _scalar(row: Any) -> int:
 # -- Backward-compatible API --
 
 
-def connect(db_path: Path | str = "") -> Any:
-    global _platform_adapter
-    if _platform_adapter is not None:
-        return PlatformConnection(_platform_adapter.connect(), _platform_adapter)
+def connect(db_path: "ContextLike" = "") -> Any:
+    """Open a platform-database connection.
 
-    resolved = str(Path(db_path) if db_path else DEFAULT_PLATFORM_DB)
-    adapter = SQLitePlatformAdapter(resolved)
-    raw = adapter.connect()
-    return PlatformConnection(raw, adapter)
+    Accepts a `PlatformContext`, a path, or nothing. The widened parameter is what
+    lets the 156 existing `platform_db: Path | str` call sites keep working while
+    new code passes a context explicitly.
+    """
+    from .context import resolve_context
+
+    return resolve_context(db_path).connect()
 
 
-def initialize_platform_db(db_path: Path | str = "") -> None:
-    global _platform_adapter
-    if _platform_adapter is not None:
-        conn = _platform_adapter.connect()
-        try:
-            _platform_adapter.init_schema(conn)
-        finally:
-            try:
-                conn.close()
-            except Exception as error:
-                logger.warning("关闭平台库连接失败: %s", error)
-        return
+def initialize_platform_db(db_path: "ContextLike" = "") -> None:
+    """Create the base schema for the resolved context."""
+    from .context import resolve_context
 
-    resolved = str(Path(db_path) if db_path else DEFAULT_PLATFORM_DB)
-    adapter = SQLitePlatformAdapter(resolved)
-    conn = adapter.connect()
-    try:
-        adapter.init_schema(conn)
-    finally:
-        conn.close()
+    resolve_context(db_path).initialize()
 
 
 def last_insert_id(conn: Any) -> int:
