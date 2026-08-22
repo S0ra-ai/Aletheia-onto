@@ -170,7 +170,18 @@ SQLite 的 `text`）只会在对应后端上暴露。
 `api.py:1268` 还有一处模块中段的 import 块（工作流与权限的 20 多个符号），
 拆分时应一并整理到文件头部。
 
-## 7. 扩展点硬编码
+## 7. ~~扩展点硬编码~~（已偿还，并已补上可执行契约）
+
+> ✅ **四处全部开放为注册表 + entry points**（`registry.py`，ADR-0007）：
+> 数据源适配器、规则函数、路由权限策略、写回执行器。
+>
+> 但「能注册」只解决了一半。第三方注册之后**没有任何办法知道自己的实现是否正确**——
+> 契约只写在 ADR 正文与 `tests/` 里，而正文无法执行、`tests/` 不在 wheel 里。
+> 一致性契约现随包发布（`conformance.py`，ADR-0016），
+> 覆盖 5 个扩展点，并对内核自身的全部实现在 CI 中回归。
+
+<details>
+<summary>原始记录</summary>
 
 这四处是「第三方能不能在不改我们代码的前提下扩展」的分水岭。
 
@@ -180,6 +191,8 @@ SQLite 的 `text`）只会在对应后端上暴露。
 | `semantic_kernel.py:113` `ALLOWED_RULE_FUNCTIONS` | `frozenset({"sum","len","count","any","all"})` | 可注册，带沙箱审计 |
 | `access_policy.py` `RULES` | 模块级静态元组 | 插件可注册路由与能力 |
 | `automation.py` 写回执行器 | 只支持 HTTP/HTTPS | 执行器 SPI |
+
+</details>
 
 ## 8. 事务与连接
 
@@ -212,6 +225,13 @@ SQLite 的 `text`）只会在对应后端上暴露。
   无 WHERE 拒绝、影响 0 行按失败
 - ~~属性只有当前值，回溯审计只能拿今天的值重新判定~~
   → 属性级时态 + as-of 判定（`temporal.py`，ADR-0015）
+- ~~扩展点可注册，但第三方无法验证自己的实现是否正确~~
+  → 可执行一致性契约随包发布（`conformance.py`，ADR-0016），
+  覆盖 5 个扩展点，内核自身实现在 CI 中跑同一套契约
+- ~~没有部署产物，也没有任何东西回答「这套配置放到生产上安全吗」~~
+  → 部署前自检 + 两阶段非 root 镜像 + 参考编排（`deployment.py`、`deploy/`，ADR-0017）
+- ~~检索候选集按锚点过滤但不按调用者权限过滤，引用可越权披露~~
+  → `retrieval.filter_entries_for_role`，锚定后／排序前，判定失败按拒绝
 - ~~四处扩展点硬编码，第三方必须 fork 才能扩展~~
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
