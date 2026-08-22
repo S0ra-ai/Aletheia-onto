@@ -65,6 +65,16 @@ from .derived_attributes import (
     list_derived_attributes,
     set_attribute_unit,
 )
+from .events import (
+    MAX_EVENT_HISTORY,
+    EventError,
+    EventType,
+    declare_event_type,
+    init_event_schema,
+    instance_timeline,
+    list_event_types,
+    record_event,
+)
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -153,6 +163,7 @@ from .tenancy import (
     tenant_context,
     tenant_statistics,
 )
+from .type_hierarchy import HierarchyError, declare_subtype, describe_hierarchy
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
 from .workflow_permission import (
@@ -179,6 +190,7 @@ async def lifespan(app: FastAPI):
         init_agent_role_schema(conn)
         init_knowledge_schema(conn)
         init_aggregate_schema(conn)
+        init_event_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -1751,6 +1763,123 @@ def declare_attribute_unit(
             actor=principal.actor,
         )
     except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class EventTypeDeclare(BaseModel):
+    code: str
+    name: str
+    category: str = "interaction"
+    payloadFields: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class EventRecord(BaseModel):
+    eventCode: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    occurredAt: str = ""
+    correlationId: str = ""
+
+
+class SubtypeDeclare(BaseModel):
+    parentObjectCode: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/event-types")
+def ontology_event_types(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_event_types(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/event-types")
+def declare_object_event_type(
+    ontology_id: int,
+    object_code: str,
+    payload: EventTypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a kind of event that can happen to instances of this object."""
+    try:
+        return declare_event_type(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            EventType(
+                code=payload.code,
+                name=payload.name,
+                object_code=object_code,
+                category=payload.category,
+                payload_fields=list(payload.payloadFields),
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def append_instance_event(
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    payload: EventRecord,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Append one event to an instance's history.
+
+    Recording does not trigger automation: an event that could fire side effects
+    would make replaying history re-execute business actions.
+    """
+    try:
+        return record_event(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            instance_id,
+            payload.eventCode,
+            payload=dict(payload.payload),
+            actor=principal.actor,
+            occurred_at=payload.occurredAt,
+            correlation_id=payload.correlationId,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def instance_events(
+    ontology_id: int, object_code: str, instance_id: str, limit: int = MAX_EVENT_HISTORY
+) -> dict[str, object]:
+    """One instance's event history, newest first."""
+    return instance_timeline(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, limit)
+
+
+@app.get("/ontologies/{ontology_id}/hierarchy")
+def ontology_hierarchy(ontology_id: int) -> dict[str, object]:
+    """The declared type hierarchy, with inherited rule counts and overrides."""
+    return {"items": describe_hierarchy(DEFAULT_PLATFORM_DB, ontology_id)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/parent")
+def declare_object_subtype(
+    ontology_id: int,
+    object_code: str,
+    payload: SubtypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare this object as a subtype of another, or clear the declaration.
+
+    A subtype evaluates its ancestors' rules as well as its own, so this changes what
+    every assessment of the object checks.
+    """
+    try:
+        return declare_subtype(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            payload.parentObjectCode,
+            actor=principal.actor,
+        )
+    except HierarchyError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 

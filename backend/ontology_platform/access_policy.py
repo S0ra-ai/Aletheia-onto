@@ -126,6 +126,18 @@ RULES: tuple[Rule, ...] = (
     # both are modelling writes.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/derived-attributes", CAP_WRITE, "定义派生属性"),
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/attributes/[^/]+/unit", CAP_WRITE, "声明属性单位"),
+    # A subtype evaluates its ancestors' rules as well as its own, so declaring one
+    # changes what every assessment of the object checks.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/parent", CAP_WRITE, "声明类型层级"),
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/event-types", CAP_WRITE, "声明事件类型"),
+    # Recording an event is not a modelling change, but history is append-only and
+    # feeds explanations, so it needs write capability rather than read.
+    _rule(
+        ("POST",),
+        r"/ontologies/[0-9]+/objects/[^/]+/instances/[^/]+/events",
+        CAP_WRITE,
+        "记录业务事件",
+    ),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

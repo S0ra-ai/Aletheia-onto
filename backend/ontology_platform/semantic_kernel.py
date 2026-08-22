@@ -27,6 +27,7 @@ from .instance_key import parse_key_columns
 from .ontology import explain_instance
 from .registry import Registry, load_entry_point_plugins
 from .relations import MANY_TO_MANY
+from .type_hierarchy import expand, inherited_rule_scopes
 from .value_mapping import load_value_mappings_in_connection, state_for
 
 logger = logging.getLogger(__name__)
@@ -236,19 +237,34 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
     with connect(platform_db) as platform:
         runtime = build_runtime(platform, ontology_id, object_code, instance_id)
         today = date.today().isoformat()
-        rules = platform.execute(
-            """
-            select *
-            from business_rule
-            where ontology_id = ?
-              and scope_object_code = ?
-              and status = 'published'
-              and (effective_start is null or effective_start <= ?)
-              and (effective_end is null or effective_end >= ?)
-            order by priority desc, severity, code
-            """,
-            (ontology_id, object_code, today, today),
-        ).fetchall()
+        # Rules apply to the object *and to every declared ancestor* (generality #6).
+        # Without this, a rule that governs all customers has to be copied onto each
+        # subtype -- and the copies drift, so the same business question gets two
+        # answers depending on which subtype the instance happens to be.
+        expansion = expand(platform, ontology_id, object_code)
+        scopes = inherited_rule_scopes(platform, ontology_id, object_code)
+        # A rule the subtype declared as superseding an ancestor's removes that
+        # ancestor rule from the expansion. Weakening is allowed -- a legitimate
+        # business exception exists -- but only when declared, never by accident.
+        origin_by_code = {rule.code: rule.origin_object_code for rule in expansion.rules}
+        placeholders = ", ".join("?" for _ in scopes)
+        rules = [
+            rule
+            for rule in platform.execute(
+                f"""
+                select *
+                from business_rule
+                where ontology_id = ?
+                  and scope_object_code in ({placeholders})
+                  and status = 'published'
+                  and (effective_start is null or effective_start <= ?)
+                  and (effective_end is null or effective_end >= ?)
+                order by priority desc, severity, code
+                """,
+                (ontology_id, *scopes, today, today),
+            ).fetchall()
+            if rule["code"] in origin_by_code
+        ]
 
         # Honour declared dependencies. `depends_on` was read and written but
         # never used during evaluation, so a rule that only makes sense after a
@@ -282,6 +298,11 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 "skipped": skipped,
                 "evaluationError": error or "",
             }
+            # A verdict citing an inherited rule must say which type guarantees it,
+            # or the operator cannot tell where to go to change it.
+            inherited = origin_by_code.get(rule["code"], object_code) != object_code
+            if inherited:
+                evidence["inheritedFrom"] = rule["scope_object_code"]
             platform.execute(
                 """
                 insert into inference_result (
@@ -329,6 +350,8 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                     "evaluationError": error or "",
                     "explanation": explanation,
                     "naturalLanguage": rule["natural_language"],
+                    # Empty unless the rule came from an ancestor type.
+                    "inheritedFrom": rule["scope_object_code"] if inherited else "",
                 }
             )
             if decision_passed:
@@ -620,7 +643,10 @@ def build_runtime(
         # ones enter the context: a referenced-but-uncomputable aggregate must
         # raise NameError so the rule fails closed with a reason, rather than
         # comparing a threshold against a fabricated zero.
-        aggregate_specs = load_aggregate_specs(platform, ontology_id, object_code)
+        # Along the ancestry, so an aggregate declared on 客户 is available to rules
+        # on 企业客户. Nearest first, and a nearer declaration of the same name wins:
+        # a subtype refining an aggregate is the same override semantics as rules.
+        aggregate_specs = _inherited_aggregate_specs(platform, ontology_id, object_code)
         aggregate_results = compute_aggregates(runtime, aggregate_specs, record) if aggregate_specs else {}
         context.update(aggregate_context(aggregate_results))
 
@@ -643,7 +669,8 @@ def build_runtime(
     # related rows, aggregates and united values. Only computed ones enter the
     # context: a referenced-but-uncomputable derived value must raise NameError so
     # the rule fails closed, rather than comparing against a fabricated None.
-    derived_specs = load_derived_specs(platform, ontology_id, object_code)
+    # Along the ancestry too: a 毛利率 defined on 合同 must be available to 框架合同.
+    derived_specs = _inherited_derived_specs(platform, ontology_id, object_code)
     derived_results = compute_derived(derived_specs, context) if derived_specs else {}
     context.update(derived_context(derived_results))
 
@@ -663,6 +690,41 @@ def build_runtime(
         aggregates={name: result.as_dict() for name, result in aggregate_results.items()},
         derived={code: result.as_dict() for code, result in derived_results.items()},
     )
+
+
+def _inherited_derived_specs(platform: sqlite3.Connection, ontology_id: int, object_code: str) -> list[Any]:
+    """Derived attributes along the ancestry, nearest declaration winning.
+
+    Same reasoning as inherited aggregates: one name must resolve to one definition,
+    or which one a rule saw would depend on load order.
+    """
+    specs: list[Any] = []
+    claimed: set[str] = set()
+    for scope in inherited_rule_scopes(platform, ontology_id, object_code):
+        for spec in load_derived_specs(platform, ontology_id, scope):
+            if spec.code in claimed:
+                continue
+            claimed.add(spec.code)
+            specs.append(spec)
+    return specs
+
+
+def _inherited_aggregate_specs(platform: sqlite3.Connection, ontology_id: int, object_code: str) -> list[Any]:
+    """Aggregates declared on the object and on every ancestor, nearest first.
+
+    A nearer declaration of the same name wins, which is the same override semantics
+    rules have: a subtype refining «客户合同总额» must not end up with two values under
+    one name, because which one a rule saw would then depend on load order.
+    """
+    specs: list[Any] = []
+    claimed: set[str] = set()
+    for scope in inherited_rule_scopes(platform, ontology_id, object_code):
+        for spec in load_aggregate_specs(platform, ontology_id, scope):
+            if spec.name in claimed:
+                continue
+            claimed.add(spec.name)
+            specs.append(spec)
+    return specs
 
 
 def _load_related_context(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .database import connect, last_insert_id
 from .derived_attributes import UnitError, get_unit
+from .events import EVENT_CATEGORY_LABELS, EVENT_TABLE, EVENT_TYPE_TABLE, event_tables_exist
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 from .relations import (
     AGGREGATION,
@@ -24,6 +26,9 @@ from .relations import (
     junction_semantics,
     shapes_for_table,
 )
+from .type_hierarchy import ancestors_of
+
+logger = logging.getLogger(__name__)
 
 
 def generate_ontology_draft(
@@ -157,6 +162,12 @@ def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str
             }
             for attr in attributes
         ]
+        # The event history is what turns "what is true" into "how it got that way".
+        # Read on the caller's connection and capped, since an explanation must not
+        # scale with total event volume.
+        timeline = _recent_events(platform, ontology_id, object_code, instance_id)
+        # Declared ancestry, so an explanation can say which type's rules apply.
+        ancestors = ancestors_of(platform, ontology_id, object_code)
         return {
             "ontology": {"id": ontology["id"], "name": ontology["name"], "version": ontology["version"]},
             "object": {"code": business_object["code"], "name": business_object["name"]},
@@ -164,8 +175,55 @@ def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str
             "instanceId": instance_id,
             "source": {"table": source_table["table_name"], "primaryKey": primary_key, "instanceId": instance_id},
             "attributes": values,
+            "ancestors": ancestors,
+            "timeline": timeline,
             "explanation": f"{business_object['name']}实例 {instance_id} 已映射到传统表 {source_table['table_name']}。",
         }
+
+
+# How many events an explanation carries. Small on purpose: an explanation is read
+# interactively, and the full history is available from the timeline endpoint.
+EXPLANATION_EVENT_LIMIT = 20
+
+
+def _recent_events(
+    platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str
+) -> list[dict[str, Any]]:
+    """The instance's most recent events, newest first.
+
+    A missing event table is treated as "no history": the schema is created at
+    startup, but an explanation must still work on a database that predates it.
+
+    Probed via the catalog rather than by catching the error: on PostgreSQL a failed
+    statement aborts the transaction, so every later command in the same explanation
+    would fail (ADR-0004).
+    """
+    if not event_tables_exist(platform):
+        return []
+    rows = platform.execute(
+        f"""
+        select be.event_code, be.category, be.actor, be.occurred_at, bet.name as event_name
+        from {EVENT_TABLE} be
+        left join {EVENT_TYPE_TABLE} bet
+            on bet.ontology_id = be.ontology_id
+           and bet.object_code = be.object_code
+           and bet.code = be.event_code
+        where be.ontology_id = ? and be.object_code = ? and be.instance_id = ?
+        order by be.occurred_at desc, be.id desc
+        """,
+        (ontology_id, object_code, str(instance_id)),
+    ).fetchall()
+    return [
+        {
+            "eventCode": row["event_code"],
+            "eventName": row["event_name"] or row["event_code"],
+            "category": row["category"],
+            "categoryLabel": EVENT_CATEGORY_LABELS.get(row["category"], row["category"]),
+            "actor": row["actor"],
+            "occurredAt": str(row["occurred_at"]),
+        }
+        for row in rows[:EXPLANATION_EVENT_LIMIT]
+    ]
 
 
 def list_ontologies(platform_db: Path | str) -> list[dict[str, Any]]:

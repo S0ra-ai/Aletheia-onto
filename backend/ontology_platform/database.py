@@ -659,6 +659,24 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "text not null default ''",
         "varchar(50) not null default ''",
     ),
+    # Type hierarchy (generality #6). Empty means "a standalone type", so every
+    # existing object keeps evaluating exactly its own rules.
+    ColumnMigration(
+        "business_object",
+        "parent_object_code",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    # Which ancestor rule this one supersedes (generality #6). Empty means it
+    # supersedes nothing, so every existing rule keeps applying.
+    ColumnMigration(
+        "business_rule",
+        "overrides",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
 )
 
 

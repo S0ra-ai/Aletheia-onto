@@ -450,6 +450,7 @@ def upsert_business_rule(
     effective_start: str | None = None,
     effective_end: str | None = None,
     depends_on: str | None = None,
+    overrides: str = "",
 ) -> dict[str, Any]:
     _validate_rule_write(rule_type, severity, expression)
     with connect(platform_db) as conn:
@@ -462,15 +463,17 @@ def upsert_business_rule(
         ).fetchone()
         if scope is None:
             raise ValueError(f"规则适用业务对象不存在: {scope_object_code}")
+        if overrides:
+            _validate_override(conn, ontology_id, code, scope_object_code, overrides)
         depends = depends_on if depends_on is not None else "[]"
         conn.execute(
             """
             insert into business_rule (
                 ontology_id, code, name, rule_type, scope_object_code,
                 expression, severity, natural_language, status,
-                priority, category, effective_start, effective_end, depends_on
+                priority, category, effective_start, effective_end, depends_on, overrides
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict(ontology_id, code) do update set
                 name = excluded.name,
                 rule_type = excluded.rule_type,
@@ -483,7 +486,8 @@ def upsert_business_rule(
                 category = excluded.category,
                 effective_start = excluded.effective_start,
                 effective_end = excluded.effective_end,
-                depends_on = excluded.depends_on
+                depends_on = excluded.depends_on,
+                overrides = excluded.overrides
             """,
             (
                 ontology_id,
@@ -500,6 +504,7 @@ def upsert_business_rule(
                 effective_start,
                 effective_end,
                 depends,
+                overrides,
             ),
         )
         rule = conn.execute(
@@ -517,6 +522,32 @@ def upsert_business_rule(
             ),
         )
         return dict(rule)
+
+
+def _validate_override(conn: Any, ontology_id: int, code: str, scope_object_code: str, overrides: str) -> None:
+    """Check that an override declaration names a rule this object actually inherits.
+
+    Refused up front for two reasons. A typo would otherwise silently supersede
+    nothing, leaving the author believing the ancestor's rule is disabled when it is
+    still blocking. And a declaration naming a rule outside the ancestry would
+    disable a control on a type this object has no relationship to.
+    """
+    from .type_hierarchy import inherited_rule_scopes
+
+    if overrides == code:
+        raise ValueError(f"规则不能覆盖自身: {code}")
+    target = conn.execute(
+        "select scope_object_code from business_rule where ontology_id = ? and code = ?",
+        (ontology_id, overrides),
+    ).fetchone()
+    if target is None:
+        raise ValueError(f"被覆盖的规则不存在: {overrides}")
+    ancestry = inherited_rule_scopes(conn, ontology_id, scope_object_code)[1:]
+    if target["scope_object_code"] not in ancestry:
+        raise ValueError(
+            f"只能覆盖上级类型的规则。{overrides} 属于 {target['scope_object_code']}，"
+            f"不在 {scope_object_code} 的上级链 {'、'.join(ancestry) or '(无)'} 中。"
+        )
 
 
 def _require_ontology(conn: Any, ontology_id: int) -> Any:
