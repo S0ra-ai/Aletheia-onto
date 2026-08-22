@@ -47,14 +47,19 @@ Dify 的同类产品，失去差异化。
 多租户落地，贯穿全表，检索期权限过滤，并修掉
 `permission_policy` 缺本体维度的已知缺陷。
 
-> 🚧 **阻塞于：隔离模型未定。**
-> 共享库带 `tenant_id` ／ 独立 schema ／ 独立库，三者的选择渗透 31 张表
-> 与几乎所有查询。必须先定，否则二次改造成本极高。
+> ✅ **隔离模型已定**（[ADR-0006](docs/adr/0006-tenant-isolation-model.md)）：
+> 独立 schema 起步 + 关键表带 `tenant_id` 双保险。
+> ✅ **硬前置已解除**：全局单例已由 `PlatformContext` 取代（ADR-0010）。
+> 🚧 **尚未实现**：31 张表仍无 `tenant_id`，schema 路由未接入适配器。
 
 ### 阶段 C 依赖倒置
 
 上下文对象替代全局单例、消除 `platform_db` 满签名传递、拆解循环依赖、
 公私 API 分离。
+
+**进度：** 上下文对象已落地（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)），
+全局单例已移除，**阶段 B 的硬前置已解除**。
+仍待完成：156 处签名迁移、12 处循环依赖、公私边界、DDL 迁 Alembic。
 
 逐项工作清单见 [docs/architecture-debt.md](docs/architecture-debt.md)。
 

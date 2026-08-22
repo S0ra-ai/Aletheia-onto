@@ -6,7 +6,18 @@
 
 核对时间：2026-08-21，基于 `codex/repo-normalization` 分支。
 
-## 1. 全局状态：一个进程只能有一个平台实例
+## 1. ~~全局状态：一个进程只能有一个平台实例~~（已偿还）
+
+> ✅ **已由 `PlatformContext` 取代**（[ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)）。
+> 同进程内可并存多个平台实例与多种方言，线程级绑定不互相泄漏。
+> `configure_platform_db()` 现在设置默认上下文，旧全局指向同一适配器实例。
+>
+> **仍未完成：** 156 处 `platform_db: Path | str` 签名尚未改为上下文对象
+> （现在能接受它），多租户本身仍未实现——本项只移除了它的阻塞。
+
+<details>
+<summary>原始记录</summary>
+
 
 `backend/ontology_platform/database.py:20`
 
@@ -22,7 +33,13 @@ _platform_adapter: Optional["PlatformAdapter"] = None
 - 多租户（阶段 B）中「每租户一个 schema 或一个库」的实现方式
 - 在同一个测试进程内并行验证三种方言
 
-## 2. `platform_db` 满签名传递
+</details>
+
+## 2. `platform_db` 满签名传递（部分缓解）
+
+> ⚠️ 签名仍是 `Path | str`，但 `connect()` / `initialize_platform_db()`
+> 现已接受 `PlatformContext`，因此逐模块迁移可以增量进行而不必一次性重写。
+
 
 `platform_db: Path | str` 出现在 20 个模块的函数签名里，
 其中 `workflow_permission.py` 26 处、`agent.py` 12 处、`governance.py` 12 处、
