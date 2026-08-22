@@ -258,7 +258,8 @@ cd frontend && npm install && npm run dev
 | Bundled vector database integration | 📋 | register via SPI |
 | Conversation persistence | ✅ | `conversations.py` |
 | Feedback loop (rating / correction / escalation) | ✅ | `conversations.py` |
-| Multi-tenancy | 📋 | 31 tables have no tenant concept |
+| Multi-tenancy (separate schema + tenant_id) | ✅ | `tenancy.py` |
+| Tenant provisioning and discovery | ✅ | `tenancy.py` |
 | Channel integrations, scheduler | 📋 | none |
 | Ontology import (SHACL / reasoner) | 📋 | export only |
 | Cross-source entity resolution | 📋 | none |
@@ -352,7 +353,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**369 tests**, all passing:
+**411 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -365,6 +366,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_inert_fields_activated.py` | 28 | guards, row filters, rule dependencies, policy scoping |
 | `test_conversations_and_feedback.py` | 35 | conversation persistence, feedback attribution, escalation |
 | `test_platform_context.py` | 23 | multi-instance isolation, thread binding, compatibility |
+| `test_multi_tenancy.py` | 42 | schema routing, tenant_id defence in depth, cross-tenant detection |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

@@ -86,7 +86,9 @@ class PlatformContext:
                 if self._adapter is None:
                     from .database import _create_adapter
 
-                    self._adapter = _create_adapter(self.db_type, self.connection_uri)
+                    # Passing the schema is what activates per-tenant routing
+                    # (ADR-0006); an empty schema keeps the single-tenant path.
+                    self._adapter = _create_adapter(self.db_type, self.connection_uri, self.schema)
         return self._adapter
 
     def connect(self) -> Any:

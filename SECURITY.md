@@ -59,7 +59,12 @@
   无法求值则阻止流转。
 - `permission_policy` 现按 `(role_id, ontology_id, object_code)` 建索引。
   `ontology_id = 0` 表示通配，用于兼容既有单本体部署。
-- **无多租户隔离。** 31 张表没有租户概念，一个部署实例服务一个组织。
+- **多租户隔离已实现**（`tenancy.py`，ADR-0006）：每租户独立 schema，
+  关键表带 `tenant_id`，跨租户读取会被 `assert_tenant_row()` 拦截。
+  **注意事项**：多租户是**可选**的——未调用 `provision_tenant()` 的部署仍是
+  单租户模式，此时所有数据在同一 schema 内，不存在租户边界。
+  直接使用 `connect()` 而未绑定租户上下文的自定义代码不会自动获得隔离；
+  请通过 `tenant_context()` 取得上下文,或用 `scope_query()` 显式加过滤。
 - `ONTOLOGY_AUTH_DISABLED=1` 会关闭全部认证，使所有接口可匿名访问。
   仅限本地开发；启用时启动日志会打印警告。
 - 未设置 `ONTOLOGY_ADMIN_PASSWORD` 时会生成随机管理员口令并打印在启动日志中，

@@ -47,10 +47,10 @@ Dify 的同类产品，失去差异化。
 多租户落地，贯穿全表，检索期权限过滤，并修掉
 `permission_policy` 缺本体维度的已知缺陷。
 
-> ✅ **隔离模型已定**（[ADR-0006](docs/adr/0006-tenant-isolation-model.md)）：
-> 独立 schema 起步 + 关键表带 `tenant_id` 双保险。
-> ✅ **硬前置已解除**：全局单例已由 `PlatformContext` 取代（ADR-0010）。
-> 🚧 **尚未实现**：31 张表仍无 `tenant_id`，schema 路由未接入适配器。
+> ✅ **已实现**（`tenancy.py`）：schema 路由已接入三方言适配器，
+> 关键表带 `tenant_id`，跨租户访问会被拦截。已在真实 MySQL 与 PostgreSQL 上
+> 验证「A 租户看不到 B 租户数据」。
+> 🚧 **仍待完成**：检索期权限过滤与租户级配额尚未实现。
 
 ### 阶段 C 依赖倒置
 

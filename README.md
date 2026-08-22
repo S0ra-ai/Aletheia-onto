@@ -111,6 +111,24 @@ BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的�
 
 图中如实标注了关系表达力的限制：`relation_type` 恒为 `references`、无基数、无多对多。
 
+### 多租户隔离
+
+按 [ADR-0006](docs/adr/0006-tenant-isolation-model.md) 落地**双层隔离**——
+两层的失效模式不重叠,任何单层出问题另一层仍拦得住:
+
+| 层 | 作用 | 各方言实现 |
+|---|---|---|
+| **schema** | 挡住忘写租户过滤的查询 | PG `search_path`／MySQL database／SQLite 独立文件 |
+| **`tenant_id`** | 把路由错误变成可见报错,而非静默跨租户读取 | 关键表加列 + 写入自动填充 |
+
+共享表方案被否决的原因很具体:它把正确性押在「每条查询都记得加过滤」上,
+而**漏写过滤在单租户测试数据下完全看不出来**。
+
+租户标识受严格校验(`^[a-z][a-z0-9_]{0,38}$`)——它会被插入 DDL 与 `search_path`,
+而这两处无法用绑定参数,因此必须先证明其安全。
+
+`require_tenant()` 在无法确定租户时**拒绝而非猜测**,与 ADR-0002 同一立场。
+
 ### 文档知识库
 
 ![文档知识库](docs/images/09-knowledge-base.png)
@@ -345,7 +363,9 @@ flowchart TB
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
 | 权限行级过滤 `filter_expression` | ✅ | `check_permission` 传入实例时真实求值 |
 | 权限策略本体维度 | ✅ | 按 `(role, ontology, object)` 索引，0 表示通配 |
-| 多租户／租户隔离 | 📋 | 31 张表零租户概念 |
+| 多租户隔离（独立 schema + `tenant_id` 双保险） | ✅ | `tenancy.py` |
+| 租户开通与枚举 | ✅ | `tenancy.py` |
+| 跨租户访问检测（fail-closed） | ✅ | `tenancy.py` |
 | 数据字典、部门／岗位数据权限 | 📋 | — |
 
 ### 语义服务
@@ -543,7 +563,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**369 个测试**，全绿。分布：
+**411 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -556,6 +576,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
