@@ -15,6 +15,7 @@ from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .ontology import explain_instance
 from .registry import Registry, load_entry_point_plugins
+from .value_mapping import load_value_mappings_in_connection, state_for
 
 
 class RowObject:
@@ -26,6 +27,49 @@ class RowObject:
 
     def as_dict(self) -> dict[str, Any]:
         return dict(self._values)
+
+
+class MappedValue(str):
+    """A legacy code that also compares equal to its semantic state name.
+
+    Subclasses str so every existing operation on the column value keeps working
+    -- comparison, `in`, string methods, JSON serialisation. What changes is that
+    ``status == 'A'`` and ``status == '生效中'`` are both true for the same cell,
+    which is what lets a rule be written in business language without breaking
+    rules already written against the raw code.
+    """
+
+    state: str
+
+    def __new__(cls, raw: Any, state: str) -> "MappedValue":
+        instance = super().__new__(cls, "" if raw is None else str(raw))
+        instance.state = state
+        return instance
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return str(self) == other or self.state == other
+        return NotImplemented
+
+    def __ne__(self, other: object) -> bool:
+        result = self.__eq__(other)
+        return NotImplemented if result is NotImplemented else not result
+
+    def __hash__(self) -> int:
+        # Equality spans two strings, so hash on the raw value only; dict lookups
+        # by state name are not supported and would be ambiguous anyway.
+        return str.__hash__(self)
+
+
+def _apply_value_mappings(
+    context: dict[str, Any], table_name: str, mappings: dict[str, dict[str, str]]
+) -> dict[str, Any]:
+    updated = dict(context)
+    for column, value in context.items():
+        state = state_for(mappings, table_name, column, value)
+        if state is not None and not isinstance(value, MappedValue):
+            updated[column] = MappedValue(value, state)
+    return updated
 
 
 class RelatedValues(list[Any]):
@@ -461,9 +505,6 @@ def build_runtime(
         (source_table["id"],),
     ).fetchone()
     primary_key = source_table["primary_key"] or "id"
-    if "," in primary_key:
-        raise ValueError("当前原型不支持复合主键实例研判")
-
     adapter = get_adapter(data_source["source_type"])
     with adapter.runtime(data_source["connection_uri"]) as runtime:
         record = runtime.fetch_one(source_table["table_name"], primary_key, instance_id)
@@ -472,6 +513,14 @@ def build_runtime(
         context: dict[str, Any] = dict(record)
         related = _load_related_context(platform, runtime, data_source["id"], source_table, primary_key, record)
         context.update(related)
+
+    # Confirmed value mappings let a rule be written in business language
+    # (status == '生效中') instead of against a legacy code (status == 'A').
+    # Both forms must evaluate identically, so each mapped column is exposed as
+    # a value that compares equal to the code and to the state name.
+    value_mappings = load_value_mappings_in_connection(platform, ontology_id)
+    if value_mappings:
+        context = _apply_value_mappings(context, source_table["table_name"], value_mappings)
 
     return SemanticRuntime(
         ontology_id=ontology_id,
@@ -712,8 +761,6 @@ def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code:
     if source_table is None:
         raise ValueError(f"业务对象未绑定来源表: {object_code}")
     primary_key = source_table["primary_key"] or "id"
-    if "," in primary_key:
-        raise ValueError("当前原型不支持复合主键批量一致性评估")
     data_source = platform.execute(
         "select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?",
         (source_table["id"],),

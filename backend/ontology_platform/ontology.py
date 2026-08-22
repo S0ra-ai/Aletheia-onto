@@ -128,9 +128,6 @@ def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str
             (source_table["id"],),
         ).fetchone()
         primary_key = source_table["primary_key"] or "id"
-        if "," in primary_key:
-            raise ValueError("当前原型不支持复合主键实例解释")
-
         adapter = get_adapter(data_source["source_type"])
         with adapter.runtime(data_source["connection_uri"]) as runtime:
             record = runtime.fetch_one(source_table["table_name"], primary_key, instance_id)

@@ -58,10 +58,13 @@ bundled synthetic examples and contains no real business information.
 
 ![Semantic Q&A with evidence](docs/images/01-semantic-qa-with-evidence.png)
 
-Asking "is contract 1 compliant?" returns a verdict, the per-rule outcome with
-the reason for each, and a confidence score -- not a paragraph of prose. The
-agent role shown ("设备运维业务专家", equipment-maintenance expert) is derived at
-runtime from the onboarded domain; no industry roles are built in.
+Answers come back structured, not as a paragraph of prose: a bolded conclusion,
+one bullet per rule carrying the rule code (`clause_content_required`) so it can
+be looked up, and result distributions as tables. Answers render as Markdown, so
+which rule fired, why, and what the verdict is stay distinguishable.
+
+The agent role shown ("设备运维业务专家", equipment-maintenance expert) is derived
+at runtime from the onboarded domain; no industry roles are built in.
 
 ### Data source onboarding and metadata scan
 
@@ -209,9 +212,7 @@ By design, not bugs. These are the next phase's work.
 | Constraint | Location |
 |---|---|
 | `business_object.source_table_id` is a single FK: **one object, one table** | `database.py:363` |
-| **Composite primary keys unsupported**, three explicit raises | `ontology.py:132`, `semantic_kernel.py:416`, `semantic_kernel.py:663` |
 | `relation_type` is hardcoded `"references"`; **no cardinality, no many-to-many** | `ontology.py:606` |
-| Only `table_to_object` and `column_to_attribute` mappings; **no value-domain mapping** | `ontology.py` |
 | **No type hierarchy** (no parent_object / subclass / inherit) | — |
 | Rules scope to a single object; **no cross-object aggregation** | `semantic_kernel.py` |
 | `ALLOWED_RULE_FUNCTIONS` is frozen (5 functions); **third parties cannot register** | `semantic_kernel.py:113` |
@@ -278,18 +279,20 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**174 tests**, all passing:
+**221 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | extension registries, doubling as the third-party conformance suite |
+| `test_composite_instance_keys.py` | 31 | composite keys end to end, instance-key round-trips |
+| `test_value_domain_mapping.py` | 13 | value domain mapping and backwards compatibility |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |
 | `test_rule_engine_safety.py` | 17 | sandbox escapes, fail-closed, release gate |
 | `test_platform_database_dialects.py` | 10 | all three dialects as platform store |
 | `test_credential_protection.py` | 8 | connection string and API key redaction |
-| `test_data_source_knowledge_base.py` | 8 | data source knowledge base |
+| `test_data_source_knowledge_base.py` | 11 | data source knowledge base |
 
 Dialect tests skip automatically when no server is reachable, so CI without service
 containers stays green rather than falsely red.

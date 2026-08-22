@@ -191,3 +191,75 @@ def test_initializing_same_domain_sources_uses_distinct_ontology_names(tmp_path:
 
     names = {item["ontologyName"] for item in list_knowledge_bases(platform_db)}
     assert names == {"合同系统1本体", "合同系统2本体"}
+
+
+def test_assessment_answer_is_structured_markdown(tmp_path: Path) -> None:
+    """A verdict must be traceable to named rules, not delivered as prose.
+
+    The frontend renders answers as Markdown, so the local fallback emits real
+    structure: a bolded conclusion, one bullet per failed rule, and the rule code
+    in inline code so a reader can look the rule up. Asserting on the structure
+    keeps the two sides from drifting apart.
+    """
+    platform_db, source, ontology = _initialized_source(tmp_path)
+    upsert_business_rule(
+        platform_db,
+        ontology["id"],
+        code="amount_must_be_positive",
+        name="合同金额必须为正数",
+        rule_type="validation",
+        scope_object_code="contract",
+        expression="total_amount != null and total_amount > 0",
+        severity="blocking",
+        natural_language="合同总金额必须大于 0。",
+        actor="test",
+    )
+
+    answer = query_natural_language(
+        platform_db,
+        "合同 1 是否合规？",
+        ontology["id"],
+        source.id,
+        use_model=False,
+    )["answer"]
+
+    # Either the instance passes cleanly or it reports failures as a bullet list;
+    # both are valid, but a failure report must carry structure.
+    if "还不适合直接通过" in answer:
+        assert "**" in answer, answer
+        assert "\n- " in answer, answer
+    else:
+        assert "没有发现明确的合规问题" in answer, answer
+
+
+def test_consistency_answer_renders_a_markdown_table(tmp_path: Path) -> None:
+    """A result distribution reads as a table, not a run-on sentence."""
+    platform_db, source, ontology = _initialized_source(tmp_path)
+
+    answer = query_natural_language(
+        platform_db,
+        "合同整体决策是否一致？",
+        ontology["id"],
+        source.id,
+        use_model=False,
+    )["answer"]
+
+    assert "| 结果 | 数量 |" in answer, answer
+    assert "| 通过 |" in answer, answer
+    # The GFM header separator is what makes it a table rather than pipes in text.
+    assert "| --- | ---: |" in answer, answer
+
+
+def test_answers_never_contain_raw_html(tmp_path: Path) -> None:
+    """The renderer does not enable raw HTML, so emitting it would show literally.
+
+    More importantly, answer text can embed values read from the connected
+    database; if HTML ever became meaningful in this channel it would be an
+    injection path. This asserts the backend never relies on it.
+    """
+    platform_db, source, ontology = _initialized_source(tmp_path)
+
+    for question in ("合同 1 是什么？", "合同 1 是否合规？", "合同整体决策是否一致？"):
+        answer = query_natural_language(platform_db, question, ontology["id"], source.id, use_model=False)["answer"]
+        for marker in ("<script", "<img", "<iframe", "<div", "<span", "<a href", "javascript:"):
+            assert marker not in answer.lower(), f"{question} -> {answer}"

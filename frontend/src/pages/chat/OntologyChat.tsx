@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { SendOutlined, UserOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { agentApi, knowledgeBaseApi } from '../../api';
+import MarkdownMessage from '../../components/MarkdownMessage';
 import type { AgentRole, AgentChatResult, KnowledgeBase } from '../../types';
 
 const { Paragraph, Text, Title } = Typography;
@@ -263,11 +264,11 @@ const OntologyChat: React.FC = () => {
                         borderRadius: 8,
                         background: isUser ? '#1677ff' : '#f5f7fb',
                         color: isUser ? '#fff' : '#111827',
-                        whiteSpace: 'pre-wrap',
                         lineHeight: 1.7,
+                        overflowWrap: 'anywhere',
                       }}
                     >
-                      {item.content}
+                      <MarkdownMessage content={item.content} inverted={isUser} />
                     </div>
                     {item.result && (
                       <div style={{ marginTop: 8 }}>

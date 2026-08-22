@@ -9,6 +9,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol
 from urllib.parse import urlparse
 
 from .config import QUERY_LIMITS
+from .instance_key import InstanceKey, parse_key_columns
 from .registry import Registry, RegistryError, load_entry_point_plugins
 
 
@@ -131,11 +132,21 @@ class SQLiteRuntime:
         self.conn = conn
 
     def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
+        columns = parse_key_columns(primary_key)
+        if len(columns) == 1:
+            rows = self.conn.execute(
+                f'select "{columns[0]}" as instance_id from "{table_name}" order by "{columns[0]}" limit ?',
+                (limit,),
+            ).fetchall()
+            return [row["instance_id"] for row in rows]
+        # Composite key: return the token form so callers keep treating an
+        # instance id as one opaque string.
+        selected = ", ".join(f'"{column}"' for column in columns)
+        ordered = ", ".join(f'"{column}"' for column in columns)
         rows = self.conn.execute(
-            f'select "{primary_key}" as instance_id from "{table_name}" order by "{primary_key}" limit ?',
-            (limit,),
+            f'select {selected} from "{table_name}" order by {ordered} limit ?', (limit,)
         ).fetchall()
-        return [row["instance_id"] for row in rows]
+        return [InstanceKey.from_row(primary_key, dict(row)).token for row in rows]
 
     def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
         quoted = table_name.replace('"', '""')
@@ -144,10 +155,9 @@ class SQLiteRuntime:
         return [dict(row) for row in rows], total
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            f'select * from "{table_name}" where "{primary_key}" = ?',
-            (instance_id,),
-        ).fetchone()
+        key = InstanceKey.from_token(primary_key, instance_id)
+        conditions, params = key.where_clause(lambda column: f'"{column}"', placeholder="?")
+        row = self.conn.execute(f'select * from "{table_name}" where {conditions}', params).fetchone()
         return dict(row) if row is not None else None
 
     def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
@@ -259,11 +269,18 @@ class SQLRuntime:
         self.dialect = dialect
 
     def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
-        rows = self._fetch_all(
-            f"select {_quote_identifier(primary_key, self.dialect)} as instance_id from {_quote_identifier(table_name, self.dialect)} order by {_quote_identifier(primary_key, self.dialect)} limit %s",
-            (limit,),
-        )
-        return [row["instance_id"] for row in rows]
+        columns = parse_key_columns(primary_key)
+        table = _quote_identifier(table_name, self.dialect)
+        if len(columns) == 1:
+            column = _quote_identifier(columns[0], self.dialect)
+            rows = self._fetch_all(
+                f"select {column} as instance_id from {table} order by {column} limit %s",
+                (limit,),
+            )
+            return [row["instance_id"] for row in rows]
+        selected = ", ".join(_quote_identifier(column, self.dialect) for column in columns)
+        rows = self._fetch_all(f"select {selected} from {table} order by {selected} limit %s", (limit,))
+        return [InstanceKey.from_row(primary_key, row).token for row in rows]
 
     def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
         table = _quote_identifier(table_name, self.dialect)
@@ -272,9 +289,11 @@ class SQLRuntime:
         return rows, int(total_row["row_count"])
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
+        key = InstanceKey.from_token(primary_key, instance_id)
+        conditions, params = key.where_clause(lambda column: _quote_identifier(column, self.dialect), placeholder="%s")
         return self._fetch_one(
-            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(primary_key, self.dialect)} = %s",
-            (instance_id,),
+            f"select * from {_quote_identifier(table_name, self.dialect)} where {conditions}",
+            params,
         )
 
     def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:

@@ -116,6 +116,12 @@ SQLite 的 `text`）只会在对应后端上暴露。
 
 记录在此以免重复讨论：
 
+- ~~四处扩展点硬编码，第三方必须 fork 才能扩展~~
+  → 运行时注册表 + entry points（`registry.py`，ADR-0007）
+- ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
+  → 实例键抽象（`instance_key.py`，ADR-0008）
+- ~~无值域映射，规则只能写魔法值~~
+  → `value_to_state` 走既有审核流程（`value_mapping.py`，ADR-0008）
 - ~~`PlatformConnection.__exit__` 委托驱动的上下文管理器，
   pymysql 只关闭不提交，导致 MySQL 上所有写入被回滚~~
   → 适配层自己拥有 commit／rollback／close 决策
