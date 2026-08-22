@@ -586,6 +586,62 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "text not null default ''",
         "text",
     ),
+    # Relation semantics (generality #4). Existing rows carry `many_to_one` /
+    # `association` / optional, which is the weakest classification and therefore
+    # the safe default: it never overstates a link's strength, so nothing that was
+    # previously allowed becomes cascading.
+    ColumnMigration(
+        "business_relation",
+        "cardinality",
+        "text not null default 'many_to_one'",
+        "text not null default 'many_to_one'",
+        "varchar(50) not null default 'many_to_one'",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "relation_kind",
+        "text not null default 'association'",
+        "text not null default 'association'",
+        "varchar(50) not null default 'association'",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "optional",
+        "integer not null default 1",
+        "integer not null default 1",
+        "integer not null default 1",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "inference_reason",
+        "text not null default ''",
+        "text not null default ''",
+        "text",
+    ),
+    # For a many-to-many collapsed from a junction table: which table it came from,
+    # and the two columns that linked the sides. Kept so the relation can be
+    # explained and traversed without re-deriving the junction.
+    ColumnMigration(
+        "business_relation",
+        "junction_table",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "junction_source_column",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "junction_target_column",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
 )
 
 

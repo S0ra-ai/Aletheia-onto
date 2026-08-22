@@ -5,12 +5,24 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .database import connect, last_insert_id
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
+from .relations import (
+    AGGREGATION,
+    ASSOCIATION,
+    CARDINALITY_LABELS,
+    COMPOSITION,
+    KIND_LABELS,
+    RelationSemantics,
+    classify_foreign_key,
+    detect_junction,
+    junction_semantics,
+    shapes_for_table,
+)
 
 
 def generate_ontology_draft(
@@ -54,17 +66,7 @@ def generate_ontology_draft(
                 attribute_id = _create_attribute(conn, object_id, column, blueprint, lexicon)
                 _create_column_mapping(conn, ontology_id, table, column, object_id, attribute_id, blueprint, lexicon)
 
-        foreign_keys = conn.execute(
-            """
-            select fk.*, st.table_name as source_table_name
-            from source_foreign_key fk
-            join source_table st on st.id = fk.source_table_id
-            where st.data_source_id = ?
-            """,
-            (data_source_id,),
-        ).fetchall()
-        for foreign_key in foreign_keys:
-            _create_relation_from_foreign_key(conn, ontology_id, foreign_key)
+        _create_relations(conn, ontology_id, data_source_id, tables)
 
         _create_generic_rules(conn, ontology_id)
         _create_blueprint_rules(conn, ontology_id, blueprint)
@@ -216,6 +218,8 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
     relations = conn.execute(
         """
         select br.id, br.code, br.name, br.relation_type, fk.column_name as source_foreign_key,
+               br.cardinality, br.relation_kind, br.optional, br.inference_reason,
+               br.junction_table, br.junction_source_column, br.junction_target_column,
                so.id as source_object_id, tobj.id as target_object_id,
                so.code as source_code, tobj.code as target_code
         from business_relation br
@@ -325,6 +329,12 @@ def _export_jsonld(detail: dict[str, Any]) -> str:
                 "code": item["code"],
                 "name": item["name"],
                 "relationType": item["relationType"],
+                # Cardinality and kind are what make an exported relation usable by
+                # a downstream consumer; without them every link looks alike.
+                "cardinality": item["cardinality"],
+                "relationKind": item["relationKind"],
+                "optional": item["optional"],
+                "junctionTable": item["junctionTable"],
                 "sourceObject": {"@id": f"{base}object/{_uri_part(item['sourceCode'])}"},
                 "targetObject": {"@id": f"{base}object/{_uri_part(item['targetCode'])}"},
                 "sourceForeignKey": item["sourceForeignKey"],
@@ -429,6 +439,9 @@ def _export_turtle(detail: dict[str, Any]) -> str:
                 f"  ont:code {_ttl_literal(item['code'])} ;",
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:relationType {_ttl_literal(item['relationType'])} ;",
+                f"  ont:cardinality {_ttl_literal(item['cardinality'])} ;",
+                f"  ont:relationKind {_ttl_literal(item['relationKind'])} ;",
+                f"  ont:optional {'true' if item['optional'] else 'false'} ;",
                 f"  ont:sourceObject bp:object/{_uri_part(item['sourceCode'])} ;",
                 f"  ont:targetObject bp:object/{_uri_part(item['targetCode'])} ;",
                 f"  ont:sourceForeignKey {_ttl_literal(item['sourceForeignKey'])} .",
@@ -581,37 +594,169 @@ def _create_attribute(
     return last_insert_id(conn)
 
 
-def _create_relation_from_foreign_key(conn: sqlite3.Connection, ontology_id: int, foreign_key: sqlite3.Row) -> None:
-    source_object = conn.execute(
-        """
-        select bo.* from business_object bo
-        join source_table st on st.id = bo.source_table_id
-        where bo.ontology_id = ? and st.table_name = ?
-        """,
-        (ontology_id, foreign_key["source_table_name"]),
-    ).fetchone()
-    target_object = conn.execute(
-        """
-        select bo.* from business_object bo
-        join source_table st on st.id = bo.source_table_id
-        where bo.ontology_id = ? and st.table_name = ?
-        """,
-        (ontology_id, foreign_key["target_table"]),
-    ).fetchone()
+def _create_relations(
+    conn: sqlite3.Connection, ontology_id: int, data_source_id: int, tables: Sequence[sqlite3.Row]
+) -> None:
+    """Generate relations with real cardinality, strength and many-to-many.
+
+    Previously every foreign key produced one `references` row -- a constant that
+    restated the foreign key rather than modelling the link. Classification is
+    structural (see `relations`), so the same schema always yields the same
+    relations.
+    """
+    objects_by_table = {
+        row["table_name"]: row
+        for row in conn.execute(
+            """
+            select bo.id, bo.code, bo.name, st.table_name
+            from business_object bo
+            join source_table st on st.id = bo.source_table_id
+            where bo.ontology_id = ? and st.data_source_id = ?
+            """,
+            (ontology_id, data_source_id),
+        ).fetchall()
+    }
+    for table in tables:
+        columns = conn.execute(
+            "select column_name, nullable from source_column where source_table_id = ?", (table["id"],)
+        ).fetchall()
+        foreign_keys = conn.execute(
+            "select * from source_foreign_key where source_table_id = ?", (table["id"],)
+        ).fetchall()
+        if not foreign_keys:
+            continue
+        shapes = shapes_for_table(table["primary_key"], columns, foreign_keys)
+        foreign_key_ids = {row["column_name"]: row["id"] for row in foreign_keys}
+        # Two foreign keys from the same table to the same target (`created_by` and
+        # `approved_by` both pointing at `users`) would otherwise collide on one
+        # relation code, and the second insert would be lost.
+        targets = [shape.target_table for shape in shapes]
+
+        # A junction collapses into a direct many-to-many, but its own per-hop
+        # relations are still recorded: the junction object keeps its attributes,
+        # and a rule may legitimately need to reach the link row itself.
+        junction = detect_junction(table["table_name"], table["primary_key"], shapes)
+        for shape in shapes:
+            _insert_relation(
+                conn,
+                ontology_id,
+                objects_by_table.get(table["table_name"]),
+                objects_by_table.get(shape.target_table),
+                classify_foreign_key(shape),
+                source_foreign_key_id=foreign_key_ids.get(shape.column_name),
+                # Only disambiguate when needed, so the common single-link case
+                # keeps a clean code.
+                via_column=shape.column_name if targets.count(shape.target_table) > 1 else "",
+            )
+        if junction is not None:
+            semantics = junction_semantics(junction)
+            left = objects_by_table.get(junction.left.target_table)
+            right = objects_by_table.get(junction.right.target_table)
+            # Both directions, because a many-to-many read from either side is the
+            # same business fact and both are traversed in practice.
+            _insert_relation(
+                conn,
+                ontology_id,
+                left,
+                right,
+                semantics,
+                junction_table=junction.table_name,
+                junction_source_column=junction.left.column_name,
+                junction_target_column=junction.right.column_name,
+            )
+            _insert_relation(
+                conn,
+                ontology_id,
+                right,
+                left,
+                semantics,
+                junction_table=junction.table_name,
+                junction_source_column=junction.right.column_name,
+                junction_target_column=junction.left.column_name,
+            )
+
+
+def _insert_relation(
+    conn: sqlite3.Connection,
+    ontology_id: int,
+    source_object: Any,
+    target_object: Any,
+    semantics: RelationSemantics,
+    *,
+    source_foreign_key_id: int | None = None,
+    junction_table: str = "",
+    junction_source_column: str = "",
+    junction_target_column: str = "",
+    via_column: str = "",
+) -> None:
+    """Store one relation, skipping links whose endpoints are not both modelled.
+
+    A foreign key pointing at a table outside this ontology has no target object,
+    so there is nothing to relate; silently skipping matches the previous behaviour.
+    """
     if source_object is None or target_object is None:
         return
-
-    code = f"{source_object['code']}_references_{target_object['code']}"
-    name = f"{source_object['name']}关联{target_object['name']}"
+    code = _relation_code(source_object["code"], target_object["code"], semantics, junction_table, via_column)
+    name = f"{source_object['name']}{RELATION_NAME_VERBS[semantics.kind]}{target_object['name']}"
     conn.execute(
         """
         insert into business_relation (
-            ontology_id, source_object_id, target_object_id, code, name, relation_type, source_foreign_key_id
+            ontology_id, source_object_id, target_object_id, code, name, relation_type,
+            source_foreign_key_id, cardinality, relation_kind, optional, inference_reason,
+            junction_table, junction_source_column, junction_target_column
         )
-        values (?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (ontology_id, source_object["id"], target_object["id"], code, name, "references", foreign_key["id"]),
+        (
+            ontology_id,
+            source_object["id"],
+            target_object["id"],
+            code,
+            name,
+            # `relation_type` is kept as the coarse kind so existing readers and
+            # exports keep a value they understand; cardinality lives in its own
+            # column rather than being encoded into this string.
+            semantics.kind,
+            source_foreign_key_id,
+            semantics.cardinality,
+            semantics.kind,
+            1 if semantics.optional else 0,
+            semantics.reason,
+            junction_table,
+            junction_source_column,
+            junction_target_column,
+        ),
     )
+
+
+# Verb per kind, so a generated relation name states the strength in business
+# language instead of the uniform "关联" every relation used to get.
+RELATION_NAME_VERBS = {
+    COMPOSITION: "组成",
+    AGGREGATION: "隶属",
+    ASSOCIATION: "关联",
+}
+
+
+def _relation_code(
+    source_code: str,
+    target_code: str,
+    semantics: RelationSemantics,
+    junction_table: str,
+    via_column: str = "",
+) -> str:
+    """A code that stays unique when two objects are linked more than once.
+
+    Two foreign keys from the same table to the same target (`created_by` and
+    `approved_by` both pointing at `users`) previously collided on one code. The
+    junction table name disambiguates a collapsed many-to-many from the per-hop
+    relations it coexists with.
+    """
+    if junction_table:
+        return f"{source_code}_{semantics.cardinality}_{target_code}_via_{_to_code(junction_table)}"
+    if via_column:
+        return f"{source_code}_{semantics.cardinality}_{target_code}_by_{_to_code(via_column)}"
+    return f"{source_code}_{semantics.cardinality}_{target_code}"
 
 
 def _create_table_mapping(
@@ -850,6 +995,18 @@ def _business_attribute_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _business_relation_row(row: sqlite3.Row) -> dict[str, Any]:
+    # Relations predate the semantic columns, and a caller may hand in a row from a
+    # narrower query, so each is read defensively with the weakest default.
+    def _get(name: str, fallback: Any) -> Any:
+        try:
+            value = row[name]
+        except (KeyError, IndexError, TypeError):
+            return fallback
+        return fallback if value is None else value
+
+    cardinality = _get("cardinality", "many_to_one")
+    kind = _get("relation_kind", row["relation_type"])
+    optional = bool(_get("optional", 1))
     return {
         "id": row["id"],
         "code": row["code"],
@@ -857,6 +1014,18 @@ def _business_relation_row(row: sqlite3.Row) -> dict[str, Any]:
         "type": row["relation_type"],
         "relationType": row["relation_type"],
         "relation_type": row["relation_type"],
+        "cardinality": cardinality,
+        "cardinalityLabel": CARDINALITY_LABELS.get(cardinality, cardinality),
+        "relationKind": kind,
+        "relation_kind": kind,
+        "relationKindLabel": KIND_LABELS.get(kind, kind),
+        "optional": optional,
+        "inferenceReason": _get("inference_reason", ""),
+        "inference_reason": _get("inference_reason", ""),
+        "junctionTable": _get("junction_table", ""),
+        "junction_table": _get("junction_table", ""),
+        "junctionSourceColumn": _get("junction_source_column", ""),
+        "junctionTargetColumn": _get("junction_target_column", ""),
         "sourceObjectId": row["source_object_id"],
         "source_object_id": row["source_object_id"],
         "targetObjectId": row["target_object_id"],

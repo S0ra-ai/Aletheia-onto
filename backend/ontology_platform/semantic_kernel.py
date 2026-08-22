@@ -15,8 +15,10 @@ from .aggregation import aggregate_context, compute_aggregates, load_aggregate_s
 from .config import clamp_page_size, clamp_sample_size
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
+from .instance_key import parse_key_columns
 from .ontology import explain_instance
 from .registry import Registry, load_entry_point_plugins
+from .relations import MANY_TO_MANY
 from .value_mapping import load_value_mappings_in_connection, state_for
 
 logger = logging.getLogger(__name__)
@@ -594,6 +596,9 @@ def build_runtime(
         related = _load_related_context(
             platform, runtime, ontology_id, data_source["id"], source_table, primary_key, record
         )
+        # Collapsed many-to-many relations, exposed as the far side's rows so a rule
+        # never has to hop through the junction table by hand.
+        related.update(_load_many_to_many_context(platform, runtime, ontology_id, object_code, record, primary_key))
         # Resolver-provided children take precedence: they were declared
         # explicitly, whereas foreign-key discovery is inferred.
         for name, value in related.items():
@@ -670,7 +675,7 @@ def _load_related_context(
 
     reverse_foreign_keys = platform.execute(
         """
-        select fk.*, st.table_name as child_table
+        select fk.*, st.table_name as child_table, st.primary_key as child_primary_key
         from source_foreign_key fk
         join source_table st on st.id = fk.source_table_id
         where st.data_source_id = ?
@@ -681,9 +686,69 @@ def _load_related_context(
     current_key = record.get(primary_key)
     for foreign_key in reverse_foreign_keys:
         rows = runtime.fetch_related_many(foreign_key["child_table"], foreign_key["column_name"], current_key)
-        _publish(foreign_key["child_table"], RelatedRows(rows))
+        # A child whose entire primary key *is* the foreign key can only ever have
+        # one row per parent, so it is published as that row rather than as a
+        # collection. This matters for correctness, not convenience: on a
+        # collection, `profile.status != 'x'` evaluates to `[False]`, which is
+        # truthy, so a rule written the obvious way would silently pass.
+        if tuple(parse_key_columns(foreign_key["child_primary_key"])) == (foreign_key["column_name"],):
+            _publish(foreign_key["child_table"], RowObject(rows[0]) if rows else RowObject({}))
+        else:
+            _publish(foreign_key["child_table"], RelatedRows(rows))
 
     return related
+
+
+def _load_many_to_many_context(
+    platform: sqlite3.Connection,
+    runtime: RuntimeDatabase,
+    ontology_id: int,
+    object_code: str,
+    record: dict[str, Any],
+    primary_key: str,
+) -> dict[str, Any]:
+    """Expose collapsed many-to-many relations as collections of the far side.
+
+    Without this a rule about "the contract's tags" has to hop through the junction
+    table by hand -- `contract_tag.tag_id` gives ids, not tags -- which is exactly the
+    modelling detail the relation was collapsed to hide.
+
+    Traversal is two hops read through the adapter rather than a join, so it works
+    identically on every dialect and honours whatever quoting the adapter applies.
+    """
+    relations = platform.execute(
+        """
+        select br.junction_table, br.junction_source_column, br.junction_target_column,
+               tobj.code as target_code, st.table_name as target_table, st.primary_key as target_primary_key
+        from business_relation br
+        join business_object so on so.id = br.source_object_id
+        join business_object tobj on tobj.id = br.target_object_id
+        join source_table st on st.id = tobj.source_table_id
+        where br.ontology_id = ? and so.code = ? and br.cardinality = ?
+          and br.junction_table <> ''
+        """,
+        (ontology_id, object_code, MANY_TO_MANY),
+    ).fetchall()
+    current_key = record.get(primary_key)
+    if current_key is None:
+        return {}
+    context: dict[str, Any] = {}
+    for relation in relations:
+        links = runtime.fetch_related_many(relation["junction_table"], relation["junction_source_column"], current_key)
+        target_key = parse_key_columns(relation["target_primary_key"])[0]
+        rows = []
+        for link in links:
+            far_value = link.get(relation["junction_target_column"])
+            if far_value is None:
+                continue
+            row = runtime.fetch_related_one(relation["target_table"], target_key, far_value)
+            if row is not None:
+                rows.append(row)
+        # Addressable by object code and by table name, same as direct relations.
+        collection = RelatedRows(rows)
+        context[relation["target_code"]] = collection
+        context.setdefault(relation["target_table"], collection)
+    return context
 
 
 def _related_object_codes(platform: sqlite3.Connection, ontology_id: int, data_source_id: int) -> dict[str, str]:
