@@ -163,8 +163,39 @@ DashScope, and the screen shows the full URL that will actually be called.
 
 ## Quick start
 
-Requires Python 3.9+ (Node.js 18+ for the frontend). Every command below was run in
-a clean clone.
+Requires Python 3.9+ (Node.js 18+ for the frontend). Every command below was run in a
+clean environment.
+
+### Install as a package
+
+The kernel has **no third-party dependencies** -- it runs the whole loop without a web
+server installed.
+
+```bash
+pip install aletheia-onto          # kernel: ontology, rules, verdicts, provenance
+pip install 'aletheia-onto[all]'   # plus HTTP layer, PostgreSQL/MySQL, document parsing
+```
+
+```bash
+aletheia demo      # onboard → model → assess, against a built-in sample system
+aletheia doctor    # report configuration, installed extras, registered extension points
+```
+
+Connect a real system:
+
+```bash
+aletheia init
+aletheia connect postgresql://user:pass@host/db --domain 合同管理
+aletheia model 1
+aletheia assess 1 contract 1
+```
+
+`aletheia assess` prints the verdict and the rules that failed; use `--verbose` for the
+full evidence. `aletheia publish` is subject to the release gate, and **unreviewed
+mappings cannot be skipped with `--force`** -- publishing on mappings nobody looked at
+would make every verdict derived from them unaccountable.
+
+### Run from source
 
 ```bash
 git clone git@github.com:S0ra-ai/Aletheia-onto.git && cd Aletheia-onto
@@ -177,6 +208,10 @@ Then:
 
 - Health check `http://127.0.0.1:8000/health` → `{"status":"ok"}`
 - API docs `http://127.0.0.1:8000/docs`
+
+Every endpoint is served both bare and under `/v1` (`/ontologies/1` and
+`/v1/ontologies/1`), through the same authorization middleware and the same policy
+table. New integrations should pin `/v1`.
 
 The default platform database is SQLite, so **no external database service is
 needed**. If `ONTOLOGY_ADMIN_PASSWORD` is unset, a random admin password is generated
@@ -216,6 +251,146 @@ token returns `401`. CI re-runs this exact sequence on every push.
 ```bash
 cd frontend && npm install && npm run dev
 ```
+
+## Ontology vocabulary
+
+Terms in this space are used loosely, so each entry states what the platform means
+by it and, where it matters, **what it deliberately is not**.
+
+### Ontology structure
+
+**Ontology** — a versioned formal expression of business objects, attributes,
+relations, events, states and rules. Generated as a draft from metadata scanning,
+published as an immutable version after human review. A published ontology cannot be
+edited, only superseded by a new version.
+_Not_: a knowledge graph, a data dictionary.
+
+**Metamodel** — the model that describes an ontology's own structure: which objects,
+relation types and lifecycle information an ontology may contain. An industry
+ontology is an instance of the metamodel.
+
+**BusinessObject** — something the business identifies and talks about: a customer, a
+contract, a device, a work order. It is **not a table** — an instance resolver decides
+which rows constitute its instances (ADR-0011).
+_Not_: an entity, a row, a DTO.
+
+**InstanceKey** — the column set identifying one instance. Composite keys are
+supported: junction tables, versioned records and partitioned history tables are
+routine in legacy schemas (ADR-0008).
+
+**InstanceResolver** — the replaceable strategy for "which rows are this object's
+instances". Four built in: single table, master/detail join, discriminated partition,
+custom SQL. Third-party resolvers can be registered (ADR-0011).
+
+**Attribute** — a named feature of an object, from one of two sources:
+
+- **mapped**: mirrors a source column
+- **derived**: computed from an expression, e.g. `margin = (revenue - cost) / revenue`.
+  Defined once and shared by every rule, so one definition cannot drift across five
+  copies (ADR-0013)
+
+**Unit / Dimension** — an attribute may declare its unit. Comparison converts within a
+dimension and refuses across dimensions. Not a convenience: mixing 万元 and 元 makes
+`amount 500 > limit 1000000` report "within limit" — a wrong verdict from correct
+data (ADR-0013).
+
+**Relation** — a link between two objects, carrying **cardinality** (one-to-one,
+many-to-one, one-to-many, many-to-many) and **strength**:
+
+| Kind | Meaning | Inferred from |
+|---|---|---|
+| composition | identity-dependent; the child is meaningless without the parent | FK inside the child's primary key |
+| aggregation | parent mandatory, child identity independent | FK NOT NULL, outside the key |
+| association | parent optional | FK nullable |
+
+Classification uses declared structure only, never data distribution — a relation
+inferred from a sample changes meaning when the data changes, and a verdict citing it
+would be unreproducible (ADR-0012).
+
+**TypeHierarchy** — declares that "company customer is a subtype of customer". A
+subtype inherits its ancestors' rules, aggregates and derived attributes. This is a
+deterministic walk up a declared chain, **not DL subsumption**: nothing is inferred
+about who is a subtype of whom (ADR-0014).
+
+**Override** — a subtype may declare that one of its rules supersedes an ancestor's,
+for a legitimate business exception. Declared explicitly rather than inferred from a
+name collision: a collision is ambiguous, and inference would silently disable one
+team's control. Weakening is allowed; weakening *invisibly* is not (ADR-0014).
+
+**Aggregate** — a named, reviewable group-level value such as "total of all the
+customer's active contracts", so a rule can say "total must not exceed the credit
+limit". Stored as data rather than as an inline join inside a rule, because the answer
+to "why" has to be a definition an operator can read (ADR-0012).
+
+**State / workflow** — where an instance sits in its lifecycle and which transitions
+are permitted. Transition guards evaluate in the rule sandbox and block the
+transition when they cannot be evaluated.
+
+**Event** — something that happened to an instance, append-only, with a payload, a
+source timestamp and an actor. Events **trigger nothing**: an event that could fire
+automation would make replaying history re-execute business actions (ADR-0014).
+_Not_: a message, a log line, an analytics hit.
+
+**Timeline** — an instance's full event sequence, ordered by source time. Workflow
+transitions are mirrored into it, so an instance has one timeline rather than one per
+subsystem.
+
+**IndustryBlueprint** — one industry's object naming, attribute naming and rule
+templates. The platform ships **no built-in domain vocabulary**; vocabulary is
+contributed by blueprints at runtime, so a new domain is added by importing a
+blueprint rather than by changing platform code (ADR-0003).
+
+### Mapping onto the legacy system
+
+**Onboarding** — registering a legacy system's tables, APIs, actions and capability
+boundary. The platform **reads metadata; it does not move data**.
+
+**SemanticMapping** — the traceable correspondence from legacy tables and columns to
+ontology concepts. Every mapping carries a `pending`/`confirmed` status and a
+reviewer.
+_Not_: an ETL mapping.
+
+**ValueMapping** — legacy code to semantic state, e.g. `status='A'` ↔ effective. Both
+forms then evaluate identically in a rule, so nobody has to memorise magic values
+(ADR-0008).
+
+**Drift** — the difference between the live source schema and the scanned metadata.
+The release gate checks for it, because assessing on a drifted mapping means
+assessing on unverified data.
+
+### Assessment and provenance
+
+**BusinessRule** — an explainable condition evaluated in an AST-allowlist sandbox.
+The expression is checked for executability at write time; an unexecutable rule is
+refused.
+_Not_: an algorithm, a model, a scripting engine.
+
+**fail-closed** — an expression that cannot be evaluated (renamed column, type
+mismatch, syntax error) is treated as **not passed**, with the reason attached. The
+opposite would let structural drift silently disable a blocking rule while automation
+keeps running (ADR-0002).
+
+**Assessment** — the verdict for one instance: status, blocking reasons, recommended
+action. One assessment expands the type hierarchy, computes aggregates and derived
+attributes, applies units, and evaluates every applicable rule.
+
+**Decision provenance** — one assessment writes four layers: per-rule
+`inference_result`, evidence chain `explanation_trace`, decision-level
+`decision_record`, operation-level `audit_log`.
+
+**Explanation** — a readable account of one instance: attribute values, source table,
+ancestor types, recent event timeline. It answers "what is it, and how did it get
+this way".
+
+**ReleaseGate** — release-readiness is assessed before publishing; a blocking finding
+refuses the release. A `force` override is audited together with the number of gates
+it bypassed.
+
+**Escape hatch** — where structural expressiveness runs out, users drop down to a
+custom implementation instead of waiting for a feature: custom SQL as an object
+source, custom rule functions, derived expressions, write-back executor SPI, data
+source adapter SPI. Generality comes from **structural expressiveness plus escape
+hatches**, not from reasoning power (ADR-0005).
 
 ## Capability matrix
 
@@ -260,24 +435,33 @@ cd frontend && npm install && npm run dev
 | Feedback loop (rating / correction / escalation) | ✅ | `conversations.py` |
 | Multi-tenancy (separate schema + tenant_id) | ✅ | `tenancy.py` |
 | Tenant provisioning and discovery | ✅ | `tenancy.py` |
+| **Relation cardinality and strength** (1:1 / N:1 / N:M, composition / aggregation / association) | ✅ | `relations.py` |
+| **Junction tables collapse to many-to-many**, junction object keeps its attributes | ✅ | `relations.py` |
+| **Cross-object aggregates** (declared, fail-closed, row-capped) | ✅ | `aggregation.py` |
+| **Derived attributes** (expression-computed, reuses the rule sandbox) | ✅ | `derived_attributes.py` |
+| **Units and dimensions** (convert within, refuse across) | ✅ | `derived_attributes.py` |
+| **Type hierarchy** (subtypes inherit rules, aggregates, derived attributes) | ✅ | `type_hierarchy.py` |
+| **Declared rule overrides** (validated against the ancestry) | ✅ | `type_hierarchy.py` |
+| **Business events** (declared types, append-only, payload + source time) | ✅ | `events.py` |
+| **Unified timeline** (workflow transitions mirrored in) | ✅ | `events.py` |
+| **Installable package with a CLI** (`aletheia init/connect/model/assess/...`) | ✅ | `cli.py`, `pyproject.toml` |
+| **`/v1` path prefix** (same middleware and policy as bare paths) | ✅ | `api.py`, `access_policy.py` |
 | Channel integrations, scheduler | 📋 | none |
 | Ontology import (SHACL / reasoner) | 📋 | export only |
 | Cross-source entity resolution | 📋 | none |
+| Temporal validity on attributes | 📋 | rules have validity windows, attributes do not |
+| Split into multiple PyPI distributions | 📋 | single package + extras for now |
 
 ## Current limitations
 
 ### Stored but inert
 
-Most dangerous category: the API looks functional.
+Most dangerous category, because the API looks functional. Nearly emptied out:
+`guard_expression`, `filter_expression`, `depends_on` and the policy's ontology
+dimension are all live now, and Event / State from `docs/02` are implemented.
 
-- `workflow_transition.guard_expression` is never evaluated on transition.
-- `permission_policy.filter_expression` is returned verbatim; no row filtering.
-  **Do not rely on it for data isolation.**
-- `business_rule.depends_on` is unused; rules are ordered by `priority` only.
-- `permission_policy` has no ontology dimension — two ontologies with the same
-  object code share one policy row. **Known defect.**
 - Deriving a new ontology version does not copy workflow configuration.
-- `docs/02` documents Event and State; no such tables exist.
+- List endpoints are mostly unpaginated.
 
 ### Structural expressiveness ceiling
 
@@ -285,19 +469,31 @@ By design, not bugs. These are the next phase's work.
 
 | Constraint | Location |
 |---|---|
-| `relation_type` is hardcoded `"references"`; **no cardinality, no many-to-many** | `ontology.py:606` |
-| **No type hierarchy** (no parent_object / subclass / inherit) | — |
-| Rules scope to a single object; **no cross-object aggregation** | `semantic_kernel.py` |
-| `ALLOWED_RULE_FUNCTIONS` is frozen (5 functions); **third parties cannot register** | `semantic_kernel.py:113` |
-| `get_adapter()` is a hardcoded if/elif; `access_policy.RULES` is a static tuple | `adapters.py:74` |
-| Writeback executor supports HTTP/HTTPS only | `automation.py` |
+| **No temporal dimension**: attributes have a current value, no validity period or history | — |
+| **No cross-source anything**: one object cannot span two data sources, and aggregates cannot either. Blocked on cross-source entity resolution | `instance_resolver.py`, `aggregation.py` |
+| **Aggregates compute in Python**, not pushed down as SQL. Buys identical behaviour across all three dialects; costs a row cap | `aggregation.py` |
+| **Relation classification depends on schema quality**: a database without foreign keys or NOT NULL gets the weakest classification | `relations.py` |
+| Type hierarchy caps at 16 levels; derivation at 5 passes | `type_hierarchy.py`, `derived_attributes.py` |
+| **No full OWL/DL reasoning**, no open-world assumption | deliberate, see [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) |
+
+> Extension points are no longer on this list: data source adapters, rule functions,
+> route policies and writeback executors are all registrable. See
+> [the extension guide](docs/extending.md).
 
 ### Engineering limitations
 
 - No connection pooling; no unified transaction boundary across `connect()` calls.
-- `api.py` holds 98 endpoints in one file, with no `/v1` prefix.
-- `frontend/src/types/index.ts` hand-mirrors backend models in 889 lines.
-- DDL is duplicated across 4 modules, each hand-writing three dialects.
+- 172 `platform_db: Path | str` signatures are **not yet migrated to the context
+  object** -- they accept one, but the per-module migration is outstanding
+  ([ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)).
+- `api.py` holds 130 endpoints in one file, **not yet split into APIRouters**
+  (the `/v1` prefix is in place).
+- `frontend/src/types/index.ts` hand-mirrors backend models in 1143 lines; the backend
+  emits both camelCase and snake_case.
+- DDL dispatch is unified in `schema.py`, but **not yet migrated to Alembic** -- a
+  migration has to belong to a distribution, so this is blocked on the package split.
+- **Not yet split into multiple PyPI distributions.** One package plus optional extras;
+  the extras carry the eventual seams without freezing them.
 
 See [`docs/architecture-debt.md`](docs/architecture-debt.md) for located details and
 [`ROADMAP.md`](ROADMAP.md) for sequencing and blockers.
@@ -329,6 +525,39 @@ structural expressiveness plus escape hatches, not from inference. Open-world
 assumption is also wrong here: no payment row means unpaid, not "unknown".
 [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md)
 
+**5. Relations are classified from declared structure, never from data.** A relation
+inferred from a sample changes meaning when the data changes, and a verdict citing it
+would be unreproducible. Every classification records the structural fact it rests on,
+because a classification with no stated basis cannot be reviewed.
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+**6. Aggregates are declared data, not inline joins.** The answer to "why" has to be a
+definition an operator can read, review and export -- not a query nobody looked at. An
+aggregate that cannot be computed makes its rule fail rather than compare a threshold
+against a fabricated zero.
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+**7. Units convert within a dimension and are refused across.** Without units, mixing
+万元 and 元 makes `amount 500 > limit 1000000` report "within limit" — a wrong verdict
+produced from correct data. Cross-dimension conversion raises instead of quietly passing
+the number through, because comparing a duration to a mass is a modelling error.
+Exchange rates stay out: a rate is time-varying data, and embedding one would make a
+verdict unreproducible.
+[ADR-0013](docs/adr/0013-derived-attributes-and-units.md)
+
+**8. Rule overrides are declared, not inferred from a name collision.** A collision is
+ambiguous — two teams can pick the same code by accident, and inference would silently
+disable one team's control. Weakening an inherited rule is allowed, because legitimate
+business exceptions exist; weakening it *invisibly* is not.
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
+
+**9. Events are records, never triggers.** An event that could fire automation would
+make the audit trail load-bearing for side effects, so replaying history — backfilling,
+correcting, migrating — would re-execute business actions. The stream is append-only for
+the same reason: a wrong event is corrected by a compensating one, because deleting
+would leave a state with no explanation for how it was reached.
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
+
 ## Roles and capabilities
 
 Six capabilities across six roles. The central route-to-capability table lives in
@@ -352,7 +581,8 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**468 tests**, all passing:
+**672 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
+wheel build that only runs in CI):
 
 | File | Count | Covers |
 |---|--:|---|
@@ -367,6 +597,14 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_platform_context.py` | 23 | multi-instance isolation, thread binding, compatibility |
 | `test_multi_tenancy.py` | 42 | schema routing, tenant_id defence in depth, cross-tenant detection |
 | `test_instance_resolvers.py` | 57 | four resolver kinds, conformance contract, injection guards |
+| `test_cross_object_aggregation.py` | 46 | aggregate validation, fail-closed, row cap, end to end |
+| `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
+| `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
+| `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_cli.py` | 19 | CLI loop, release gate not bypassable, errors without tracebacks |
+| `test_api_versioning.py` | 17 | `/v1` and bare paths authorize identically, public paths survive versioning |
+| `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |
+| `test_module_boundaries.py` | 6 | no import cycles, no cross-module private imports, resolvable `__all__` |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

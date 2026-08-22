@@ -198,7 +198,7 @@ def test_registering_a_function_does_not_widen_the_ast_allowlist(expression: str
 
 def test_a_column_cannot_shadow_a_registered_function() -> None:
     """Otherwise a table with a `sum` column would silently change rule meaning."""
-    from ontology_platform.semantic_kernel import _allowed_names
+    from ontology_platform.rule_sandbox import _allowed_names
 
     names = _allowed_names({"sum": 999})
     assert callable(names["sum"])

@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from .database import connect, last_insert_id
+from .events import STATE_CHANGE, EventType, record_event
+from .schema import SchemaBundle
+from .semantic_kernel import build_runtime, evaluate_rule_expression
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +56,6 @@ def _evaluate_guard(
     when its data is missing is worse than no guard, because operators believe the
     gate is active.
     """
-    from .semantic_kernel import build_runtime, evaluate_rule_expression
-
     if not object_code:
         return {
             "expression": expression,
@@ -483,23 +484,13 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
 )
 
 
+SCHEMA = SchemaBundle(name="workflow_permission", tables=SCHEMA_SQL)
+
+
 def init_workflow_and_permission_schema(conn: Any) -> None:
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
-
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-
-    for stmt_dict in SCHEMA_SQL:
-        if db_type == "sqlite":
-            sql = _sqlite_ddl(stmt_dict)
-        elif db_type in ("postgresql", "postgres"):
-            sql = _postgresql_ddl(stmt_dict)
-        elif db_type == "mysql":
-            sql = _mysql_ddl(stmt_dict)
-        else:
-            sql = _sqlite_ddl(stmt_dict)
-        # A failure here means the workflow and permission features are broken,
-        # so surface it at startup rather than at first use.
-        conn.execute(sql)
+    # A failure here means the workflow and permission features are broken, so it
+    # surfaces at startup rather than at first use.
+    SCHEMA.apply(conn)
 
 
 # ============================================================
@@ -672,7 +663,72 @@ def enter_workflow(
             (iw_id, initial),
         )
         conn.commit()
-        return _get_instance_state(conn, iw_id)
+        workflow_row = conn.execute(
+            "select ontology_id, object_code from workflow_definition where id = ?",
+            (workflow_id,),
+        ).fetchone()
+        state = _get_instance_state(conn, iw_id)
+
+    # Entering a workflow is where an instance's timeline starts, so it is mirrored
+    # too. Outside the connection because the write is already committed, and
+    # best-effort: failing an entry that already succeeded would be worse than a
+    # missing mirror entry.
+    if workflow_row is not None:
+        _mirror_state_change(
+            platform_db,
+            ontology_id=int(workflow_row["ontology_id"]),
+            object_code=workflow_row["object_code"],
+            instance_id=instance_id,
+            action_code="init",
+            from_state="",
+            to_state=initial,
+            actor="system",
+            reason="进入工作流",
+        )
+    return state
+
+
+def _mirror_state_change(
+    platform_db: Path | str,
+    *,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    action_code: str,
+    from_state: str,
+    to_state: str,
+    actor: str,
+    reason: str,
+) -> None:
+    """Record a state change on the instance's event timeline.
+
+    The event type is declared on first use rather than requiring an operator to
+    pre-declare one per workflow action: a transition the workflow already permits is
+    by definition a legitimate thing to have happened, so refusing to record it would
+    only produce a gap in history -- and on a published ontology, where declarations
+    are otherwise refused, every state change would vanish.
+    """
+    event_code = f"state_{action_code}" if not action_code.startswith("state_") else action_code
+    try:
+        record_event(
+            platform_db,
+            ontology_id,
+            object_code,
+            instance_id,
+            event_code,
+            payload={"fromState": from_state, "toState": to_state, "reason": reason},
+            actor=actor,
+            declare_if_missing=EventType(
+                code=event_code,
+                name=f"状态流转：{action_code}",
+                object_code=object_code,
+                category=STATE_CHANGE,
+                payload_fields=["fromState", "toState", "reason"],
+                description="由工作流流转自动记录。",
+            ),
+        )
+    except Exception as error:
+        logger.warning("状态流转事件记录失败（流转本身已生效）: %s", error)
 
 
 def get_instance_state(platform_db: Path | str, workflow_id: int, instance_id: str) -> dict[str, Any] | None:
@@ -775,7 +831,29 @@ def transition_instance(
             ),
         )
         conn.commit()
-        return _get_instance_state(conn, iw_id)
+        workflow_row = conn.execute(
+            "select ontology_id, object_code from workflow_definition where id = ?",
+            (workflow_id,),
+        ).fetchone()
+        state = _get_instance_state(conn, iw_id)
+
+    # Mirror the transition into the unified event stream so an instance has one
+    # timeline rather than one per subsystem. Outside the connection because the
+    # state change is already committed, and best-effort: failing a transition that
+    # already succeeded would be worse than a missing mirror entry.
+    if workflow_row is not None:
+        _mirror_state_change(
+            platform_db,
+            ontology_id=int(workflow_row["ontology_id"]),
+            object_code=workflow_row["object_code"],
+            instance_id=instance_id,
+            action_code=action_code,
+            from_state=current,
+            to_state=to_state,
+            actor=actor,
+            reason=reason,
+        )
+    return state
 
 
 def get_instance_history(platform_db: Path | str, workflow_id: int, instance_id: str) -> list[dict[str, Any]]:

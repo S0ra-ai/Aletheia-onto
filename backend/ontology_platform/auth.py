@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect
+from .schema import SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -179,18 +180,14 @@ class AuthorizationError(Exception):
     """Authenticated, but the role lacks the required capability."""
 
 
-def init_auth_schema(conn: Any) -> None:
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
+# Tables this module owns. Declared as a bundle rather than applied by a hand-written
+# dispatch loop: the loop was duplicated in six modules and had to reach into
+# `database` for private helpers, which is technical debt items 3 and 5.
+SCHEMA = SchemaBundle(name="auth", tables=SCHEMA_SQL)
 
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    for statement in SCHEMA_SQL:
-        if db_type in ("postgresql", "postgres"):
-            sql = _postgresql_ddl(statement)
-        elif db_type == "mysql":
-            sql = _mysql_ddl(statement)
-        else:
-            sql = _sqlite_ddl(statement)
-        conn.execute(sql)
+
+def init_auth_schema(conn: Any) -> None:
+    SCHEMA.apply(conn)
 
 
 # -- Password handling --

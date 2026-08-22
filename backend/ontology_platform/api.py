@@ -12,9 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
+from .access_policy import (
+    PUBLIC_PATHS,
+    VERSION_PREFIXES,
+    describe_policy,
+    is_public,
+    required_capability,
+)
 from .agent import agent_chat, get_agent_roles
 from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
+from .aggregation import (
+    AggregateSpec,
+    AggregationError,
+    define_aggregate,
+    init_aggregate_schema,
+    list_aggregates,
+)
 from .auth import (
     ROLE_CAPABILITIES,
     AuthenticationError,
@@ -49,6 +62,25 @@ from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
+from .derived_attributes import (
+    DerivedAttributeError,
+    DerivedSpec,
+    UnitError,
+    define_derived_attribute,
+    known_units,
+    list_derived_attributes,
+    set_attribute_unit,
+)
+from .events import (
+    MAX_EVENT_HISTORY,
+    EventError,
+    EventType,
+    declare_event_type,
+    init_event_schema,
+    instance_timeline,
+    list_event_types,
+    record_event,
+)
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -137,6 +169,7 @@ from .tenancy import (
     tenant_context,
     tenant_statistics,
 )
+from .type_hierarchy import HierarchyError, declare_subtype, describe_hierarchy
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
 from .workflow_permission import (
@@ -162,6 +195,8 @@ async def lifespan(app: FastAPI):
         init_auth_schema(conn)
         init_agent_role_schema(conn)
         init_knowledge_schema(conn)
+        init_aggregate_schema(conn)
+        init_event_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -185,6 +220,11 @@ DEV_ADMIN_PRINCIPAL = Principal(user_id=0, username="dev-anonymous", display_nam
 
 app = FastAPI(title="本体改造研发平台", version="0.2.0", lifespan=lifespan)
 
+# The version this build serves under a prefix. Taken from access_policy so the router
+# and the authorization matcher can never disagree about which prefix exists -- a
+# mismatch would mean a served route with no policy entry.
+VERSION_PREFIX = VERSION_PREFIXES[0]
+
 _allowed_origins = [
     origin.strip()
     for origin in os.environ.get(
@@ -200,6 +240,41 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def mount_versioned_routes(application: FastAPI) -> None:
+    """Serve every route under `/v1` as well as bare.
+
+    Called once after all routes are declared. Without a version prefix there is
+    nowhere to put a breaking change: the first external caller freezes the current
+    shape permanently. Serving both means existing callers -- including this repo's own
+    frontend -- keep working while new ones pin `/v1`.
+
+    Routes are re-registered rather than the app being mounted as a sub-application,
+    because a sub-application does not inherit the parent's middleware, and the
+    middleware is what authenticates and authorizes every request. A `/v1` tree without
+    it would be an unauthenticated copy of the whole API.
+
+    `include_in_schema=False` on the copies keeps OpenAPI showing each operation once,
+    so generated clients do not get two of everything.
+    """
+    from fastapi.routing import APIRoute
+
+    for route in list(application.routes):
+        if not isinstance(route, APIRoute) or route.path.startswith(VERSION_PREFIX):
+            continue
+        if route.path in ("/openapi.json", "/docs", "/redoc"):
+            continue
+        application.router.add_api_route(
+            f"{VERSION_PREFIX}{route.path}",
+            route.endpoint,
+            methods=list(route.methods or []),
+            name=f"v1_{route.name}",
+            response_model=route.response_model,
+            status_code=route.status_code,
+            dependencies=list(route.dependencies),
+            include_in_schema=False,
+        )
 
 
 def _bearer_token(request: Request) -> str:
@@ -1482,8 +1557,6 @@ def _tenant_base_context() -> Any:
     Uses the process default, so provisioning targets whatever platform database
     the deployment is configured with rather than a hardcoded path.
     """
-    from .context import resolve_context
-
     return resolve_context(DEFAULT_PLATFORM_DB)
 
 
@@ -1591,6 +1664,269 @@ def resolvers() -> dict[str, object]:
     return {"kinds": list(supported_resolver_kinds())}
 
 
+class AggregateDefine(BaseModel):
+    name: str
+    function: str
+    targetTable: str
+    targetColumn: str
+    groupColumn: str
+    valueColumn: str = ""
+    excludeSelf: bool = False
+    selfColumn: str = ""
+    filterColumn: str = ""
+    filterValue: str = ""
+    description: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/aggregates")
+def ontology_aggregates(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    """Cross-object aggregates available to rules."""
+    return {"items": list_aggregates(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/aggregates")
+def define_object_aggregate(
+    ontology_id: int,
+    object_code: str,
+    payload: AggregateDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare an aggregate that rules for this object may reference by name.
+
+    Validated before storage, so an invalid definition is refused here rather than
+    surfacing later as a failed assessment.
+    """
+    spec = AggregateSpec(
+        name=payload.name,
+        function=payload.function,
+        target_table=payload.targetTable,
+        target_column=payload.targetColumn,
+        group_column=payload.groupColumn,
+        value_column=payload.valueColumn,
+        exclude_self=payload.excludeSelf,
+        self_column=payload.selfColumn,
+        filter_column=payload.filterColumn,
+        filter_value=payload.filterValue,
+    )
+    try:
+        return define_aggregate(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            spec,
+            description=payload.description,
+            actor=principal.actor,
+        )
+    except AggregationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class DerivedAttributeDefine(BaseModel):
+    code: str
+    name: str
+    expression: str
+    unit: str = ""
+    description: str = ""
+
+
+class AttributeUnitDeclare(BaseModel):
+    unit: str = ""
+
+
+@app.get("/units")
+def units() -> dict[str, object]:
+    """Units available for attribute declarations, grouped by dimension.
+
+    Comparison converts within a dimension and refuses across dimensions, so a
+    caller needs the dimension to know which units are interchangeable.
+    """
+    return {
+        "items": [
+            {
+                "code": unit.code,
+                "name": unit.name,
+                "dimension": unit.dimension,
+                "toCanonical": unit.to_canonical,
+            }
+            for unit in known_units()
+        ]
+    }
+
+
+@app.get("/ontologies/{ontology_id}/derived-attributes")
+def ontology_derived_attributes(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_derived_attributes(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/derived-attributes")
+def define_object_derived_attribute(
+    ontology_id: int,
+    object_code: str,
+    payload: DerivedAttributeDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a computed attribute that rules may reference by code.
+
+    Validated through the rule sandbox before storage, so an unusable expression is
+    refused here rather than surfacing later as a failed assessment.
+    """
+    try:
+        return define_derived_attribute(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            DerivedSpec(
+                code=payload.code,
+                name=payload.name,
+                expression=payload.expression,
+                unit=payload.unit,
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/attributes/{attribute_code}/unit")
+def declare_attribute_unit(
+    ontology_id: int,
+    object_code: str,
+    attribute_code: str,
+    payload: AttributeUnitDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare the unit an attribute is measured in. An empty unit clears it."""
+    try:
+        return set_attribute_unit(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            attribute_code,
+            payload.unit,
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class EventTypeDeclare(BaseModel):
+    code: str
+    name: str
+    category: str = "interaction"
+    payloadFields: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class EventRecord(BaseModel):
+    eventCode: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    occurredAt: str = ""
+    correlationId: str = ""
+
+
+class SubtypeDeclare(BaseModel):
+    parentObjectCode: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/event-types")
+def ontology_event_types(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_event_types(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/event-types")
+def declare_object_event_type(
+    ontology_id: int,
+    object_code: str,
+    payload: EventTypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a kind of event that can happen to instances of this object."""
+    try:
+        return declare_event_type(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            EventType(
+                code=payload.code,
+                name=payload.name,
+                object_code=object_code,
+                category=payload.category,
+                payload_fields=list(payload.payloadFields),
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def append_instance_event(
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    payload: EventRecord,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Append one event to an instance's history.
+
+    Recording does not trigger automation: an event that could fire side effects
+    would make replaying history re-execute business actions.
+    """
+    try:
+        return record_event(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            instance_id,
+            payload.eventCode,
+            payload=dict(payload.payload),
+            actor=principal.actor,
+            occurred_at=payload.occurredAt,
+            correlation_id=payload.correlationId,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def instance_events(
+    ontology_id: int, object_code: str, instance_id: str, limit: int = MAX_EVENT_HISTORY
+) -> dict[str, object]:
+    """One instance's event history, newest first."""
+    return instance_timeline(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, limit)
+
+
+@app.get("/ontologies/{ontology_id}/hierarchy")
+def ontology_hierarchy(ontology_id: int) -> dict[str, object]:
+    """The declared type hierarchy, with inherited rule counts and overrides."""
+    return {"items": describe_hierarchy(DEFAULT_PLATFORM_DB, ontology_id)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/parent")
+def declare_object_subtype(
+    ontology_id: int,
+    object_code: str,
+    payload: SubtypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare this object as a subtype of another, or clear the declaration.
+
+    A subtype evaluates its ancestors' rules as well as its own, so this changes what
+    every assessment of the object checks.
+    """
+    try:
+        return declare_subtype(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            payload.parentObjectCode,
+            actor=principal.actor,
+        )
+    except HierarchyError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.get("/workbench")
 def workbench(decisionLimit: int = 8) -> dict[str, object]:
     """Aggregated platform state for the workbench screen.
@@ -1649,6 +1985,7 @@ def decisions(limit: int = 50) -> dict[str, object]:
 # Workflow & Permission Management
 # ============================================================
 
+from .context import resolve_context
 from .workflow_permission import (
     add_workflow_state,
     add_workflow_transition,
@@ -1658,6 +1995,7 @@ from .workflow_permission import (
     create_role,
     create_workflow,
     delete_workflow,
+    enter_workflow,
     get_available_actions,
     get_instance_history,
     get_instance_state,
@@ -1849,8 +2187,6 @@ def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str
 @app.post("/workflows/{workflow_id}/enter")
 def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
     try:
-        from .workflow_permission import enter_workflow
-
         return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -2008,3 +2344,7 @@ def files() -> dict[str, str]:
         "platformDb": redact_connection_uri(config.connection_uri) or str(Path(DEFAULT_PLATFORM_DB).resolve()),
         "sampleDb": str(Path(DEFAULT_SAMPLE_DB).resolve()),
     }
+
+
+# Must be last: it copies whatever routes exist at the time it runs.
+mount_versioned_routes(app)

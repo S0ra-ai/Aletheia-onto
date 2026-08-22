@@ -20,8 +20,8 @@ from ontology_platform.metadata import register_data_source, scan_data_source
 from ontology_platform.ontology import generate_ontology_draft
 from ontology_platform.sample_data import create_contract_sample_db
 from ontology_platform.semantic_kernel import (
-    _evaluate_rule,
     assess_instance,
+    evaluate_rule_expression,
     validate_rule_expression,
 )
 
@@ -52,7 +52,7 @@ def _bootstrap(tmp_path: Path) -> tuple[Path, int, int]:
 def test_rule_expressions_cannot_reach_internal_attributes(expression: str) -> None:
     validation = validate_rule_expression(expression)
     assert validation["valid"] is False
-    passed, error = _evaluate_rule(expression, {"status": "active", "amount": 10})
+    passed, error = evaluate_rule_expression(expression, {"status": "active", "amount": 10})
     assert passed is False
     assert error
 

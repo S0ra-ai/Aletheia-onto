@@ -179,7 +179,49 @@ BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的�
 
 ## 快速开始
 
-需要 Python 3.9+（前端另需 Node.js 18+）。以下命令在干净 clone 中逐条实测通过。
+需要 Python 3.9+（前端另需 Node.js 18+）。以下命令均在干净环境中实测通过。
+
+### 作为包安装
+
+内核**零第三方依赖**，不装 web 服务器也能跑通完整闭环。
+
+```bash
+pip install aletheia-onto          # 内核：本体、规则、判定、留痕
+pip install 'aletheia-onto[all]'   # 加上 HTTP 层、PostgreSQL／MySQL、文档解析
+```
+
+```bash
+aletheia demo      # 用内置样例系统跑通：接入 → 建模 → 判定
+aletheia doctor    # 报告当前配置、已安装 extra 与已注册扩展点
+```
+
+`aletheia demo` 的输出（内核裸装，无任何 extra）：
+
+```json
+{
+  "platformDb": "~/.aletheia/platform.sqlite3",
+  "ontologyId": 1,
+  "objectCode": "contract",
+  "decision": "approved",
+  "next": "aletheia serve  # 打开 http://127.0.0.1:8000/docs"
+}
+```
+
+接自己的系统：
+
+```bash
+aletheia init
+aletheia connect postgresql://user:pass@host/db --domain 合同管理
+aletheia model 1
+aletheia assess 1 contract 1
+```
+
+`aletheia assess` 只输出判定与未通过的规则；完整证据用 `--verbose`，
+或从决策留痕里查。`aletheia publish` 受发布门禁约束，
+**待审核的语义映射无法用 `--force` 跳过**——在没人看过的映射上发布，
+会让由它得出的每个判定都无法追责。
+
+### 从源码运行
 
 ```bash
 git clone git@github.com:S0ra-ai/Aletheia-onto.git && cd Aletheia-onto
@@ -192,6 +234,9 @@ ONTOLOGY_ADMIN_PASSWORD=change-me-please .venv/bin/python -m uvicorn \
 
 - 健康检查 `http://127.0.0.1:8000/health` → `{"status":"ok"}`
 - API 文档 `http://127.0.0.1:8000/docs`
+
+每个端点同时以裸路径与 `/v1` 前缀提供（`/ontologies/1` 与 `/v1/ontologies/1`），
+两条路径经过同一套鉴权中间件与同一份权限策略。新接入方请固定 `/v1`。
 
 默认平台库是 SQLite，**无需任何外部数据库服务**。
 未设置 `ONTOLOGY_ADMIN_PASSWORD` 时会生成随机管理员口令并打印在启动日志中。
@@ -287,20 +332,123 @@ flowchart TB
 
 ## 核心概念
 
-**领域本体** —— 对业务对象、属性、关系的形式化表达。由元数据扫描生成草案，
-经人工审核后发布为不可变版本；已发布本体不可修改，只能派生新版本。
+这一节是平台的本体词汇表。术语按「本体结构 → 与遗留系统的对应 → 判定与留痕」
+三层排列，每条给出它在平台里的确切含义，以及**它刻意不是什么**——
+本体领域的词被用得很松，说清边界比给定义更有用。
 
-**语义映射** —— 遗留系统的表与字段到本体概念的可追踪对应关系。
+### 一、本体结构
+
+**领域本体（Ontology）** —— 对业务对象、属性、关系、事件、状态、规则的形式化表达，
+带版本。由元数据扫描生成草案，经人工审核后发布为不可变版本；
+已发布本体不可修改，只能派生新版本。
+_不是_：知识图谱、数据模型、数据字典。
+
+**元模型（Metamodel）** —— 描述领域本体自身结构的模型：规定一个本体可以包含
+哪些对象、哪些关系类型、哪些生命周期信息。行业本体是元模型的实例。
+完整定义见 [核心元模型设计](docs/02-核心元模型设计.md)。
+
+**业务对象（BusinessObject）** —— 业务人员能稳定识别并讨论的对象：客户、合同、
+设备、工单。它**不等于一张表**——由实例解析器决定哪些行构成它的实例
+（ADR-0011）。
+_不是_：实体、表记录、DTO。
+
+**实例（Instance）** —— 业务对象的一个具体个体，由实例键标识。
+
+**实例键（InstanceKey）** —— 标识一个实例的列组合。支持复合主键：
+连接表、版本化表、分区历史表在遗留 schema 中很常见（ADR-0008）。
+
+**实例解析器（InstanceResolver）** —— 「哪些行是这个对象的实例」的可替换策略。
+四种内置：单表、主从 join、判别列分区、自定义 SQL；可注册第三方实现（ADR-0011）。
+
+**属性（Attribute）** —— 业务对象的一个具名特征。分两种来源：
+
+- **映射属性**：镜像一个来源列
+- **派生属性（DerivedAttribute）**：由表达式算出，如 `毛利率 = (收入 - 成本) / 收入`。
+  定义一次，所有规则共用，避免同一口径在多条规则里漂移（ADR-0013）
+
+**单位与量纲（Unit / Dimension）** —— 属性可声明单位。同量纲比较自动换算，
+跨量纲比较直接拒绝。这不是便利功能：万元与元混用时，
+`合同金额 500 > 额度 1000000` 会得出「未超额」——用正确数据产出的错误判定（ADR-0013）。
+
+**关系（Relation）** —— 两个业务对象之间的链接，带**基数**（一对一／多对一／
+一对多／多对多）与**强弱**：
+
+| 类型 | 含义 | 判定依据 |
+|---|---|---|
+| 组成（composition） | 身份依赖，子离开父即无意义 | 外键在子表主键内 |
+| 聚合（aggregation） | 父必需，但子身份独立 | 外键非空且不在主键内 |
+| 关联（association） | 父可选 | 外键可空 |
+
+分类只依据声明结构，不看数据分布——从采样推断的关系会随数据改变含义，
+引用它的判定就不可复现（ADR-0012）。
+
+**类型层级（TypeHierarchy）** —— 声明「企业客户是客户的子类型」。
+子类型继承祖先的规则、聚合与派生属性。这是沿声明链的确定性展开，
+**不是 DL 包含推理**：平台不推断谁是谁的子类型，只展开已声明的链（ADR-0014）。
+
+**规则覆盖（Override）** —— 子类型可声明某条规则取代祖先的某条规则，
+用于合法业务例外。必须显式声明而非同名推断：同名有歧义，
+推断会静默停用某个团队的管控。削弱允许，不可见地削弱不允许（ADR-0014）。
+
+**跨对象聚合（Aggregate）** —— 具名的、可审阅的组级取值，如
+「该客户所有生效合同总额」。规则因此能表达「总额不得超过信用额度」。
+声明为数据而不是规则里的内联 join——「为什么」的答案必须是一份运维能读的定义，
+而不是一句没人审过的查询（ADR-0012）。
+
+**状态（State）与工作流** —— 业务对象实例的生命周期位置与允许的流转。
+流转守卫（guard）在规则沙箱中求值，求值失败即阻断流转。
+
+**业务事件（Event）** —— 实例上发生过的事，只追加。声明类型后记录，
+带载荷、发生时间与操作者。事件**不触发任何东西**：
+能触发自动化的事件会让回放历史重新执行业务动作（ADR-0014）。
+_不是_：消息、日志、埋点。
+
+**时间线（Timeline）** —— 一个实例的完整事件序列，按来源时间排序。
+状态流转自动镜像进来，所以实例只有一条时间线而不是每个子系统一条。
+
+**行业蓝图（IndustryBlueprint）** —— 一个行业的对象命名、属性命名与规则模板集合。
+平台**不内置领域词汇**，词汇由蓝图在运行时提供，新行业靠导入蓝图而不是改平台代码
+（ADR-0003）。
+
+### 二、与遗留系统的对应
+
+**业务系统接入** —— 把遗留系统的表、接口、动作与能力边界登记到平台。
+平台**读元数据，不搬运数据**。
+
+**语义映射（SemanticMapping）** —— 遗留系统的表与字段到本体概念的可追踪对应关系。
 每条映射有 `pending`／`confirmed` 状态与审核人留痕。
+_不是_：ETL 映射、数据同步关系。
 
-**业务规则** —— 可解释的判定条件，在 AST 白名单沙箱中求值。
+**值域映射（ValueMapping）** —— 遗留编码到语义状态的对应，如 `status='A'` ↔ 生效中。
+映射后两种写法在规则里等价，业务人员不必背魔法值（ADR-0008）。
+
+**结构漂移（Drift）** —— 来源库结构与已扫描元数据的差异。
+发布门禁会做漂移检测，因为在漂移的映射上判定等于在未验证数据上判定。
+
+### 三、判定与留痕
+
+**业务规则（BusinessRule）** —— 可解释的判定条件，在 AST 白名单沙箱中求值。
 写入时即校验表达式可执行性，不可执行的规则被直接拒绝。
+_不是_：算法、模型、策略引擎脚本。
+
+**fail-closed** —— 表达式无法求值（列改名、类型不符、语法错误）时按**未通过**处理，
+并附上原因。反过来会让结构漂移静默停用一条阻断规则，而自动化仍在跑（ADR-0002）。
+
+**语义研判（Assessment）** —— 对某个实例输出通过状态、阻断原因与建议动作。
+一次研判会展开类型层级、计算聚合与派生属性、施加单位、求值全部适用规则。
 
 **决策留痕** —— 一次判定产生四层记录：规则级 `inference_result`、
 证据链 `explanation_trace`、决策级 `decision_record`、操作级 `audit_log`。
 
-**发布门禁** —— 发布前评估 release-readiness，存在阻断项则拒绝发布。
+**解释（Explanation）** —— 一个实例的可读说明：属性取值、来源表、上级类型、
+近期事件时间线。回答的是「它是什么、它怎么变成现在这样」。
+
+**发布门禁（ReleaseGate）** —— 发布前评估 release-readiness，存在阻断项则拒绝发布。
 `force` 覆盖会连同未通过门禁数一并写入审计。
+
+**逃生舱（Escape Hatch）** —— 结构表达力不够时下沉到自定义实现的口子：
+自定义 SQL 作对象来源、自定义规则函数、派生属性表达式、写回执行器 SPI、
+数据源适配器 SPI。通用性靠「结构表达力 + 逃生舱」实现，不靠推理能力（ADR-0005）。
 
 ## 能力矩阵
 
@@ -336,8 +484,15 @@ flowchart TB
 | 复合主键（实例键抽象） | ✅ | `instance_key.py` |
 | **实例解析器**：主从表／判别列分区／自定义 SQL | ✅ | `instance_resolver.py` |
 | 解析器可注册（第三方策略） | ✅ | `instance_resolver.py` |
-| 类型层级、关系基数、跨对象聚合 | 📋 | 见[结构性表达力约束](#结构性表达力约束) |
+| **关系基数与强弱**（一对一／多对一／多对多，组成／聚合／关联） | ✅ | `relations.py` |
+| **中间表折叠为多对多**，且中间表对象保留其属性 | ✅ | `relations.py`、`semantic_kernel.py` |
+| **跨对象聚合**（客户所有合同总额等组级取值） | ✅ | `aggregation.py` |
+| **派生属性**（表达式计算，复用规则沙箱） | ✅ | `derived_attributes.py` |
+| **单位与量纲**（同量纲换算，跨量纲拒绝） | ✅ | `derived_attributes.py` |
+| **类型层级**（子类型继承规则／聚合／派生属性） | ✅ | `type_hierarchy.py` |
+| **规则覆盖**（显式声明，校验必须在上级链内） | ✅ | `type_hierarchy.py`、`governance.py` |
 | 跨源实例解析（一个对象跨两个数据源） | 📋 | 需先做跨源实体消解 |
+| 时态与生效期（属性级历史） | 📋 | 规则有生效期，属性无 |
 
 ### 治理与留痕
 
@@ -350,6 +505,9 @@ flowchart TB
 | 语义覆盖度报告 | ✅ | `coverage.py` |
 | 实例工作流状态与历史 | ✅ | `workflow_permission.py` |
 | 工作流 `guard_expression` | ✅ | transition 时真实求值，fail-closed |
+| **业务事件**（声明类型、只追加、带载荷与来源时间） | ✅ | `events.py` |
+| **统一时间线**（状态流转自动镜像，实例只有一条时间线） | ✅ | `events.py`、`workflow_permission.py` |
+| **事件计数**（「上个月被驳回多少次」无需读文本） | ✅ | `events.py` |
 | 工作流与本体版本联动 | ⚠️ | derive 新版本**不复制**工作流配置 |
 | 列表端点分页 | ⚠️ | 基本无分页（audit-log 等少数除外） |
 
@@ -420,28 +578,39 @@ flowchart TB
 
 | 约束 | 位置 |
 |---|---|
-| `relation_type` 恒为硬编码 `"references"`，只能由外键派生，**无基数、无多对多** | `ontology.py:606` |
-| **无类型层级**（无 parent_object／subclass／inherit） | — |
-| 规则作用域为单对象 `scope_object_code`，**无跨对象聚合** | `semantic_kernel.py` |
+| **无时态**：属性没有生效期与历史值，只有当前值。规则有生效期，属性没有 | — |
+| **跨源不支持**：一个对象不能跨两个数据源，聚合也不能跨源。阻塞于跨源实体消解 | `instance_resolver.py`、`aggregation.py` |
+| **聚合在 Python 内计算**，不下推 SQL。换来三方言行为一致，代价是行数上限 | `aggregation.py` |
+| **关系分类依赖 schema 声明质量**：不写外键、不写 NOT NULL 的库只能得到最弱分类 | `relations.py` |
+| **类型层级上限 16 层**，派生链上限 5 趟 | `type_hierarchy.py`、`derived_attributes.py` |
+| **不做完整 OWL/DL 推理**，不做开放世界假设 | 刻意，见 [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) |
 
-> 扩展点已不在此列：数据源适配器、规则函数、路由策略、写回执行器
+> 关系基数、类型层级、跨对象聚合、派生属性、单位量纲、业务事件均已不在此列，
+> 见[本体与规则](#本体与规则)能力矩阵与
+> [ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)、
+> [ADR-0013](docs/adr/0013-derived-attributes-and-units.md)、
+> [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)。
+> 扩展点也不在此列：数据源适配器、规则函数、路由策略、写回执行器
 > 现已开放注册，见[扩展指南](docs/extending.md)。
 
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- 156 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
+- 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 98 个端点，无 `/v1` 前缀。
-- 前端 `types/index.ts` 手写 889 行镜像后端模型；后端存在 camelCase／snake_case 双发。
-- DDL 分散在 4 个模块各自手写三方言。
+- `api.py` 单文件 130 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+- DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
+  因此阻塞于分包边界。
+- **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
+  extras 承载了未来分包的接缝但不冻结边界。
 
 架构层面的前置技术债逐项定位见 [`docs/architecture-debt.md`](docs/architecture-debt.md)。
 路线与阻塞条件见 [`ROADMAP.md`](ROADMAP.md)。
 
 ## 设计决策
 
-四项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
+九项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
 
 ### 1. 规则引擎 fail-closed
 
@@ -488,6 +657,56 @@ flowchart TB
 
 证据：[ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) ·
 [Non-Goals](ROADMAP.md#non-goals)
+
+### 5. 关系语义只从声明结构推断，绝不看数据分布
+
+从采样推断出的关系会在数据变化时改变含义，引用它的判定就不可复现。
+每条关系都记录它所依据的结构事实——**没有依据的分类无法被审阅**，
+运维要纠正一条生成的关系，必须先知道它为何被这样分类。
+
+证据：`tests/test_relation_expressiveness.py` ·
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+### 6. 聚合是声明的数据，不是规则里的内联查询
+
+「为什么」的答案必须是一份运维能读、能审阅、能随语义资产导出的定义，
+而不是一句没人审过的 join。算不出来的聚合让规则失败，
+而不是拿阈值去和一个伪造的 0 比较。
+
+读行后在 Python 内计算而非下推聚合 SQL——**牺牲下推性能，换三方言行为完全一致**，
+代价是行数上限，且触顶会上报而非静默截断。
+
+证据：`tests/test_cross_object_aggregation.py` ·
+[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
+
+### 7. 单位同量纲换算，跨量纲直接拒绝
+
+没有单位时，万元与元混用会让 `合同金额 500 > 额度 1000000` 得出「未超额」——
+**用正确数据产出的错误判定**。跨量纲（时长比质量）抛错而非原样透传数字，
+因为那通常意味着建模有误，静默透传会让由此得出的判定看起来完全有效。
+
+汇率被刻意排除：汇率是随时间变化的数据，内嵌一个会让判定不可复现。
+
+证据：`tests/test_derived_attributes_and_units.py` ·
+[ADR-0013](docs/adr/0013-derived-attributes-and-units.md)
+
+### 8. 规则覆盖必须显式声明，不靠同名推断
+
+同名有歧义——两个团队可能各自取到同一个 code，而推断会**静默停用其中一个团队的管控**。
+削弱继承来的规则是允许的，因为存在合法业务例外（国资交易对手豁免信用审查）；
+**不可见地**削弱则不允许。
+
+证据：`tests/test_type_hierarchy_and_events.py` ·
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
+
+### 9. 事件是记录，绝不是触发器
+
+能触发自动化的事件会让审计轨迹承载副作用，于是回放历史（回补、纠错、迁移）
+会重新执行业务动作。只追加也是同一个理由：记错的事件靠补偿事件纠正，
+删除会留下一个无法解释自己如何形成的状态。
+
+证据：`tests/test_type_hierarchy_and_events.py` ·
+[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
 
 ## 配置
 
@@ -565,7 +784,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**468 个测试**，全绿。分布：
+**672 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
+以及仅在 CI 上执行的 wheel 构建）。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -580,6 +800,14 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
 | `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
+| `test_cross_object_aggregation.py` | 46 | 聚合定义校验、fail-closed、行数上限、端到端 |
+| `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
+| `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
+| `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_cli.py` | 19 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
+| `test_api_versioning.py` | 17 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏 |
+| `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
+| `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
