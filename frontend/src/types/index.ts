@@ -1029,3 +1029,48 @@ export interface OntologyGraph {
     limitation: string;
   };
 }
+
+// -- 文档知识层 --
+
+export interface KnowledgeDocument {
+  id: number;
+  title: string;
+  sourceName: string;
+  chunkCount: number;
+  confirmedCount: number;
+  pendingCount: number;
+  status: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+export interface KnowledgeEntry {
+  id: number;
+  documentId: number;
+  ordinal: number;
+  citation: string;
+  heading: string;
+  content: string;
+  /** Anchor: which business object this passage explains. */
+  objectCode: string;
+  /** Anchor: which rule this passage is the textual authority for. */
+  ruleCode: string;
+  status: string;
+  reviewer: string;
+}
+
+export interface KnowledgeEntryList {
+  items: KnowledgeEntry[];
+  retrievalBackends: string[];
+  embeddingModels: string[];
+}
+
+export interface KnowledgeIngestResult {
+  documentId: number;
+  title: string;
+  chunkCount: number;
+  status: string;
+  warnings: string[];
+  citations: string[];
+  note: string;
+}

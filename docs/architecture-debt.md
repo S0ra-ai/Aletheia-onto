@@ -120,6 +120,8 @@ SQLite 的 `text`）只会在对应后端上暴露。
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
   → 实例键抽象（`instance_key.py`，ADR-0008）
+- ~~护城河第三段缺失：无文档检索，判定给不出条款依据~~
+  → 锚定本体的文档知识层（`knowledge_documents.py`、`retrieval.py`，ADR-0009）
 - ~~无值域映射，规则只能写魔法值~~
   → `value_to_state` 走既有审核流程（`value_mapping.py`，ADR-0008）
 - ~~`PlatformConnection.__exit__` 委托驱动的上下文管理器，

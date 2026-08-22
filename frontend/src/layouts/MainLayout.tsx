@@ -13,6 +13,7 @@ import {
   ShareAltOutlined,
   FileProtectOutlined,
   AuditOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
@@ -51,6 +52,11 @@ const menuItems = [
     key: '/graph',
     icon: <ShareAltOutlined />,
     label: '知识图谱',
+  },
+  {
+    key: '/knowledge',
+    icon: <BookOutlined />,
+    label: '文档知识库',
   },
   {
     key: '/mapping',

@@ -49,6 +49,10 @@ import type {
   ToolAuthorization,
   Workbench,
   OntologyGraph,
+  KnowledgeDocument,
+  KnowledgeEntry,
+  KnowledgeEntryList,
+  KnowledgeIngestResult,
 } from '../types';
 
 const api = axios.create({
@@ -741,6 +745,44 @@ export const graphApi = {
   getOntologyGraph: async (ontologyId: number): Promise<OntologyGraph> => {
     const { data } = await api.get(`/ontologies/${ontologyId}/graph`);
     return data as OntologyGraph;
+  },
+};
+
+// 文档知识层 API
+export const knowledgeApi = {
+  listDocuments: async (ontologyId: number): Promise<KnowledgeDocument[]> => {
+    const { data } = await api.get(`/ontologies/${ontologyId}/knowledge/documents`);
+    return (data.items || []) as KnowledgeDocument[];
+  },
+
+  listEntries: async (
+    ontologyId: number,
+    params: { documentId?: number; status?: string; limit?: number } = {},
+  ): Promise<KnowledgeEntryList> => {
+    const { data } = await api.get(`/ontologies/${ontologyId}/knowledge/entries`, { params });
+    return data as KnowledgeEntryList;
+  },
+
+  upload: async (
+    ontologyId: number,
+    file: File,
+    meta: { title?: string; objectCode?: string; ruleCode?: string } = {},
+  ): Promise<KnowledgeIngestResult> => {
+    const form = new FormData();
+    form.append('file', file);
+    if (meta.title) form.append('title', meta.title);
+    if (meta.objectCode) form.append('objectCode', meta.objectCode);
+    if (meta.ruleCode) form.append('ruleCode', meta.ruleCode);
+    const { data } = await api.post(`/ontologies/${ontologyId}/knowledge/documents`, form);
+    return data as KnowledgeIngestResult;
+  },
+
+  review: async (
+    entryId: number,
+    payload: { status: string; objectCode?: string; ruleCode?: string },
+  ): Promise<KnowledgeEntry> => {
+    const { data } = await api.post(`/knowledge/entries/${entryId}/review`, payload);
+    return data as KnowledgeEntry;
   },
 };
 
