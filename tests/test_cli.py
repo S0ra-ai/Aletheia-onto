@@ -268,6 +268,44 @@ def test_doctor_reports_configuration_and_extension_points(capsys, platform_db) 
     assert set(payload["extras"]) == {"web", "postgresql", "mysql", "documents"}
 
 
+def test_doctor_says_which_driver_an_inactive_source_needs(capsys, platform_db) -> None:
+    """ "Why is Oracle not in the list" is the most common question here, so it is answered
+    rather than requiring someone to read the source."""
+    _json(capsys, "--platform-db", str(platform_db), "init")
+    payload = _json(capsys, "--platform-db", str(platform_db), "doctor")
+    declared = {item["sourceType"]: item for item in payload["declaredSqlSources"]}
+    assert {"oracle", "sqlserver", "dameng", "kingbase"} <= set(declared)
+    for item in declared.values():
+        # Either it works, or it names the package to install.
+        assert item["available"] or item["hint"], item
+    assert payload["writebackSchemes"], "写回通道应可见"
+    assert "csv" in payload["sourceTypes"], "CSV 无需驱动，应默认可用"
+
+
+def test_assess_can_target_a_past_moment(capsys, platform_db, source_db) -> None:
+    """A past-tense verdict must echo the moment, or it is indistinguishable from one about
+    the present."""
+    from ontology_platform.temporal import record_attribute_version
+
+    _json(capsys, "--platform-db", str(platform_db), "init")
+    _json(capsys, "--platform-db", str(platform_db), "connect", str(source_db), "--domain", "合同管理")
+    _json(capsys, "--platform-db", str(platform_db), "model", "1")
+    record_attribute_version(platform_db, 1, "contract", "1", "amount", 99999, valid_from="2026-01-01")
+    payload = _json(capsys, "--platform-db", str(platform_db), "assess", "1", "contract", "1", "--as-of", "2026-02-01")
+    assert payload["asOf"] == "2026-02-01 00:00:00"
+
+
+def test_an_unparseable_as_of_is_refused(capsys, platform_db, source_db) -> None:
+    """Silently ignoring it would return a present-tense verdict to a caller who asked for a
+    past one."""
+    _json(capsys, "--platform-db", str(platform_db), "init")
+    _json(capsys, "--platform-db", str(platform_db), "connect", str(source_db), "--domain", "合同管理")
+    _json(capsys, "--platform-db", str(platform_db), "model", "1")
+    code, _, error = _run(capsys, "--platform-db", str(platform_db), "assess", "1", "contract", "1", "--as-of", "去年")
+    assert code == 1
+    assert "Traceback" not in error
+
+
 def test_doctor_says_what_to_do_when_uninitialised(capsys, tmp_path) -> None:
     payload = _json(capsys, "--platform-db", str(tmp_path / "absent.sqlite3"), "doctor")
     # An empty SQLite file is created on connect, so "initialised" may be true while the

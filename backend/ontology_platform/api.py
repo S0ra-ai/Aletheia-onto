@@ -19,6 +19,7 @@ from .access_policy import (
     is_public,
     required_capability,
 )
+from .adapters import supported_source_types
 from .agent import agent_chat, get_agent_roles
 from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
 from .aggregation import (
@@ -45,7 +46,7 @@ from .auth import (
     resolve_principal,
     set_user_status,
 )
-from .automation import execute_operation, preflight_operation
+from .automation import execute_operation, preflight_operation, supported_executor_schemes
 from .contract_documents import parse_rule_docx_bytes
 from .conversations import (
     escalate_conversation,
@@ -61,6 +62,7 @@ from .conversations import (
 from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
+from .db_executors import registered_database_targets
 from .decisions import list_decisions
 from .derived_attributes import (
     DerivedAttributeError,
@@ -81,6 +83,7 @@ from .events import (
     list_event_types,
     record_event,
 )
+from .generic_sql_adapter import describe_bundled_sql_sources, register_bundled_sql_sources
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -162,6 +165,7 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
+from .sql_dialects import known_dialects
 from .temporal import (
     TemporalError,
     init_temporal_schema,
@@ -1751,6 +1755,47 @@ class DerivedAttributeDefine(BaseModel):
 
 class AttributeUnitDeclare(BaseModel):
     unit: str = ""
+
+
+@app.get("/source-types")
+def source_types() -> dict[str, object]:
+    """Data source types, including the ones declared but awaiting a driver.
+
+    Both lists are returned because "why is Oracle not in the dropdown" is otherwise
+    unanswerable from the UI: an active type and a declared-but-unavailable one look
+    identical if only the active list is exposed.
+    """
+    # Activating first means the response reflects what is actually reachable rather than
+    # what the catalogue lists.
+    register_bundled_sql_sources(replace=True)
+    return {
+        "available": list(supported_source_types()),
+        "declared": [
+            {
+                "sourceType": item["sourceType"],
+                "dialect": item["dialect"],
+                "driver": item["driverModule"],
+                "available": item["driverAvailable"],
+                "installHint": "" if item["driverAvailable"] else item["installHint"],
+            }
+            for item in describe_bundled_sql_sources()
+        ],
+        "dialects": list(known_dialects()),
+    }
+
+
+@app.get("/writeback-channels")
+def writeback_channels() -> dict[str, object]:
+    """Writeback channels, and what each declared database channel may actually write.
+
+    The declared statements are part of the answer: a channel that can write anything is a
+    very different thing from one that can perform three named operations, and an operator
+    reviewing automation needs to see which it is.
+    """
+    return {
+        "schemes": list(supported_executor_schemes()),
+        "databaseTargets": registered_database_targets(),
+    }
 
 
 @app.get("/units")

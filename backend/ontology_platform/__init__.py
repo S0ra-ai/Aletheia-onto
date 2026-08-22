@@ -19,10 +19,12 @@ verdict = assess_instance(platform_db, ontology["ontology"]["id"], "contract", "
 | Concern | Module |
 |---|---|
 | 接入与元数据扫描 | `metadata`, `adapters` |
+| 数据源扩展 | `sql_dialects`, `generic_sql_adapter`, `file_adapter`, `rest_adapter` |
 | 本体生成与导出 | `ontology`, `industry_blueprints` |
 | 规则求值（安全边界） | `rule_sandbox` |
 | 判定与留痕 | `semantic_kernel`, `decisions` |
-| 表达力：解析器／聚合／派生／层级／事件 | `instance_resolver`, `aggregation`, `derived_attributes`, `type_hierarchy`, `events` |
+| 表达力：解析器／聚合／派生／层级／事件／时态 | `instance_resolver`, `aggregation`, `derived_attributes`, `type_hierarchy`, `events`, `temporal` |
+| 写回：HTTP／直写库／存储过程 | `automation`, `db_executors` |
 | 治理与发布 | `governance`, `release_readiness` |
 | 多租户 | `tenancy` |
 | 扩展注册 | `registry` — 见 docs/extending.md |
@@ -41,7 +43,7 @@ importing it eagerly would make the kernel unusable without a web server install
 
 from __future__ import annotations
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "__version__",
@@ -63,10 +65,17 @@ __all__ = [
     "define_derived_attribute",
     "declare_event_type",
     "record_event",
+    "record_attribute_version",
     # Extension points
     "register_adapter",
     "register_rule_function",
     "register_resolver",
+    "register_dialect",
+    "register_sql_source",
+    "register_rest_source",
+    "register_database_target",
+    "register_unit",
+    "register_executor",
 ]
 
 
@@ -95,8 +104,15 @@ def __getattr__(name: str) -> object:
         "define_derived_attribute": "derived_attributes",
         "declare_event_type": "events",
         "record_event": "events",
+        "record_attribute_version": "temporal",
         "register_adapter": "adapters",
         "register_resolver": "instance_resolver",
+        "register_dialect": "sql_dialects",
+        "register_sql_source": "generic_sql_adapter",
+        "register_rest_source": "rest_adapter",
+        "register_database_target": "db_executors",
+        "register_unit": "derived_attributes",
+        "register_executor": "automation",
     }
     module_name = sources.get(name)
     if module_name is None:

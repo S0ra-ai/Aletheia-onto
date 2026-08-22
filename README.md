@@ -216,6 +216,25 @@ aletheia model 1
 aletheia assess 1 contract 1
 ```
 
+**接入不限于数据库。** 拿不到生产库凭据时，导出文件与 API 同样能跑通全链路：
+
+```bash
+aletheia connect /path/to/extract --type csv --domain 合同管理   # 一个 CSV 目录
+aletheia doctor        # 列出可用数据源，以及未激活的需要哪个驱动
+```
+
+Oracle／SQL Server／达梦／人大金仓／openGauss 已内置声明与方言，
+装上对应驱动即出现在数据源列表里。接一个未内置的 SQL 库不需要写适配器——
+声明 4 行即可，见[扩展指南](docs/extending.md#10-接一个新的-sql-数据库)。
+
+**回溯判定。** 合规审计问的通常是过去某一刻：
+
+```bash
+aletheia assess 1 contract 1 --as-of 2026-01-31
+```
+
+按当时的属性值与**当时生效的规则**判定。拿今天的值重新判定回答的是另一个问题。
+
 `aletheia assess` 只输出判定与未通过的规则；完整证据用 `--verbose`，
 或从决策留痕里查。`aletheia publish` 受发布门禁约束，
 **待审核的语义映射无法用 `--force` 跳过**——在没人看过的映射上发布，
@@ -610,7 +629,7 @@ _不是_：算法、模型、策略引擎脚本。
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
 - 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 130 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- `api.py` 单文件 133 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
 - 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
 - DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
   因此阻塞于分包边界。
@@ -796,7 +815,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**839 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
+**848 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
 以及仅在 CI 上执行的 wheel 构建）。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -817,11 +836,11 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
-| `test_file_and_rest_sources.py` | 43 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
+| `test_file_and_rest_sources.py` | 46 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
 | `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
 | `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
-| `test_cli.py` | 19 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
-| `test_api_versioning.py` | 17 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏 |
+| `test_cli.py` | 22 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
+| `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |

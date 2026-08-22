@@ -190,6 +190,28 @@ aletheia model 1
 aletheia assess 1 contract 1
 ```
 
+**Sources are not limited to databases.** When production credentials are weeks away, an
+extract or an API runs the same pipeline:
+
+```bash
+aletheia connect /path/to/extract --type csv --domain 合同管理   # a directory of CSVs
+aletheia doctor        # available source types, and which driver the inactive ones need
+```
+
+Oracle / SQL Server / 达梦 / 人大金仓 / openGauss ship as declarations with their dialects;
+installing the driver makes them appear. Adding a SQL database that is *not* declared does
+not require writing an adapter — four lines of declaration, see
+[the extension guide](docs/extending.md#10-接一个新的-sql-数据库).
+
+**Assess as of a past moment.** A compliance audit usually asks about the past:
+
+```bash
+aletheia assess 1 contract 1 --as-of 2026-01-31
+```
+
+It uses the values that were valid then, and the rules that were in force then. Assessing
+against today's values answers a different question.
+
 `aletheia assess` prints the verdict and the rules that failed; use `--verbose` for the
 full evidence. `aletheia publish` is subject to the release gate, and **unreviewed
 mappings cannot be skipped with `--force`** -- publishing on mappings nobody looked at
@@ -495,7 +517,7 @@ By design, not bugs. These are the next phase's work.
 - 172 `platform_db: Path | str` signatures are **not yet migrated to the context
   object** -- they accept one, but the per-module migration is outstanding
   ([ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)).
-- `api.py` holds 130 endpoints in one file, **not yet split into APIRouters**
+- `api.py` holds 133 endpoints in one file, **not yet split into APIRouters**
   (the `/v1` prefix is in place).
 - `frontend/src/types/index.ts` hand-mirrors backend models in 1143 lines; the backend
   emits both camelCase and snake_case.
@@ -590,7 +612,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**839 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
+**848 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
 wheel build that only runs in CI):
 
 | File | Count | Covers |
@@ -611,11 +633,11 @@ wheel build that only runs in CI):
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | dialect profiles, generic DB-API adapter, proven against a real PostgreSQL onboarded by declaration alone |
-| `test_file_and_rest_sources.py` | 43 | CSV type/key inference, declared REST sources, end to end to a verdict |
+| `test_file_and_rest_sources.py` | 46 | CSV type/key inference, declared REST sources, end to end to a verdict |
 | `test_database_writeback.py` | 35 | declared statements, bound values, WHERE required, zero rows is a failure, real writes and rollback |
 | `test_temporal_validity.py` | 35 | half-open windows, backdated inserts, as-of verdicts use past values, absence is not interpolated |
-| `test_cli.py` | 19 | CLI loop, release gate not bypassable, errors without tracebacks |
-| `test_api_versioning.py` | 17 | `/v1` and bare paths authorize identically, public paths survive versioning |
+| `test_cli.py` | 22 | CLI loop, release gate not bypassable, errors without tracebacks |
+| `test_api_versioning.py` | 20 | `/v1` and bare paths authorize identically, public paths survive versioning, no endpoint silently lands on the admin default |
 | `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |
 | `test_module_boundaries.py` | 6 | no import cycles, no cross-module private imports, resolvable `__all__` |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |

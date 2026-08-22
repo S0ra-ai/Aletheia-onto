@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-onto"
-version = "0.3.0"
+version = "0.4.0"
 description = "为传统业务系统安装可核验的业务语义内核：本体、语义映射、规则推理与决策留痕"
 readme = "README.md"
 requires-python = ">=3.9"

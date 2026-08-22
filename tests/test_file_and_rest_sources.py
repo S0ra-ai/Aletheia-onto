@@ -523,3 +523,39 @@ def test_an_openapi_derived_source_is_usable(rest_server) -> None:
     tables = get_adapter("crm_from_openapi").scan(rest_server)
     assert [table.name for table in tables] == ["api_customers"]
     assert tables[0].row_count == 2
+
+
+# -- Discoverability --
+
+
+def test_the_api_exposes_available_and_declared_source_types() -> None:
+    """Both lists, because "why is Oracle not in the dropdown" is otherwise unanswerable
+    from the UI: an active type and a declared-but-unavailable one look identical when only
+    the active list is exposed."""
+    from ontology_platform.api import source_types
+
+    payload = source_types()
+    assert "csv" in payload["available"]
+    declared = {item["sourceType"]: item for item in payload["declared"]}
+    assert {"oracle", "sqlserver", "dameng", "kingbase"} <= set(declared)
+    for item in declared.values():
+        # Either it works, or it says which package to install.
+        assert item["available"] or item["installHint"], item
+        assert item["dialect"] in payload["dialects"]
+
+
+def test_the_api_exposes_writeback_channels_and_their_statements() -> None:
+    """A channel that can write anything differs from one that can perform three named
+    operations, and an operator reviewing automation needs to see which it is."""
+    from ontology_platform.api import writeback_channels
+
+    payload = writeback_channels()
+    assert {"http", "https"} <= set(payload["schemes"])
+    assert isinstance(payload["databaseTargets"], dict)
+
+
+def test_source_type_endpoints_are_readable_not_admin_only() -> None:
+    from ontology_platform.access_policy import required_capability
+
+    assert required_capability("GET", "/source-types") == "platform:read"
+    assert required_capability("GET", "/writeback-channels") == "platform:read"

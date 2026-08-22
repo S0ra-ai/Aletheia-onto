@@ -12,6 +12,7 @@ a far worse outcome than having no versioning at all.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -123,3 +124,94 @@ def test_the_versioned_routes_share_the_bare_handlers() -> None:
         assert versioned.endpoint is route.endpoint, path
         checked += 1
     assert checked > 100, f"仅校验了 {checked} 条路由，远少于预期"
+
+
+# -- Policy coverage --
+
+# Endpoints that genuinely require an administrator: users, tenants, roles, model
+# configuration, tool authorisation and the demo bootstrap. Listed explicitly so a *new*
+# endpoint cannot join them by accident.
+#
+# The deny-by-default fallback is correct as a safety net, but a feature silently landing
+# on it is a bug of a specific kind: it ships locked to admins, so nobody but an admin ever
+# finds out the policy entry is missing.
+EXPECTED_ADMIN_ONLY = {
+    "POST /auth/users",
+    "PATCH /auth/users/1/status",
+    "POST /demo/bootstrap",
+    "POST /demo/bootstrap/equipment",
+    "POST /agent/roles",
+    "DELETE /agent/roles/contract",
+    "POST /model/config",
+    "DELETE /model/config",
+    "POST /tenants",
+    "POST /permissions/roles",
+    "POST /permissions/policies",
+    "POST /tools",
+    "POST /tools/authorize",
+}
+
+
+def _concrete(path: str) -> str:
+    """Substitute a plausible value per path parameter.
+
+    The policy table matches real paths, so checking a route *template* would report every
+    parameterised route as unmatched -- which is how an audit produces false positives and
+    then gets ignored.
+    """
+    return re.sub(
+        r"\{([^}]+)\}",
+        lambda match: "contract" if ("code" in match.group(1) or "object" in match.group(1)) else "1",
+        path,
+    )
+
+
+def test_no_new_endpoint_silently_lands_on_the_admin_default() -> None:
+    """Deny-by-default is the right safety net, but landing on it silently is a bug.
+
+    An endpoint with no policy entry ships locked to administrators, so the missing entry is
+    invisible to everyone who would notice it.
+    """
+    from ontology_platform.access_policy import CAP_ADMIN
+
+    prefix = VERSION_PREFIXES[0]
+    unexpected = []
+    for route in _routes():
+        if route.path.startswith(prefix):
+            continue
+        real = _concrete(route.path)
+        for method in sorted(route.methods or ()):
+            if method in ("HEAD", "OPTIONS", "GET") or is_public(real):
+                continue
+            entry = f"{method} {real}"
+            if required_capability(method, real) == CAP_ADMIN and entry not in EXPECTED_ADMIN_ONLY:
+                unexpected.append(entry)
+    assert not unexpected, (
+        "以下写操作端点没有策略条目，已落到「仅管理员」兜底: "
+        + "、".join(sorted(unexpected))
+        + "。请在 access_policy.RULES 中登记，或加入 EXPECTED_ADMIN_ONLY 并说明理由。"
+    )
+
+
+def test_the_admin_allowlist_does_not_outlive_its_endpoints() -> None:
+    """Otherwise the allowlist becomes permission for a future endpoint that happens to
+    match a stale entry."""
+    prefix = VERSION_PREFIXES[0]
+    live = {
+        f"{method} {_concrete(route.path)}"
+        for route in _routes()
+        if not route.path.startswith(prefix)
+        for method in (route.methods or ())
+    }
+    stale = EXPECTED_ADMIN_ONLY - live
+    assert not stale, f"EXPECTED_ADMIN_ONLY 中的条目已不存在对应端点: {sorted(stale)}"
+
+
+def test_the_newest_capability_endpoints_are_registered_not_defaulted() -> None:
+    """The features added most recently are the likeliest to have been forgotten."""
+    from ontology_platform.access_policy import CAP_READ, CAP_WRITE
+
+    assert required_capability("GET", "/source-types") == CAP_READ
+    assert required_capability("GET", "/writeback-channels") == CAP_READ
+    assert required_capability("POST", "/ontologies/1/objects/contract/instances/1/versions") == CAP_WRITE
+    assert required_capability("PUT", "/ontologies/1/objects/contract/parent") == CAP_WRITE
