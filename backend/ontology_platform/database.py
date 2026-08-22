@@ -642,6 +642,23 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "text not null default ''",
         "varchar(255) not null default ''",
     ),
+    # Derived attributes and units (generality #7 and #10). Empty means "a plain
+    # mapped column with no declared unit", so every existing attribute keeps its
+    # current behaviour: comparison stays a plain numeric comparison.
+    ColumnMigration(
+        "business_attribute",
+        "derived_expression",
+        "text not null default ''",
+        "text not null default ''",
+        "text",
+    ),
+    ColumnMigration(
+        "business_attribute",
+        "unit",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(50) not null default ''",
+    ),
 )
 
 

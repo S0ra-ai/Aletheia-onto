@@ -10,6 +10,7 @@ from typing import Any, Sequence
 from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .database import connect, last_insert_id
+from .derived_attributes import UnitError, get_unit
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 from .relations import (
     AGGREGATION,
@@ -206,7 +207,8 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
     attributes = conn.execute(
         """
         select ba.id, bo.id as object_id, ba.code, ba.name, ba.data_type,
-               ba.required, sc.column_name, bo.code as object_code
+               ba.required, sc.column_name, bo.code as object_code,
+               ba.derived_expression, ba.unit
         from business_attribute ba
         join business_object bo on bo.id = ba.object_id
         left join source_column sc on sc.id = ba.source_column_id
@@ -317,6 +319,10 @@ def _export_jsonld(detail: dict[str, Any]) -> str:
                 "name": item["name"],
                 "dataType": item["dataType"],
                 "required": item["required"],
+                # A consumer cannot interpret a number without its unit, nor
+                # reproduce a derived value without its expression.
+                "unit": item["unit"],
+                "derivedExpression": item["derivedExpression"],
                 "sourceColumn": item["sourceColumn"],
                 "belongsTo": {"@id": f"{base}object/{_uri_part(object_item['code'])}"} if object_item else None,
             }
@@ -381,6 +387,25 @@ def _export_jsonld(detail: dict[str, Any]) -> str:
             "sourceColumn": "ont:sourceColumn",
             "dataType": "ont:dataType",
             "required": "ont:required",
+            # Without a context entry a term is dropped by a strict JSON-LD
+            # processor, so every emitted key needs one.
+            "unit": "ont:unit",
+            "derivedExpression": "ont:derivedExpression",
+            "relationType": "ont:relationType",
+            "cardinality": "ont:cardinality",
+            "relationKind": "ont:relationKind",
+            "optional": "ont:optional",
+            "junctionTable": "ont:junctionTable",
+            "sourceForeignKey": "ont:sourceForeignKey",
+            "ruleType": "ont:ruleType",
+            "expression": "ont:expression",
+            "severity": "ont:severity",
+            "naturalLanguage": "ont:naturalLanguage",
+            "mappingType": "ont:mappingType",
+            "sourceRef": "ont:sourceRef",
+            "targetRef": "ont:targetRef",
+            "confidence": "ont:confidence",
+            "evidence": "ont:evidence",
             "definedBy": {"@id": "ont:definedBy", "@type": "@id"},
             "belongsTo": {"@id": "ont:belongsTo", "@type": "@id"},
             "sourceObject": {"@id": "ont:sourceObject", "@type": "@id"},
@@ -427,6 +452,8 @@ def _export_turtle(detail: dict[str, Any]) -> str:
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:dataType {_ttl_literal(item['dataType'])} ;",
                 f"  ont:required {_ttl_bool(item['required'])} ;",
+                f"  ont:unit {_ttl_literal(item['unit'])} ;",
+                f"  ont:derivedExpression {_ttl_literal(item['derivedExpression'])} ;",
                 f"  ont:sourceColumn {_ttl_literal(item['sourceColumn'])} ;",
                 f"  ont:belongsTo bp:object/{_uri_part(item['objectCode'])} .",
                 "",
@@ -978,6 +1005,17 @@ def _business_object_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _business_attribute_row(row: sqlite3.Row) -> dict[str, Any]:
+    # Attributes predate the derived/unit columns, and callers may pass a row from a
+    # narrower query, so both are read defensively. Empty means "a plain mapped
+    # column with no declared unit" -- the prior behaviour.
+    def _get(name: str) -> str:
+        try:
+            return row[name] or ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+
+    derived_expression = _get("derived_expression")
+    unit = _get("unit")
     return {
         "id": row["id"],
         "objectId": row["object_id"],
@@ -990,8 +1028,29 @@ def _business_attribute_row(row: sqlite3.Row) -> dict[str, Any]:
         "required": bool(row["required"]),
         "sourceColumn": row["column_name"],
         "source_column": row["column_name"],
+        # A derived attribute is an ordinary attribute to every consumer; only the
+        # provenance differs, which is what these two fields state.
+        "derived": bool(derived_expression),
+        "derivedExpression": derived_expression,
+        "derived_expression": derived_expression,
+        "unit": unit,
+        "unitName": _unit_label(unit),
         "description": "",
     }
+
+
+def _unit_label(code: str) -> str:
+    """Human-readable unit name, falling back to the code for unknown units.
+
+    A unit that was registered by a deployment and later removed should still render
+    as something, rather than making the whole ontology view fail.
+    """
+    if not code:
+        return ""
+    try:
+        return get_unit(code).name
+    except UnitError:
+        return code
 
 
 def _business_relation_row(row: sqlite3.Row) -> dict[str, Any]:

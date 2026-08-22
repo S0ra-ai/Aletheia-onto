@@ -56,6 +56,15 @@ from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
 from .decisions import list_decisions
+from .derived_attributes import (
+    DerivedAttributeError,
+    DerivedSpec,
+    UnitError,
+    define_derived_attribute,
+    known_units,
+    list_derived_attributes,
+    set_attribute_unit,
+)
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -1653,6 +1662,95 @@ def define_object_aggregate(
             actor=principal.actor,
         )
     except AggregationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class DerivedAttributeDefine(BaseModel):
+    code: str
+    name: str
+    expression: str
+    unit: str = ""
+    description: str = ""
+
+
+class AttributeUnitDeclare(BaseModel):
+    unit: str = ""
+
+
+@app.get("/units")
+def units() -> dict[str, object]:
+    """Units available for attribute declarations, grouped by dimension.
+
+    Comparison converts within a dimension and refuses across dimensions, so a
+    caller needs the dimension to know which units are interchangeable.
+    """
+    return {
+        "items": [
+            {
+                "code": unit.code,
+                "name": unit.name,
+                "dimension": unit.dimension,
+                "toCanonical": unit.to_canonical,
+            }
+            for unit in known_units()
+        ]
+    }
+
+
+@app.get("/ontologies/{ontology_id}/derived-attributes")
+def ontology_derived_attributes(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_derived_attributes(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/derived-attributes")
+def define_object_derived_attribute(
+    ontology_id: int,
+    object_code: str,
+    payload: DerivedAttributeDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a computed attribute that rules may reference by code.
+
+    Validated through the rule sandbox before storage, so an unusable expression is
+    refused here rather than surfacing later as a failed assessment.
+    """
+    try:
+        return define_derived_attribute(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            DerivedSpec(
+                code=payload.code,
+                name=payload.name,
+                expression=payload.expression,
+                unit=payload.unit,
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/attributes/{attribute_code}/unit")
+def declare_attribute_unit(
+    ontology_id: int,
+    object_code: str,
+    attribute_code: str,
+    payload: AttributeUnitDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare the unit an attribute is measured in. An empty unit clears it."""
+    try:
+        return set_attribute_unit(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            attribute_code,
+            payload.unit,
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 

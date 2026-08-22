@@ -15,6 +15,14 @@ from .aggregation import aggregate_context, compute_aggregates, load_aggregate_s
 from .config import clamp_page_size, clamp_sample_size
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
+from .derived_attributes import (
+    apply_units,
+    bind_sandbox,
+    compute_derived,
+    derived_context,
+    load_attribute_units,
+    load_derived_specs,
+)
 from .instance_key import parse_key_columns
 from .ontology import explain_instance
 from .registry import Registry, load_entry_point_plugins
@@ -133,6 +141,9 @@ class SemanticRuntime:
     # rather than only the number it produced. Defaulted so existing constructions
     # keep working.
     aggregates: dict[str, Any] = field(default_factory=dict)
+    # Derived attributes, kept so a verdict can state the expression behind a
+    # computed value rather than only the number.
+    derived: dict[str, Any] = field(default_factory=dict)
 
 
 ALLOWED_AST_NODES = (
@@ -613,6 +624,13 @@ def build_runtime(
         aggregate_results = compute_aggregates(runtime, aggregate_specs, record) if aggregate_specs else {}
         context.update(aggregate_context(aggregate_results))
 
+    # Declared units (generality #10). Applied to the stored record before anything
+    # derived is computed, so a derived expression over united columns inherits
+    # units rather than mixing scales.
+    attribute_units = load_attribute_units(platform, ontology_id, object_code)
+    if attribute_units:
+        context = apply_units(context, attribute_units)
+
     # Confirmed value mappings let a rule be written in business language
     # (status == '生效中') instead of against a legacy code (status == 'A').
     # Both forms must evaluate identically, so each mapped column is exposed as
@@ -620,6 +638,14 @@ def build_runtime(
     value_mappings = load_value_mappings_in_connection(platform, ontology_id)
     if value_mappings:
         context = _apply_value_mappings(context, source_table["table_name"], value_mappings)
+
+    # Derived attributes (generality #7). Last, so they can read stored columns,
+    # related rows, aggregates and united values. Only computed ones enter the
+    # context: a referenced-but-uncomputable derived value must raise NameError so
+    # the rule fails closed, rather than comparing against a fabricated None.
+    derived_specs = load_derived_specs(platform, ontology_id, object_code)
+    derived_results = compute_derived(derived_specs, context) if derived_specs else {}
+    context.update(derived_context(derived_results))
 
     return SemanticRuntime(
         ontology_id=ontology_id,
@@ -635,6 +661,7 @@ def build_runtime(
         context=context,
         related=related,
         aggregates={name: result.as_dict() for name, result in aggregate_results.items()},
+        derived={code: result.as_dict() for code, result in derived_results.items()},
     )
 
 
@@ -856,14 +883,31 @@ def evaluate_rule_expression(expression: str, context: dict[str, Any]) -> tuple[
 
 
 def _evaluate_rule(expression: str, context: dict[str, Any]) -> tuple[bool, str | None]:
+    value, error = evaluate_expression_value(expression, context)
+    if error is not None:
+        return False, error
+    return bool(value), None
+
+
+def evaluate_expression_value(expression: str, context: dict[str, Any]) -> tuple[Any, str | None]:
+    """Evaluate an expression and return its *value* rather than its truthiness.
+
+    Rules only need a verdict, but a derived attribute needs the number. Both go
+    through this one function so there is exactly one sandbox to audit -- a second
+    evaluator would drift, and the looser of the two would become the way in.
+
+    Returns (value, error). A non-None error means the expression could not be
+    evaluated; callers are expected to treat that as unusable (ADR-0002), never to
+    substitute a default.
+    """
     normalized = _normalize_expression(expression)
     try:
         tree = ast.parse(normalized, mode="eval")
         _validate_ast(tree)
         value = eval(compile(tree, "<business-rule>", "eval"), {"__builtins__": {}}, _allowed_names(context))
-        return bool(value), None
+        return value, None
     except Exception as error:
-        return False, str(error)
+        return None, str(error)
 
 
 def _normalize_expression(expression: str) -> str:
@@ -928,6 +972,11 @@ def _allowed_names(context: dict[str, Any]) -> dict[str, Any]:
     names.update(dict(RULE_FUNCTION_REGISTRY.items()))
     names["None"] = None
     return names
+
+
+# Derived attributes evaluate in this same sandbox, injected rather than imported so
+# the dependency stays one-directional (see `derived_attributes`).
+bind_sandbox(evaluate_expression_value, validate_rule_expression)
 
 
 def _count(value: Any) -> int:

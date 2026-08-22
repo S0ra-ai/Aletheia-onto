@@ -121,6 +121,11 @@ RULES: tuple[Rule, ...] = (
     # An aggregate becomes part of what every rule for that object evaluates
     # against, so declaring one is a modelling write.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/aggregates", CAP_WRITE, "定义跨对象聚合"),
+    # A derived attribute or a declared unit changes what every rule reading that
+    # name evaluates against -- a unit change silently rescales a threshold -- so
+    # both are modelling writes.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/derived-attributes", CAP_WRITE, "定义派生属性"),
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/attributes/[^/]+/unit", CAP_WRITE, "声明属性单位"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 
