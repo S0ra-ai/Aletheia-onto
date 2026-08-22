@@ -29,6 +29,7 @@ verdict = assess_instance(platform_db, ontology["ontology"]["id"], "contract", "
 | 多租户 | `tenancy` |
 | 扩展注册 | `registry` — 见 docs/extending.md |
 | 扩展一致性契约 | `conformance` — 第三方自验实现是否符合内核依赖的属性 |
+| 部署前自检 | `deployment` — 通过 `aletheia preflight` 使用；不在门面导出，因为它是运维动作而非库 API |
 | HTTP 层 | `api` — 需要 `[web]` extra |
 
 ## Stability

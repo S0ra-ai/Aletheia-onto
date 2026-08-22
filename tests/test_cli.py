@@ -386,3 +386,81 @@ def test_verify_exits_non_zero_for_a_non_conformant_implementation(capsys) -> No
     assert payload["conformant"] is False
     # The failure names the consequence, not just the rule.
     assert any(item["why"] for item in payload["failures"])
+
+
+# -- preflight: the deployment gate --
+
+
+def test_preflight_lists_its_checks(capsys) -> None:
+    payload = _json(capsys, "preflight", "--list")
+    assert payload["checks"]
+    for item in payload["checks"]:
+        assert item["remedy"], f"{item['name']} 缺少处理建议"
+
+
+def test_preflight_blocks_on_disabled_authentication(capsys, monkeypatch, tmp_path) -> None:
+    """The one that matters most: the whole API becomes reachable with no token."""
+    database = tmp_path / "platform.sqlite3"
+    database.write_bytes(b"")
+    database.chmod(0o600)
+    monkeypatch.setenv("ONTOLOGY_AUTH_DISABLED", "1")
+    code, out, error = _run(capsys, "--platform-db", str(database), "preflight")
+    assert code == 1
+    assert json.loads(out)["ready"] is False
+    # The remedy goes to stderr so a pipeline log shows it without parsing JSON.
+    assert "ONTOLOGY_AUTH_DISABLED" in error
+
+
+def test_preflight_passes_a_sound_configuration(capsys, monkeypatch, tmp_path) -> None:
+    """A gate nothing can pass gets bypassed rather than fixed."""
+    database = tmp_path / "platform.sqlite3"
+    database.write_bytes(b"")
+    database.chmod(0o600)
+    monkeypatch.delenv("ONTOLOGY_AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("ONTOLOGY_ADMIN_PASSWORD", "Xk8vQ2mNp7rT4wZa")
+    monkeypatch.setenv("ONTOLOGY_ALLOWED_ORIGINS", "https://ontology.example.com")
+    monkeypatch.setenv("ONTOLOGY_PLATFORM_DB_TYPE", "sqlite")
+    payload = _json(capsys, "--platform-db", str(database), "preflight")
+    assert payload["ready"] is True
+
+
+def test_preflight_reports_sqlite_with_several_workers(capsys, monkeypatch, tmp_path) -> None:
+    database = tmp_path / "platform.sqlite3"
+    database.write_bytes(b"")
+    database.chmod(0o600)
+    monkeypatch.delenv("ONTOLOGY_AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("ONTOLOGY_ADMIN_PASSWORD", "Xk8vQ2mNp7rT4wZa")
+    monkeypatch.setenv("ONTOLOGY_ALLOWED_ORIGINS", "https://ontology.example.com")
+    monkeypatch.setenv("ONTOLOGY_PLATFORM_DB_TYPE", "sqlite")
+    code, out, _ = _run(capsys, "--platform-db", str(database), "preflight", "--workers", "4")
+    assert code == 1
+    assert "多工作进程未搭配 SQLite" in {item["name"] for item in json.loads(out)["blockers"]}
+
+
+def test_serve_refuses_to_expose_an_unsafe_deployment(capsys, monkeypatch, tmp_path) -> None:
+    """Binding to a non-loopback address makes the blockers exploitable rather than
+    theoretical, and nobody remembers to run a separate command."""
+    database = tmp_path / "platform.sqlite3"
+    database.write_bytes(b"")
+    database.chmod(0o600)
+    monkeypatch.setenv("ONTOLOGY_AUTH_DISABLED", "1")
+    code, _, error = _run(capsys, "--platform-db", str(database), "serve", "--host", "0.0.0.0")
+    assert code == 1
+    assert "部署前自检未通过" in error
+
+
+def test_serve_on_loopback_does_not_run_preflight(capsys, monkeypatch, tmp_path) -> None:
+    """Local development must stay frictionless, or the check gets disabled globally.
+
+    Verified by patching uvicorn.run: reaching it proves preflight did not intercept.
+    """
+    started: dict[str, object] = {}
+    monkeypatch.setenv("ONTOLOGY_AUTH_DISABLED", "1")
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        type("_Fake", (), {"run": staticmethod(lambda app, **kwargs: started.update(kwargs))})(),
+    )
+    code, _, _ = _run(capsys, "--platform-db", str(tmp_path / "p.sqlite3"), "serve", "--host", "127.0.0.1")
+    assert code == 0
+    assert started.get("host") == "127.0.0.1"

@@ -589,6 +589,46 @@ the same reason: a wrong event is corrected by a compensating one, because delet
 would leave a state with no explanation for how it was reached.
 [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
 
+## Self-hosted deployment
+
+```bash
+cp deploy/.env.example deploy/.env    # fill in real values; the example has no usable defaults
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+```
+
+Two-stage image, non-root, no bundled credentials and no seeded database. The reference
+compose file uses PostgreSQL as the platform store and does not publish the database port.
+
+### Deployment preflight
+
+```bash
+aletheia preflight --workers 4 --expect-origin https://ontology.example.com
+```
+
+Exits 1 on a blocker, so it works as a pipeline gate. `aletheia serve` runs it
+**automatically** when binding to a non-loopback address and refuses to start — nobody
+remembers to run a separate command, and the one deployment where it matters is the one
+where `ONTOLOGY_AUTH_DISABLED=1` was left behind.
+
+Every check catches a **silent** failure: the platform starts, serves traffic, and looks
+healthy.
+
+| Misconfiguration | What actually happens | Level |
+|---|---|:--:|
+| `ONTOLOGY_AUTH_DISABLED=1` left on | the whole API is reachable with no token, **including writeback** | blocker |
+| CORS set to `*` | any site can drive the API carrying a user's credentials | blocker |
+| admin password is a placeholder or under 12 chars | somebody chose it and will assume it was changed | blocker |
+| SQLite with several workers | writes serialise; the symptom is **intermittent timeouts**, not a config error | blocker |
+| platform DB file readable by group/other | that file holds every data source's connection string | blocker |
+| CORS still localhost | the real frontend is blocked, and the next step someone takes is `*` | warning |
+| admin password unset | a random one is printed once, and container logs rotate | warning |
+| password inline in the connection URI | it appears in the process list, container inspect, and crash logs | warning |
+
+A single-node SQLite evaluation deployment is legitimate, so one worker does not block —
+refusing it would push people to skip the check entirely.
+
+Full reasoning in [ADR-0017](docs/adr/0017-deployment-preflight.md).
+
 ## Roles and capabilities
 
 Six capabilities across six roles. The central route-to-capability table lives in
@@ -612,7 +652,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**902 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
+**949 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable, and the wheel build runs only in CI.
 
 | File | Count | Covers |
@@ -632,12 +672,13 @@ no server is reachable, and the wheel build runs only in CI.
 | `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_deployment_preflight.py` | 41 | preflight: unauthenticated exposure, wildcard CORS, SQLite with workers, image and compose artefacts |
 | `test_conformance_suites.py` | 44 | executable contracts for five extension points, with a negative case per property |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | dialect profiles, generic DB-API adapter, proven against a real PostgreSQL onboarded by declaration alone |
 | `test_file_and_rest_sources.py` | 46 | CSV type/key inference, declared REST sources, end to end to a verdict |
 | `test_database_writeback.py` | 35 | declared statements, bound values, WHERE required, zero rows is a failure, real writes and rollback |
 | `test_temporal_validity.py` | 35 | half-open windows, backdated inserts, as-of verdicts use past values, absence is not interpolated |
-| `test_cli.py` | 29 | CLI loop, release gate not bypassable, errors without tracebacks |
+| `test_cli.py` | 35 | CLI loop, release gate not bypassable, errors without tracebacks |
 | `test_api_versioning.py` | 20 | `/v1` and bare paths authorize identically, public paths survive versioning, no endpoint silently lands on the admin default |
 | `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |
 | `test_module_boundaries.py` | 6 | no import cycles, no cross-module private imports, resolvable `__all__` |

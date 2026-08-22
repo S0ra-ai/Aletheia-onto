@@ -14,6 +14,7 @@ aletheia demo            # all of the above against a built-in sample system
 aletheia serve           # run the HTTP API
 aletheia doctor          # report what is configured and what is missing
 aletheia verify          # run a conformance suite against an extension you registered
+aletheia preflight       # refuse to deploy on production-unsafe configuration
 ```
 
 ## Design decisions
@@ -291,6 +292,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # A missing optional extra is a configuration problem, so it gets an
         # instruction rather than a traceback.
         return _fail("HTTP 层需要 web extra，请先安装：pip install 'aletheia-onto[web]'")
+
+    # Binding to anything other than loopback means the service is reachable from the
+    # network, so the preflight blockers become exploitable rather than theoretical. Run it
+    # by default and refuse -- nobody remembers to run a separate command, and the one time
+    # it matters is the deployment where `ONTOLOGY_AUTH_DISABLED` was left on.
+    exposed = args.host not in ("127.0.0.1", "localhost", "::1")
+    if exposed and not args.skip_preflight:
+        from .deployment import check_deployment
+
+        report = check_deployment(platform_db=_platform_db(args), worker_count=1)
+        if not report.ready:
+            print(report.summary(), file=sys.stderr)
+            return _fail(
+                f"监听地址 {args.host} 可从网络访问，但部署前自检未通过。"
+                "修复上述阻断项，或显式传 --skip-preflight（不建议）。"
+            )
     uvicorn.run("ontology_platform.api:app", host=args.host, port=args.port, reload=args.reload)
     return 0
 
@@ -409,6 +426,31 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if report.conformant else 1
 
 
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Refuse to proceed when the environment is unsafe for production.
+
+    Exits non-zero on a blocker so a deployment pipeline stops. A warning in a startup log
+    is read once, by whoever set the service up, and never again -- which is exactly when
+    "authentication is disabled" stops being cheap to fix.
+    """
+    from .deployment import check_deployment, describe_checks
+
+    if args.list:
+        _print({"checks": describe_checks()})
+        return 0
+
+    report = check_deployment(
+        environment=args.environment,
+        platform_db=_platform_db(args),
+        expected_origins=tuple(item.strip() for item in args.expect_origin.split(",") if item.strip()),
+        worker_count=args.workers,
+    )
+    _print(report.as_dict())
+    if not report.ready:
+        print(report.summary(), file=sys.stderr)
+    return 0 if report.ready else 1
+
+
 def _version() -> str:
     from . import __version__
 
@@ -478,6 +520,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true", help="开发模式自动重载")
+    serve.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="监听非本机地址时跳过部署前自检（不建议：自检拦的正是免鉴权暴露这类问题）",
+    )
     serve.set_defaults(func=cmd_serve)
 
     doctor = sub.add_parser("doctor", help="报告当前配置、已安装 extra 与已注册扩展点")
@@ -491,6 +538,13 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--table", default="", help="data_source_adapter 契约：期望扫描到的表名")
     verify.add_argument("--name", default="", help="检索后端／嵌入模型契约：已注册名称，留空用默认")
     verify.set_defaults(func=cmd_verify)
+
+    preflight = sub.add_parser("preflight", help="部署前自检：配置在生产环境是否安全（阻断项存在时退出码非 0）")
+    preflight.add_argument("--list", action="store_true", help="列出全部检查项")
+    preflight.add_argument("--environment", default="production", help="环境名称，仅用于报告标注")
+    preflight.add_argument("--workers", type=int, default=1, help="计划启动的工作进程数（用于判断 SQLite 是否合适）")
+    preflight.add_argument("--expect-origin", default="", help="逗号分隔的前端来源，校验它们确实在 CORS 允许列表中")
+    preflight.set_defaults(func=cmd_preflight)
 
     return parser
 

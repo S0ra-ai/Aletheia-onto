@@ -484,6 +484,7 @@ _不是_：算法、模型、策略引擎脚本。
 | 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
 | **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
 | **可执行一致性契约随包发布**（5 个扩展点，第三方可自验） | ✅ | `conformance.py` |
+| **部署前自检**（免鉴权暴露等静默误配置在流水线阶段被拦） | ✅ | `deployment.py`、`deploy/` |
 | **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
 | **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
 | Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
@@ -816,7 +817,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**902 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+**949 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
 自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -836,12 +837,13 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_deployment_preflight.py` | 41 | 部署前自检：免鉴权暴露、CORS 通配、SQLite 多进程、镜像与编排产物 |
 | `test_conformance_suites.py` | 44 | 5 个扩展点的可执行契约，含每条属性的反例（证明契约能抓错） |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
 | `test_file_and_rest_sources.py` | 46 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
 | `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
 | `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
-| `test_cli.py` | 29 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
+| `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
@@ -901,3 +903,43 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 ## 许可证
 
 [Apache-2.0](LICENSE)，含专利授权条款。
+## 私有化部署
+
+```bash
+cp deploy/.env.example deploy/.env    # 填入真实值，范例里没有任何可用默认值
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+```
+
+镜像两阶段构建、非 root 运行、不内置任何凭据或预置数据库。
+参考编排用 PostgreSQL 作平台库，数据库端口不映射到宿主。
+
+### 部署前自检
+
+```bash
+aletheia preflight --workers 4 --expect-origin https://ontology.example.com
+```
+
+阻断项存在时退出码为 1，可直接作流水线门禁。
+`aletheia serve` 在监听非本机地址时**强制**跑一次自检并拒绝启动——
+没人会记得单独跑一个命令，而唯一需要它的那次部署，
+恰好就是 `ONTOLOGY_AUTH_DISABLED=1` 忘了删的那次。
+
+自检拦的都是**静默失败**——平台会正常启动、正常服务、看起来健康：
+
+| 误配置 | 实际发生什么 | 级别 |
+|---|---|:--:|
+| `ONTOLOGY_AUTH_DISABLED=1` 残留 | 整套 API 无需令牌即可访问，**包括对遗留系统的写回** | 阻断 |
+| CORS 为 `*` | 任意站点都能携带用户凭据驱动本 API | 阻断 |
+| 管理员口令为占位值或短于 12 位 | 有人选了它，并会以为之后改过 | 阻断 |
+| SQLite 配多工作进程 | 写入串行化，高并发下表现为**间歇性超时**而非配置错误 | 阻断 |
+| 平台库文件权限含 group/other | 该文件保存全部数据源连接串，等同凭据存储 | 阻断 |
+| CORS 仍是 localhost | 真实前端被拦，随后有人会用 `*` 绕过 | 警告 |
+| 未设管理员口令 | 随机口令只打印一次，容器日志轮转后没人能登录 | 警告 |
+| 连接串内联口令 | 会出现在进程列表、容器 inspect 与崩溃日志里 | 警告 |
+
+单节点 SQLite 评估部署是**合理**形态，因此单工作进程时不阻断——
+拒绝它会让人索性跳过整个检查。
+
+完整取舍见 [ADR-0017](docs/adr/0017-deployment-preflight.md)。
+
+## 配置

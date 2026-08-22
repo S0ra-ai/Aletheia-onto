@@ -119,14 +119,26 @@ CI 会构建 wheel、在干净环境裸装、校验内核零第三方依赖并�
 ### 阶段 F 脚手架与生成器
 
 ✅ **CLI 已完成**（`cli.py`）：`init` / `connect` / `model` / `assess` /
-`publish` / `demo` / `serve` / `doctor`。
+`publish` / `demo` / `serve` / `doctor` / `verify` / `preflight`。
 `publish` 受发布门禁约束，且**待审核映射无法用 `--force` 跳过**。
+`verify` 对第三方扩展跑一致性契约（ADR-0016），
+`preflight` 做部署前自检（ADR-0017）；两者失败时退出码非 0，可直接作 CI 门禁。
 
 🚧 仍待完成：scaffold 仓库、代码生成器。
 
 ### 阶段 G 交付配套
 
-私有化部署、SSO、审计报表、问答回归测试集、中文文档。
+✅ **私有化部署已完成**：两阶段镜像（非 root、无内置凭据）、
+参考编排（`:?` 强制设置密钥、数据库端口不外发）、`.env.example`（不带可用值），
+以及**部署前自检** `aletheia preflight`（ADR-0017）。
+
+自检拦的是静默失败：`ONTOLOGY_AUTH_DISABLED` 残留会让整套 API 免鉴权暴露，
+CORS 通配会让任意站点驱动本 API，SQLite 配多工作进程会表现为间歇性超时。
+`aletheia serve` 在非本机监听时强制自检并拒绝启动——
+没人会记得单独跑一个命令，而唯一需要它的那次部署恰好就是忘了删开关的那次。
+
+🚧 仍待完成：SSO、审计报表、问答回归测试集。
+中文文档已随 README／ADR／扩展指南提供（本仓库文档均为中文）。
 
 ## 通用性路线
 

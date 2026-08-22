@@ -324,6 +324,36 @@ jobs:
           fi
           echo "契约正确拒绝了不合规实现"
 
+      - name: 部署前自检拦下免鉴权暴露
+        # The single most dangerous misconfiguration: a leftover ONTOLOGY_AUTH_DISABLED
+        # makes the whole API reachable with no token, including writeback to legacy
+        # systems. It must block, and `serve` on a non-loopback address must refuse.
+        run: |
+          touch /tmp/pf.sqlite3 && chmod 600 /tmp/pf.sqlite3
+          if ONTOLOGY_AUTH_DISABLED=1 /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 preflight; then
+            echo "认证被关闭却通过了自检"; exit 1
+          fi
+          echo "✓ 自检拦下了认证关闭"
+          if ONTOLOGY_AUTH_DISABLED=1 /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 \
+              serve --host 0.0.0.0 --port 8123; then
+            echo "serve 在不安全配置下仍然启动"; exit 1
+          fi
+          echo "✓ serve 拒绝在不安全配置下暴露"
+
+      - name: 部署前自检放行正确配置
+        # A gate nothing can pass gets bypassed rather than fixed.
+        run: |
+          ONTOLOGY_ADMIN_PASSWORD='Xk8vQ2mNp7rT4wZa' \
+          ONTOLOGY_ALLOWED_ORIGINS='https://ontology.example.com' \
+          ONTOLOGY_PLATFORM_DB_TYPE=sqlite \
+          /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 preflight > /tmp/pf.json
+          python -c "
+          import json
+          payload = json.load(open('/tmp/pf.json'))
+          assert payload['ready'] is True, payload['blockers']
+          print('✓ 正确配置通过自检，检查项:', payload['checked'])
+          "
+
       - name: doctor 说明未激活的数据源需要哪个驱动
         # "Why is Oracle not in the list" must be answerable without reading the source.
         run: |
