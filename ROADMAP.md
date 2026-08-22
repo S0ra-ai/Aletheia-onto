@@ -137,9 +137,9 @@ CI 会构建 wheel、在干净环境裸装、校验内核零第三方依赖并�
 | 8 | ~~时态与生效期~~ | — | ✅ **已完成**：属性级版本 + as-of 判定，区分有效时间与事务时间（`temporal.py`，ADR-0015） |
 | 9 | ~~Event／State 一等公民~~ | — | ✅ **已完成**：只追加事件流 + 状态流转镜像为统一时间线（`events.py`，ADR-0014） |
 | 10 | ~~单位与量纲~~ | — | ✅ **已完成**：同量纲换算、跨量纲拒绝（`derived_attributes.py`，ADR-0013） |
-| 11 | 规则函数可注册 | 低 | 解除 `ALLOWED_RULE_FUNCTIONS` 冻结 |
+| 11 | ~~规则函数可注册~~ | — | ✅ **已完成**：`RULE_FUNCTION_REGISTRY`，注册只授予调用权、不放宽 AST 白名单（`rule_sandbox.py`，ADR-0007） |
 
-> #11 与数据源／写回执行器／路由策略的可注册性已完成，见
+> 路由权限策略与数据源适配器的可注册性同样已完成，见
 > [扩展指南](docs/extending.md) 与 [ADR-0007](docs/adr/0007-extension-registry-without-api-stability.md)。
 
 | # | 项 | 成本 | 说明 |
