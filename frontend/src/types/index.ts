@@ -291,6 +291,8 @@ export interface Ontology {
   status: string;
   createdAt?: string;
   publishedAt?: string | null;
+  /** Number of modelled business objects; distinguishes a real ontology from an empty one. */
+  objectCount?: number;
 }
 
 export interface OntologyDraftCreate {
@@ -697,6 +699,15 @@ export interface ModelConfig {
   appTitle: string;
   serviceTier: string;
   timeoutSeconds: number;
+  /** Custom endpoint compatibility. */
+  authStyle: string;
+  authHeader: string;
+  extraHeaders: Record<string, string>;
+  sendProviderExtras: boolean;
+  authStyleOptions: string[];
+  /** The URL that will actually be called, after path resolution. */
+  resolvedEndpoint: string;
+  source?: string;
 }
 
 // 模型配置更新
@@ -708,6 +719,10 @@ export interface ModelConfigUpdate {
   appTitle?: string;
   serviceTier?: string;
   timeoutSeconds?: number;
+  authStyle?: string;
+  authHeader?: string;
+  extraHeaders?: Record<string, string>;
+  sendProviderExtras?: boolean;
 }
 
 // 智能体类型
@@ -886,4 +901,131 @@ export interface ToolExecutionLog {
   reviewedAt: string | null;
   reviewDecision: string | null;
   createdAt: string;
+}
+
+// -- 工作台 --
+
+export interface WorkbenchActionItem {
+  code: string;
+  severity: 'blocker' | 'warning' | 'info';
+  title: string;
+  detail: string;
+  count: number;
+  route: string;
+}
+
+export interface WorkbenchDecisionEntry {
+  decisionId: string;
+  decisionType: string;
+  objectCode: string;
+  instanceId: string;
+  status: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface Workbench {
+  generatedAt: string;
+  dataSources: {
+    total: number;
+    scanned: number;
+    unscanned: number;
+    withBusinessApi: number;
+    tables: number;
+    columns: number;
+  };
+  ontologies: {
+    total: number;
+    draft: number;
+    published: number;
+    byStatus: Record<string, number>;
+    objects: number;
+    attributes: number;
+    relations: number;
+    unboundObjects: number;
+  };
+  governance: {
+    pendingMappings: number;
+    confirmedMappings: number;
+    rejectedMappings: number;
+    mappingsByStatus: Record<string, number>;
+    reviewableTransitions: number;
+    auditEntries: number;
+  };
+  rules: {
+    total: number;
+    blocking: number;
+    warning: number;
+    info: number;
+    bySeverity: Record<string, number>;
+    byStatus: Record<string, number>;
+    objectsWithoutRules: number;
+  };
+  decisions: {
+    total: number;
+    byStatus: Record<string, number>;
+    blocked: number;
+    review: number;
+    approved: number;
+    recent: WorkbenchDecisionEntry[];
+  };
+  knowledge: {
+    valueMappings: number;
+    confirmedValueMappings: number;
+    pendingValueMappings: number;
+  };
+  actionItems: WorkbenchActionItem[];
+  summary: {
+    blockers: number;
+    warnings: number;
+    totalActionItems: number;
+  };
+}
+
+// -- 知识图谱预览 --
+
+export interface OntologyGraphNode {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  sourceTable: string;
+  attributeCount: number;
+  ruleCount: number;
+  degree: number;
+  unbound: boolean;
+  unmapped: boolean;
+}
+
+export interface OntologyGraphEdge {
+  id: number;
+  code: string;
+  name: string;
+  source: string;
+  target: string;
+  relationType: string;
+  foreignKey: string;
+}
+
+export interface OntologyGraph {
+  ontology: {
+    id: number;
+    name: string;
+    domain: string;
+    version: string;
+    status: string;
+  };
+  nodes: OntologyGraphNode[];
+  edges: OntologyGraphEdge[];
+  stats: {
+    nodeCount: number;
+    edgeCount: number;
+    isolatedObjects: string[];
+    objectsWithoutRules: string[];
+    unmappedObjects: string[];
+  };
+  notes: {
+    relationTypes: string[];
+    limitation: string;
+  };
 }

@@ -17,6 +17,8 @@ import Governance from './pages/governance';
 import DemoCenter from './pages/demo/DemoCenter';
 import ModelConfigPage from './pages/model/ModelConfig';
 import OntologyChat from './pages/chat/OntologyChat';
+import WorkbenchPage from './pages/workbench';
+import OntologyGraphPage from './pages/graph/OntologyGraph';
 import WorkflowManager from './pages/workflow/WorkflowManager';
 import PermissionManager from './pages/permission/PermissionManager';
 
@@ -35,7 +37,9 @@ const App: React.FC = () => {
                 </RequireAuth>
               }
             >
-              <Route index element={<Navigate to="/chat" replace />} />
+              <Route index element={<Navigate to="/workbench" replace />} />
+              <Route path="workbench" element={<WorkbenchPage />} />
+              <Route path="graph" element={<OntologyGraphPage />} />
               <Route path="chat" element={<OntologyChat />} />
               <Route path="datasource" element={<DataSourceList />} />
               <Route path="datasource/:id" element={<DataSourceDetail />} />

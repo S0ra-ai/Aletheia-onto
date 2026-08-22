@@ -50,6 +50,13 @@ Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神
 以下均为真实运行截图，非示意图或设计稿。数据来自内置的合成示例系统
 （`examples/contract-system` 与设备运维样例），不含任何真实业务信息。
 
+### 工作台：一屏看清「接下来该做什么」
+
+![工作台](docs/images/06-workbench.png)
+
+待处理事项按阻断优先排序，每条都指向可以处理它的页面。
+所有数字都是既有表的只读投影，不会与它所汇总的页面产生分歧。
+
 ### 语义问答：结论 + 依据规则 + 证据
 
 ![语义问答与判定依据](docs/images/01-semantic-qa-with-evidence.png)
@@ -89,6 +96,36 @@ Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神
 
 > ⚠️ 图中的「行级过滤表达式」字段目前**有存储但未生效**，
 > `check_permission` 只原样返回、不做过滤。详见[当前限制](#当前限制)。
+
+### 知识图谱预览
+
+![知识图谱预览](docs/images/07-knowledge-graph.png)
+
+本体是图，但其余页面都以表格呈现，这会掩盖恰恰需要被看见的问题：
+没有任何关联的孤立对象、自引用层级、以及不产出判定的对象簇。
+颜色编码的是**诊断**而非装饰——红色表示未绑定来源表，橙色表示无规则。
+圆圈大小为关联数量，悬停显示该关联依据的外键列。
+
+图中如实标注了关系表达力的限制：`relation_type` 恒为 `references`、无基数、无多对多。
+
+### 模型配置：适配自定义订阅
+
+![模型配置](docs/images/08-model-config.png)
+
+平台使用 OpenAI 兼容的 chat/completions 协议，因此任何实现该协议的服务都可接入。
+仅可配 Base URL 是不够的——各家在**如何传密钥**与**能容忍哪些额外字段**上并不一致，
+因此另有兼容性设置：
+
+| 设置 | 解决的问题 |
+|---|---|
+| 鉴权方式（bearer／api-key／自定义／不发送） | Azure 用 `api-key` 头；本地服务常无需密钥 |
+| 发送 OpenRouter 扩展字段（可关闭） | vLLM、LM Studio 等对未知字段直接返回 400 |
+| 附加请求头（JSON） | 部分网关需要租户或分组标识 |
+
+内置 OpenRouter／OpenAI／中转站／Azure／自建 vLLM／阿里云百炼预设，
+并显示**实际会被调用的完整地址**。未配置密钥时回退本地启发式，功能不中断。
+
+完整配置项与排错见[接入自定义模型服务](docs/model-endpoints.md)。
 
 ## 快速开始
 
@@ -288,7 +325,11 @@ flowchart TB
 | 智能体角色按已接入领域运行时派生 | ✅ | `agent_roles.py`、`agent.py` |
 | 操作预检与写回执行（HTTP／HTTPS） | ✅ | `automation.py` |
 | **写回执行器可注册**（按 scheme 分发） | ✅ | `automation.py`、`registry.py` |
-| 模型层 OpenRouter 兼容，未配置密钥回退本地启发式 | ✅ | `model_client.py` |
+| 模型层 OpenAI 兼容协议，自定义 Base URL 与订阅 | ✅ | `model_client.py` |
+| 鉴权方式可选 / 扩展字段可关闭 / 附加请求头 | ✅ | `model_client.py` |
+| 未配置密钥时回退本地启发式 | ✅ | `model_client.py` |
+| 工作台聚合视图（待处理事项按阻断优先） | ✅ | `workbench.py` |
+| 知识图谱预览（含建模缺口诊断） | ✅ | `graph_view.py` |
 | 向量检索／嵌入／文档 RAG | 📋 | **零实现**，无 embedding／vector／chunk／rerank |
 | 文档知识库 | 📋 | `contract_documents.py` 只从 Word 抽规则，不建检索语料 |
 | 多轮对话持久化 | 📋 | history 由调用方每次传入，不落库 |
@@ -466,13 +507,15 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**221 个测试**，全绿。分布：
+**256 个测试**，全绿。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
 | `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
 | `test_composite_instance_keys.py` | 31 | 复合主键端到端 + 实例键往返 |
 | `test_value_domain_mapping.py` | 13 | 值域映射与向后兼容 |
+| `test_custom_model_endpoints.py` | 21 | 自定义模型端点兼容性 |
+| `test_workbench_and_graph.py` | 14 | 工作台聚合与图谱投影 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
@@ -511,6 +554,8 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 | [ROADMAP](ROADMAP.md) | 三仓库形态、框架化 A–G、通用性 #1–#13、Non-Goals |
 | [docs/adr/](docs/adr/) | 架构决策记录，含被否决方案与后果 |
 | [docs/architecture-debt.md](docs/architecture-debt.md) | 框架化前置技术债 |
+| [docs/extending.md](docs/extending.md) | 扩展点注册与插件打包 |
+| [docs/model-endpoints.md](docs/model-endpoints.md) | 接入自定义模型服务与订阅 |
 | [docs/](docs/) | 设计文档索引（⚠️ 部分内容超前于当前实现） |
 | [CHANGELOG](CHANGELOG.md) | 变更记录 |
 

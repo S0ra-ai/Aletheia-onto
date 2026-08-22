@@ -169,12 +169,22 @@ def list_ontologies(platform_db: Path | str) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
-            select id, name, domain, version, status, published_at, created_at
-            from ontology
-            order by id
+            select o.id, o.name, o.domain, o.version, o.status, o.published_at, o.created_at,
+                   (select count(*) from business_object bo where bo.ontology_id = o.id) as object_count
+            from ontology o
+            order by o.id
             """
         ).fetchall()
-        return [_ontology_summary_row(row) for row in rows]
+        summaries = []
+        for row in rows:
+            summary = _ontology_summary_row(row)
+            # Callers need to distinguish a modelled ontology from an empty one
+            # without fetching each ontology's detail.
+            count = int(row["object_count"] or 0)
+            summary["objectCount"] = count
+            summary["object_count"] = count
+            summaries.append(summary)
+        return summaries
 
 
 def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, Any]:

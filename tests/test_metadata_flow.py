@@ -1421,7 +1421,9 @@ def test_openrouter_client_uses_subscription_key_shape() -> None:
     payload = calls[0]["payload"]
     assert headers["Authorization"] == "Bearer or-test-key"
     assert headers["HTTP-Referer"] == "https://example.com"
-    assert headers["X-OpenRouter-Title"] == "Ontology Platform"
+    # OpenRouter reads X-Title. The previous X-OpenRouter-Title was not a header
+    # any provider recognises, so attribution was silently dropped.
+    assert headers["X-Title"] == "Ontology Platform"
     assert payload["model"] == "openai/test-model"
     assert payload["service_tier"] == "auto"
     assert payload["session_id"] == "session-1"

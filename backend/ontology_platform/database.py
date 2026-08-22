@@ -487,6 +487,36 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
     ColumnMigration("business_rule", "effective_start", "text", "text", "date"),
     ColumnMigration("business_rule", "effective_end", "text", "text", "date"),
     ColumnMigration("business_rule", "depends_on", "text not null default '[]'", "text not null default '[]'", "text"),
+    # Custom model endpoint compatibility. Existing deployments keep working
+    # because every default reproduces the previous OpenRouter behaviour.
+    ColumnMigration(
+        "model_config",
+        "auth_style",
+        "text not null default 'bearer'",
+        "text not null default 'bearer'",
+        "varchar(50) not null default 'bearer'",
+    ),
+    ColumnMigration(
+        "model_config",
+        "auth_header",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "model_config",
+        "extra_headers",
+        "text not null default '{}'",
+        "text not null default '{}'",
+        "text",
+    ),
+    ColumnMigration(
+        "model_config",
+        "send_provider_extras",
+        "integer not null default 1",
+        "integer not null default 1",
+        "integer not null default 1",
+    ),
 )
 
 

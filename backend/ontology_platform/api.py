@@ -50,6 +50,7 @@ from .governance import (
     update_business_rule,
     upsert_business_rule,
 )
+from .graph_view import build_ontology_graph
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .kernel_package import build_kernel_package, export_kernel_package
 from .knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
@@ -102,6 +103,7 @@ from .semantic_kernel import (
     validate_rule_expression,
 )
 from .vocabulary import default_object_code_for_ontology
+from .workbench import build_workbench
 from .workflow_permission import (
     init_workflow_and_permission_schema,
     seed_default_roles_and_policies,
@@ -1232,6 +1234,25 @@ def ai_blueprint_draft(data_source_id: int) -> dict[str, object]:
 def ai_ontology_reasoning_chain(data_source_id: int) -> dict[str, object]:
     try:
         return generate_ontology_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/workbench")
+def workbench(decisionLimit: int = 8) -> dict[str, object]:
+    """Aggregated platform state for the workbench screen.
+
+    Read-only projection over existing tables, so it cannot disagree with the
+    screens it summarises.
+    """
+    return build_workbench(DEFAULT_PLATFORM_DB, decisionLimit)
+
+
+@app.get("/ontologies/{ontology_id}/graph")
+def ontology_graph(ontology_id: int) -> dict[str, object]:
+    """Nodes and edges for the knowledge graph preview."""
+    try:
+        return build_ontology_graph(DEFAULT_PLATFORM_DB, ontology_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
