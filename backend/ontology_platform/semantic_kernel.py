@@ -451,7 +451,11 @@ def list_instance_ids(platform_db: Path | str, ontology_id: int, object_code: st
         runtime = _runtime_target(platform, ontology_id, object_code)
         adapter = get_adapter(runtime["source_type"])
         with adapter.runtime(runtime["connection_uri"]) as database:
-            return database.fetch_primary_keys(runtime["table_name"], runtime["primary_key"], resolved_limit)
+            # Through the resolver, so a discriminated object lists only its own
+            # partition and a custom-SQL object lists what its query returns.
+            # Listing raw primary keys would hand batch assessment ids that the
+            # object's own fetch() then rejects.
+            return list(runtime["resolver"].list_ids(database, resolved_limit))
 
 
 def available_rule_names(platform_db: Path | str, ontology_id: int, object_code: str) -> list[str]:
@@ -503,6 +507,48 @@ def available_rule_names(platform_db: Path | str, ontology_id: int, object_code:
         return sorted(names)
 
 
+def _wrap_resolver_children(record: dict[str, Any]) -> dict[str, Any]:
+    """Give resolver output the same shape foreign-key discovery produces.
+
+    A resolver may attach a child collection (`joined_tables`) or a single related
+    row. Rules address those by attribute -- `sum(order_line.amount)` -- which only
+    works on RelatedRows/RowObject, not on the raw list or dict a resolver returns.
+
+    Scalars are left untouched: a column holding a JSON string must stay a string,
+    or rules comparing it would break.
+    """
+    wrapped: dict[str, Any] = {}
+    for name, value in record.items():
+        if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+            wrapped[name] = RelatedRows(value)
+        elif isinstance(value, dict):
+            wrapped[name] = RowObject(value)
+        else:
+            wrapped[name] = value
+    return wrapped
+
+
+def resolver_for(business_object: Any, source_table: Any) -> Any:
+    """Build the resolver for a business object.
+
+    Falls back to single-table when `resolver_spec` is unset or unreadable, so an
+    object created before resolvers existed -- or by an older build -- keeps working.
+    """
+    from .instance_resolver import ResolverSpec, build_resolver
+
+    raw = ""
+    try:
+        raw = business_object["resolver_spec"] or ""
+    except (KeyError, IndexError, TypeError):
+        raw = ""
+    spec = ResolverSpec.from_json(
+        raw,
+        table=source_table["table_name"] if source_table is not None else "",
+        primary_key=(source_table["primary_key"] or "id") if source_table is not None else "id",
+    )
+    return build_resolver(spec)
+
+
 def build_runtime(
     platform: sqlite3.Connection, ontology_id: int, object_code: str, instance_id: str
 ) -> SemanticRuntime:
@@ -527,12 +573,24 @@ def build_runtime(
     primary_key = source_table["primary_key"] or "id"
     adapter = get_adapter(data_source["source_type"])
     with adapter.runtime(data_source["connection_uri"]) as runtime:
-        record = runtime.fetch_one(source_table["table_name"], primary_key, instance_id)
+        # Route through the object's resolver. An unset resolver_spec yields the
+        # single-table resolver, whose behaviour is identical to the previous
+        # direct fetch_one call -- required, since this path produces verdicts.
+        resolver = resolver_for(business_object, source_table)
+        record = resolver.fetch(runtime, instance_id)
         if record is None:
             raise ValueError(f"实例不存在: {object_code}/{instance_id}")
-        context: dict[str, Any] = dict(record)
+        # Wrap resolver-provided child rows the way foreign-key discovery does.
+        # Without this a rule reading `order_line.amount` receives a plain list and
+        # fails with "'list' object has no attribute 'amount'"; fail-closed then
+        # reports that as a blocking violation, turning a wiring detail into a
+        # wrong verdict.
+        context: dict[str, Any] = _wrap_resolver_children(record)
         related = _load_related_context(platform, runtime, data_source["id"], source_table, primary_key, record)
-        context.update(related)
+        # Resolver-provided children take precedence: they were declared
+        # explicitly, whereas foreign-key discovery is inferred.
+        for name, value in related.items():
+            context.setdefault(name, value)
 
     # Confirmed value mappings let a rule be written in business language
     # (status == '生效中') instead of against a legacy code (status == 'A').
@@ -875,6 +933,7 @@ def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code:
         "connection_uri": data_source["connection_uri"],
         "table_name": source_table["table_name"],
         "primary_key": primary_key,
+        "resolver": resolver_for(business_object, source_table),
     }
 
 

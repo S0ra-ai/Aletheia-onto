@@ -137,6 +137,8 @@ SQLite 的 `text`）只会在对应后端上暴露。
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~
   → 实例键抽象（`instance_key.py`，ADR-0008）
+- ~~`business_object.source_table_id` 单外键，一个对象只能绑一张表~~
+  → 实例解析器（`instance_resolver.py`，ADR-0011），四种内置策略且可注册
 - ~~多租户未实现，31 张表零租户概念~~
   → 独立 schema + `tenant_id` 双保险（`tenancy.py`，ADR-0006），三方言实测隔离
 - ~~会话不落库、无反馈闭环，答案对错无法追溯~~

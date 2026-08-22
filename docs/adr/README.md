@@ -15,6 +15,7 @@
 | [0008](0008-instance-key-and-value-mapping.md) | 实例键抽象与值域映射 | Accepted |
 | [0009](0009-document-knowledge-anchored-to-ontology.md) | 文档知识层锚定本体，不做独立 RAG | Accepted |
 | [0010](0010-platform-context-replaces-global-singleton.md) | 上下文对象取代全局单例 | Accepted |
+| [0011](0011-instance-resolvers.md) | 实例解析器：对象不再是表的镜像 | Accepted |
 
 格式：Context（处境）／Decision（决定）／Alternatives considered（被否决的方案）／
 Consequences（后果，含负面）。

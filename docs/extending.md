@@ -147,6 +147,7 @@ oracle = "my_plugin.policies:route_policies"
 | `aletheia.access_policies` | 返回策略元组的可调用对象 |
 | `aletheia.retrieval_backends` | 检索后端 |
 | `aletheia.embedding_models` | 嵌入模型 |
+| `aletheia.instance_resolvers` | 实例解析器 |
 
 ## 验证你的实现
 
@@ -201,12 +202,56 @@ with use_context(ctx):
 **要点：** `require_tenant()` 是 fail-closed 的。若你的扩展在无上下文时也要能跑，
 请显式处理 `TenantError`，不要退化为「读所有租户」。
 
+## 7. 实例解析器
+
+决定「哪些行是这个业务对象的实例」。内置四种：`single_table`（默认）、
+`joined_tables`、`discriminated`、`custom_sql`。
+
+```python
+from ontology_platform.instance_resolver import (
+    InstanceResolver, ResolverSpec, register_resolver,
+)
+
+class CrossSourceResolver(InstanceResolver):
+    kind = "cross_source"
+
+    def validate(self) -> None:
+        ...  # 构造时校验配置，避免错误配置在研判时才暴露
+
+    def fetch(self, runtime, instance_id):
+        ...  # 返回一条完整记录或 None
+
+    def list_ids(self, runtime, limit=50):
+        ...  # 返回的 token 必须能被 fetch() 接受
+
+    def columns(self, runtime):
+        ...  # 规则可引用的全部名称
+
+register_resolver("cross_source", CrossSourceResolver)
+```
+
+**契约中最易写错的一点：`list_ids()` 与 `fetch()` 必须往返闭合。**
+批量研判依赖它——若 `list_ids` 返回了 `fetch` 不接受的 id，批量评估会得到
+「实例不存在」而非结论。
+
+对你的实现跑 `tests/test_instance_resolvers.py` 即可验证合规。
+
+### 标识符必须校验，不能只加引号
+
+解析器配置由运维提供并进入 SQL 文本（join 子句、判别列）。
+请使用 `validate_identifier()`——**加了引号但未校验的名字进入 join 子句仍是隐患**。
+
+### `custom_sql` 的信任边界
+
+`custom_sql` 执行运维提供的 SQL，**以数据源自身的权限运行**。
+平台只做三项限制：必须以 `select`/`with` 开头、不含分号、标识列名经校验。
+这是**刻意的信任决定**:接入遗留系统时建议使用只读账号。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
 
-- 实例解析器（一个对象来自多表、跨源）—— 通用性 #1
-  （复合主键已完成，见 ADR-0008）
+- 跨源实例解析（一个对象跨两个数据源）—— 需先做跨源实体消解
 - 认证后端（SSO／LDAP）
 - 事件钩子
 - 渠道接入

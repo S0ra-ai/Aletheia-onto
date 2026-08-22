@@ -115,6 +115,9 @@ RULES: tuple[Rule, ...] = (
     # Provisioning a tenant creates schemas and tables, which is strictly an
     # administrative act.
     _rule(("POST",), r"/tenants", CAP_ADMIN, "开通租户"),
+    # Changing how an object resolves its instances alters what every rule for
+    # that object evaluates against, so it is a modelling write.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/resolver", CAP_WRITE, "配置实例解析器"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

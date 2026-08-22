@@ -285,7 +285,6 @@ By design, not bugs. These are the next phase's work.
 
 | Constraint | Location |
 |---|---|
-| `business_object.source_table_id` is a single FK: **one object, one table** | `database.py:363` |
 | `relation_type` is hardcoded `"references"`; **no cardinality, no many-to-many** | `ontology.py:606` |
 | **No type hierarchy** (no parent_object / subclass / inherit) | — |
 | Rules scope to a single object; **no cross-object aggregation** | `semantic_kernel.py` |
@@ -353,7 +352,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**411 tests**, all passing:
+**468 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -367,6 +366,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_conversations_and_feedback.py` | 35 | conversation persistence, feedback attribution, escalation |
 | `test_platform_context.py` | 23 | multi-instance isolation, thread binding, compatibility |
 | `test_multi_tenancy.py` | 42 | schema routing, tenant_id defence in depth, cross-tenant detection |
+| `test_instance_resolvers.py` | 57 | four resolver kinds, conformance contract, injection guards |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

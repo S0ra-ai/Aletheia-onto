@@ -577,6 +577,15 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "integer not null default 0",
         "integer not null default 0",
     ),
+    # Instance resolver configuration (generality #1). Empty means single-table,
+    # so every existing object keeps its current behaviour.
+    ColumnMigration(
+        "business_object",
+        "resolver_spec",
+        "text not null default ''",
+        "text not null default ''",
+        "text",
+    ),
 )
 
 
