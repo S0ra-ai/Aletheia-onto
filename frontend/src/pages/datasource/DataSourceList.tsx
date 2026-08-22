@@ -3,9 +3,10 @@ import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input,
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
+import MarkdownMessage from '../../components/MarkdownMessage';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
 
 const DataSourceList: React.FC = () => {
@@ -448,7 +449,9 @@ const DataSourceList: React.FC = () => {
               description={reasoningResult.remoteError || `模型：${reasoningResult.model}`}
               style={{ marginBottom: 16 }}
             />
-            <Paragraph>{reasoningResult.chain.summary}</Paragraph>
+            {/* Model output is Markdown; rendering it raw showed literal "##"
+                and "**" to the user. */}
+            <MarkdownMessage content={reasoningResult.chain.summary} variant="document" />
             <Divider />
             <Title level={5}>推理步骤</Title>
             <Steps

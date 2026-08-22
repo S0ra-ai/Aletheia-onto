@@ -47,6 +47,8 @@ import type {
   ToolDefinition,
   ToolExecutionLog,
   ToolAuthorization,
+  Workbench,
+  OntologyGraph,
 } from '../types';
 
 const api = axios.create({
@@ -723,6 +725,22 @@ export const toolApi = {
   }): Promise<ToolExecutionLog> => {
     const { data } = await api.post(`/tools/logs/${logId}/review`, payload);
     return data as ToolExecutionLog;
+  },
+};
+
+// 工作台 API
+export const workbenchApi = {
+  get: async (decisionLimit = 8): Promise<Workbench> => {
+    const { data } = await api.get('/workbench', { params: { decisionLimit } });
+    return data as Workbench;
+  },
+};
+
+// 知识图谱 API
+export const graphApi = {
+  getOntologyGraph: async (ontologyId: number): Promise<OntologyGraph> => {
+    const { data } = await api.get(`/ontologies/${ontologyId}/graph`);
+    return data as OntologyGraph;
   },
 };
 

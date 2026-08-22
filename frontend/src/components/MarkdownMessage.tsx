@@ -20,12 +20,25 @@ export interface MarkdownMessageProps {
   content: string;
   /** Inverted palette for messages on a coloured (user) bubble. */
   inverted?: boolean;
+  /**
+   * `bubble` compresses headings to body size, which suits a chat bubble where
+   * page-level structure would look wrong. `document` keeps a real heading
+   * hierarchy, for panels that render longer model output such as a modelling
+   * summary.
+   */
+  variant?: 'bubble' | 'document';
 }
 
-const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, inverted = false }) => {
+const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
+  content,
+  inverted = false,
+  variant = 'bubble',
+}) => {
   const codeBg = inverted ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.06)';
   const borderColor = inverted ? 'rgba(255,255,255,0.35)' : '#d0d7e2';
   const mutedColor = inverted ? 'rgba(255,255,255,0.85)' : '#5b6b7f';
+  const isDocument = variant === 'document';
+  const headingSizes = isDocument ? [19, 17, 15] : [15, 15, 14];
 
   return (
     <div className={`markdown-message${inverted ? ' markdown-message-inverted' : ''}`}>
@@ -36,11 +49,15 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, inverted = f
           // trailing space or the bubble looks unbalanced.
           p: ({ children }) => <div style={{ margin: '0 0 8px' }}>{children}</div>,
 
-          // Headings inside a chat bubble should read as emphasis, not as page
-          // structure, so they stay close to body size.
-          h1: ({ children }) => <div style={{ fontWeight: 600, fontSize: 15, margin: '10px 0 6px' }}>{children}</div>,
-          h2: ({ children }) => <div style={{ fontWeight: 600, fontSize: 15, margin: '10px 0 6px' }}>{children}</div>,
-          h3: ({ children }) => <div style={{ fontWeight: 600, fontSize: 14, margin: '8px 0 4px' }}>{children}</div>,
+          h1: ({ children }) => (
+            <div style={{ fontWeight: 600, fontSize: headingSizes[0], margin: '10px 0 6px' }}>{children}</div>
+          ),
+          h2: ({ children }) => (
+            <div style={{ fontWeight: 600, fontSize: headingSizes[1], margin: '10px 0 6px' }}>{children}</div>
+          ),
+          h3: ({ children }) => (
+            <div style={{ fontWeight: 600, fontSize: headingSizes[2], margin: '8px 0 4px' }}>{children}</div>
+          ),
 
           ul: ({ children }) => <ul style={{ margin: '4px 0 8px', paddingInlineStart: 20 }}>{children}</ul>,
           ol: ({ children }) => <ol style={{ margin: '4px 0 8px', paddingInlineStart: 20 }}>{children}</ol>,

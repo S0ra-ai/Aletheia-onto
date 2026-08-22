@@ -8,6 +8,11 @@ import {
   SafetyOutlined,
   LogoutOutlined,
   UserOutlined,
+  DashboardOutlined,
+  DeploymentUnitOutlined,
+  ShareAltOutlined,
+  FileProtectOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
@@ -23,11 +28,14 @@ const ROLE_LABELS: Record<string, string> = {
 
 const { Header, Sider, Content } = Layout;
 
+// Several routes existed but had no menu entry, so they were only reachable by
+// typing a URL. Listed here in the order an operator actually works through:
+// see what needs doing, connect a source, model it, govern it, then ask.
 const menuItems = [
   {
-    key: '/chat',
-    icon: <ThunderboltOutlined />,
-    label: '智能体对话',
+    key: '/workbench',
+    icon: <DashboardOutlined />,
+    label: '工作台',
   },
   {
     key: '/datasource',
@@ -35,9 +43,34 @@ const menuItems = [
     label: '数据源管理',
   },
   {
-    key: '/model',
-    icon: <SettingOutlined />,
-    label: '模型配置',
+    key: '/ontology',
+    icon: <DeploymentUnitOutlined />,
+    label: '本体管理',
+  },
+  {
+    key: '/graph',
+    icon: <ShareAltOutlined />,
+    label: '知识图谱',
+  },
+  {
+    key: '/mapping',
+    icon: <AuditOutlined />,
+    label: '语义映射',
+  },
+  {
+    key: '/rules',
+    icon: <FileProtectOutlined />,
+    label: '业务规则',
+  },
+  {
+    key: '/governance',
+    icon: <SafetyOutlined />,
+    label: '治理与留痕',
+  },
+  {
+    key: '/chat',
+    icon: <ThunderboltOutlined />,
+    label: '智能体对话',
   },
   {
     key: '/workflow',
@@ -48,6 +81,11 @@ const menuItems = [
     key: '/permission',
     icon: <SafetyOutlined />,
     label: '权限管理',
+  },
+  {
+    key: '/model',
+    icon: <SettingOutlined />,
+    label: '模型配置',
   },
 ];
 
@@ -62,7 +100,7 @@ const MainLayout: React.FC = () => {
 
   const getSelectedKey = () => {
     const path = location.pathname;
-    if (path === '/') return '/chat';
+    if (path === '/') return '/workbench';
     const firstSegment = '/' + path.split('/')[1];
     return menuItems.find(item => item.key === firstSegment)?.key || '/';
   };

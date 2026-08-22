@@ -4,7 +4,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -12,6 +12,46 @@ from .config import MODEL_PROVIDER_DEFAULTS
 from .database import connect
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
+
+
+# Auth styles understood by the model layer. Each exists because a real provider
+# needed it, not for completeness.
+AUTH_STYLES = ("bearer", "api-key", "custom", "none")
+
+
+def _parse_header_json(raw: Any) -> dict[str, str]:
+    """Parse the stored extra-headers JSON, tolerating malformed values.
+
+    A bad value must not break model calls entirely; it degrades to no extra
+    headers, which is the previous behaviour.
+    """
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items() if str(k).strip()}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items() if str(k).strip()}
+
+
+def _row_get(row: Any, column: str) -> str:
+    """Read a column that may not exist on an older schema."""
+    try:
+        value = row[column]
+    except (KeyError, IndexError, TypeError):
+        return ""
+    return "" if value is None else str(value)
+
+
+def _row_flag(row: Any, column: str, *, default: bool) -> bool:
+    raw = _row_get(row, column)
+    if raw == "":
+        return default
+    return raw.strip().lower() not in {"0", "false", "no"}
 
 
 @dataclass(frozen=True)
@@ -23,6 +63,54 @@ class OpenRouterConfig:
     app_title: str
     service_tier: str
     timeout_seconds: float
+    # -- Custom endpoint compatibility --
+    #
+    # base_url alone is not enough to talk to an arbitrary OpenAI-compatible
+    # endpoint. Relay gateways, self-hosted vLLM, Azure OpenAI and domestic
+    # providers each differ in how they authenticate and which extra fields they
+    # tolerate, and an unknown field is frequently a hard 400 rather than being
+    # ignored. These four settings cover the differences we have actually hit.
+    auth_style: str = "bearer"
+    auth_header: str = ""
+    extra_headers: dict[str, str] = field(default_factory=dict)
+    send_provider_extras: bool = True
+
+    @property
+    def chat_completions_url(self) -> str:
+        """Full chat endpoint.
+
+        Some gateways publish a base that already ends in /chat/completions, and
+        Azure deployments carry a query string. Appending blindly would corrupt
+        both, so detect and pass those through unchanged.
+        """
+        base = self.base_url.rstrip("/")
+        if "/chat/completions" in base:
+            return self.base_url
+        return f"{base}/chat/completions"
+
+    def request_headers(self) -> dict[str, str]:
+        """Authentication and attribution headers for this provider."""
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        style = (self.auth_style or "bearer").strip().lower()
+        if self.api_key:
+            if style == "none":
+                pass
+            elif style == "api-key":
+                # Azure OpenAI and several domestic gateways.
+                headers["api-key"] = self.api_key
+            elif style == "custom" and self.auth_header:
+                headers[self.auth_header] = self.api_key
+            else:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+        if self.http_referer:
+            headers["HTTP-Referer"] = self.http_referer
+        if self.app_title:
+            # OpenRouter reads X-Title; the vendor-prefixed name was wrong and is
+            # ignored by every other gateway.
+            headers["X-Title"] = self.app_title
+        # Applied last so an operator can override anything above.
+        headers.update({k: v for k, v in (self.extra_headers or {}).items() if k})
+        return headers
 
     @classmethod
     def from_env(cls) -> "OpenRouterConfig":
@@ -34,6 +122,11 @@ class OpenRouterConfig:
             app_title=MODEL_PROVIDER_DEFAULTS.app_title,
             service_tier=MODEL_PROVIDER_DEFAULTS.service_tier,
             timeout_seconds=MODEL_PROVIDER_DEFAULTS.timeout_seconds,
+            auth_style=os.getenv("ONTOLOGY_MODEL_AUTH_STYLE", "bearer"),
+            auth_header=os.getenv("ONTOLOGY_MODEL_AUTH_HEADER", ""),
+            extra_headers=_parse_header_json(os.getenv("ONTOLOGY_MODEL_EXTRA_HEADERS", "")),
+            send_provider_extras=os.getenv("ONTOLOGY_MODEL_SEND_EXTRAS", "").strip().lower()
+            not in {"0", "false", "no"},
         )
 
     @classmethod
@@ -51,6 +144,13 @@ class OpenRouterConfig:
                 app_title=row["app_title"] or env_config.app_title,
                 service_tier=row["service_tier"] or env_config.service_tier,
                 timeout_seconds=float(row["timeout_seconds"] or env_config.timeout_seconds),
+                # Read defensively: a database migrated by an older build may not
+                # carry these columns yet, and the model layer must not be the
+                # reason startup fails.
+                auth_style=_row_get(row, "auth_style") or env_config.auth_style,
+                auth_header=_row_get(row, "auth_header") or env_config.auth_header,
+                extra_headers=_parse_header_json(_row_get(row, "extra_headers")) or env_config.extra_headers,
+                send_provider_extras=_row_flag(row, "send_provider_extras", default=True),
             )
 
 
@@ -90,16 +190,9 @@ class OpenRouterClient:
         self, messages: list[dict[str, str]], purpose: str = "semantic_assistance", session_id: str | None = None
     ) -> ModelResult:
         if not self.configured:
-            raise ValueError("未配置 OPENROUTER_API_KEY，无法调用 OpenRouter 远程模型")
+            raise ValueError("未配置模型 API Key，无法调用远程模型")
 
-        headers = {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
-        }
-        if self.config.http_referer:
-            headers["HTTP-Referer"] = self.config.http_referer
-        if self.config.app_title:
-            headers["X-OpenRouter-Title"] = self.config.app_title
+        headers = self.config.request_headers()
 
         payload: dict[str, Any] = {
             "model": self.config.model,
@@ -107,13 +200,18 @@ class OpenRouterClient:
             "temperature": 0.2,
             "stream": False,
         }
-        if self.config.service_tier:
-            payload["service_tier"] = self.config.service_tier
-        if session_id:
-            payload["session_id"] = session_id
+        # service_tier and session_id are OpenRouter extensions. Strict
+        # OpenAI-compatible servers (vLLM, LM Studio, many relay gateways) reject
+        # unknown body fields with a 400, so they are opt-out for custom
+        # endpoints rather than always sent.
+        if self.config.send_provider_extras:
+            if self.config.service_tier:
+                payload["service_tier"] = self.config.service_tier
+            if session_id:
+                payload["session_id"] = session_id
 
         raw = self.transport(
-            f"{self.config.base_url}/chat/completions",
+            self.config.chat_completions_url,
             headers,
             payload,
             self.config.timeout_seconds,
@@ -296,6 +394,12 @@ def get_model_config(platform_db: Path | str) -> dict[str, Any]:
         "appTitle": config.app_title,
         "serviceTier": config.service_tier,
         "timeoutSeconds": config.timeout_seconds,
+        "authStyle": config.auth_style,
+        "authHeader": config.auth_header,
+        "extraHeaders": config.extra_headers,
+        "sendProviderExtras": config.send_provider_extras,
+        "authStyleOptions": list(AUTH_STYLES),
+        "resolvedEndpoint": config.chat_completions_url,
         "source": source,
     }
 
@@ -313,14 +417,33 @@ def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dic
     app_title = payload.get("appTitle") or current.app_title
     service_tier = payload.get("serviceTier") or current.service_tier
     timeout_seconds = float(payload.get("timeoutSeconds") or current.timeout_seconds)
+
+    auth_style = (payload.get("authStyle") or current.auth_style or "bearer").strip().lower()
+    if auth_style not in AUTH_STYLES:
+        raise ValueError(f"不支持的鉴权方式: {auth_style}。可选: {'、'.join(AUTH_STYLES)}")
+    auth_header = payload.get("authHeader")
+    if auth_header is None:
+        auth_header = current.auth_header
+    auth_header = str(auth_header).strip()
+    if auth_style == "custom" and not auth_header:
+        raise ValueError("鉴权方式为 custom 时必须填写鉴权请求头名称")
+
+    if "extraHeaders" in payload:
+        extra_headers = _parse_header_json(payload.get("extraHeaders"))
+    else:
+        extra_headers = current.extra_headers
+    send_extras = payload.get("sendProviderExtras")
+    send_provider_extras = current.send_provider_extras if send_extras is None else bool(send_extras)
+
     with connect(platform_db) as conn:
         conn.execute(
             """
             insert into model_config (
                 id, provider, api_key, model, base_url, http_referer,
-                app_title, service_tier, timeout_seconds, updated_at
+                app_title, service_tier, timeout_seconds,
+                auth_style, auth_header, extra_headers, send_provider_extras, updated_at
             )
-            values (1, 'openrouter', ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+            values (1, 'openrouter', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
             on conflict(id) do update set
                 api_key = excluded.api_key,
                 model = excluded.model,
@@ -329,9 +452,25 @@ def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dic
                 app_title = excluded.app_title,
                 service_tier = excluded.service_tier,
                 timeout_seconds = excluded.timeout_seconds,
+                auth_style = excluded.auth_style,
+                auth_header = excluded.auth_header,
+                extra_headers = excluded.extra_headers,
+                send_provider_extras = excluded.send_provider_extras,
                 updated_at = current_timestamp
             """,
-            (api_key, model, base_url, http_referer, app_title, service_tier, timeout_seconds),
+            (
+                api_key,
+                model,
+                base_url,
+                http_referer,
+                app_title,
+                service_tier,
+                timeout_seconds,
+                auth_style,
+                auth_header,
+                json.dumps(extra_headers, ensure_ascii=False),
+                1 if send_provider_extras else 0,
+            ),
         )
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
