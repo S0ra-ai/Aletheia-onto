@@ -612,8 +612,8 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**848 tests**, all passing (3 skip by environment: no local MySQL/PostgreSQL, and a
-wheel build that only runs in CI):
+**851 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
+no server is reachable, and the wheel build runs only in CI.
 
 | File | Count | Covers |
 |---|--:|---|

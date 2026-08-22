@@ -101,8 +101,12 @@ jobs:
           PY
 
       - name: 校验 README 声明的测试数量与实际一致
-        # The README states a test count; this fails the build when the two
-        # drift apart, so the number cannot quietly become a lie.
+        # The README states a test count; this fails the build when the two drift apart, so
+        # the number cannot quietly become a lie.
+        #
+        # Compared against the *collected* count, not the passed count: skips depend on
+        # which service containers are reachable, so a passed-count comparison would make
+        # the README's number correct only in one environment.
         run: |
           python - <<'PY'
           import re, subprocess, sys, pathlib
@@ -266,6 +270,29 @@ jobs:
             connect /tmp/extract --type csv --name 导出文件 --domain 合同管理
           /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 model 1
           /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 assess 1 contract 1
+
+      - name: README 承诺的 --as-of 回溯判定可执行
+        # The README shows this command, so it is run rather than assumed. A past-tense
+        # verdict must also *echo* the moment: one that did not could be mistaken for a
+        # judgement about the present.
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          from ontology_platform.temporal import record_attribute_version
+          record_attribute_version(
+              "/tmp/platform.sqlite3", 1, "contract", "1", "amount", 99999,
+              valid_from="2026-01-01",
+          )
+          print("已写入一条历史版本")
+          PY
+          /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 \
+            assess 1 contract 1 --as-of 2026-01-31 > /tmp/asof.json
+          cat /tmp/asof.json
+          python -c "
+          import json
+          payload = json.load(open('/tmp/asof.json'))
+          assert payload['asOf'] == '2026-01-31 00:00:00', payload
+          print('回溯判定标注了时刻:', payload['asOf'])
+          "
 
       - name: doctor 说明未激活的数据源需要哪个驱动
         # "Why is Oracle not in the list" must be answerable without reading the source.

@@ -815,8 +815,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**848 个测试**，全绿（3 个按环境跳过：无本地 MySQL／PostgreSQL，
-以及仅在 CI 上执行的 wheel 构建）。分布：
+**851 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
