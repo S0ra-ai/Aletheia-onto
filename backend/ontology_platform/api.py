@@ -1511,8 +1511,6 @@ def _tenant_base_context() -> Any:
     Uses the process default, so provisioning targets whatever platform database
     the deployment is configured with rather than a hardcoded path.
     """
-    from .context import resolve_context
-
     return resolve_context(DEFAULT_PLATFORM_DB)
 
 
@@ -1941,6 +1939,7 @@ def decisions(limit: int = 50) -> dict[str, object]:
 # Workflow & Permission Management
 # ============================================================
 
+from .context import resolve_context
 from .workflow_permission import (
     add_workflow_state,
     add_workflow_transition,
@@ -1950,6 +1949,7 @@ from .workflow_permission import (
     create_role,
     create_workflow,
     delete_workflow,
+    enter_workflow,
     get_available_actions,
     get_instance_history,
     get_instance_state,
@@ -2141,8 +2141,6 @@ def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str
 @app.post("/workflows/{workflow_id}/enter")
 def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
     try:
-        from .workflow_permission import enter_workflow
-
         return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

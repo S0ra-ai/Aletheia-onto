@@ -37,6 +37,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from .database import connect, last_insert_id
+from .retrieval import tokenize
+from .schema import SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -188,16 +190,7 @@ def init_knowledge_schema(conn: Any) -> None:
     self-contained; called from application startup alongside the other optional
     schemas.
     """
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
-
-    for statement in KNOWLEDGE_SCHEMA:
-        db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-        if db_type in ("postgresql", "postgres"):
-            conn.execute(_postgresql_ddl(statement))
-        elif db_type == "mysql":
-            conn.execute(_mysql_ddl(statement))
-        else:
-            conn.execute(_sqlite_ddl(statement))
+    SchemaBundle(name="knowledge_documents", tables=KNOWLEDGE_SCHEMA).apply(conn)
 
 
 KNOWLEDGE_SCHEMA: tuple[dict[str, str], ...] = (
@@ -402,8 +395,6 @@ def summarize_tokens(text: str) -> dict[str, int]:
     Stored at ingest time so retrieval does not re-tokenise every entry on every
     query. See retrieval.py for why the default tokenizer works this way.
     """
-    from .retrieval import tokenize
-
     counts: dict[str, int] = {}
     for token in tokenize(text):
         counts[token] = counts.get(token, 0) + 1

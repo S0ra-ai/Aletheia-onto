@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from .database import connect, last_insert_id
+from .release_readiness import assess_ontology_release_readiness
+from .semantic_kernel import validate_rule_expression
+from .type_hierarchy import inherited_rule_scopes
 
 VALID_MAPPING_STATUSES = {"pending", "confirmed", "rejected"}
 VALID_ONTOLOGY_STATUSES = {"draft", "reviewing", "published", "deprecated"}
@@ -19,8 +22,6 @@ def _validate_rule_write(rule_type: str, severity: str, expression: str) -> None
     permanent "not passed" verdict. Catching it at write time keeps the failure
     at the point where a human can fix it.
     """
-    from .semantic_kernel import validate_rule_expression
-
     if rule_type not in VALID_RULE_TYPES:
         raise ValueError(f"不支持的规则类型: {rule_type}")
     if severity not in VALID_RULE_SEVERITIES:
@@ -211,8 +212,6 @@ def publish_ontology(
 
 
 def _assess_release_gates(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
-    from .release_readiness import assess_ontology_release_readiness
-
     return assess_ontology_release_readiness(platform_db, ontology_id)
 
 
@@ -532,8 +531,6 @@ def _validate_override(conn: Any, ontology_id: int, code: str, scope_object_code
     still blocking. And a declaration naming a rule outside the ancestry would
     disable a control on a type this object has no relationship to.
     """
-    from .type_hierarchy import inherited_rule_scopes
-
     if overrides == code:
         raise ValueError(f"规则不能覆盖自身: {code}")
     target = conn.execute(

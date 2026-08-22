@@ -41,6 +41,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
 
+from .credentials import redact_connection_uri
+
 logger = logging.getLogger(__name__)
 
 # The tenant identifier used when a deployment is single-tenant. ADR-0006 chose
@@ -67,11 +69,13 @@ class PlatformContext:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        from .database import DEFAULT_PLATFORM_DB, _default_uri
+        from .database import DEFAULT_PLATFORM_DB, default_platform_uri
 
         self.db_type = (self.db_type or "sqlite").lower()
         if not self.connection_uri:
-            self.connection_uri = str(DEFAULT_PLATFORM_DB) if self.db_type == "sqlite" else _default_uri(self.db_type)
+            self.connection_uri = (
+                str(DEFAULT_PLATFORM_DB) if self.db_type == "sqlite" else default_platform_uri(self.db_type)
+            )
 
     @property
     def adapter(self) -> Any:
@@ -84,11 +88,11 @@ class PlatformContext:
         if self._adapter is None:
             with self._lock:
                 if self._adapter is None:
-                    from .database import _create_adapter
+                    from .database import create_platform_adapter
 
                     # Passing the schema is what activates per-tenant routing
                     # (ADR-0006); an empty schema keeps the single-tenant path.
-                    self._adapter = _create_adapter(self.db_type, self.connection_uri, self.schema)
+                    self._adapter = create_platform_adapter(self.db_type, self.connection_uri, self.schema)
         return self._adapter
 
     def connect(self) -> Any:
@@ -111,8 +115,6 @@ class PlatformContext:
     def describe(self) -> dict[str, Any]:
         """Diagnostic summary. Never includes the connection URI, which carries
         credentials -- see credentials.redact_connection_uri."""
-        from .credentials import redact_connection_uri
-
         return {
             "dbType": self.db_type,
             "connectionUri": redact_connection_uri(self.connection_uri),

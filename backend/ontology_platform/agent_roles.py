@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect
+from .schema import SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -103,18 +104,11 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
 )
 
 
-def init_agent_role_schema(conn: Any) -> None:
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
+SCHEMA = SchemaBundle(name="agent_roles", tables=SCHEMA_SQL)
 
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    for statement in SCHEMA_SQL:
-        if db_type in ("postgresql", "postgres"):
-            sql = _postgresql_ddl(statement)
-        elif db_type == "mysql":
-            sql = _mysql_ddl(statement)
-        else:
-            sql = _sqlite_ddl(statement)
-        conn.execute(sql)
+
+def init_agent_role_schema(conn: Any) -> None:
+    SCHEMA.apply(conn)
 
 
 @dataclass(frozen=True)

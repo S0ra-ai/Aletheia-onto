@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect, last_insert_id
+from .schema import SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -206,18 +207,12 @@ CONVERSATION_SCHEMA: tuple[dict[str, str], ...] = (
 )
 
 
+SCHEMA = SchemaBundle(name="conversations", tables=CONVERSATION_SCHEMA)
+
+
 def init_conversation_schema(conn: Any) -> None:
     """Create the conversation, message and feedback tables."""
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
-
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    for statement in CONVERSATION_SCHEMA:
-        if db_type in ("postgresql", "postgres"):
-            conn.execute(_postgresql_ddl(statement))
-        elif db_type == "mysql":
-            conn.execute(_mysql_ddl(statement))
-        else:
-            conn.execute(_sqlite_ddl(statement))
+    SCHEMA.apply(conn)
 
 
 def ensure_conversation(

@@ -4,7 +4,7 @@
 「可运行的产品」变成「可被第三方扩展的框架」之前必须偿还的债。
 对应 [ROADMAP](../ROADMAP.md) 的**阶段 C：依赖倒置**。
 
-核对时间：2026-08-21，基于 `codex/repo-normalization` 分支。
+核对时间：2026-08-23，基于 `codex/cross-object-aggregation` 分支。
 
 ## 1. ~~全局状态：一个进程只能有一个平台实例~~（已偿还）
 
@@ -51,7 +51,21 @@ _platform_adapter: Optional["PlatformAdapter"] = None
 
 应改为携带连接、配置与注册表的上下文对象，一次性把这类关注点收进去。
 
-## 3. 循环依赖：12 处函数内 import
+## 3. ~~循环依赖：12 处函数内 import~~（已偿还）
+
+> ✅ **已偿还。** 19 处函数内 import 已提升到顶层，剩余唯一真环是
+> `context ↔ database`——上下文持有只有 `database` 能构建的适配器，
+> 而 `database` 的公开入口要经上下文解析。这一对必然同包，因此环不会跨分发边界。
+>
+> 关键的一处是 `ontology ↔ semantic_kernel`：草案生成要校验它写出的规则，
+> 内核要解释它评估的实例。解法是把规则沙箱抽成 `rule_sandbox.py`——
+> 草案生成真正需要的就是它，而它不依赖两者中任何一个，于是两个方向的环同时消失。
+>
+> **不变量由测试守住**：`tests/test_module_boundaries.py` 会把所有函数内 import
+> 提升后重新检测环。只靠文档记录的约束会一次一个「顺手的延迟 import」地退化。
+
+<details>
+<summary>原始记录</summary>
 
 函数体内 import 是规避循环依赖的手段，能跑，但它掩盖了真实的依赖方向。
 分包（阶段 E）时这些环会变成硬错误——跨包的循环无法用延迟 import 化解。
@@ -71,7 +85,29 @@ _platform_adapter: Optional["PlatformAdapter"] = None
 最后三处同时暴露了问题 5：三个模块都要伸手进 `database.py` 拿私有的
 DDL 辅助函数，因为它们各自手写建表语句。
 
-## 4. 公私边界缺失
+</details>
+
+## 4. 公私边界（跨模块私有引用已清零，前端类型仍手写）
+
+> ✅ **跨模块私有引用已清零。** 原先 `agent.py` 从 `natural_language.py`
+> 导入 8 个下划线私有函数，`context.py` 伸手拿 `database` 的两个私有函数。
+> 真正被跨模块使用的已提升为公开 API 并写明为何公开
+> （`detect_intent`、`compact_json`、`compact_evidence`、
+> `default_platform_uri`、`create_platform_adapter`）；
+> 共享的 DDL 行为下沉到 `schema.py`。
+>
+> `rule_sandbox` 与 `semantic_kernel` 已声明 `__all__`。
+> **不变量由 `tests/test_module_boundaries.py` 守住**：任何新的跨模块私有导入
+> 会让测试失败，并且 `__all__` 里不存在的名字也会被抓出来。
+
+🚧 **仍待完成：前端类型手写。**
+`frontend/src/types/index.ts` 手写 889 行镜像后端模型。
+后端同时下发 camelCase 与 snake_case 两份字段
+（见 `metadata.py` 的 `DataSource.public_dict()`），前端类型靠手工同步。
+应改为从 OpenAPI 生成，并把响应收敛为单一命名风格。
+
+<details>
+<summary>原始记录</summary>
 
 **`agent.py` 从 `natural_language.py` 导入 8 个下划线私有函数：**
 `_compact_evidence`、`_compact_json`、`_detect_intent`、`_detect_object_code`、
@@ -82,12 +118,31 @@ DDL 辅助函数，因为它们各自手写建表语句。
 我们并不打算稳定的符号，而我们也无法在不破坏下游的前提下重构内部实现。
 这 8 个函数要么提升为公开 API，要么下沉到共享的内部模块。
 
-**前端 `frontend/src/types/index.ts` 手写 889 行镜像后端模型。**
-后端同时下发 camelCase 与 snake_case 两份字段
-（见 `metadata.py` 的 `DataSource.public_dict()`），前端类型靠手工同步。
-应改为从 OpenAPI 生成，并把响应收敛为单一命名风格。
+</details>
 
-## 5. DDL 分散在 4 个模块
+## 5. ~~DDL 分散在 4 个模块~~（已偿还，Alembic 仍待阶段 E）
+
+> ✅ **调度逻辑已统一到 `schema.py`。** 8 个模块此前各自手写「按方言挑 DDL
+> 再执行」的循环，并各自伸手拿 `database` 的私有辅助函数。
+> 现在各模块声明 `SchemaBundle`，由一处应用。
+>
+> 顺带修掉的两处漂移：
+> - MySQL 没有 `create index if not exists`，重跑会抛错。此前只有部分副本处理了，
+>   现在索引与建表分开声明，只在 MySQL 上容忍「已存在」。
+> - 「表是否存在」的探测此前写了两遍且 SQL 略有差异。统一为 `schema.table_exists`，
+>   走目录查询而非捕获异常——PostgreSQL 上捕获异常时事务已中止（ADR-0004）。
+>   **这个 bug 在本次实现中真实发生过。**
+>
+> `SchemaBundle.verify_declared_names()` 在导入时校验声明的表名确实出现在 DDL 中：
+> 改了 DDL 却忘改声明，会让探测对存在的表报「未配置」，
+> 于是功能静默返回空结果而不是报错。
+
+🚧 **仍待完成：迁移 Alembic**（阶段 E）。
+需要先定下分包边界，因为一份迁移必须归属于某个分发包。
+`SchemaBundle` 是去掉环与重复、但不预先承诺布局的中间态。
+
+<details>
+<summary>原始记录</summary>
 
 建表语句分散在 `database.py`、`workflow_permission.py`、`auth.py`、
 `agent_roles.py`，每个模块各自手写三方言。
@@ -97,6 +152,8 @@ DDL 辅助函数，因为它们各自手写建表语句。
 SQLite 的 `text`）只会在对应后端上暴露。
 
 应迁移 Alembic 并按插件归属管理迁移。
+
+</details>
 
 ## 6. 单体路由：`api.py` 98 个端点
 
@@ -133,6 +190,13 @@ SQLite 的 `text`）只会在对应后端上暴露。
 
 记录在此以免重复讨论：
 
+- ~~12 处函数内 import 掩盖真实依赖方向，分包时会变成硬错误~~
+  → 19 处已提升到顶层，规则沙箱抽为 `rule_sandbox.py` 解开
+  `ontology ↔ semantic_kernel`；不变量由 `tests/test_module_boundaries.py` 守住
+- ~~8 个跨模块私有引用~~ → 提升为公开 API 或下沉到 `schema.py`，
+  并由边界测试防止回退
+- ~~建表 DDL 调度在 8 个模块各写一遍并各自漂移~~
+  → `schema.SchemaBundle` 统一，含表存在性探测与 MySQL 索引重跑处理
 - ~~四处扩展点硬编码，第三方必须 fork 才能扩展~~
   → 运行时注册表 + entry points（`registry.py`，ADR-0007）
 - ~~复合主键三处 `raise ValueError`，连接表与版本化表无法建模~~

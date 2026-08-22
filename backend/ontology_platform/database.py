@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Protocol
 from urllib.parse import urlparse
 
+from .config import MODEL_PROVIDER_DEFAULTS
+
+# `schema` depends only on the dialect name, so importing it here does not create a
+# cycle -- which is the whole reason the DDL selectors moved there.
+from .schema import MYSQL, POSTGRESQL, SQLITE, statement_for
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .context import ContextLike
 
@@ -27,8 +33,6 @@ SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get("ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEO
 
 def _model_provider_base_url() -> str:
     """Default model endpoint, imported lazily to avoid a circular import."""
-    from .config import MODEL_PROVIDER_DEFAULTS
-
     return MODEL_PROVIDER_DEFAULTS.base_url
 
 
@@ -68,7 +72,7 @@ def configure_platform_db(db_type: str, connection_uri: str = "") -> None:
     from .context import configure_default_context
 
     _platform_db_type = db_type
-    _platform_db_uri = connection_uri if connection_uri else _default_uri(db_type)
+    _platform_db_uri = connection_uri if connection_uri else default_platform_uri(db_type)
     context = configure_default_context(db_type, _platform_db_uri)
     # Keep the legacy global pointing at the same adapter instance, so a caller
     # that reaches for it directly cannot end up on a different connection than
@@ -76,7 +80,13 @@ def configure_platform_db(db_type: str, connection_uri: str = "") -> None:
     _platform_adapter = context.adapter
 
 
-def _default_uri(db_type: str) -> str:
+def default_platform_uri(db_type: str) -> str:
+    """The connection URI assumed when a dialect is configured without one.
+
+    Public because `context` builds contexts from a dialect alone. The defaults are
+    development conveniences, not deployment advice -- a real deployment passes its own
+    URI.
+    """
     if db_type == "sqlite":
         return str(DEFAULT_PLATFORM_DB)
     if db_type in ("postgresql", "postgres"):
@@ -86,12 +96,14 @@ def _default_uri(db_type: str) -> str:
     return str(DEFAULT_PLATFORM_DB)
 
 
-def _create_adapter(db_type: str, connection_uri: str, schema: str = "") -> PlatformAdapter:
+def create_platform_adapter(db_type: str, connection_uri: str, schema: str = "") -> PlatformAdapter:
     """Build a platform adapter.
 
     `schema` carries per-tenant routing (ADR-0006). SQLite ignores it: it has no
     schema concept, so a tenant is a separate file and the routing already lives in
     the connection URI.
+
+    Public because `context` -- which owns adapter lifetime -- has to construct them.
     """
     normalized = db_type.lower()
     if normalized == "sqlite":
@@ -245,7 +257,7 @@ class SQLitePlatformAdapter:
         return int(conn.execute("select last_insert_rowid()").fetchone()[0])
 
     def _schema_statements(self) -> list[str]:
-        return [_sqlite_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, SQLITE) for stmt in SCHEMA_DEFINITIONS]
 
     def _migrate_model_config_schema(self, conn: sqlite3.Connection) -> None:
         try:
@@ -259,7 +271,7 @@ class SQLitePlatformAdapter:
         legacy_rows = conn.execute("select config_key, config_value from model_config").fetchall()
         legacy = {row["config_key"]: row["config_value"] for row in legacy_rows}
         conn.execute("alter table model_config rename to model_config_legacy")
-        conn.execute(_sqlite_ddl(_MODEL_CONFIG_DDL))
+        conn.execute(statement_for(_MODEL_CONFIG_DDL, SQLITE))
         conn.execute(
             """
             insert into model_config (
@@ -325,7 +337,7 @@ class PostgreSQLPlatformAdapter:
             return _scalar(cur.fetchone())
 
     def _schema_statements(self) -> list[str]:
-        return [_postgresql_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, POSTGRESQL) for stmt in SCHEMA_DEFINITIONS]
 
 
 # -- MySQL Platform Adapter --
@@ -365,7 +377,7 @@ class MySQLPlatformAdapter:
             return _scalar(cur.fetchone())
 
     def _schema_statements(self) -> list[str]:
-        return [_mysql_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, MYSQL) for stmt in SCHEMA_DEFINITIONS]
 
 
 # -- Schema definitions (dialect-neutral) --
@@ -736,18 +748,6 @@ def _apply_column_migrations(conn: Any, db_type: str) -> list[str]:
                 conn.rollback()
             raise
     return applied
-
-
-def _sqlite_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("sqlite", next(iter(stmt.values())))
-
-
-def _postgresql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("postgresql", next(iter(stmt.values())))
-
-
-def _mysql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("mysql", next(iter(stmt.values())))
 
 
 def _parse_mysql_uri(connection_uri: str) -> dict[str, Any]:

@@ -12,8 +12,10 @@ from .automation import preflight_operation
 from .config import RESOLUTION_CONFIDENCE
 from .database import connect
 from .knowledge_base import build_reasoning_chain
+from .knowledge_documents import load_confirmed_entries
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
+from .retrieval import retrieve
 from .semantic_kernel import assess_decision_consistency, assess_instance
 from .vocabulary import DomainVocabulary, load_vocabulary
 
@@ -76,7 +78,7 @@ def query_natural_language(
         if use_model
         else {}
     )
-    intent = str(model_interpretation.get("intent") or _detect_intent(normalized_question))
+    intent = str(model_interpretation.get("intent") or detect_intent(normalized_question))
     resolved = _resolve_target(
         platform_db,
         normalized_question,
@@ -233,7 +235,7 @@ def _interpret_with_model(
         },
         {
             "role": "user",
-            "content": _compact_json(
+            "content": compact_json(
                 {
                     "availableSemanticContext": context,
                     "recentConversation": history[-8:],
@@ -265,7 +267,7 @@ def _summarize_with_model(
     evidence: dict[str, Any],
     history: list[dict[str, str]],
 ) -> str:
-    compact_evidence = _compact_evidence(evidence)
+    trimmed_evidence = compact_evidence(evidence)
     messages = [
         {
             "role": "system",
@@ -279,7 +281,7 @@ def _summarize_with_model(
         },
         {
             "role": "user",
-            "content": _compact_json(
+            "content": compact_json(
                 {
                     "question": question,
                     "intent": intent,
@@ -291,7 +293,7 @@ def _summarize_with_model(
                         "operationCode": resolved.operation_code,
                     },
                     "deterministicAnswer": deterministic_answer,
-                    "evidence": compact_evidence,
+                    "evidence": trimmed_evidence,
                     "recentConversation": history[-6:],
                 }
             ),
@@ -304,7 +306,13 @@ def _summarize_with_model(
         return ""
 
 
-def _detect_intent(question: str) -> str:
+def detect_intent(question: str) -> str:
+    """Classify a question into one of the routing intents.
+
+    Public because `agent` routes on it. It used to be private and imported across the
+    module boundary anyway, which is the worst of both: a name we never promised to
+    keep, that something already depended on.
+    """
     if re.search(
         r"(有哪些|列出|介绍|概览|知识库).*(规则|关系|本体|对象)|(规则|关系|本体|对象).*(有哪些|是什么|概览)", question
     ):
@@ -736,9 +744,6 @@ def _retrieve_citations(
     """
     codes = [code for code in rule_codes if code]
     try:
-        from .knowledge_documents import load_confirmed_entries
-        from .retrieval import retrieve
-
         with connect(platform_db) as conn:
             entries = load_confirmed_entries(
                 conn,
@@ -909,11 +914,22 @@ def _extract_json_object(content: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _compact_json(value: Any) -> str:
+def compact_json(value: Any) -> str:
+    """JSON for a model prompt: no ASCII escaping, and never raises on odd types.
+
+    `default=str` matters -- a Decimal or date in a record would otherwise raise mid
+    prompt-assembly and turn a serialisation detail into a failed answer.
+    """
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
-def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+def compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Shrink an evidence payload to what a model prompt can carry.
+
+    Public because `agent` assembles prompts from the same evidence shapes. Truncation
+    is deliberate and lossy: the full evidence stays in the decision record, which is
+    what an audit reads, while the prompt gets the part that fits.
+    """
     if "ruleResults" in evidence:
         failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
         return {

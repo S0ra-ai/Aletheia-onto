@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect, last_insert_id
+from .schema import SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +157,8 @@ class EventType:
 # statements can never name different tables.
 EVENT_SCHEMA: tuple[dict[str, str], ...] = (
     {
-        "sqlite": f"""
-        create table if not exists {EVENT_TYPE_TABLE} (
+        "sqlite": """
+        create table if not exists business_event_type (
             id integer primary key autoincrement,
             ontology_id integer not null references ontology(id),
             object_code text not null,
@@ -169,8 +170,8 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
             created_at text not null default current_timestamp,
             unique(ontology_id, object_code, code)
         )""",
-        "postgresql": f"""
-        create table if not exists {EVENT_TYPE_TABLE} (
+        "postgresql": """
+        create table if not exists business_event_type (
             id serial primary key,
             ontology_id integer not null references ontology(id),
             object_code text not null,
@@ -182,8 +183,8 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
             created_at timestamp not null default current_timestamp,
             unique(ontology_id, object_code, code)
         )""",
-        "mysql": f"""
-        create table if not exists {EVENT_TYPE_TABLE} (
+        "mysql": """
+        create table if not exists business_event_type (
             id integer primary key auto_increment,
             ontology_id integer not null,
             object_code varchar(255) not null,
@@ -200,8 +201,8 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
         # Append-only. No update or delete path exists: a wrong event is corrected by
         # recording a compensating one, which is the only shape that keeps history
         # honest.
-        "sqlite": f"""
-        create table if not exists {EVENT_TABLE} (
+        "sqlite": """
+        create table if not exists business_event (
             id integer primary key autoincrement,
             ontology_id integer not null references ontology(id),
             object_code text not null,
@@ -209,14 +210,14 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
             event_code text not null,
             category text not null default 'interaction',
             actor text not null default '',
-            payload text not null default {_EMPTY_JSON},
+            payload text not null default '{}',
             occurred_at text not null default current_timestamp,
             recorded_at text not null default current_timestamp,
             payload_warning text not null default '',
             correlation_id text not null default ''
         )""",
-        "postgresql": f"""
-        create table if not exists {EVENT_TABLE} (
+        "postgresql": """
+        create table if not exists business_event (
             id serial primary key,
             ontology_id integer not null references ontology(id),
             object_code text not null,
@@ -224,14 +225,14 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
             event_code text not null,
             category text not null default 'interaction',
             actor text not null default '',
-            payload text not null default {_EMPTY_JSON},
+            payload text not null default '{}',
             occurred_at timestamp not null default current_timestamp,
             recorded_at timestamp not null default current_timestamp,
             payload_warning text not null default '',
             correlation_id text not null default ''
         )""",
-        "mysql": f"""
-        create table if not exists {EVENT_TABLE} (
+        "mysql": """
+        create table if not exists business_event (
             id integer primary key auto_increment,
             ontology_id integer not null,
             object_code varchar(255) not null,
@@ -246,75 +247,53 @@ EVENT_SCHEMA: tuple[dict[str, str], ...] = (
             correlation_id varchar(255) not null default ''
         )""",
     },
+)
+
+# History is read per instance on every explanation, so the lookup path is indexed
+# rather than left to a scan that grows with total event volume.
+EVENT_INDEXES: tuple[dict[str, str], ...] = (
     {
-        # History is read per instance on every explanation, so the lookup path is
-        # indexed rather than left to a scan that grows with total event volume.
-        "sqlite": f"""
-        create index if not exists {EVENT_INSTANCE_INDEX}
-        on {EVENT_TABLE} (ontology_id, object_code, instance_id)""",
-        "postgresql": f"""
-        create index if not exists {EVENT_INSTANCE_INDEX}
-        on {EVENT_TABLE} (ontology_id, object_code, instance_id)""",
-        "mysql": f"""
-        create index {EVENT_INSTANCE_INDEX}
-        on {EVENT_TABLE} (ontology_id, object_code, instance_id)""",
+        "sqlite": """
+        create index if not exists idx_business_event_instance
+        on business_event (ontology_id, object_code, instance_id)""",
+        "postgresql": """
+        create index if not exists idx_business_event_instance
+        on business_event (ontology_id, object_code, instance_id)""",
+        "mysql": """
+        create index idx_business_event_instance
+        on business_event (ontology_id, object_code, instance_id)""",
     },
 )
 
 
-def event_tables_exist(conn: Any) -> bool:
-    """Probe the catalog for the event tables.
+# Tables and the per-instance index this module owns. The index is declared separately
+# because MySQL has no `create index if not exists` and raises on a re-run, while
+# `create table if not exists` is idempotent on all three dialects.
+SCHEMA = SchemaBundle(
+    name="events",
+    tables=EVENT_SCHEMA,
+    indexes=EVENT_INDEXES,
+    table_names=(EVENT_TYPE_TABLE, EVENT_TABLE),
+)
+# Fails at import time if a rename updated the DDL but not the declared names, which
+# would otherwise make the probe report "not configured" for tables that exist.
+SCHEMA.verify_declared_names()
 
-    Catching the error instead is wrong on PostgreSQL: a failed statement aborts the
-    surrounding transaction, so every later command on the same connection fails with
-    InFailedSqlTransaction. This is the identical trap ADR-0004 records for schema
-    migrations -- probe the catalog, never rely on the error.
+
+def event_tables_exist(conn: Any) -> bool:
+    """Whether the event tables are present.
+
+    A missing schema means the feature is not configured, which must read as an
+    empty history rather than an error. Probed via the catalog, never by catching
+    the error: on PostgreSQL a failed statement aborts the transaction, so every
+    later command on the same connection would fail (ADR-0004).
     """
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    try:
-        if db_type == "sqlite":
-            row = conn.execute(
-                "select name from sqlite_master where type = 'table' and name = ?",
-                (EVENT_TABLE,),
-            ).fetchone()
-            return row is not None
-        query = (
-            "select table_name from information_schema.tables where table_name = %s and table_schema = current_schema()"
-        )
-        if db_type == "mysql":
-            query = (
-                "select table_name from information_schema.tables where table_name = %s and table_schema = database()"
-            )
-        with conn.cursor() as cur:
-            cur.execute(query, (EVENT_TABLE,))
-            return cur.fetchone() is not None
-    except Exception as error:  # pragma: no cover - defensive
-        logger.debug("检查事件表是否存在失败: %s", error)
-        return False
+    return SCHEMA.has_tables(conn)
 
 
 def init_event_schema(conn: Any) -> None:
     """Create the event tables. Idempotent -- startup runs it on every boot."""
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
-
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    for statement in EVENT_SCHEMA:
-        if db_type in ("postgresql", "postgres"):
-            sql = _postgresql_ddl(statement)
-        elif db_type == "mysql":
-            sql = _mysql_ddl(statement)
-        else:
-            sql = _sqlite_ddl(statement)
-        try:
-            conn.execute(sql)
-        except Exception as error:
-            # MySQL has no `create index if not exists`, so a re-run raises. Every
-            # other statement is guarded, which makes this the only expected failure
-            # and it is safe to treat as "already there".
-            if "index" in sql.lower():
-                logger.debug("索引可能已存在，跳过: %s", error)
-                continue
-            raise
+    SCHEMA.apply(conn)
 
 
 def declare_event_type(
@@ -342,14 +321,14 @@ def declare_event_type(
             raise EventError(f"业务对象不存在: {event_type.object_code}")
 
         existing = conn.execute(
-            f"select id from {EVENT_TYPE_TABLE} where ontology_id = ? and object_code = ? and code = ?",
+            "select id from business_event_type where ontology_id = ? and object_code = ? and code = ?",
             (ontology_id, event_type.object_code, event_type.code),
         ).fetchone()
         payload_fields = json.dumps(event_type.payload_fields, ensure_ascii=False)
         if existing is not None:
             conn.execute(
-                f"""
-                update {EVENT_TYPE_TABLE}
+                """
+                update business_event_type
                 set name = ?, category = ?, payload_fields = ?, description = ?
                 where id = ?
                 """,
@@ -363,8 +342,8 @@ def declare_event_type(
             )
         else:
             conn.execute(
-                f"""
-                insert into {EVENT_TYPE_TABLE}
+                """
+                insert into business_event_type
                     (ontology_id, object_code, code, name, category, payload_fields, description)
                 values (?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -401,7 +380,7 @@ def list_event_types(platform_db: Path | str, ontology_id: int, object_code: str
         if not event_tables_exist(conn):
             return []
         rows = conn.execute(
-            f"select * from {EVENT_TYPE_TABLE} where {' and '.join(clauses)} order by object_code, code",
+            f"select * from business_event_type where {' and '.join(clauses)} order by object_code, code",
             tuple(params),
         ).fetchall()
     return [EventType.from_row(row).to_json() for row in rows]
@@ -435,14 +414,14 @@ def record_event(
     """
     with connect(platform_db) as conn:
         declared = conn.execute(
-            f"select * from {EVENT_TYPE_TABLE} where ontology_id = ? and object_code = ? and code = ?",
+            "select * from business_event_type where ontology_id = ? and object_code = ? and code = ?",
             (ontology_id, object_code, event_code),
         ).fetchone()
         if declared is None and declare_if_missing is not None:
             declare_if_missing.validate()
             conn.execute(
-                f"""
-                insert into {EVENT_TYPE_TABLE}
+                """
+                insert into business_event_type
                     (ontology_id, object_code, code, name, category, payload_fields, description)
                 values (?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -457,7 +436,7 @@ def record_event(
                 ),
             )
             declared = conn.execute(
-                f"select * from {EVENT_TYPE_TABLE} where ontology_id = ? and object_code = ? and code = ?",
+                "select * from business_event_type where ontology_id = ? and object_code = ? and code = ?",
                 (ontology_id, object_code, event_code),
             ).fetchone()
         if declared is None:
@@ -502,7 +481,7 @@ def record_event(
             values.append(occurred_at)
         placeholders = ", ".join("?" for _ in columns)
         conn.execute(
-            f"insert into {EVENT_TABLE} ({', '.join(columns)}) values ({placeholders})",
+            f"insert into business_event ({', '.join(columns)}) values ({placeholders})",
             tuple(values),
         )
         event_id = last_insert_id(conn)
@@ -536,10 +515,10 @@ def instance_timeline(
         if not event_tables_exist(conn):
             return {"items": [], "total": 0, "truncated": False}
         rows = conn.execute(
-            f"""
+            """
             select be.*, bet.name as event_name
-            from {EVENT_TABLE} be
-            left join {EVENT_TYPE_TABLE} bet
+            from business_event be
+            left join business_event_type bet
                 on bet.ontology_id = be.ontology_id
                and bet.object_code = be.object_code
                and bet.code = be.event_code
@@ -582,7 +561,7 @@ def count_events(
         if not event_tables_exist(conn):
             return 0
         row = conn.execute(
-            f"select count(*) as total from {EVENT_TABLE} where {' and '.join(clauses)}",
+            f"select count(*) as total from business_event where {' and '.join(clauses)}",
             tuple(params),
         ).fetchone()
     return int(row["total"]) if row is not None else 0

@@ -55,8 +55,13 @@ from typing import Any, Optional
 from .database import connect
 from .instance_resolver import ResolverError
 from .instance_resolver import validate_identifier as _validate_sql_identifier
+from .schema import SchemaBundle, table_exists
 
 logger = logging.getLogger(__name__)
+
+# Table name, referenced by both the DDL and the catalog probe. Defined once so the
+# probe can never name a table the DDL did not create.
+AGGREGATE_TABLE = "cross_object_aggregate"
 
 # Aggregate functions. Deliberately small: each maps to something a reviewer can
 # read in a verdict. `avg` is included because credit and risk thresholds use it;
@@ -243,17 +248,11 @@ AGGREGATE_SCHEMA: tuple[dict[str, str], ...] = (
 )
 
 
-def init_aggregate_schema(conn: Any) -> None:
-    from .database import _mysql_ddl, _postgresql_ddl, _sqlite_ddl
+SCHEMA = SchemaBundle(name="aggregation", tables=AGGREGATE_SCHEMA)
 
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    for statement in AGGREGATE_SCHEMA:
-        if db_type in ("postgresql", "postgres"):
-            conn.execute(_postgresql_ddl(statement))
-        elif db_type == "mysql":
-            conn.execute(_mysql_ddl(statement))
-        else:
-            conn.execute(_sqlite_ddl(statement))
+
+def init_aggregate_schema(conn: Any) -> None:
+    SCHEMA.apply(conn)
 
 
 def define_aggregate(
@@ -363,44 +362,17 @@ def list_aggregates(platform_db: Path | str, ontology_id: int, scope_object_code
     ]
 
 
-def _aggregate_table_exists(conn: Any) -> bool:
-    """Check the catalog before querying cross_object_aggregate.
-
-    Catching the error instead is wrong on PostgreSQL: a failed statement aborts
-    the surrounding transaction, so every later command in the same assessment
-    fails with InFailedSqlTransaction. This is the identical trap ADR-0004 records
-    for schema migrations -- probe the catalog, never rely on the error.
-    """
-    db_type = getattr(getattr(conn, "_adapter", None), "db_type", "sqlite")
-    try:
-        if db_type == "sqlite":
-            row = conn.execute(
-                "select name from sqlite_master where type = 'table' and name = ?",
-                ("cross_object_aggregate",),
-            ).fetchone()
-            return row is not None
-        query = (
-            "select table_name from information_schema.tables where table_name = %s and table_schema = current_schema()"
-        )
-        if db_type == "mysql":
-            query = (
-                "select table_name from information_schema.tables where table_name = %s and table_schema = database()"
-            )
-        with conn.cursor() as cur:
-            cur.execute(query, ("cross_object_aggregate",))
-            return cur.fetchone() is not None
-    except Exception as error:  # pragma: no cover - defensive
-        logger.debug("检查聚合表是否存在失败: %s", error)
-        return False
-
-
 def load_aggregate_specs(conn: Any, ontology_id: int, scope_object_code: str) -> list[AggregateSpec]:
     """Specs for one object, loaded on the caller's connection.
 
     Missing table is treated as "no aggregates" rather than an error: the schema is
     optional, and an assessment must still work without it.
+
+    Probed via the catalog rather than by catching the error: on PostgreSQL a failed
+    statement aborts the transaction, so every later command in the same assessment
+    would fail (ADR-0004).
     """
-    if not _aggregate_table_exists(conn):
+    if not table_exists(conn, AGGREGATE_TABLE):
         return []
     rows = conn.execute(
         """

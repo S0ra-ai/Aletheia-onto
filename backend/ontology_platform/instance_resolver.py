@@ -38,6 +38,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Sequence
 
+from .database import connect
 from .instance_key import InstanceKey, parse_key_columns
 from .registry import Registry, RegistryError, load_entry_point_plugins
 
@@ -442,8 +443,6 @@ def configure_object_resolver(
     assessment. Published ontologies are immutable, so this is refused on them for
     the same reason rules and mappings are.
     """
-    from .database import connect
-
     resolver = build_resolver(spec)
     with connect(platform_db) as conn:
         ontology = conn.execute("select status from ontology where id = ?", (ontology_id,)).fetchone()
@@ -480,8 +479,6 @@ def configure_object_resolver(
 
 def get_object_resolver(platform_db: Any, ontology_id: int, object_code: str) -> dict[str, Any]:
     """Report the resolver in effect for an object."""
-    from .database import connect
-
     with connect(platform_db) as conn:
         row = conn.execute(
             """

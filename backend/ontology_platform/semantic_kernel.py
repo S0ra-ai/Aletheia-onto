@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import ast
 import json
 import logging
-import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Sequence
 
 from .adapters import RuntimeDatabase, get_adapter
 from .aggregation import aggregate_context, compute_aggregates, load_aggregate_specs
@@ -17,111 +15,66 @@ from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .derived_attributes import (
     apply_units,
-    bind_sandbox,
     compute_derived,
     derived_context,
     load_attribute_units,
     load_derived_specs,
 )
 from .instance_key import parse_key_columns
+from .instance_resolver import ResolverSpec, build_resolver
 from .ontology import explain_instance
-from .registry import Registry, load_entry_point_plugins
 from .relations import MANY_TO_MANY
+
+# The sandbox lives in its own module so it is one reviewable security boundary, and so
+# `ontology` can validate the rules it generates without importing the kernel -- which
+# was the last top-level import cycle. Re-exported here because callers have imported
+# these names from the kernel since before the split.
+from .rule_sandbox import (
+    ALLOWED_AST_NODES,
+    FORBIDDEN_ATTRIBUTE_PREFIXES,
+    RULE_FUNCTION_ENTRY_POINT_GROUP,
+    RULE_FUNCTION_REGISTRY,
+    MappedValue,
+    RelatedRows,
+    RelatedValues,
+    RowObject,
+    allowed_rule_function_names,
+    apply_value_mappings,
+    evaluate_expression_value,
+    evaluate_rule_expression,
+    load_rule_function_plugins,
+    register_rule_function,
+    validate_rule_expression,
+)
 from .type_hierarchy import expand, inherited_rule_scopes
-from .value_mapping import load_value_mappings_in_connection, state_for
+from .value_mapping import load_value_mappings_in_connection
 
 logger = logging.getLogger(__name__)
 
-
-class RowObject:
-    def __init__(self, values: dict[str, Any]):
-        self._values = values
-
-    def __getattr__(self, name: str) -> Any:
-        return self._values.get(name)
-
-    def as_dict(self) -> dict[str, Any]:
-        return dict(self._values)
-
-
-class MappedValue(str):
-    """A legacy code that also compares equal to its semantic state name.
-
-    Subclasses str so every existing operation on the column value keeps working
-    -- comparison, `in`, string methods, JSON serialisation. What changes is that
-    ``status == 'A'`` and ``status == '生效中'`` are both true for the same cell,
-    which is what lets a rule be written in business language without breaking
-    rules already written against the raw code.
-    """
-
-    state: str
-
-    def __new__(cls, raw: Any, state: str) -> "MappedValue":
-        instance = super().__new__(cls, "" if raw is None else str(raw))
-        instance.state = state
-        return instance
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, str):
-            return str(self) == other or self.state == other
-        return NotImplemented
-
-    def __ne__(self, other: object) -> bool:
-        result = self.__eq__(other)
-        return NotImplemented if result is NotImplemented else not result
-
-    def __hash__(self) -> int:
-        # Equality spans two strings, so hash on the raw value only; dict lookups
-        # by state name are not supported and would be ambiguous anyway.
-        return str.__hash__(self)
-
-
-def _apply_value_mappings(
-    context: dict[str, Any], table_name: str, mappings: dict[str, dict[str, str]]
-) -> dict[str, Any]:
-    updated = dict(context)
-    for column, value in context.items():
-        state = state_for(mappings, table_name, column, value)
-        if state is not None and not isinstance(value, MappedValue):
-            updated[column] = MappedValue(value, state)
-    return updated
-
-
-class RelatedValues(list[Any]):
-    def __eq__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [value == other for value in self]
-
-    def __ne__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [value != other for value in self]
-
-    # Comparisons deliberately broadcast element-wise so a rule can say
-    # `payment_plan.amount > 0` against every related row. That is incompatible
-    # with list's own comparison signature, hence the overrides.
-    def __lt__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [_safe_compare(value, other, "lt") for value in self]
-
-    def __le__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [_safe_compare(value, other, "le") for value in self]
-
-    def __gt__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [_safe_compare(value, other, "gt") for value in self]
-
-    def __ge__(self, other: object) -> list[bool]:  # type: ignore[override]
-        return [_safe_compare(value, other, "ge") for value in self]
-
-
-class RelatedRows:
-    def __init__(self, rows: list[dict[str, Any]]):
-        self._rows = [RowObject(row) for row in rows]
-
-    def __getattr__(self, name: str) -> RelatedValues:
-        return RelatedValues([row.as_dict().get(name) for row in self._rows])
-
-    def __len__(self) -> int:
-        return len(self._rows)
-
-    def as_list(self) -> list[dict[str, Any]]:
-        return [row.as_dict() for row in self._rows]
+# Re-exports are deliberate, not accidental: callers have imported these from the
+# kernel since before the sandbox was split out, so removing them would be a breaking
+# change for no benefit.
+__all__ = [
+    "ALLOWED_AST_NODES",
+    "FORBIDDEN_ATTRIBUTE_PREFIXES",
+    "RULE_FUNCTION_ENTRY_POINT_GROUP",
+    "RULE_FUNCTION_REGISTRY",
+    "MappedValue",
+    "RelatedRows",
+    "RelatedValues",
+    "RowObject",
+    "SemanticRuntime",
+    "allowed_rule_function_names",
+    "assess_decision_consistency",
+    "assess_instance",
+    "available_rule_names",
+    "build_runtime",
+    "evaluate_expression_value",
+    "evaluate_rule_expression",
+    "load_rule_function_plugins",
+    "register_rule_function",
+    "validate_rule_expression",
+]
 
 
 @dataclass(frozen=True)
@@ -147,36 +100,6 @@ class SemanticRuntime:
     derived: dict[str, Any] = field(default_factory=dict)
 
 
-ALLOWED_AST_NODES = (
-    ast.Expression,
-    ast.BoolOp,
-    ast.BinOp,
-    ast.UnaryOp,
-    ast.Compare,
-    ast.Call,
-    ast.Name,
-    ast.Load,
-    ast.Constant,
-    ast.Attribute,
-    ast.And,
-    ast.Or,
-    ast.Not,
-    ast.USub,
-    ast.Add,
-    ast.Sub,
-    ast.Mult,
-    ast.Div,
-    ast.Mod,
-    ast.Eq,
-    ast.NotEq,
-    ast.Lt,
-    ast.LtE,
-    ast.Gt,
-    ast.GtE,
-    ast.Is,
-    ast.IsNot,
-)
-
 # Rule functions callable from a business rule expression.
 #
 # Open for registration so a deployment can express domain-specific predicates
@@ -187,52 +110,9 @@ ALLOWED_AST_NODES = (
 # scoped object (ADR-0002).
 #
 # Experimental: this signature may change before 1.0 (ADR-0007).
-RULE_FUNCTION_REGISTRY: Registry[Callable[..., Any]] = Registry("规则函数")
-
-RULE_FUNCTION_ENTRY_POINT_GROUP = "aletheia.rule_functions"
-
-
-def register_rule_function(
-    name: str,
-    implementation: Callable[..., Any],
-    *,
-    replace: bool = False,
-) -> Callable[..., Any]:
-    """Make a function callable from rule expressions.
-
-    >>> register_rule_function("abs", abs)                 # doctest: +SKIP
-    >>> register_rule_function("days_between", days_between)  # doctest: +SKIP
-
-    Names must be plain identifiers: the sandbox matches `ast.Name` nodes, so a
-    dotted name could never be resolved and would fail confusingly at eval time.
-    """
-    if not name.isidentifier():
-        raise ValueError(f"规则函数名必须是合法标识符: {name!r}")
-    if name.startswith("_"):
-        raise ValueError(f"规则函数名不能以下划线开头，避免与沙箱内部名冲突: {name!r}")
-    if not callable(implementation):
-        raise ValueError(f"规则函数 {name!r} 必须可调用")
-    RULE_FUNCTION_REGISTRY.register(name, implementation, replace=replace)
-    return implementation
-
-
-def allowed_rule_function_names() -> frozenset[str]:
-    return frozenset(RULE_FUNCTION_REGISTRY.names())
-
-
-def load_rule_function_plugins() -> list[str]:
-    return load_entry_point_plugins(
-        RULE_FUNCTION_ENTRY_POINT_GROUP,
-        lambda name, func: register_rule_function(name, func),
-    )
-
-
 # Attribute access is needed to reach related rows (payment_plan.amount), but
 # dunder attributes are the entry point for sandbox escapes via __class__,
 # __globals__ and friends.
-FORBIDDEN_ATTRIBUTE_PREFIXES = ("__",)
-
-
 def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
     with connect(platform_db) as platform:
         runtime = build_runtime(platform, ontology_id, object_code, instance_id)
@@ -283,7 +163,7 @@ def assess_instance(platform_db: Path | str, ontology_id: int, object_code: str,
                 # than evaluating it against a precondition known to be false.
                 passed, error = False, (f"前置规则未通过：{'、'.join(blocked_by)}")
             else:
-                passed, error = _evaluate_rule(rule["expression"], runtime.context)
+                passed, error = evaluate_rule_expression(rule["expression"], runtime.context)
             skipped = error is not None
             # Fail closed: an expression that cannot be evaluated (renamed
             # column, type mismatch, bad syntax) must not be reported as a
@@ -575,8 +455,6 @@ def resolver_for(business_object: Any, source_table: Any) -> Any:
     Falls back to single-table when `resolver_spec` is unset or unreadable, so an
     object created before resolvers existed -- or by an older build -- keeps working.
     """
-    from .instance_resolver import ResolverSpec, build_resolver
-
     raw = ""
     try:
         raw = business_object["resolver_spec"] or ""
@@ -663,7 +541,7 @@ def build_runtime(
     # a value that compares equal to the code and to the state name.
     value_mappings = load_value_mappings_in_connection(platform, ontology_id)
     if value_mappings:
-        context = _apply_value_mappings(context, source_table["table_name"], value_mappings)
+        context = apply_value_mappings(context, source_table["table_name"], value_mappings)
 
     # Derived attributes (generality #7). Last, so they can read stored columns,
     # related rows, aggregates and united values. Only computed ones enter the
@@ -930,138 +808,8 @@ def _unsatisfied_dependencies(rule: Any, satisfied: set[str]) -> list[str]:
     return [code for code in declared if code and code not in satisfied]
 
 
-def evaluate_rule_expression(expression: str, context: dict[str, Any]) -> tuple[bool, str | None]:
-    """Evaluate an expression in the rule sandbox.
-
-    Public entry point for callers outside the rule engine -- currently workflow
-    transition guards. Exposed deliberately rather than letting other modules
-    reach for the private `_evaluate_rule`, so there is exactly one sandbox to
-    audit and guards inherit its hardening.
-
-    Returns (passed, error). A non-None error means the expression could not be
-    evaluated; callers are expected to treat that as *not passed* (ADR-0002).
-    """
-    return _evaluate_rule(expression, context)
-
-
-def _evaluate_rule(expression: str, context: dict[str, Any]) -> tuple[bool, str | None]:
-    value, error = evaluate_expression_value(expression, context)
-    if error is not None:
-        return False, error
-    return bool(value), None
-
-
-def evaluate_expression_value(expression: str, context: dict[str, Any]) -> tuple[Any, str | None]:
-    """Evaluate an expression and return its *value* rather than its truthiness.
-
-    Rules only need a verdict, but a derived attribute needs the number. Both go
-    through this one function so there is exactly one sandbox to audit -- a second
-    evaluator would drift, and the looser of the two would become the way in.
-
-    Returns (value, error). A non-None error means the expression could not be
-    evaluated; callers are expected to treat that as unusable (ADR-0002), never to
-    substitute a default.
-    """
-    normalized = _normalize_expression(expression)
-    try:
-        tree = ast.parse(normalized, mode="eval")
-        _validate_ast(tree)
-        value = eval(compile(tree, "<business-rule>", "eval"), {"__builtins__": {}}, _allowed_names(context))
-        return value, None
-    except Exception as error:
-        return None, str(error)
-
-
-def _normalize_expression(expression: str) -> str:
-    normalized = re.sub(r"\bnull\b", "None", expression)
-    normalized = normalized.replace(" is not None", " != None").replace(" is None", " == None")
-    return normalized
-
-
-def _validate_ast(tree: ast.AST) -> None:
-    for node in ast.walk(tree):
-        if not isinstance(node, ALLOWED_AST_NODES):
-            raise ValueError(f"不允许的规则表达式节点: {type(node).__name__}")
-        if isinstance(node, ast.Call):
-            allowed = allowed_rule_function_names()
-            if not isinstance(node.func, ast.Name) or node.func.id not in allowed:
-                raise ValueError(f"只允许 {'、'.join(sorted(allowed))} 函数")
-            if node.keywords:
-                raise ValueError("规则函数不支持关键字参数")
-        if isinstance(node, ast.Attribute) and node.attr.startswith(FORBIDDEN_ATTRIBUTE_PREFIXES):
-            raise ValueError(f"不允许访问内部属性: {node.attr}")
-
-
-def validate_rule_expression(expression: str, available_names: Iterable[str] | None = None) -> dict[str, Any]:
-    """Statically check a business rule expression.
-
-    Called when a rule is written so an unparseable expression is rejected up
-    front instead of silently failing during assessment.
-    """
-    text = (expression or "").strip()
-    if not text:
-        return {"valid": False, "error": "规则表达式不能为空", "referencedNames": []}
-    normalized = _normalize_expression(text)
-    try:
-        tree = ast.parse(normalized, mode="eval")
-        _validate_ast(tree)
-    except SyntaxError as error:
-        return {"valid": False, "error": f"规则表达式语法错误: {error.msg}", "referencedNames": []}
-    except ValueError as error:
-        return {"valid": False, "error": str(error), "referencedNames": []}
-
-    referenced = sorted(
-        {
-            node.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and node.id not in allowed_rule_function_names() and node.id != "None"
-        }
-    )
-    result: dict[str, Any] = {"valid": True, "error": "", "referencedNames": referenced}
-    if available_names is not None:
-        known = set(available_names)
-        unknown = [name for name in referenced if name not in known]
-        result["unknownNames"] = unknown
-        if unknown:
-            result["warning"] = "表达式引用了当前来源结构中不存在的字段: " + "、".join(unknown)
-    return result
-
-
-def _allowed_names(context: dict[str, Any]) -> dict[str, Any]:
-    names = dict(context)
-    # Registered functions are added after the context so a column named `sum`
-    # cannot shadow the function and silently change what a rule means.
-    names.update(dict(RULE_FUNCTION_REGISTRY.items()))
-    names["None"] = None
-    return names
-
-
 # Derived attributes evaluate in this same sandbox, injected rather than imported so
 # the dependency stays one-directional (see `derived_attributes`).
-bind_sandbox(evaluate_expression_value, validate_rule_expression)
-
-
-def _count(value: Any) -> int:
-    if isinstance(value, (RelatedValues, list, tuple)):
-        return sum(1 for item in value if item)
-    if isinstance(value, RelatedRows):
-        return len(value)
-    return 1 if value else 0
-
-
-def _safe_compare(left: Any, right: object, operator: str) -> bool:
-    try:
-        if operator == "lt":
-            return left < right
-        if operator == "le":
-            return left <= right
-        if operator == "gt":
-            return left > right
-        if operator == "ge":
-            return left >= right
-    except TypeError:
-        return False
-    return False
 
 
 def _serializable_related(related: dict[str, Any]) -> dict[str, Any]:
@@ -1223,11 +971,6 @@ def _consistency_next_actions(
 # Registered at import time so behaviour matches the previous frozen set
 # exactly. `count` is ours; the rest are Python builtins, deliberately exposed
 # one by one rather than by handing the sandbox __builtins__.
-register_rule_function("sum", sum)
-register_rule_function("len", len)
-register_rule_function("count", _count)
-register_rule_function("any", any)
-register_rule_function("all", all)
 
 # Deployment-specific predicates shipped as installable packages.
 load_rule_function_plugins()

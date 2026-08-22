@@ -26,7 +26,9 @@ from .relations import (
     junction_semantics,
     shapes_for_table,
 )
+from .rule_sandbox import validate_rule_expression
 from .type_hierarchy import ancestors_of
+from .vocabulary import blueprint_attribute_labels, blueprint_object_labels
 
 logger = logging.getLogger(__name__)
 
@@ -612,8 +614,6 @@ class DraftLexicon:
 
 
 def _build_lexicon(platform_db: Path | str) -> DraftLexicon:
-    from .vocabulary import blueprint_attribute_labels, blueprint_object_labels
-
     return DraftLexicon(
         object_labels=blueprint_object_labels(platform_db),
         attribute_labels=blueprint_attribute_labels(platform_db),
@@ -967,8 +967,6 @@ def _insert_rule(
     # Generated rules bypass the governance write path, so validate here too:
     # the kernel fails closed, and an unparseable generated rule would block
     # every instance of the object it scopes to.
-    from .semantic_kernel import validate_rule_expression
-
     validation = validate_rule_expression(expression)
     if not validation["valid"]:
         raise ValueError(f"生成的规则表达式不可执行 ({code}): {validation['error']}")
