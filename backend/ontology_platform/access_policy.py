@@ -101,6 +101,10 @@ RULES: tuple[Rule, ...] = (
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/industry-blueprints.*", CAP_WRITE, "行业蓝图写入"),
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/workflows.*", CAP_WRITE, "工作流定义写入"),
     # -- Everything readable --
+    # Knowledge documents: ingesting is authoring (write), while confirming an
+    # entry as judgement evidence is a governance review.
+    _rule(("POST",), r"/ontologies/[0-9]+/knowledge/documents", CAP_WRITE, "上传知识文档"),
+    _rule(("POST",), r"/knowledge/entries/[0-9]+/review", CAP_REVIEW, "审核知识条目"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

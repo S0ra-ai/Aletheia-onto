@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .adapters import get_adapter
 from .automation import preflight_operation
@@ -15,6 +16,8 @@ from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
 from .vocabulary import DomainVocabulary, load_vocabulary
+
+logger = logging.getLogger(__name__)
 
 INTENT_COMPLIANCE = "compliance_assessment"
 INTENT_EXPLAIN = "explain_instance"
@@ -147,7 +150,21 @@ def query_natural_language(
             answer = _answer_overall_compliance(evidence, vocabulary)
         else:
             evidence = assess_instance(platform_db, resolved.ontology_id, resolved.object_code, resolved.instance_id)
-            answer = _answer_assessment(evidence, vocabulary)
+            # Retrieve textual grounding for the rules that actually failed, so a
+            # verdict can cite the clause behind it (ADR-0009). Anchored to those
+            # rule codes, not to the raw question.
+            citations = _retrieve_citations(
+                platform_db,
+                resolved.ontology_id,
+                normalized_question,
+                object_code=resolved.object_code,
+                rule_codes=[
+                    rule.get("ruleCode", "") for rule in evidence.get("ruleResults", []) if not rule.get("passed")
+                ],
+            )
+            answer = _answer_assessment(evidence, vocabulary, citations)
+            if citations:
+                evidence = {**evidence, "citations": citations}
     else:
         evidence = {"hint": "未识别到明确意图"}
         answer = (
@@ -300,7 +317,12 @@ def _detect_intent(question: str) -> str:
         return INTENT_CONSISTENCY
     if re.search(r"(为什么|解释|详情|是什么|有哪些字段|来源)", question):
         return INTENT_EXPLAIN
-    if re.search(r"(合规|违规|风险|研判|审查|审核|通过|阻断|复核)", question):
+    # "是否满足…条件" is the natural way to ask a judgement question -- it is the
+    # exact phrasing in the product's own refund example -- and was previously
+    # unrecognised, falling through to "unknown".
+    if re.search(r"(满足|符合|达到).{0,6}(条件|要求|标准|门槛)", question):
+        return INTENT_COMPLIANCE
+    if re.search(r"(合规|违规|风险|研判|审查|审核|通过|阻断|复核|资格)", question):
         return INTENT_COMPLIANCE
     return INTENT_COMPLIANCE if _extract_instance_hint(question) else INTENT_UNKNOWN
 
@@ -693,7 +715,55 @@ def _friendly_recommendation(recommendation: str) -> str:
     return normalized if normalized.endswith("。") else f"{normalized}。"
 
 
-def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -> str:
+def _retrieve_citations(
+    platform_db: Path | str,
+    ontology_id: int,
+    question: str,
+    *,
+    object_code: str = "",
+    rule_codes: Iterable[str] = (),
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Find confirmed knowledge entries backing the rules under discussion.
+
+    Anchoring comes first: candidates are narrowed to entries declared for this
+    object or these rules, and only then ranked. That ordering is what makes a
+    citation attributable rather than merely similar (ADR-0009).
+
+    Failures are swallowed deliberately -- the knowledge tables are optional, and
+    a deployment without them must still get its verdict. A missing citation
+    degrades the answer; a raised exception would remove it entirely.
+    """
+    codes = [code for code in rule_codes if code]
+    try:
+        from .knowledge_documents import load_confirmed_entries
+        from .retrieval import retrieve
+
+        with connect(platform_db) as conn:
+            entries = load_confirmed_entries(
+                conn,
+                ontology_id,
+                object_codes=[object_code] if object_code else (),
+                rule_codes=codes,
+            )
+        if not entries:
+            return []
+        # Prefer entries anchored to a failed rule; fall back to object-level
+        # entries only when no rule-specific text exists.
+        rule_anchored = [entry for entry in entries if entry.get("ruleCode") in codes]
+        candidates = rule_anchored or entries
+        hits = retrieve(question, candidates, limit=limit)
+        return [hit.as_dict() for hit in hits]
+    except Exception as error:
+        logger.debug("知识条目检索跳过: %s", error)
+        return []
+
+
+def _answer_assessment(
+    evidence: dict[str, Any],
+    vocabulary: DomainVocabulary,
+    citations: list[dict[str, Any]] | None = None,
+) -> str:
     recommendation = evidence["decision"]["recommendation"]
     object_code = vocabulary.label_for(evidence["semanticKernel"]["objectCode"])
     instance_id = evidence["semanticKernel"]["instanceId"]
@@ -704,11 +774,23 @@ def _answer_assessment(evidence: dict[str, Any], vocabulary: DomainVocabulary) -
     # Each failed rule becomes its own bullet carrying the rule code, so the
     # conclusion can be traced back to a named rule rather than to prose.
     lines = [f"**{object_code} {instance_id} 还不适合直接通过。**", ""]
+    # Citations are keyed by rule code so a clause attaches to the rule it
+    # actually justifies, rather than being appended as a loose reading list.
+    by_rule: dict[str, dict[str, Any]] = {}
+    for citation in citations or []:
+        rule_code = citation.get("ruleCode") or ""
+        if rule_code and rule_code not in by_rule:
+            by_rule[rule_code] = citation
     for rule in failed[:5]:
         code = rule.get("ruleCode") or ""
         marker = "🚫" if rule.get("severity") == "blocking" else "⚠️"
         suffix = f"（规则 `{code}`）" if code else ""
-        lines.append(f"- {marker} **{rule['ruleName']}**{suffix}：{rule['explanation']}")
+        line = f"- {marker} **{rule['ruleName']}**{suffix}：{rule['explanation']}"
+        source = by_rule.get(code)
+        if source:
+            document = source.get("documentTitle") or "制度文件"
+            line += f"　依据《{document}》{source.get('citation', '')}"
+        lines.append(line)
     remaining = len(failed) - 5
     if remaining > 0:
         lines.append(f"- 另有 {remaining} 条规则未通过，可在决策留痕中查看完整清单。")

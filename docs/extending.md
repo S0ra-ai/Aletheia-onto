@@ -145,6 +145,8 @@ oracle = "my_plugin.policies:route_policies"
 | `aletheia.rule_functions` | 规则函数 |
 | `aletheia.executors` | 写回执行器 |
 | `aletheia.access_policies` | 返回策略元组的可调用对象 |
+| `aletheia.retrieval_backends` | 检索后端 |
+| `aletheia.embedding_models` | 嵌入模型 |
 
 ## 验证你的实现
 
@@ -155,12 +157,36 @@ python -m pytest tests/test_extension_registry.py -v
 这套测试既约束平台自身（开放扩展点后未削弱 deny-by-default 授权、
 规则沙箱、fail-closed 语义），也是第三方的合规样板。
 
+## 5. 检索后端与嵌入模型
+
+默认实现为**零外部依赖**（BM25 + 哈希 n-gram），保证 clone 下来就能跑。
+追求召回质量的部署可注册自己的后端。
+
+```python
+from ontology_platform.retrieval import (
+    RetrievalHit, register_retrieval_backend, register_embedding_model,
+)
+
+def rank_with_pgvector(query: str, entries, limit: int) -> list[RetrievalHit]:
+    # entries 已按本体锚定收窄，后端不能越过锚定扩大候选集——
+    # 这正是引用可归因的前提（ADR-0009）。
+    ...
+
+register_retrieval_backend("pgvector", rank_with_pgvector)
+register_embedding_model("bge-m3", lambda text: my_model.encode(text).tolist())
+```
+
+**关键约束：** 后端收到的是**已锚定过滤**的候选集。后端只负责排序，
+不能自行扩大候选范围，否则引用会退化为「相似」而非「有据」。
+
+查询已注册项：`supported_retrieval_backends()`、`supported_embedding_models()`
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
 
-- 实例解析器（一个对象来自多表、复合主键、跨源）—— 通用性 #1／#2
-- 检索后端与嵌入模型 —— 需先有文档检索实现
+- 实例解析器（一个对象来自多表、跨源）—— 通用性 #1
+  （复合主键已完成，见 ADR-0008）
 - 认证后端（SSO／LDAP）
 - 事件钩子
 - 渠道接入

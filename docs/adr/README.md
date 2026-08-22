@@ -13,6 +13,7 @@
 | [0006](0006-tenant-isolation-model.md) | 多租户隔离：独立 schema + 关键表 tenant_id | Accepted |
 | [0007](0007-extension-registry-without-api-stability.md) | 先开放扩展点，暂不承诺 API 稳定 | Accepted |
 | [0008](0008-instance-key-and-value-mapping.md) | 实例键抽象与值域映射 | Accepted |
+| [0009](0009-document-knowledge-anchored-to-ontology.md) | 文档知识层锚定本体，不做独立 RAG | Accepted |
 
 格式：Context（处境）／Decision（决定）／Alternatives considered（被否决的方案）／
 Consequences（后果，含负面）。

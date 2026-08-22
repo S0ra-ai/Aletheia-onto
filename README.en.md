@@ -113,6 +113,24 @@ carries no rules. The relation-expressiveness limitation is stated in the view
 itself: `relation_type` is always `references`, with no cardinality and no
 many-to-many.
 
+### Document knowledge base
+
+![Document knowledge base](docs/images/09-knowledge-base.png)
+
+Policy and contract clauses are split on their numbering (`第3.2条`, `3.1`,
+`一、`, `Article 7`), preserving a locator a human can quote. Two governance
+constraints are enforced by the workflow:
+
+1. **Entries are pending by default and are not retrievable until confirmed.** A
+   mis-split clause that silently became judgement evidence would produce a
+   verdict that looks sourced but is not -- worse than no citation.
+2. **Confirming requires an anchor** (business object or rule). Unanchored text
+   cannot answer "why does this passage support this verdict".
+
+Retrieval narrows by anchor *before* ranking, which is the opposite of searching
+everything and inspecting the hits. That ordering is what makes a citation
+attributable rather than merely similar.
+
 ### Model configuration for custom endpoints
 
 ![Model configuration](docs/images/08-model-config.png)
@@ -220,8 +238,12 @@ cd frontend && npm install && npm run dev
 | Permission policy ontology dimension | ⚠️ | keyed on bare `object_code`; same-named objects **share a policy** |
 | Manual CRUD for objects/attributes/relations | ⚠️ | no endpoints |
 | List endpoint pagination | ⚠️ | mostly absent |
-| Vector retrieval / embeddings / document RAG | 📋 | **none** |
-| Document knowledge base | 📋 | none |
+| Document knowledge base (clause chunking, citations) | ✅ | `knowledge_documents.py` |
+| Entries anchored to objects / rules | ✅ | `knowledge_documents.py` |
+| Retrieval backend SPI (BM25 default) | ✅ | `retrieval.py` |
+| Embedding model SPI (hashed n-gram default) | ✅ | `retrieval.py` |
+| Cited verdicts | ✅ | `natural_language.py` |
+| Bundled vector database integration | 📋 | register via SPI |
 | Conversation persistence | 📋 | history passed in per call, not stored |
 | Multi-tenancy | 📋 | 31 tables have no tenant concept |
 | Channel integrations, scheduler, feedback loop | 📋 | none |
@@ -317,7 +339,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**256 tests**, all passing:
+**283 tests**, all passing:
 
 | File | Count | Covers |
 |---|--:|---|
@@ -326,6 +348,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 | `test_value_domain_mapping.py` | 13 | value domain mapping and backwards compatibility |
 | `test_custom_model_endpoints.py` | 21 | custom model endpoint compatibility |
 | `test_workbench_and_graph.py` | 14 | workbench aggregation and graph projection |
+| `test_document_knowledge.py` | 27 | clause chunking, anchored retrieval, cited answers |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |
 | `test_domain_neutrality.py` | 25 | unknown domain end to end, plus static guards |

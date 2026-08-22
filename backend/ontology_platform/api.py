@@ -54,6 +54,14 @@ from .graph_view import build_ontology_graph
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .kernel_package import build_kernel_package, export_kernel_package
 from .knowledge_base import browse_source_table, build_reasoning_chain, initialize_knowledge_base, list_knowledge_bases
+from .knowledge_documents import (
+    extract_text_from_docx,
+    ingest_document,
+    init_knowledge_schema,
+    list_documents,
+    list_entries,
+    review_knowledge_entry,
+)
 from .metadata import (
     analyze_schema_drift,
     assess_data_source_readiness,
@@ -90,6 +98,7 @@ from .ontology import (
 )
 from .operation_bindings import assess_operation_bindings
 from .release_readiness import assess_ontology_release_readiness
+from .retrieval import supported_embedding_models, supported_retrieval_backends
 from .sample_data import (
     DEFAULT_EQUIPMENT_SAMPLE_DB,
     DEFAULT_SAMPLE_DB,
@@ -126,6 +135,7 @@ async def lifespan(app: FastAPI):
         init_workflow_and_permission_schema(conn)
         init_auth_schema(conn)
         init_agent_role_schema(conn)
+        init_knowledge_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:
@@ -1236,6 +1246,86 @@ def ai_ontology_reasoning_chain(data_source_id: int) -> dict[str, object]:
         return generate_ontology_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+class KnowledgeEntryReview(BaseModel):
+    status: str
+    objectCode: Optional[str] = None
+    ruleCode: Optional[str] = None
+
+
+@app.get("/ontologies/{ontology_id}/knowledge/documents")
+def knowledge_documents(ontology_id: int) -> dict[str, object]:
+    return {"items": list_documents(DEFAULT_PLATFORM_DB, ontology_id)}
+
+
+@app.get("/ontologies/{ontology_id}/knowledge/entries")
+def knowledge_entries(
+    ontology_id: int,
+    documentId: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+) -> dict[str, object]:
+    return {
+        "items": list_entries(DEFAULT_PLATFORM_DB, ontology_id, document_id=documentId, status=status, limit=limit),
+        "retrievalBackends": list(supported_retrieval_backends()),
+        "embeddingModels": list(supported_embedding_models()),
+    }
+
+
+@app.post("/ontologies/{ontology_id}/knowledge/documents")
+async def upload_knowledge_document(
+    ontology_id: int,
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    objectCode: str = Form(""),
+    ruleCode: str = Form(""),
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Ingest a policy or contract document as pending knowledge entries."""
+    content = await file.read()
+    name = file.filename or "document"
+    try:
+        if name.lower().endswith(".docx"):
+            text = extract_text_from_docx(content)
+        else:
+            # Plain text and Markdown are accepted as-is; anything else is
+            # rejected rather than silently mis-parsed.
+            try:
+                text = content.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise ValueError("仅支持 .docx 或 UTF-8 文本文件。") from error
+        return ingest_document(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            title.strip() or Path(name).stem,
+            text,
+            source_name=name,
+            object_code=objectCode,
+            rule_code=ruleCode,
+            actor=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/knowledge/entries/{entry_id}/review")
+def review_entry(
+    entry_id: int,
+    payload: KnowledgeEntryReview,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return review_knowledge_entry(
+            DEFAULT_PLATFORM_DB,
+            entry_id,
+            payload.status,
+            object_code=payload.objectCode,
+            rule_code=payload.ruleCode,
+            reviewer=principal.actor,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/workbench")
