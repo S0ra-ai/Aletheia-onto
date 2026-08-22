@@ -24,6 +24,8 @@
 |---|---|
 | [adr/](adr/) | 架构决策记录，含被否决方案与后果 |
 | [architecture-debt.md](architecture-debt.md) | 框架化前置技术债，逐项给出代码定位 |
+| [extending.md](extending.md) | 四个扩展点的注册方式与插件打包 |
+| [model-endpoints.md](model-endpoints.md) | 接入自定义模型服务与订阅（含排错） |
 
 ## 项目根目录
 

@@ -125,6 +125,8 @@ Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神
 内置 OpenRouter／OpenAI／中转站／Azure／自建 vLLM／阿里云百炼预设，
 并显示**实际会被调用的完整地址**。未配置密钥时回退本地启发式，功能不中断。
 
+完整配置项与排错见[接入自定义模型服务](docs/model-endpoints.md)。
+
 ## 快速开始
 
 需要 Python 3.9+（前端另需 Node.js 18+）。以下命令在干净 clone 中逐条实测通过。
@@ -552,6 +554,8 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 | [ROADMAP](ROADMAP.md) | 三仓库形态、框架化 A–G、通用性 #1–#13、Non-Goals |
 | [docs/adr/](docs/adr/) | 架构决策记录，含被否决方案与后果 |
 | [docs/architecture-debt.md](docs/architecture-debt.md) | 框架化前置技术债 |
+| [docs/extending.md](docs/extending.md) | 扩展点注册与插件打包 |
+| [docs/model-endpoints.md](docs/model-endpoints.md) | 接入自定义模型服务与订阅 |
 | [docs/](docs/) | 设计文档索引（⚠️ 部分内容超前于当前实现） |
 | [CHANGELOG](CHANGELOG.md) | 变更记录 |
 
