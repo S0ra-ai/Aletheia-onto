@@ -111,6 +111,7 @@ def _init_optional_schemas(conn: Any) -> None:
     from .aggregation import init_aggregate_schema
     from .auth import init_auth_schema
     from .conversations import init_conversation_schema
+    from .entity_resolution import init_entity_resolution_schema
     from .events import init_event_schema
     from .knowledge_documents import init_knowledge_schema
     from .temporal import init_temporal_schema
@@ -125,6 +126,7 @@ def _init_optional_schemas(conn: Any) -> None:
         init_conversation_schema,
         init_event_schema,
         init_temporal_schema,
+        init_entity_resolution_schema,
     ):
         initialise(conn)
 

@@ -20,6 +20,7 @@ from .derived_attributes import (
     load_attribute_units,
     load_derived_specs,
 )
+from .entity_resolution import resolve_all
 from .instance_key import parse_key_columns
 from .instance_resolver import ResolverSpec, build_resolver
 from .ontology import explain_instance
@@ -104,6 +105,9 @@ class SemanticRuntime:
     # must say which moment, or it cannot be told apart from one about now.
     as_of: str = ""
     temporal_values: dict[str, Any] = field(default_factory=dict)
+    # 每条跨源对应的结果。留下来是因为引用了跨源字段的判定必须能说出
+    # 「同一实例」是按什么判定的，否则那个数字来自哪一行就无从追溯。
+    cross_source: dict[str, Any] = field(default_factory=dict)
 
 
 # Rule functions callable from a business rule expression.
@@ -279,6 +283,9 @@ def assess_instance(
                 "ontologyVersion": runtime.ontology_version,
                 "asOf": runtime.as_of,
                 "temporalAttributes": sorted(runtime.temporal_values),
+                # 跨源判定必须能说出「同一实例」是按什么判定的，
+                # 否则那个数字来自哪一行就无从追溯。
+                "crossSource": runtime.cross_source,
             },
             actor="semantic_kernel",
         )
@@ -314,6 +321,8 @@ def assess_instance(
                 "asOf": runtime.as_of,
                 "temporalAttributes": sorted(runtime.temporal_values),
             },
+            # 每条跨源对应的匹配结果，含未匹配与冲突。
+            "crossSource": runtime.cross_source,
             "explanation": instance_explanation,
             "relatedContext": _serializable_related(runtime.related),
             "ruleResults": results,
@@ -499,6 +508,20 @@ def resolver_for(business_object: Any, source_table: Any) -> Any:
     return build_resolver(spec)
 
 
+def _runtime_for_data_source(platform: sqlite3.Connection, data_source_id: int) -> Any:
+    """一个副源数据源的运行时上下文管理器。
+
+    交给 `entity_resolution` 作为回调使用，因此那个模块不需要知道适配器如何创建——
+    让它知道会造成循环依赖（`adapters` → `entity_resolution` → `adapters`）。
+    """
+    row = platform.execute(
+        "select source_type, connection_uri from data_source where id = ?", (data_source_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"数据源不存在: {data_source_id}")
+    return get_adapter(row["source_type"]).runtime(row["connection_uri"])
+
+
 def build_runtime(
     platform: sqlite3.Connection,
     ontology_id: int,
@@ -535,6 +558,22 @@ def build_runtime(
         record = resolver.fetch(runtime, instance_id)
         if record is None:
             raise ValueError(f"实例不存在: {object_code}/{instance_id}")
+        # Cross-source entity resolution. Declared matches only (`entity_resolution`), so
+        # "these two rows are the same instance" is a reviewable statement rather than an
+        # inference -- otherwise every verdict resting on it would be unexplainable.
+        #
+        # Runs before anything derived: an aggregate or a derived attribute over a
+        # cross-source field must see the matched value, not a mix of one source's row and
+        # another's absence.
+        cross_source_fields, cross_source_results = resolve_all(
+            platform,
+            ontology_id,
+            object_code,
+            record,
+            lambda data_source_id: _runtime_for_data_source(platform, data_source_id),
+        )
+        if cross_source_fields:
+            record = {**record, **cross_source_fields}
         # Temporal assessment (generality #8). Recorded history overrides the live row for
         # the attributes it covers, *before* anything derived from them is computed -- so
         # aggregates, units and derived attributes all see the as-of values rather than a
@@ -574,7 +613,18 @@ def build_runtime(
         # on 企业客户. Nearest first, and a nearer declaration of the same name wins:
         # a subtype refining an aggregate is the same override semantics as rules.
         aggregate_specs = _inherited_aggregate_specs(platform, ontology_id, object_code)
-        aggregate_results = compute_aggregates(runtime, aggregate_specs, record) if aggregate_specs else {}
+        aggregate_results = (
+            compute_aggregates(
+                runtime,
+                aggregate_specs,
+                record,
+                # 跨源聚合需要另开一个源的运行时。传回调而非让 aggregation 自己建，
+                # 否则会造成 adapters → aggregation → adapters 的环。
+                runtime_for=lambda data_source_id: _runtime_for_data_source(platform, data_source_id),
+            )
+            if aggregate_specs
+            else {}
+        )
         context.update(aggregate_context(aggregate_results))
 
     # Declared units (generality #10). Applied to the stored record before anything
@@ -618,6 +668,7 @@ def build_runtime(
         derived={code: result.as_dict() for code, result in derived_results.items()},
         as_of=normalize_instant(as_of, what="as-of 时间点") if as_of is not None else "",
         temporal_values=temporal_values,
+        cross_source=cross_source_results,
     )
 
 

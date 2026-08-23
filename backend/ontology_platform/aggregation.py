@@ -55,7 +55,7 @@ from typing import Any, Optional
 from .database import connect
 from .instance_resolver import ResolverError
 from .instance_resolver import validate_identifier as _validate_sql_identifier
-from .schema import SchemaBundle, table_exists
+from .schema import ColumnAddition, SchemaBundle, table_exists
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,15 @@ class AggregateSpec:
     # Optional equality filter, e.g. status = 'active'.
     filter_column: str = ""
     filter_value: str = ""
+    # Which data source holds the target table. `0` means the instance's own source,
+    # which is what every existing aggregate does -- so this widens the feature without
+    # changing any stored definition.
+    #
+    # A cross-source aggregate reads a table the assessed instance's source knows nothing
+    # about, e.g. "total of this customer's contracts in the ERP" while the customer lives
+    # in the CRM. The rows are still matched by an equality on a declared column, so the
+    # aggregate stays as explainable as a same-source one.
+    target_data_source_id: int = 0
 
     def validate(self) -> "AggregateSpec":
         """Check the definition. Identifiers reach SQL text, so they are validated
@@ -139,6 +148,8 @@ class AggregateSpec:
             _identifier(self.self_column, what="自身标识列名")
         if self.filter_column:
             _identifier(self.filter_column, what="过滤列名")
+        if self.target_data_source_id < 0:
+            raise AggregationError(f"目标数据源 id 不能为负: {self.target_data_source_id}")
         return self
 
     def to_json(self) -> dict[str, Any]:
@@ -153,10 +164,17 @@ class AggregateSpec:
             "selfColumn": self.self_column,
             "filterColumn": self.filter_column,
             "filterValue": self.filter_value,
+            "targetDataSourceId": self.target_data_source_id,
         }
 
     @classmethod
     def from_row(cls, row: Any) -> "AggregateSpec":
+        # Read defensively: the column postdates the table, so a row from an older
+        # deployment simply means "the instance's own source" -- its prior behaviour.
+        try:
+            target_source = int(row["target_data_source_id"] or 0)
+        except (KeyError, IndexError, TypeError, ValueError):
+            target_source = 0
         return cls(
             name=row["name"],
             function=row["function"],
@@ -168,6 +186,7 @@ class AggregateSpec:
             self_column=row["self_column"] or "",
             filter_column=row["filter_column"] or "",
             filter_value=row["filter_value"] or "",
+            target_data_source_id=target_source,
         )
 
     def describe(self) -> str:
@@ -177,6 +196,11 @@ class AggregateSpec:
         *was*, otherwise the number is unexplainable.
         """
         target = f"{self.function}({self.target_table}.{self.value_column or '*'})"
+        if self.target_data_source_id:
+            # 跨源聚合必须在定义里写明目标在哪个源，否则同名表会让人以为读的是本源。
+            target = (
+                f"{self.function}(数据源#{self.target_data_source_id}.{self.target_table}.{self.value_column or '*'})"
+            )
         clause = f"{self.target_table}.{self.target_column} = 本实例.{self.group_column}"
         if self.filter_column:
             clause += f" 且 {self.filter_column} = {self.filter_value!r}"
@@ -248,7 +272,24 @@ AGGREGATE_SCHEMA: tuple[dict[str, str], ...] = (
 )
 
 
-SCHEMA = SchemaBundle(name="aggregation", tables=AGGREGATE_SCHEMA)
+SCHEMA = SchemaBundle(
+    name="aggregation",
+    tables=AGGREGATE_SCHEMA,
+    table_names=(AGGREGATE_TABLE,),
+    columns=(
+        # Added after the table shipped, so deployed databases need the ALTER. Default 0
+        # means "the instance's own source", which is exactly what every stored aggregate
+        # already did -- an upgrade therefore changes no result.
+        ColumnAddition(
+            table=AGGREGATE_TABLE,
+            column="target_data_source_id",
+            sqlite_type="integer not null default 0",
+            postgresql_type="integer not null default 0",
+            mysql_type="integer not null default 0",
+        ),
+    ),
+)
+SCHEMA.verify_declared_names()
 
 
 def init_aggregate_schema(conn: Any) -> None:
@@ -276,6 +317,12 @@ def define_aggregate(
             raise AggregationError(f"本体不存在: {ontology_id}")
         if ontology["status"] == "published":
             raise AggregationError("已发布本体不可修改聚合定义，请派生新版本。")
+        if spec.target_data_source_id and (
+            conn.execute("select id from data_source where id = ?", (spec.target_data_source_id,)).fetchone() is None
+        ):
+            # 入库前拒绝：一个指向不存在数据源的跨源聚合，会在每次判定时 fail-closed，
+            # 表现为「规则永远不通过」而不是「配置写错了」。
+            raise AggregationError(f"跨源聚合的目标数据源不存在: {spec.target_data_source_id}")
 
         existing = conn.execute(
             """
@@ -295,6 +342,7 @@ def define_aggregate(
             spec.filter_column,
             spec.filter_value,
             description,
+            spec.target_data_source_id,
         )
         if existing is not None:
             conn.execute(
@@ -302,7 +350,8 @@ def define_aggregate(
                 update cross_object_aggregate
                 set function = ?, target_table = ?, target_column = ?, group_column = ?,
                     value_column = ?, exclude_self = ?, self_column = ?,
-                    filter_column = ?, filter_value = ?, description = ?
+                    filter_column = ?, filter_value = ?, description = ?,
+                    target_data_source_id = ?
                 where id = ?
                 """,
                 (*columns, int(existing["id"])),
@@ -313,8 +362,9 @@ def define_aggregate(
                 insert into cross_object_aggregate
                     (ontology_id, scope_object_code, name, function, target_table,
                      target_column, group_column, value_column, exclude_self,
-                     self_column, filter_column, filter_value, description)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     self_column, filter_column, filter_value, description,
+                     target_data_source_id)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (ontology_id, scope_object_code, spec.name, *columns),
             )
@@ -518,8 +568,49 @@ def compute_aggregate(runtime: Any, spec: AggregateSpec, record: dict[str, Any])
     )
 
 
-def compute_aggregates(runtime: Any, specs: list[AggregateSpec], record: dict[str, Any]) -> dict[str, AggregateResult]:
-    return {spec.name: compute_aggregate(runtime, spec, record) for spec in specs}
+def compute_aggregates(
+    runtime: Any,
+    specs: list[AggregateSpec],
+    record: dict[str, Any],
+    *,
+    runtime_for: Any = None,
+) -> dict[str, AggregateResult]:
+    """Evaluate every aggregate, opening a secondary runtime only when one is needed.
+
+    `runtime_for(data_source_id)` yields a runtime context for another source. Passed in
+    rather than imported so this module does not need to know how adapters are built --
+    that knowledge lives in the kernel, and importing it here would be a cycle.
+
+    A cross-source aggregate whose source cannot be reached reports the failure rather
+    than falling back to the local runtime: reading the *wrong* table would silently
+    produce a plausible number (ADR-0002).
+    """
+    results: dict[str, AggregateResult] = {}
+    for spec in specs:
+        if not spec.target_data_source_id:
+            results[spec.name] = compute_aggregate(runtime, spec, record)
+            continue
+        if runtime_for is None:
+            results[spec.name] = AggregateResult(
+                name=spec.name,
+                value=None,
+                definition=spec.describe(),
+                row_count=0,
+                error="跨源聚合需要调用方提供 runtime_for，当前上下文不支持跨源读取",
+            )
+            continue
+        try:
+            with runtime_for(spec.target_data_source_id) as secondary:
+                results[spec.name] = compute_aggregate(secondary, spec, record)
+        except Exception as error:
+            results[spec.name] = AggregateResult(
+                name=spec.name,
+                value=None,
+                definition=spec.describe(),
+                row_count=0,
+                error=f"无法连接副源数据源 #{spec.target_data_source_id}: {error}",
+            )
+    return results
 
 
 def aggregate_context(results: dict[str, AggregateResult]) -> dict[str, Any]:

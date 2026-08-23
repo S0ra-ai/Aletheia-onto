@@ -340,6 +340,60 @@ jobs:
           fi
           echo "✓ serve 拒绝在不安全配置下暴露"
 
+      - name: 跨源实体消解在裸装环境可用
+        # 一个对象跨两个数据源是 B 端常态（客户在 CRM、合同在 ERP）。用两个 SQLite
+        # 文件即可验证整条链路，因此无需任何 extra。
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          import pathlib, sqlite3, tempfile
+          from ontology_platform.database import connect, initialize_platform_db
+          from ontology_platform.entity_resolution import (
+              CrossSourceLink, MatchKey, declare_cross_source_link, init_entity_resolution_schema,
+          )
+          from ontology_platform.metadata import register_data_source, scan_data_source
+          from ontology_platform.ontology import generate_ontology_draft
+          from ontology_platform.semantic_kernel import build_runtime
+
+          tmp = pathlib.Path(tempfile.mkdtemp())
+          crm, erp = tmp / "crm.sqlite3", tmp / "erp.sqlite3"
+          sqlite3.connect(crm).executescript(
+              "create table customer (id integer primary key, tax_id text not null);"
+              "insert into customer values (1, 'T1');"
+          ).connection.commit()
+          sqlite3.connect(erp).executescript(
+              "create table clients (id integer primary key, taxpayer_no text not null, credit_limit numeric);"
+              "insert into clients values (9, 'T1', 500);"
+          ).connection.commit()
+
+          platform_db = tmp / "p.sqlite3"
+          initialize_platform_db(platform_db)
+          with connect(platform_db) as conn:
+              init_entity_resolution_schema(conn)
+          primary = register_data_source(platform_db, "CRM", "sqlite", str(crm), domain="客户管理")
+          scan_data_source(platform_db, primary.id)
+          secondary = register_data_source(platform_db, "ERP", "sqlite", str(erp), domain="合同管理")
+          scan_data_source(platform_db, secondary.id)
+          ontology_id = generate_ontology_draft(platform_db, primary.id)["ontology"]["id"]
+          with connect(platform_db) as conn:
+              code = conn.execute(
+                  "select bo.code from business_object bo join source_table st on st.id = bo.source_table_id"
+                  " where bo.ontology_id = ? and st.table_name = 'customer'",
+                  (ontology_id,),
+              ).fetchone()["code"]
+          declare_cross_source_link(platform_db, ontology_id, CrossSourceLink(
+              name="crm_to_erp", primary_object_code=code,
+              secondary_data_source_id=secondary.id, secondary_table="clients",
+              match_keys=(MatchKey(primary_column="tax_id", secondary_column="taxpayer_no"),),
+              prefix="erp",
+          ))
+          with connect(platform_db) as conn:
+              runtime = build_runtime(conn, ontology_id, code, "1")
+          assert runtime.record["erp_credit_limit"] == 500, runtime.record
+          # 判定必须能说出「同一实例」是按什么判定的。
+          assert "taxpayer_no" in runtime.cross_source["crm_to_erp"]["definition"]
+          print("跨源消解通过，副源字段:", runtime.record["erp_credit_limit"])
+          PY
+
       - name: 部署前自检放行正确配置
         # A gate nothing can pass gets bypassed rather than fixed.
         run: |

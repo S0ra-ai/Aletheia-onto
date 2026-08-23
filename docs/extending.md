@@ -537,6 +537,101 @@ report.raise_for_failures()   # 抛 ConformanceError（继承 AssertionError）�
 > 只对作者自己的例子成立的契约会漂移成「要求平台自己都不做的事」，
 > 那样第一个跑它的集成方拿到的失败是我们造成的。
 
+## 15. 让一个对象跨两个数据源
+
+客户主数据在 CRM、合同在 ERP，两边都有「客户」但主键不同。
+声明它们靠什么对应：
+
+```python
+from ontology_platform.entity_resolution import (
+    CrossSourceLink, MatchKey, declare_cross_source_link,
+)
+
+declare_cross_source_link(platform_db, ontology_id, CrossSourceLink(
+    name="crm_to_erp",
+    primary_object_code="customer",          # 主源：实例身份来自它
+    secondary_data_source_id=2,              # 副源
+    secondary_table="clients",
+    match_keys=(MatchKey(primary_column="tax_id", secondary_column="taxpayer_no"),),
+    prefix="erp",                            # 副源字段挂成 erp_credit_limit
+))
+```
+
+此后规则可以直接写 `erp_credit_limit > 0`。
+
+跨源聚合同理，在 `AggregateSpec` 上指明目标源：
+
+```python
+AggregateSpec(
+    name="erp_order_total", function="sum",
+    target_table="orders", target_column="client_taxpayer_no",
+    group_column="tax_id", value_column="amount",
+    target_data_source_id=2,        # 0（默认）表示本源
+)
+```
+
+### 为什么必须声明匹配键
+
+跨源判定会把「这两行是同一实例」写进判定链。
+**若那个判断不可核验，基于它的每个结论都不可解释**——
+「为什么这份合同被阻断」的答案会变成「因为我们认为这两行是同一个客户」。
+
+因此平台**不做**相似度匹配、编辑距离、机器学习实体链接：
+那些会让判定结论随阈值变化，且无法回答「为什么这两行是同一个」。
+
+规范化只做确定性的部分：去空白、统一大小写、统一转字符串
+（CRM 存 varchar 而 ERP 存 bigint 时，按原类型比较会一个都匹配不上）。
+
+### 三条会让你意外的拒绝
+
+| 情形 | 平台行为 | 理由 |
+|---|---|---|
+| 副源匹配到多行 | **拒绝**，不挑第一行 | 挑一行会让判定作用在任意选中的记录上，而结果看起来正常 |
+| 两侧同名字段取值不同 | **标记冲突**，规则引用它会 fail-closed | 没人能说清该用哪一侧的值 |
+| 匹配失败 | **不注入任何字段** | 注入 None 会让 `erp_x > 0` 为假，与真实违规无法区分 |
+
+确实允许取任一行时声明 `require_unique=False`；
+确实要取某一侧时声明 `merge_strategy="prefer_primary"`／`"prefer_secondary"`——
+但选择会留痕，否则事后无法解释用了哪个值。
+
+### 不做传递推导
+
+声明了 A↔B 与 B↔C，平台**不会**自动得出 A↔C。
+那会引入一条没人声明过的对应关系，而它同样会进入判定链。
+需要 A↔C 就显式声明它。
+
+完整取舍见 [ADR-0018](adr/0018-cross-source-entity-resolution.md)。
+
+## 16. 给插件的表加字段
+
+`create table if not exists` 对**已存在的表什么都不做**，
+因此新增字段只对全新部署生效——功能在开发机上能用、升级后不能用，且不会报错。
+
+用 `ColumnAddition` 声明：
+
+```python
+from ontology_platform.schema import ColumnAddition, SchemaBundle
+
+SCHEMA = SchemaBundle(
+    name="my_plugin",
+    tables=(...),
+    table_names=("my_table",),
+    columns=(
+        ColumnAddition(
+            table="my_table", column="new_field",
+            sqlite_type="integer not null default 0",
+            postgresql_type="integer not null default 0",
+            mysql_type="integer not null default 0",
+        ),
+    ),
+)
+```
+
+**默认值必须等于既有行为**，否则升级会改变已有数据的含义。
+
+加列先查目录再执行 DDL，因此幂等且不依赖驱动的错误文本——
+捕获异常判断「列是否已存在」在 PostgreSQL 上会中止整个事务（同 ADR-0004）。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：

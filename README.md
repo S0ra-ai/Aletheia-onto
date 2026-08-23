@@ -517,7 +517,8 @@ _不是_：算法、模型、策略引擎脚本。
 | **单位与量纲**（同量纲换算，跨量纲拒绝） | ✅ | `derived_attributes.py` |
 | **类型层级**（子类型继承规则／聚合／派生属性） | ✅ | `type_hierarchy.py` |
 | **规则覆盖**（显式声明，校验必须在上级链内） | ✅ | `type_hierarchy.py`、`governance.py` |
-| 跨源实例解析（一个对象跨两个数据源） | 📋 | 需先做跨源实体消解 |
+| **跨源实体消解**（一个对象跨两个数据源，匹配是声明的） | ✅ | `entity_resolution.py` |
+| **跨源聚合**（「这个客户在 ERP 里的订单总额」） | ✅ | `aggregation.py`：`targetDataSourceId` |
 | 时态与生效期（属性级历史） | 📋 | 规则有生效期，属性无 |
 
 ### 治理与留痕
@@ -585,7 +586,7 @@ _不是_：算法、模型、策略引擎脚本。
 | 反馈锚定到决策记录 | ✅ | `conversations.py` |
 | 渠道接入（企微／钉钉／飞书／网页挂件） | 📋 | — |
 | 定时调度器 | 📋 | 无任何 scheduler／cron |
-| 跨源实体消解 | 📋 | — |
+
 | MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
 
 ## 当前限制
@@ -609,7 +610,8 @@ _不是_：算法、模型、策略引擎脚本。
 
 | 约束 | 位置 |
 |---|---|
-| **跨源不支持**：一个对象不能跨两个数据源，聚合也不能跨源。需先回答「两源里哪两行是同一实例」，且该判断本身必须可核验 | `instance_resolver.py`、`aggregation.py` |
+| **跨源匹配在内存中进行**：逐行读副源后比对，有行数上限；副源匹配列无索引时会慢 | `entity_resolution.py` |
+| **跨源不做传递推导**：A↔B、B↔C 不会自动得出 A↔C——那会引入一条没人声明过的对应关系 | `entity_resolution.py` |
 | **时态只覆盖平台观测到的区间**：原地覆盖值的源系统丢掉的历史无法重建。`coverage` 会明确上报可回答区间 | `temporal.py` |
 | **聚合在 Python 内计算**，不下推 SQL。换来三方言行为一致，代价是行数上限 | `aggregation.py` |
 | **关系分类依赖 schema 声明质量**：不写外键、不写 NOT NULL 的库只能得到最弱分类 | `relations.py` |
@@ -819,7 +821,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**989 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
+**1035 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
 自动跳过，wheel 构建用例只在 CI 上执行。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -839,6 +841,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
 | `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
 | `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
+| `test_cross_source_resolution.py` | 46 | 跨源消解：声明式匹配、一对多拒绝、冲突标记、跨源聚合、加列迁移幂等 |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤：越权引用被丢弃、判定失败按拒绝、过滤在排序之前 |
 | `test_answer_regression.py` | 28 | 问答回归：结论必带依据、意图路由确定、问答与判定一致、无模型可用 |
 | `test_deployment_preflight.py` | 41 | 部署前自检：免鉴权暴露、CORS 通配、SQLite 多进程、镜像与编排产物 |

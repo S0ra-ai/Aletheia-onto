@@ -24,6 +24,7 @@ verdict = assess_instance(platform_db, ontology["ontology"]["id"], "contract", "
 | 规则求值（安全边界） | `rule_sandbox` |
 | 判定与留痕 | `semantic_kernel`, `decisions` |
 | 表达力：解析器／聚合／派生／层级／事件／时态 | `instance_resolver`, `aggregation`, `derived_attributes`, `type_hierarchy`, `events`, `temporal` |
+| 跨源：一个对象跨两个数据源 | `entity_resolution` — 匹配是声明的，不是推断的 |
 | 写回：HTTP／直写库／存储过程 | `automation`, `db_executors` |
 | 治理与发布 | `governance`, `release_readiness` |
 | 多租户 | `tenancy` |
@@ -45,7 +46,7 @@ importing it eagerly would make the kernel unusable without a web server install
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "__version__",
@@ -68,6 +69,7 @@ __all__ = [
     "declare_event_type",
     "record_event",
     "record_attribute_version",
+    "declare_cross_source_link",
     # Extension points
     "register_adapter",
     "register_rule_function",
@@ -113,6 +115,7 @@ def __getattr__(name: str) -> object:
         "declare_event_type": "events",
         "record_event": "events",
         "record_attribute_version": "temporal",
+        "declare_cross_source_link": "entity_resolution",
         "register_adapter": "adapters",
         "register_resolver": "instance_resolver",
         "register_dialect": "sql_dialects",

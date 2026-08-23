@@ -479,7 +479,8 @@ hatches**, not from reasoning power (ADR-0005).
 | **Direct-database and stored-procedure writeback** (declared statements, bound values, WHERE required) | ✅ | `db_executors.py` |
 | Channel integrations, scheduler | 📋 | none |
 | Ontology import (SHACL / reasoner) | 📋 | export only |
-| Cross-source entity resolution | 📋 | none — needs a verifiable answer to "which two rows are the same instance" |
+| **Cross-source entity resolution** (one object spanning two sources; matching is declared) | ✅ | `entity_resolution.py` |
+| **Cross-source aggregates** ("this customer's order total in the ERP") | ✅ | `aggregation.py`: `targetDataSourceId` |
 | Split into multiple PyPI distributions | 📋 | single package + extras for now |
 
 ## Current limitations
@@ -499,7 +500,8 @@ By design, not bugs. These are the next phase's work.
 
 | Constraint | Location |
 |---|---|
-| **No cross-source anything**: one object cannot span two data sources, and aggregates cannot either. Needs a verifiable answer to "which two rows are the same instance" first, or a cross-source verdict cannot be explained | `instance_resolver.py`, `aggregation.py` |
+| **Cross-source matching happens in memory**: the secondary source is read row by row and compared, under a row cap; slow when its match column is unindexed | `entity_resolution.py` |
+| **No transitive inference across sources**: A↔B and B↔C never imply A↔C — that would introduce a correspondence nobody declared | `entity_resolution.py` |
 | **History covers only what the platform observed**: a source that overwrites values in place still lost its own history. `coverage` reports the window it can actually answer for | `temporal.py` |
 | **Aggregates compute in Python**, not pushed down as SQL. Buys identical behaviour across all three dialects; costs a row cap | `aggregation.py` |
 | **Relation classification depends on schema quality**: a database without foreign keys or NOT NULL gets the weakest classification | `relations.py` |
@@ -653,7 +655,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**989 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
+**1035 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable, and the wheel build runs only in CI.
 
 | File | Count | Covers |
@@ -673,6 +675,7 @@ no server is reachable, and the wheel build runs only in CI.
 | `test_type_hierarchy_and_events.py` | 42 | inheritance expansion, declared overrides, cycles, append-only events |
 | `test_derived_attributes_and_units.py` | 42 | multi-pass derivation, unit conversion, cross-dimension refusal |
 | `test_relation_expressiveness.py` | 22 | cardinality and strength inference, junction collapse, one-to-one as a row |
+| `test_cross_source_resolution.py` | 46 | cross-source: declared matching, refusing one-to-many, conflict marking, cross-source aggregates |
 | `test_retrieval_permission_filtering.py` | 12 | retrieval-time permission filtering: forbidden citations dropped, denial on failure |
 | `test_answer_regression.py` | 28 | answer regression: every conclusion cites evidence, routing is stable, answers agree with verdicts |
 | `test_deployment_preflight.py` | 41 | preflight: unauthenticated exposure, wildcard CORS, SQLite with workers, image and compose artefacts |

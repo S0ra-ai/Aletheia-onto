@@ -73,6 +73,14 @@ from .derived_attributes import (
     list_derived_attributes,
     set_attribute_unit,
 )
+from .entity_resolution import (
+    CrossSourceLink,
+    EntityResolutionError,
+    MatchKey,
+    declare_cross_source_link,
+    describe_cross_source,
+    init_entity_resolution_schema,
+)
 from .events import (
     MAX_EVENT_HISTORY,
     EventError,
@@ -208,6 +216,7 @@ async def lifespan(app: FastAPI):
         init_aggregate_schema(conn)
         init_event_schema(conn)
         init_temporal_schema(conn)
+        init_entity_resolution_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -2017,6 +2026,73 @@ def instance_attribute_history(
 ) -> dict[str, object]:
     """One instance's attribute history, with the window it can actually answer for."""
     return instance_history(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, attribute_code=attributeCode)
+
+
+class MatchKeyDeclare(BaseModel):
+    primaryColumn: str
+    secondaryColumn: str
+    normalize: bool = True
+
+
+class CrossSourceLinkDeclare(BaseModel):
+    name: str
+    secondaryDataSourceId: int
+    secondaryTable: str
+    matchKeys: list[MatchKeyDeclare] = Field(default_factory=list)
+    prefix: str = ""
+    mergeStrategy: str = "conflict"
+    requireUnique: bool = True
+    description: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/cross-source-links")
+def ontology_cross_source_links(ontology_id: int) -> dict[str, object]:
+    """本体的跨源对应声明。
+
+    一并返回说明文字，因为「匹配是声明的、不是推断的」是这套机制的前提，
+    而一个只看到列表的调用方会以为平台在做模糊匹配。
+    """
+    return describe_cross_source(DEFAULT_PLATFORM_DB, ontology_id)
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/cross-source-links")
+def declare_object_cross_source_link(
+    ontology_id: int,
+    object_code: str,
+    payload: CrossSourceLinkDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """声明这个对象如何对应到另一个数据源的一张表。
+
+    匹配键必须显式给出：跨源判定会把「这两行是同一实例」写进判定链，
+    因此它必须是可审阅的声明，而不是相似度推断出来的结果。
+    """
+    try:
+        return declare_cross_source_link(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            CrossSourceLink(
+                name=payload.name,
+                primary_object_code=object_code,
+                secondary_data_source_id=payload.secondaryDataSourceId,
+                secondary_table=payload.secondaryTable,
+                match_keys=tuple(
+                    MatchKey(
+                        primary_column=key.primaryColumn,
+                        secondary_column=key.secondaryColumn,
+                        normalize=key.normalize,
+                    )
+                    for key in payload.matchKeys
+                ),
+                prefix=payload.prefix,
+                merge_strategy=payload.mergeStrategy,
+                require_unique=payload.requireUnique,
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except EntityResolutionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/ontologies/{ontology_id}/hierarchy")

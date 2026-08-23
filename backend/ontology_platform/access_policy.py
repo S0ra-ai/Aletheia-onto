@@ -159,6 +159,13 @@ RULES: tuple[Rule, ...] = (
     # changes what every assessment of the object checks.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/parent", CAP_WRITE, "声明类型层级"),
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/event-types", CAP_WRITE, "声明事件类型"),
+    # 跨源对应决定「哪两行是同一实例」，因此它改变每一次判定读到的数据——是建模写操作。
+    _rule(
+        ("PUT",),
+        r"/ontologies/[0-9]+/objects/[^/]+/cross-source-links",
+        CAP_WRITE,
+        "声明跨源对应",
+    ),
     # Recording an event is not a modelling change, but history is append-only and
     # feeds explanations, so it needs write capability rather than read.
     _rule(

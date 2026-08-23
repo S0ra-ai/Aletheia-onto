@@ -84,6 +84,64 @@ def statement_for(statements: Mapping[str, str], dialect: str) -> str:
 
 
 @dataclass(frozen=True)
+class ColumnAddition:
+    """A column added to a table that already exists in deployed databases.
+
+    Types are declared per dialect because `text` and `timestamp` are not portable, the
+    same reason `database.ColumnMigration` exists. The catalog is probed before the DDL
+    runs, so this is idempotent without depending on driver-specific error strings --
+    catching the error instead would abort the surrounding transaction on PostgreSQL
+    (ADR-0004).
+    """
+
+    table: str
+    column: str
+    sqlite_type: str
+    postgresql_type: str
+    mysql_type: str
+
+    def ddl(self, dialect: str) -> str:
+        column_type = {
+            SQLITE: self.sqlite_type,
+            POSTGRESQL: self.postgresql_type,
+            MYSQL: self.mysql_type,
+        }.get(normalize_dialect(dialect), self.sqlite_type)
+        return f"alter table {self.table} add column {self.column} {column_type}"
+
+    def apply(self, conn: Any, dialect: str) -> None:
+        existing = _existing_columns(conn, self.table, dialect)
+        if not existing:
+            # The table is absent or unreadable. A fresh install already got the column
+            # from the create statement, so there is nothing to migrate.
+            return
+        if self.column.lower() in existing:
+            return
+        conn.execute(self.ddl(dialect))
+        if hasattr(conn, "commit"):
+            conn.commit()
+
+
+def _existing_columns(conn: Any, table: str, dialect: str) -> set[str]:
+    """The columns a table currently has, lower-cased.
+
+    Returns empty on failure rather than raising: a missing table is the common case
+    during a first install, and it must not stop startup.
+    """
+    canonical = normalize_dialect(dialect)
+    try:
+        if canonical == SQLITE:
+            return {str(row["name"]).lower() for row in conn.execute(f"pragma table_info({table})").fetchall()}
+        scope = "database()" if canonical == MYSQL else "current_schema()"
+        query = f"select column_name from information_schema.columns where table_name = %s and table_schema = {scope}"
+        with conn.cursor() as cursor:
+            cursor.execute(query, (table,))
+            return {str(row[0]).lower() for row in cursor.fetchall()}
+    except Exception as error:
+        logger.debug("读取表 %s 的现有列失败: %s", table, error)
+        return set()
+
+
+@dataclass(frozen=True)
 class SchemaBundle:
     """The tables and indexes one module owns.
 
@@ -104,12 +162,18 @@ class SchemaBundle:
     tables: Sequence[Mapping[str, str]] = ()
     indexes: Sequence[Mapping[str, str]] = ()
     table_names: Sequence[str] = ()
+    # Columns added to a table after it shipped. `create table if not exists` does nothing
+    # for an existing table, so without these a new field reaches only fresh installs --
+    # and the feature then works on a developer's machine and not on an upgrade.
+    columns: Sequence["ColumnAddition"] = ()
 
     def apply(self, conn: Any) -> None:
         """Create everything in this bundle. Idempotent -- startup runs it every boot."""
         dialect = dialect_of(conn)
         for statements in self.tables:
             conn.execute(statement_for(statements, dialect))
+        for addition in self.columns:
+            addition.apply(conn, dialect)
         for statements in self.indexes:
             _create_index(conn, statement_for(statements, dialect), dialect)
 
