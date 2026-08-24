@@ -423,8 +423,13 @@ def login_with_assertion(
 
         if row is None:
             conn.execute(
+                # `identity_source` is declared rather than inferred from an empty hash.
+                # The empty hash still blocks a password login, but that protection was a
+                # side effect of `verify_password`'s guard clause; this makes it a property
+                # of the record, which is what `login` can then check deliberately.
                 "insert into platform_user (username, display_name, role_code, password_hash,"
-                " password_salt, iterations, status) values (?, ?, ?, '', '', 0, 'active')",
+                " password_salt, iterations, identity_source, status)"
+                " values (?, ?, ?, '', '', 0, 'sso', 'active')",
                 (username, display_name, role_code),
             )
             user_id = int(conn.execute("select id from platform_user where username = ?", (username,)).fetchone()["id"])

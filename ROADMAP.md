@@ -112,7 +112,20 @@ Dify 的同类产品，失去差异化。
 两项不变量由 `tests/test_module_boundaries.py` 守住——
 只靠文档记录的约束会一次一个「顺手的延迟 import」地退化。
 
-🚧 仍待完成：192 处 `platform_db` 签名迁移、DDL 迁 Alembic（依赖分包边界）。
+✅ **版本化迁移已完成**（`migrations.py`）。原记为「DDL 迁 Alembic，阻塞于分包边界」——
+那个理由不完整。真正的阻塞更基本：**Alembic 依赖 SQLAlchemy**，与内核零依赖直接冲突
+（`pyproject` 声明、CI 在裸装环境校验）。采用它意味着本体、规则引擎与决策留痕
+再也无法嵌入别人的应用而不拖进一个 ORM。
+
+Alembic 真正提供而本项目缺的只有两点：版本账本与有序应用。自动生成在此不可用——
+DDL 是按方言声明的字符串，没有模型元数据可以 diff。因此这不是等待 Alembic 的权宜之计，
+而是按问题本身的规模给出的机制：150 行、零依赖、覆盖同样三个方言。
+
+引导序列也合并为一处（`bootstrap.py`）：此前 HTTP 启动与 CLI `init` 各枚举一遍特性表，
+而漏掉一个不会响亮地失败——它产生的库会让某个功能返回空结果而非报错，
+而「知识库里没有条目」在很长时间里都会被当成数据问题。
+
+🚧 仍待完成：192 处 `platform_db` 签名迁移。
 
 逐项工作清单见 [docs/architecture-debt.md](docs/architecture-debt.md)。
 

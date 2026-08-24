@@ -102,39 +102,29 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def _init_optional_schemas(conn: Any) -> None:
-    """Create every feature schema the HTTP startup would create.
+    """Bring the database up to date: feature schemas, then pending migrations.
 
-    Enumerated rather than discovered, because a schema silently missing from a
-    CLI-initialised database shows up much later as "this feature returns nothing".
+    Delegates to `bootstrap` rather than listing the schemas here. The list used to exist
+    in two places -- this function and the HTTP startup -- and a schema missing from one
+    produces a database where a feature returns empty results rather than an error, which
+    reads as a data problem for a long time before anyone suspects a missing table.
     """
-    from .agent_roles import init_agent_role_schema
-    from .aggregation import init_aggregate_schema
-    from .auth import init_auth_schema
-    from .axioms import init_axiom_schema
-    from .conversations import init_conversation_schema
-    from .entity_resolution import init_entity_resolution_schema
-    from .events import init_event_schema
-    from .knowledge_documents import init_knowledge_schema
-    from .quotas import init_quota_schema
-    from .sso import init_sso_schema
-    from .temporal import init_temporal_schema
-    from .workflow_permission import init_workflow_and_permission_schema
+    from .bootstrap import prepare_database
 
-    for initialise in (
-        init_workflow_and_permission_schema,
-        init_auth_schema,
-        init_agent_role_schema,
-        init_knowledge_schema,
-        init_aggregate_schema,
-        init_conversation_schema,
-        init_event_schema,
-        init_temporal_schema,
-        init_entity_resolution_schema,
-        init_axiom_schema,
-        init_quota_schema,
-        init_sso_schema,
-    ):
-        initialise(conn)
+    applied = prepare_database(conn)
+    for entry in applied:
+        if entry["status"] == "applied":
+            _log_migration(entry)
+
+
+def _log_migration(entry: dict[str, Any]) -> None:
+    """Report an applied migration on stderr.
+
+    On stderr rather than stdout because `init` and `demo --quiet` promise exactly one JSON
+    document on stdout, and a caller parsing that stream must not have to filter progress
+    lines out of it.
+    """
+    print(f"[migration] {entry['version']} {entry.get('description', '')}", file=sys.stderr)
 
 
 def cmd_connect(args: argparse.Namespace) -> int:

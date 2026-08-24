@@ -667,8 +667,10 @@ _不是_：算法、模型、策略引擎脚本。
   生成器只会产出 `unknown`。**请求侧的一致性已由测试守住**——
   该测试发现了一处真实缺陷：前端一直在发送 4 个模型兼容性字段，
   而 API 请求模型未声明它们，Pydantic 静默丢弃，于是 Azure 与本地 vLLM 配不上而界面报成功。
-- DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
-  因此阻塞于分包边界。
+- **版本化迁移已具备**（`migrations.py`）：账本记录已应用版本，改列／回填／删表这类
+  非幂等变更现在有处可去。**不采用 Alembic**——它依赖 SQLAlchemy，与内核零依赖冲突；
+  而它真正提供的（版本账本 + 有序应用）只需 150 行，且自动生成在此不可用
+  （DDL 是按方言声明的字符串，无模型元数据可 diff）。
 - **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
   extras 承载了未来分包的接缝但不冻结边界。
 
@@ -910,7 +912,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1167 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1179 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -924,6 +926,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_migrations.py` | 12 | 旧库补齐、新装跳过、重跑无变更、失败即中止后续 |
 | `test_sso.py` | 32 | 签名伪造、alg:none 绕过、未映射即拒绝、禁用本地账号优先 |
 | `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
 | `test_audit_reports.py` | 18 | 从未触发的规则、覆盖门禁的发布、留痕完整性、区间半开 |
@@ -972,7 +975,7 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 
 ## 规模
 
-71 个后端模块约 31400 行，149 个 API 端点，44 张平台表，前端 React + antd。
+73 个后端模块约 31800 行，149 个 API 端点，45 张平台表，前端 React + antd。
 
 ## 示例
 
