@@ -644,13 +644,17 @@ _不是_：算法、模型、策略引擎脚本。
 
 ### 字段存在但逻辑未生效
 
-这类最危险，因为接口看起来能用：
+**本节已清空。** 这类最危险，因为接口看起来能用——所以逐项记录它们是如何消失的：
 
-> 此前列在本节的四项已修复：`guard_expression`、`filter_expression`、
-> `depends_on` 现已真实生效，`permission_policy` 已带本体维度。三者均为
-> fail-closed：无法求值时拒绝而非放行。
+> - `guard_expression`、`filter_expression`、`depends_on` 现已真实生效，
+>   `permission_policy` 已带本体维度。四者均为 fail-closed：无法求值时拒绝而非放行。
+> - `derive` 新版本现已复制工作流定义与规则的求值列（`priority`、生效期、`depends_on`）。
+>   此前它们被丢弃，而那不只是丢元数据：派生版本会以不同顺序、在不同生效期内求值同一批规则——
+>   「新版本给出不同判定」恰恰是 `derive` 最不该静默做的事。
+>   实例状态**刻意不复制**：定义属于模型，而某份合同当前在哪个状态属于数据。
+> - 模型配置的四个兼容性字段（`authStyle` 等）现已声明。此前前端一直在发、
+>   而 Pydantic 静默丢弃，于是界面报成功而 Azure 与本地 vLLM 配不上。
 
-- **工作流与本体版本脱钩** —— `derive` 新版本不复制工作流配置。
 
 ### 结构性表达力约束
 
@@ -938,7 +942,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1214 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1221 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -952,6 +956,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_derive_completeness.py` | 7 | 派生新版本复制工作流与规则求值列，但不复制实例状态 |
 | `test_codegen.py` | 16 | 关系类型化为目标对象、仅已发布本体、产物通过真实 tsc --strict |
 | `test_scaffold.py` | 19 | 生成的代码被真实执行：能编译、能注册、能建库、不含平台私有引用 |
 | `test_migrations.py` | 12 | 旧库补齐、新装跳过、重跑无变更、失败即中止后续 |
