@@ -311,6 +311,29 @@ def cmd_new(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_codegen(args: argparse.Namespace) -> int:
+    """Project a published ontology into TypeScript.
+
+    Generated from the *ontology* rather than from OpenAPI, because that is where the useful
+    information is: `contract.amount` is a decimal with a unit and `contract.customer_id`
+    points at a customer. A hand-written mirror types every foreign key as a number, so
+    nothing stops a developer passing a contract id where a customer is expected.
+    """
+    from .codegen import CodegenError, generate_typescript, write_typescript
+
+    platform_db = _platform_db(args)
+    try:
+        if args.output:
+            result = write_typescript(platform_db, args.ontology_id, args.output, allow_draft=args.allow_draft)
+            _print(result)
+        else:
+            # To stdout so it can be piped into a file or a formatter without a temp path.
+            print(generate_typescript(platform_db, args.ontology_id, allow_draft=args.allow_draft), end="")
+    except (CodegenError, ValueError) as error:
+        return _fail(str(error))
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run the whole loop against a built-in sample system."""
     from .metadata import register_data_source, register_source_api, scan_data_source
@@ -617,6 +640,16 @@ def build_parser() -> argparse.ArgumentParser:
     new_cmd.add_argument("--domain", default="", help="业务域，写入示例配置")
     new_cmd.add_argument("--list-extensions", action="store_true", help="列出可选扩展点及各自适用场景")
     new_cmd.set_defaults(func=cmd_new)
+
+    codegen = sub.add_parser("codegen", help="由已发布本体生成 TypeScript 类型与客户端")
+    codegen.add_argument("ontology_id", type=int)
+    codegen.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
+    codegen.add_argument(
+        "--allow-draft",
+        action="store_true",
+        help="允许从草案生成（仅供本地迭代：草案的对象与属性会在映射审核期间变动）",
+    )
+    codegen.set_defaults(func=cmd_codegen)
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")
