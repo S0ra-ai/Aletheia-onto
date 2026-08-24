@@ -280,6 +280,37 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if blockers else 0
 
 
+def cmd_new(args: argparse.Namespace) -> int:
+    """Generate a project skeleton.
+
+    A generated project rather than a cloned scaffold repository. A scaffold repo is a fork:
+    it stops receiving improvements the moment it is used, and the first thing a user must do
+    is delete the parts that do not apply. Generated code depends on the *installed* platform
+    version, so upgrading is `pip install -U aletheia-onto`.
+    """
+    from .scaffold import ScaffoldError, create_project, describe_extension_points
+
+    if args.list_extensions:
+        _print({"extensionPoints": describe_extension_points()})
+        return 0
+
+    if not args.name:
+        return _fail("需要项目名：aletheia new <name> [--extension datasource ...]")
+
+    target = Path(args.directory) if args.directory else Path(args.name)
+    try:
+        result = create_project(
+            target,
+            project_name=args.name,
+            extensions=args.extension,
+            domain=args.domain,
+        )
+    except ScaffoldError as error:
+        return _fail(str(error))
+    _print(result)
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run the whole loop against a built-in sample system."""
     from .metadata import register_data_source, register_source_api, scan_data_source
@@ -573,6 +604,19 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--end", required=True, help="结束时刻（不含），如 2026-09-01")
     audit.add_argument("--ontology-id", type=int, default=None, help="仅统计某个本体")
     audit.set_defaults(func=cmd_audit)
+
+    new_cmd = sub.add_parser("new", help="生成一个项目骨架（依赖平台，不是 fork）")
+    new_cmd.add_argument("name", nargs="?", default="", help="项目名，同时作为 Python 包名")
+    new_cmd.add_argument("--directory", default="", help="输出目录，缺省与项目名同名")
+    new_cmd.add_argument(
+        "--extension",
+        action="append",
+        default=[],
+        help="要生成的扩展点，可重复。用 --list-extensions 查看可选项",
+    )
+    new_cmd.add_argument("--domain", default="", help="业务域，写入示例配置")
+    new_cmd.add_argument("--list-extensions", action="store_true", help="列出可选扩展点及各自适用场景")
+    new_cmd.set_defaults(func=cmd_new)
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")

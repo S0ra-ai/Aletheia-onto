@@ -209,6 +209,19 @@ aletheia doctor    # 报告当前配置、已安装 extra 与已注册扩展点
 }
 ```
 
+**从脚手架起步。** `new` 生成一个依赖平台的项目骨架，**不是 fork**——
+升级即 `pip install -U aletheia-onto`，生成的代码无需改动：
+
+```bash
+aletheia new --list-extensions          # 先看有哪些扩展点、各自适用什么场景
+aletheia new mycorp --extension rule-function --domain 合同管理
+cd mycorp && pip install -e . && python -m mycorp init
+```
+
+生成物包含配置模块、按需生成的扩展点骨架、一致性契约脚本，
+以及不含任何可用默认值的 `.env.example`。用 `python -m mycorp` 而非 `aletheia`：
+后者不会加载你注册的扩展。
+
 接自己的系统：
 
 ```bash
@@ -912,7 +925,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1179 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1198 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -926,6 +939,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_scaffold.py` | 19 | 生成的代码被真实执行：能编译、能注册、能建库、不含平台私有引用 |
 | `test_migrations.py` | 12 | 旧库补齐、新装跳过、重跑无变更、失败即中止后续 |
 | `test_sso.py` | 32 | 签名伪造、alg:none 绕过、未映射即拒绝、禁用本地账号优先 |
 | `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
@@ -975,7 +989,7 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 
 ## 规模
 
-73 个后端模块约 31800 行，149 个 API 端点，45 张平台表，前端 React + antd。
+74 个后端模块约 32100 行，149 个 API 端点，45 张平台表，前端 React + antd。
 
 ## 示例
 

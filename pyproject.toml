@@ -99,7 +99,10 @@ include = ["ontology_platform*"]
 [tool.setuptools.package-data]
 # PEP 561: without this marker a consumer's type checker silently ignores our
 # annotations, so a wrong call site looks fine until runtime.
-ontology_platform = ["py.typed"]
+#
+# The scaffold templates ship too, or `aletheia new` would work from a checkout and fail on
+# an installed wheel -- which is the only environment a user actually has.
+ontology_platform = ["py.typed", "scaffold_templates/*.tpl", "scaffold_templates/extensions/*.tpl"]
 
 [tool.ruff]
 line-length = 120
