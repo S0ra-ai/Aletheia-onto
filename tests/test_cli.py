@@ -452,15 +452,27 @@ def test_serve_refuses_to_expose_an_unsafe_deployment(capsys, monkeypatch, tmp_p
 def test_serve_on_loopback_does_not_run_preflight(capsys, monkeypatch, tmp_path) -> None:
     """Local development must stay frictionless, or the check gets disabled globally.
 
-    Verified by patching uvicorn.run: reaching it proves preflight did not intercept.
+    Verified by intercepting the spawn: reaching it proves preflight did not intercept.
+
+    `serve --platform-db X` runs the server in a child process, because
+    `database.DEFAULT_PLATFORM_DB` is resolved at import time and setting the environment
+    variable in-process would change a constant that was already fixed. So the thing to
+    intercept is `subprocess.call`, not `uvicorn.run` -- patching the latter used to work and
+    now lets a real server start, which hangs the suite rather than failing it.
     """
+    from ontology_platform import cli
+
     started: dict[str, object] = {}
     monkeypatch.setenv("ONTOLOGY_AUTH_DISABLED", "1")
-    monkeypatch.setitem(
-        sys.modules,
-        "uvicorn",
-        type("_Fake", (), {"run": staticmethod(lambda app, **kwargs: started.update(kwargs))})(),
-    )
+    monkeypatch.setitem(sys.modules, "uvicorn", object())
+
+    def _fake_call(command, env=None, **kwargs):
+        started["command"] = list(command)
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", _fake_call)
     code, _, _ = _run(capsys, "--platform-db", str(tmp_path / "p.sqlite3"), "serve", "--host", "127.0.0.1")
     assert code == 0
-    assert started.get("host") == "127.0.0.1"
+    command = started.get("command")
+    assert command is not None, "preflight 拦下了本机监听，本地开发会因此产生摩擦"
+    assert "127.0.0.1" in command

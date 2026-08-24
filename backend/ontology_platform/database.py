@@ -45,7 +45,37 @@ def _default_data_dir() -> Path:
 
 
 DEFAULT_DATA_DIR = _default_data_dir()
-DEFAULT_PLATFORM_DB = DEFAULT_DATA_DIR / "platform.sqlite3"
+
+# Named as a constant because `cli.serve` sets it to hand the path to the process uvicorn
+# imports. Two copies of the string would drift, and the drift would be silent: `serve` would
+# set a variable nothing reads, restoring the bug it was added to fix.
+PLATFORM_DB_FILE_ENV = "ONTOLOGY_PLATFORM_DB_FILE"
+
+
+def _default_platform_db() -> Path:
+    """The SQLite platform database this process uses.
+
+    `ONTOLOGY_PLATFORM_DB_FILE` names the file directly, which `ONTOLOGY_DATA_DIR` cannot:
+    the directory variable requires the file to be called `platform.sqlite3`, so pointing a
+    process at `/srv/aletheia/prod.sqlite3` was impossible without renaming it.
+
+    That gap had a concrete cost. `aletheia serve --platform-db X` runs uvicorn in a new
+    process, and that process had no way to receive `X` -- so it silently opened the default
+    database instead. A user who had just run `init` and `model` against `X` saw an empty
+    ontology list through the API, with nothing reporting a mismatch. An empty result reads
+    as "my data did not save", which sends the investigation in exactly the wrong direction.
+
+    Precedence is file, then directory, then the checkout/home default: the more specific
+    setting wins, so a deployment can point one process at one database without disturbing
+    the directory layout everything else uses.
+    """
+    override = os.environ.get(PLATFORM_DB_FILE_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+    return DEFAULT_DATA_DIR / "platform.sqlite3"
+
+
+DEFAULT_PLATFORM_DB = _default_platform_db()
 
 _platform_db_type: str = "sqlite"
 _platform_db_uri: str = str(DEFAULT_PLATFORM_DB)

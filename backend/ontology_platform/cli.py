@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -412,8 +414,57 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 f"监听地址 {args.host} 可从网络访问，但部署前自检未通过。"
                 "修复上述阻断项，或显式传 --skip-preflight（不建议）。"
             )
-    uvicorn.run("ontology_platform.api:app", host=args.host, port=args.port, reload=args.reload)
-    return 0
+
+    if not args.platform_db:
+        uvicorn.run("ontology_platform.api:app", host=args.host, port=args.port, reload=args.reload)
+        return 0
+
+    # With `--platform-db`, the server has to run in a **child process**.
+    #
+    # `database.DEFAULT_PLATFORM_DB` is a module constant resolved at import time, and `cli`
+    # has already imported `database` by the time it reaches this function. So setting the
+    # environment variable here and calling `uvicorn.run` in-process changes nothing: the
+    # constant was fixed long before, and `api` binds the already-fixed value.
+    #
+    # That was the actual defect, and it failed in the worst available shape. `aletheia init
+    # --platform-db X` followed by `aletheia serve --platform-db X` served a *different*
+    # database, so the API returned an empty ontology list and rejected the administrator
+    # password -- with nothing reporting a mismatch. "Empty results and a rejected login"
+    # reads as "my data did not save", which sends the investigation to the writes rather
+    # than to the path.
+    #
+    # A fresh process is the only way the variable can be observed, because the value is read
+    # once per interpreter. Passing `--platform-db` through to a child rather than asking the
+    # user to export the variable themselves: a flag that silently means something different
+    # from every other command's identical flag is worse than no flag.
+    from .database import PLATFORM_DB_FILE_ENV
+
+    resolved = str(Path(args.platform_db).expanduser().resolve())
+    environment = dict(os.environ)
+    environment[PLATFORM_DB_FILE_ENV] = resolved
+    # Announced because a silent correct default and a silent wrong default look identical
+    # from outside, and this is the value that decides whether a deployment sees its own data.
+    print(f"[serve] 平台库: {resolved}", file=sys.stderr)
+
+    command = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "ontology_platform.api:app",
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+    ]
+    if args.reload:
+        command.append("--reload")
+
+    try:
+        return subprocess.call(command, env=environment)
+    except KeyboardInterrupt:
+        # Ctrl-C reaches both processes; the child handles its own shutdown, and reporting a
+        # traceback here would make a normal stop look like a crash.
+        return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:

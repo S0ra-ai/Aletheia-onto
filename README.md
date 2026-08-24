@@ -887,7 +887,16 @@ SHACL 形状由声明生成而非手写——手写的一份会与发布门禁�
 |---|---|---|
 | `ONTOLOGY_PLATFORM_DB_TYPE` | `sqlite`／`mysql`／`postgresql` | `sqlite` |
 | `ONTOLOGY_PLATFORM_DB_URI` | 平台库连接串 | 本地 SQLite 文件 |
+| `ONTOLOGY_PLATFORM_DB_FILE` | 直接指定 SQLite 平台库**文件**（优先于 `ONTOLOGY_DATA_DIR`） | 未设 |
+| `ONTOLOGY_DATA_DIR` | 平台库所在**目录**，文件名固定为 `platform.sqlite3` | 源码树下为 `data/`，否则 `~/.aletheia` |
 | `ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEOUT_MS` | SQLite busy_timeout | `5000` |
+
+> **`serve` 与其他命令用同一个库。** `aletheia serve --platform-db X` 会把 `X`
+> 传给被服务的进程，并在启动时打印实际使用的路径。
+> 此前它做不到：`uvicorn` 在新进程里导入应用，只能从环境变量解析平台库，
+> 于是 `serve --platform-db X` 服务的是**另一个**库——
+> 而症状是 API 返回空本体列表，读起来像「我的数据没保存」，
+> 于是排查会从重跑 `model`、怀疑写入开始，唯一不像的就是路径不一致。
 
 ### 阈值与命名
 
@@ -942,7 +951,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1221 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1228 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -956,6 +965,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_platform_db_consistency.py` | 7 | serve 与其他命令用同一个平台库，并在启动时告知路径 |
 | `test_derive_completeness.py` | 7 | 派生新版本复制工作流与规则求值列，但不复制实例状态 |
 | `test_codegen.py` | 16 | 关系类型化为目标对象、仅已发布本体、产物通过真实 tsc --strict |
 | `test_scaffold.py` | 19 | 生成的代码被真实执行：能编译、能注册、能建库、不含平台私有引用 |
