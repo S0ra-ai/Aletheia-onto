@@ -18,34 +18,21 @@ from .access_policy import (
     required_capability,
 )
 from .agent import agent_chat, get_agent_roles
-from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
-from .aggregation import (
-    init_aggregate_schema,
-)
+from .agent_roles import delete_agent_role, upsert_agent_role
 from .auth import (
     AuthenticationError,
     AuthorizationError,
     Principal,
     authorize,
     ensure_bootstrap_admin,
-    init_auth_schema,
     purge_expired_sessions,
     resolve_principal,
 )
 from .automation import execute_operation, preflight_operation
-from .axioms import init_axiom_schema
+from .bootstrap import prepare_database
 from .contract_documents import parse_rule_docx_bytes
-from .conversations import (
-    init_conversation_schema,
-)
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
-from .entity_resolution import (
-    init_entity_resolution_schema,
-)
-from .events import (
-    init_event_schema,
-)
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -62,9 +49,6 @@ from .governance import (
 from .graph_view import build_ontology_graph
 from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
-from .knowledge_documents import (
-    init_knowledge_schema,
-)
 from .metadata import (
     register_data_source,
     register_source_api,
@@ -79,7 +63,6 @@ from .ontology import (
     resolve_ontology_for_object,
     summarize_ontology,
 )
-from .quotas import init_quota_schema
 from .release_readiness import assess_ontology_release_readiness
 from .routers import (
     auth_router,
@@ -102,16 +85,13 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
-from .sso import init_sso_schema
 from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
 from .temporal import (
     TemporalError,
-    init_temporal_schema,
 )
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
 from .workflow_permission import (
-    init_workflow_and_permission_schema,
     seed_default_roles_and_policies,
     seed_default_tools,
 )
@@ -129,18 +109,12 @@ async def lifespan(app: FastAPI):
     # Schema creation must not be silently swallowed: a missing table turns
     # into a confusing 500 on first use instead of a clear startup failure.
     with connect(DEFAULT_PLATFORM_DB) as conn:
-        init_workflow_and_permission_schema(conn)
-        init_auth_schema(conn)
-        init_agent_role_schema(conn)
-        init_knowledge_schema(conn)
-        init_aggregate_schema(conn)
-        init_event_schema(conn)
-        init_temporal_schema(conn)
-        init_entity_resolution_schema(conn)
-        init_conversation_schema(conn)
-        init_axiom_schema(conn)
-        init_quota_schema(conn)
-        init_sso_schema(conn)
+        # One list, shared with the CLI. Two lists is what this used to be, and a schema
+        # missing from one produces a database where a feature returns empty results
+        # rather than an error.
+        for entry in prepare_database(conn):
+            if entry["status"] == "applied":
+                logger.info("已应用迁移 %s: %s", entry["version"], entry.get("description", ""))
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:

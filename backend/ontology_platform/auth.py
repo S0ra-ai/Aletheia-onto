@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect
-from .schema import SchemaBundle
+from .schema import ColumnAddition, SchemaBundle
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,7 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             password_hash text not null,
             password_salt text not null,
             iterations integer not null default 240000,
+            identity_source text not null default 'local',
             status text not null default 'active',
             created_at text not null default current_timestamp,
             updated_at text not null default current_timestamp,
@@ -86,6 +87,7 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             password_hash text not null,
             password_salt text not null,
             iterations integer not null default 240000,
+            identity_source text not null default 'local',
             status text not null default 'active',
             created_at timestamp not null default current_timestamp,
             updated_at timestamp not null default current_timestamp,
@@ -100,6 +102,7 @@ SCHEMA_SQL: tuple[dict[str, str], ...] = (
             password_hash varchar(255) not null,
             password_salt varchar(255) not null,
             iterations integer not null default 240000,
+            identity_source varchar(32) not null default 'local',
             status varchar(50) not null default 'active',
             created_at datetime not null default current_timestamp,
             updated_at datetime not null default current_timestamp,
@@ -183,7 +186,23 @@ class AuthorizationError(Exception):
 # Tables this module owns. Declared as a bundle rather than applied by a hand-written
 # dispatch loop: the loop was duplicated in six modules and had to reach into
 # `database` for private helpers, which is technical debt items 3 and 5.
-SCHEMA = SchemaBundle(name="auth", tables=SCHEMA_SQL)
+SCHEMA = SchemaBundle(
+    name="auth",
+    tables=SCHEMA_SQL,
+    table_names=["platform_user", "user_session"],
+    # Added after `platform_user` shipped, so `create table if not exists` would not reach
+    # an existing deployment. The default is `local` because that is what every account
+    # predating SSO is; migration 0001 then reclassifies the ones SSO created.
+    columns=[
+        ColumnAddition(
+            table="platform_user",
+            column="identity_source",
+            sqlite_type="text not null default 'local'",
+            postgresql_type="text not null default 'local'",
+            mysql_type="varchar(32) not null default 'local'",
+        )
+    ],
+)
 
 
 def init_auth_schema(conn: Any) -> None:
@@ -371,7 +390,8 @@ def login(
     with connect(platform_db) as conn:
         row = conn.execute(
             """
-            select id, username, display_name, role_code, status, password_hash, password_salt, iterations
+            select id, username, display_name, role_code, status, password_hash, password_salt,
+                   iterations, identity_source
             from platform_user where username = ?
             """,
             (normalized,),
@@ -381,7 +401,16 @@ def login(
         stored_salt = row["password_salt"] if row is not None else "0" * 32
         iterations = int(row["iterations"]) if row is not None else PBKDF2_ITERATIONS
         valid = verify_password(password, stored_hash, stored_salt, iterations)
-        if row is None or not valid:
+        # An SSO account is refused explicitly, and the KDF still ran above so the refusal
+        # costs the same as a wrong password -- otherwise the response time would reveal
+        # which accounts are federated.
+        #
+        # An empty hash already made `verify_password` return False, so this changes no
+        # outcome today. It changes what the code *relies on*: the protection was a side
+        # effect of a guard clause in another function, and anyone loosening that clause
+        # would have opened password login on every SSO account without touching this file.
+        federated = row is not None and (row["identity_source"] or "local") != "local"
+        if row is None or not valid or federated:
             raise AuthenticationError("用户名或密码不正确")
         if row["status"] != "active":
             raise AuthenticationError("用户已被禁用")
