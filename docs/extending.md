@@ -247,14 +247,409 @@ register_resolver("cross_source", CrossSourceResolver)
 平台只做三项限制：必须以 `select`/`with` 开头、不含分号、标识列名经校验。
 这是**刻意的信任决定**:接入遗留系统时建议使用只读账号。
 
+## 8. 单位与量纲
+
+属性可以声明单位，同量纲比较自动换算。内置单位覆盖货币刻度、时长、
+质量、长度与比率——刻意保持小而领域中立，
+行业专有单位由部署方注册，理由同 [ADR-0003](adr/0003-no-builtin-domain-vocabulary.md)。
+
+```python
+from ontology_platform.derived_attributes import Unit, register_unit
+
+register_unit(Unit(code="jin", name="斤", dimension="mass", to_canonical=500.0))
+```
+
+`to_canonical` 是「1 个该单位等于多少个该量纲的规范单位」。
+换算统一经规范单位而非两两系数：N 个单位只需 N 个系数而不是 N²，
+且只有一处需要核对。
+
+覆盖已有单位必须显式传 `replace=True`——**静默重定义「吨」
+会改变所有已存值的含义，且不留任何记录**。
+
+新量纲需要恰好一个 `to_canonical == 1.0` 的单位，否则该量纲无法换算。
+
+### 跨量纲不会被换算
+
+`convert(1, "day", "kilogram")` 抛错而不是返回 1。
+这通常意味着建模有误，静默透传数字会让由此得出的判定看起来完全有效。
+
+## 9. 建表：SchemaBundle
+
+插件自带的表通过 `SchemaBundle` 声明，而不是自己写「按方言挑 DDL 再执行」的循环。
+
+```python
+from ontology_platform.schema import SchemaBundle
+
+SCHEMA = SchemaBundle(
+    name="my_plugin",
+    tables=(
+        {
+            "sqlite": "create table if not exists my_table (id integer primary key, note text not null default '')",
+            "postgresql": "create table if not exists my_table (id serial primary key, note text not null default '')",
+            "mysql": "create table if not exists my_table (id integer primary key auto_increment, note text)",
+        },
+    ),
+    indexes=(
+        {
+            "sqlite": "create index if not exists idx_my_table_note on my_table (note)",
+            "postgresql": "create index if not exists idx_my_table_note on my_table (note)",
+            # MySQL 没有 `create index if not exists`
+            "mysql": "create index idx_my_table_note on my_table (note)",
+        },
+    ),
+    table_names=("my_table",),
+)
+SCHEMA.verify_declared_names()   # 导入时校验声明与 DDL 一致
+
+
+def init_my_schema(conn):
+    SCHEMA.apply(conn)
+```
+
+### 为什么表和索引分开声明
+
+两者的失败方式不同：`create table if not exists` 在三方言上都幂等，
+而 MySQL 没有 `create index if not exists`，重跑会抛错。
+放在一个列表里会迫使每个调用方去嗅探语句文本来判断错误是否预期——
+而这正是此前在 8 个模块副本之间漂移掉的那个检查。
+
+### 表存在性用目录探测，不要捕获异常
+
+特性 schema 可选时，用 `SCHEMA.has_tables(conn)` 而不是 `try/except`。
+PostgreSQL 上一条失败语句会中止整个事务，
+同一连接上后续每条命令都会以 `InFailedSqlTransaction` 失败
+（同 [ADR-0004](adr/0004-three-platform-dialects.md)）。
+
+`verify_declared_names()` 防的是另一种错：改了 DDL 却忘改 `table_names`，
+会让探测对存在的表报「未配置」，**于是功能静默返回空结果而不是报错**。
+
+## 10. 接一个新的 SQL 数据库
+
+**不需要写适配器。** `information_schema` 是标准，扫描器完全共用；
+差异只有 6 个，声明为 `SqlDialect`：
+
+```python
+from ontology_platform.generic_sql_adapter import DriverSpec, register_sql_source
+from ontology_platform.sql_dialects import SqlDialect, get_dialect, register_dialect
+
+register_dialect(SqlDialect(
+    name="gaussdb",
+    current_schema_expression="current_schema()",  # 或 database()／sys_context(...)
+    quote_open='"', quote_close='"',
+    paramstyle="format",                            # format(%s)／qmark(?)／numeric(:1)
+    row_limit_style="limit_offset",                 # 或 fetch_first（Oracle／SQL Server／达梦）
+    catalog_uppercases_identifiers=False,           # Oracle／达梦 为 True
+    foreign_keys_via_referenced_columns=False,      # MySQL 为 True
+))
+
+register_sql_source(DriverSpec(
+    source_type="gaussdb",
+    dialect=get_dialect("gaussdb"),
+    module="psycopg2",
+    install_hint="GaussDB 接入需要安装 psycopg2。",
+    passes_uri_positionally=True,   # 驱动把整个连接串作为第一个位置参数
+))
+```
+
+这就是全部。它随即获得元数据扫描、列剖析、外键发现、实例解析、
+全部规则能力与运行时读取。
+
+### 三个容易踩的点
+
+**`catalog_uppercases_identifiers` 写错的后果是静默的。**
+Oracle 与达梦在目录里把未加引号的标识符折成大写，
+查 `contracts` 匹配不到任何行——于是表看起来**没有列**，而不是报错。
+
+**分页语法。** 硬编码 `limit n` 在 Oracle／SQL Server／达梦上会失败，
+而列剖析会吞掉查询异常，于是每一列都会「剖析为空」而不是抛错。
+
+**连接串的参数名各驱动不同**：psycopg 叫 `conninfo`、oracledb 叫 `dsn`、
+sqlite3 是位置参数。猜错会得到 `invalid connection option "dsn"`，
+看起来像配置错误而不是声明错误。因此有 `passes_uri_positionally`。
+
+### 内置声明
+
+Oracle／SQL Server／达梦／人大金仓／openGauss 已在
+`generic_sql_adapter.BUNDLED_SPECS` 中声明，驱动装上后
+`register_bundled_sql_sources()` 即会激活。
+`aletheia doctor` 会列出每个的驱动与安装提示。
+
+> ⚠️ 这些声明**未在 CI 中实测**：驱动与客户端库无法在 CI 环境安装。
+> 通用路径本身以真实 PostgreSQL 做了「声明式接入一个无专用适配器的库」的实证。
+
+## 11. 数据库写回执行器
+
+这是最危险的扩展点，因此约束最严。
+
+```python
+from ontology_platform.db_executors import DatabaseTarget, SqlWriteback, register_database_target
+
+register_database_target(DatabaseTarget(
+    scheme="orders",
+    connection_uri="postgresql://user:pass@host/orders",
+    dialect_name="postgresql",
+    driver_module="psycopg2",
+    writebacks={
+        "approve": SqlWriteback(
+            name="approve", kind="update", table="contracts",
+            columns=("status",), key_columns=("id",),
+            dialect_name="postgresql",
+        ),
+    },
+))
+```
+
+此后 `orders://` 成为可用的写回协议，操作路径末段选择写回名。
+
+### 平台会拒绝什么
+
+| 拒绝 | 理由 |
+|---|---|
+| 无 `keyColumns` 的 update／delete | 缺 WHERE 会改写整张表，而事后从判定记录看不出这一点 |
+| 含分号或多语句 | 绕过单语句审计 |
+| DDL 与权限语句（drop／alter／grant…） | 自动化用于推进业务状态，不用于变更结构 |
+| 未显式 `allowDelete=True` 的删除 | 销毁数据需要单独的授权决定 |
+| 缺失的参数值 | 静默变成 NULL 是「更新时把不该动的列清空」的成因 |
+| 请求提供的连接串 | 那会让调用方把自动化指向任何可达的数据库 |
+
+**语句由声明提供标识符，由请求提供值，且值一律绑定。**
+从操作载荷拼 SQL 会造出一个从 HTTP 请求体可达的注入面。
+
+**影响 0 行默认按失败处理**：UPDATE 匹配到 0 行意味着目标实例不在或条件写错。
+确实幂等的写回显式声明 `requireAffectedRows=False`。
+
+## 12. 声明一个 REST 数据源
+
+REST 响应没有可发现的模式，因此字段必须声明——
+从一次响应采样出的模式会随响应变化，引用它的判定不可复现。
+
+```python
+from ontology_platform.rest_adapter import RestResource, RestSpec, register_rest_source
+
+register_rest_source(RestSpec(
+    source_type="crm",
+    resources=(
+        RestResource(
+            name="customers",
+            list_path="/api/customers",
+            detail_path="/api/customers/{id}",
+            primary_key="id",
+            fields=("id", "name", "credit_status"),
+            field_types={"id": "integer"},
+            items_path="data.items",   # 响应被包裹时指明行列表位置
+        ),
+    ),
+))
+```
+
+已有 OpenAPI 文档时用 `register_openapi_source(source_type, document)`——
+那仍然是声明，只是由 API 的所有者写的。
+
+**未声明的字段不会下发**：声明就是契约，
+把响应里的一切透传会让规则可用的名字取决于当下的载荷。
+
+## 13. CSV／REST 源上的一个必然后果
+
+这两类源不推断外键，因此**引用关联对象的规则会 fail-closed**。
+例如合同管理蓝图自带的
+
+```
+customer.credit_status != 'blacklist'
+```
+
+在 CSV 源上会以 `name 'customer' is not defined` 记为「未通过」，
+而不是静默通过。
+
+**这是正确行为，不是缺陷。** 规则引用了一个此处不存在的关联，
+静默通过等于在未验证的数据上放行（ADR-0002）。
+
+处理方式有三种，按推荐顺序：
+
+1. 声明真实的关系——`describe_file_source()` 会给出外键候选，
+   由建模人员确认后建立
+2. 把该规则的作用域改到确实有该关联的对象上
+3. 给规则设生效期或改用 `guard_expression`，使其只在具备条件时参与判定
+
+`aletheia assess` 会在 `evaluationError` 里写明是哪个名字不存在，
+因此这类情形可以被发现，而不是变成一个说不清的判定。
+
+## 14. 验证你的实现：一致性契约
+
+**先跑契约，再上生产。** 契约随包发布，不需要 clone 本仓库、也不需要 pytest：
+
+```bash
+aletheia verify --list                                    # 全部契约与对应扩展点
+aletheia verify data_source_adapter --source-type mydb --uri "mydb://host/db" --table contracts
+aletheia verify retrieval_backend --name pgvector
+aletheia verify embedding_model --name my-model
+```
+
+失败时退出码为 1，因此可以直接当 CI 门禁用。
+
+需要活的被测对象的契约（实例解析器、写回执行器）在代码中调用：
+
+```python
+from ontology_platform.conformance import check_instance_resolver
+from ontology_platform.adapters import get_adapter
+
+with get_adapter("sqlite").runtime("/path/to/db.sqlite3") as runtime:
+    report = check_instance_resolver(MyResolver(spec), runtime, subject="my_resolver")
+
+print(report.summary())
+report.raise_for_failures()   # 抛 ConformanceError（继承 AssertionError），可直接用在测试里
+```
+
+### 契约检查的是什么
+
+**只检查内核真正依赖的属性。** 每一项都对应一个具体的错误后果，
+失败信息会把后果一起说出来——不该让实现者去猜某条规则为什么重要。
+
+| 契约 | 检查项数 | 最容易写错的一项 |
+|---|:--:|---|
+| `instance_resolver` | 9 | `list_ids()` 的 token 必须能被自己的 `fetch()` 接受 |
+| `data_source_adapter` | 9 | `fetch_primary_keys()` 给出的键必须能被 `fetch_one()` 取回 |
+| `retrieval_backend` | 6 | 不得返回候选集之外的条目 |
+| `embedding_model` | 4 | 同一输入必须返回同一向量 |
+| `writeback_executor` | 3 | 结果必须表明写回效果 |
+
+### 为什么往返闭合被单独强调
+
+适配器上真正会发生的 bug 不是崩溃，而是**不对称**：
+
+`list_ids()` 发出的 token 自己的 `fetch()` 不接受——这能通过实现者想得到的每一个单元测试，
+然后在批量研判时**静默地什么都不返回**，而单实例研判看起来完全正常。
+这类失败最难定位，因此契约把每一对往返都显式检查。
+
+### 必需项与建议项
+
+`required` 失败意味着**正常运行下会产出错误结果**；
+`advisory` 意味着能用但少了一项能力（例如非表数据源无法报告 `tables()`，
+于是漂移检测覆盖不到它）。
+两者刻意区分：混在一起会让报告无法用于「能不能上线」的判断。
+
+### 契约不是 API 稳定承诺
+
+注册表仍是实验性的（[ADR-0007](adr/0007-extension-registry-without-api-stability.md)）。
+稳定的是**被要求的行为**，不是要求它的函数签名。
+
+> 内核自身的全部实现（4 种解析器、SQLite／CSV 适配器、BM25／嵌入检索后端、
+> 数据库写回执行器）都在 CI 中跑同一套契约。
+> 只对作者自己的例子成立的契约会漂移成「要求平台自己都不做的事」，
+> 那样第一个跑它的集成方拿到的失败是我们造成的。
+
+## 15. 让一个对象跨两个数据源
+
+客户主数据在 CRM、合同在 ERP，两边都有「客户」但主键不同。
+声明它们靠什么对应：
+
+```python
+from ontology_platform.entity_resolution import (
+    CrossSourceLink, MatchKey, declare_cross_source_link,
+)
+
+declare_cross_source_link(platform_db, ontology_id, CrossSourceLink(
+    name="crm_to_erp",
+    primary_object_code="customer",          # 主源：实例身份来自它
+    secondary_data_source_id=2,              # 副源
+    secondary_table="clients",
+    match_keys=(MatchKey(primary_column="tax_id", secondary_column="taxpayer_no"),),
+    prefix="erp",                            # 副源字段挂成 erp_credit_limit
+))
+```
+
+此后规则可以直接写 `erp_credit_limit > 0`。
+
+跨源聚合同理，在 `AggregateSpec` 上指明目标源：
+
+```python
+AggregateSpec(
+    name="erp_order_total", function="sum",
+    target_table="orders", target_column="client_taxpayer_no",
+    group_column="tax_id", value_column="amount",
+    target_data_source_id=2,        # 0（默认）表示本源
+)
+```
+
+### 为什么必须声明匹配键
+
+跨源判定会把「这两行是同一实例」写进判定链。
+**若那个判断不可核验，基于它的每个结论都不可解释**——
+「为什么这份合同被阻断」的答案会变成「因为我们认为这两行是同一个客户」。
+
+因此平台**不做**相似度匹配、编辑距离、机器学习实体链接：
+那些会让判定结论随阈值变化，且无法回答「为什么这两行是同一个」。
+
+规范化只做确定性的部分：去空白、统一大小写、统一转字符串
+（CRM 存 varchar 而 ERP 存 bigint 时，按原类型比较会一个都匹配不上）。
+
+### 三条会让你意外的拒绝
+
+| 情形 | 平台行为 | 理由 |
+|---|---|---|
+| 副源匹配到多行 | **拒绝**，不挑第一行 | 挑一行会让判定作用在任意选中的记录上，而结果看起来正常 |
+| 两侧同名字段取值不同 | **标记冲突**，规则引用它会 fail-closed | 没人能说清该用哪一侧的值 |
+| 匹配失败 | **不注入任何字段** | 注入 None 会让 `erp_x > 0` 为假，与真实违规无法区分 |
+
+确实允许取任一行时声明 `require_unique=False`；
+确实要取某一侧时声明 `merge_strategy="prefer_primary"`／`"prefer_secondary"`——
+但选择会留痕，否则事后无法解释用了哪个值。
+
+### 不做传递推导
+
+声明了 A↔B 与 B↔C，平台**不会**自动得出 A↔C。
+那会引入一条没人声明过的对应关系，而它同样会进入判定链。
+需要 A↔C 就显式声明它。
+
+完整取舍见 [ADR-0018](adr/0018-cross-source-entity-resolution.md)。
+
+## 16. 给插件的表加字段
+
+`create table if not exists` 对**已存在的表什么都不做**，
+因此新增字段只对全新部署生效——功能在开发机上能用、升级后不能用，且不会报错。
+
+用 `ColumnAddition` 声明：
+
+```python
+from ontology_platform.schema import ColumnAddition, SchemaBundle
+
+SCHEMA = SchemaBundle(
+    name="my_plugin",
+    tables=(...),
+    table_names=("my_table",),
+    columns=(
+        ColumnAddition(
+            table="my_table", column="new_field",
+            sqlite_type="integer not null default 0",
+            postgresql_type="integer not null default 0",
+            mysql_type="integer not null default 0",
+        ),
+    ),
+)
+```
+
+**默认值必须等于既有行为**，否则升级会改变已有数据的含义。
+
+加列先查目录再执行 DDL，因此幂等且不依赖驱动的错误文本——
+捕获异常判断「列是否已存在」在 PostgreSQL 上会中止整个事务（同 ADR-0004）。
+
 ## 尚未开放的扩展点
 
 以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
 
-- 跨源实例解析（一个对象跨两个数据源）—— 需先做跨源实体消解
+- 跨源实例解析（一个对象跨两个数据源）—— 需先回答「两个源里哪两行是同一个业务实例」，
+  且该判断本身必须可核验，否则跨源判定无法解释
 - 认证后端（SSO／LDAP）
 - 事件钩子
 - 渠道接入
+- 关系分类策略（目前是固定的结构化规则，见
+  [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md)）
+- 聚合函数（`sum`／`count`／`min`／`max`／`avg`，需要窗口函数请改用
+  `custom_sql` 解析器）
+
+> **事件钩子刻意不开放。** 事件是记录而非触发器：能触发自动化的事件
+> 会让回放历史重新执行业务动作。需要「事件驱动动作」请走
+> `automation.py` 的写回执行器，由决策驱动
+> （[ADR-0014](adr/0014-type-hierarchy-and-business-events.md)）。
 
 这些的形状取决于第二个真实用例，过早冻结会产生错误 API
 （[ADR-0001](adr/0001-three-repo-distribution.md) Consequences）。

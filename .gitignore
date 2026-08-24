@@ -25,6 +25,9 @@ dist/
 .env
 .env.*
 !.env.example
+# The deploy directory has its own env file; the example is tracked, the real one is not.
+deploy/.env
+!deploy/.env.example
 
 # Editors and OS cruft
 .idea/

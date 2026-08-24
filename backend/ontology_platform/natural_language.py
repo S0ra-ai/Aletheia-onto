@@ -12,8 +12,10 @@ from .automation import preflight_operation
 from .config import RESOLUTION_CONFIDENCE
 from .database import connect
 from .knowledge_base import build_reasoning_chain
+from .knowledge_documents import load_confirmed_entries
 from .model_client import OpenRouterClient, OpenRouterConfig
 from .ontology import explain_instance
+from .retrieval import filter_entries_for_role, retrieve
 from .semantic_kernel import assess_decision_consistency, assess_instance
 from .vocabulary import DomainVocabulary, load_vocabulary
 
@@ -65,6 +67,7 @@ def query_natural_language(
     instance_id: str | None = None,
     history: list[dict[str, str]] | None = None,
     use_model: bool = True,
+    role_code: str = "",
 ) -> dict[str, Any]:
     normalized_question = " ".join(question.strip().split())
     if not normalized_question:
@@ -76,7 +79,7 @@ def query_natural_language(
         if use_model
         else {}
     )
-    intent = str(model_interpretation.get("intent") or _detect_intent(normalized_question))
+    intent = str(model_interpretation.get("intent") or detect_intent(normalized_question))
     resolved = _resolve_target(
         platform_db,
         normalized_question,
@@ -161,6 +164,7 @@ def query_natural_language(
                 rule_codes=[
                     rule.get("ruleCode", "") for rule in evidence.get("ruleResults", []) if not rule.get("passed")
                 ],
+                role_code=role_code,
             )
             answer = _answer_assessment(evidence, vocabulary, citations)
             if citations:
@@ -233,7 +237,7 @@ def _interpret_with_model(
         },
         {
             "role": "user",
-            "content": _compact_json(
+            "content": compact_json(
                 {
                     "availableSemanticContext": context,
                     "recentConversation": history[-8:],
@@ -265,7 +269,7 @@ def _summarize_with_model(
     evidence: dict[str, Any],
     history: list[dict[str, str]],
 ) -> str:
-    compact_evidence = _compact_evidence(evidence)
+    trimmed_evidence = compact_evidence(evidence)
     messages = [
         {
             "role": "system",
@@ -279,7 +283,7 @@ def _summarize_with_model(
         },
         {
             "role": "user",
-            "content": _compact_json(
+            "content": compact_json(
                 {
                     "question": question,
                     "intent": intent,
@@ -291,7 +295,7 @@ def _summarize_with_model(
                         "operationCode": resolved.operation_code,
                     },
                     "deterministicAnswer": deterministic_answer,
-                    "evidence": compact_evidence,
+                    "evidence": trimmed_evidence,
                     "recentConversation": history[-6:],
                 }
             ),
@@ -304,7 +308,13 @@ def _summarize_with_model(
         return ""
 
 
-def _detect_intent(question: str) -> str:
+def detect_intent(question: str) -> str:
+    """Classify a question into one of the routing intents.
+
+    Public because `agent` routes on it. It used to be private and imported across the
+    module boundary anyway, which is the worst of both: a name we never promised to
+    keep, that something already depended on.
+    """
     if re.search(
         r"(有哪些|列出|介绍|概览|知识库).*(规则|关系|本体|对象)|(规则|关系|本体|对象).*(有哪些|是什么|概览)", question
     ):
@@ -723,6 +733,7 @@ def _retrieve_citations(
     object_code: str = "",
     rule_codes: Iterable[str] = (),
     limit: int = 3,
+    role_code: str = "",
 ) -> list[dict[str, Any]]:
     """Find confirmed knowledge entries backing the rules under discussion.
 
@@ -730,15 +741,17 @@ def _retrieve_citations(
     object or these rules, and only then ranked. That ordering is what makes a
     citation attributable rather than merely similar (ADR-0009).
 
+    Permission filtering comes between the two. Anchoring makes a citation
+    *attributable*; it does not make it *permitted*. An entry anchored to an object the
+    caller cannot read is still an object they cannot read, and putting its text in an
+    answer discloses exactly what the object permission was protecting.
+
     Failures are swallowed deliberately -- the knowledge tables are optional, and
     a deployment without them must still get its verdict. A missing citation
     degrades the answer; a raised exception would remove it entirely.
     """
     codes = [code for code in rule_codes if code]
     try:
-        from .knowledge_documents import load_confirmed_entries
-        from .retrieval import retrieve
-
         with connect(platform_db) as conn:
             entries = load_confirmed_entries(
                 conn,
@@ -748,6 +761,12 @@ def _retrieve_citations(
             )
         if not entries:
             return []
+        # Between anchoring and ranking: dropping a permitted-set violation *after*
+        # ranking would already have used forbidden text to decide what to show.
+        if role_code:
+            entries = filter_entries_for_role(platform_db, entries, role_code=role_code, ontology_id=ontology_id)
+            if not entries:
+                return []
         # Prefer entries anchored to a failed rule; fall back to object-level
         # entries only when no rule-specific text exists.
         rule_anchored = [entry for entry in entries if entry.get("ruleCode") in codes]
@@ -909,11 +928,22 @@ def _extract_json_object(content: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _compact_json(value: Any) -> str:
+def compact_json(value: Any) -> str:
+    """JSON for a model prompt: no ASCII escaping, and never raises on odd types.
+
+    `default=str` matters -- a Decimal or date in a record would otherwise raise mid
+    prompt-assembly and turn a serialisation detail into a failed answer.
+    """
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
-def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+def compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Shrink an evidence payload to what a model prompt can carry.
+
+    Public because `agent` assembles prompts from the same evidence shapes. Truncation
+    is deliberate and lossy: the full evidence stays in the decision record, which is
+    what an audit reads, while the prompt gets the part that fits.
+    """
     if "ruleResults" in evidence:
         failed = [rule for rule in evidence.get("ruleResults", []) if not rule.get("passed")]
         return {

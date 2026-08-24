@@ -10,12 +10,41 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Protocol
 from urllib.parse import urlparse
 
+from .config import MODEL_PROVIDER_DEFAULTS
+
+# `schema` depends only on the dialect name, so importing it here does not create a
+# cycle -- which is the whole reason the DDL selectors moved there.
+from .schema import MYSQL, POSTGRESQL, SQLITE, statement_for
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .context import ContextLike
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATA_DIR = Path("data")
+
+def _default_data_dir() -> Path:
+    """Where the platform database lives when nothing says otherwise.
+
+    A bare relative `data/` is right when running from a checkout -- it keeps a
+    development database next to the code and out of the user's home. It is wrong for
+    an installed package: the path then depends on the working directory, so the same
+    command finds a different database (or an empty one) depending on where it was run.
+    That failure is quiet, which makes it worse than an error.
+
+    So: `ONTOLOGY_DATA_DIR` wins if set; otherwise `data/` when a checkout is detected
+    (a sibling `backend/` directory), and `~/.aletheia` when not.
+    """
+    override = os.environ.get("ONTOLOGY_DATA_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    # `parents[2]` is the repository root when this file is at backend/ontology_platform/.
+    checkout_root = Path(__file__).resolve().parents[2]
+    if (checkout_root / "backend" / "ontology_platform").is_dir():
+        return checkout_root / "data"
+    return Path.home() / ".aletheia"
+
+
+DEFAULT_DATA_DIR = _default_data_dir()
 DEFAULT_PLATFORM_DB = DEFAULT_DATA_DIR / "platform.sqlite3"
 
 _platform_db_type: str = "sqlite"
@@ -27,8 +56,6 @@ SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get("ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEO
 
 def _model_provider_base_url() -> str:
     """Default model endpoint, imported lazily to avoid a circular import."""
-    from .config import MODEL_PROVIDER_DEFAULTS
-
     return MODEL_PROVIDER_DEFAULTS.base_url
 
 
@@ -68,7 +95,7 @@ def configure_platform_db(db_type: str, connection_uri: str = "") -> None:
     from .context import configure_default_context
 
     _platform_db_type = db_type
-    _platform_db_uri = connection_uri if connection_uri else _default_uri(db_type)
+    _platform_db_uri = connection_uri if connection_uri else default_platform_uri(db_type)
     context = configure_default_context(db_type, _platform_db_uri)
     # Keep the legacy global pointing at the same adapter instance, so a caller
     # that reaches for it directly cannot end up on a different connection than
@@ -76,7 +103,13 @@ def configure_platform_db(db_type: str, connection_uri: str = "") -> None:
     _platform_adapter = context.adapter
 
 
-def _default_uri(db_type: str) -> str:
+def default_platform_uri(db_type: str) -> str:
+    """The connection URI assumed when a dialect is configured without one.
+
+    Public because `context` builds contexts from a dialect alone. The defaults are
+    development conveniences, not deployment advice -- a real deployment passes its own
+    URI.
+    """
     if db_type == "sqlite":
         return str(DEFAULT_PLATFORM_DB)
     if db_type in ("postgresql", "postgres"):
@@ -86,12 +119,14 @@ def _default_uri(db_type: str) -> str:
     return str(DEFAULT_PLATFORM_DB)
 
 
-def _create_adapter(db_type: str, connection_uri: str, schema: str = "") -> PlatformAdapter:
+def create_platform_adapter(db_type: str, connection_uri: str, schema: str = "") -> PlatformAdapter:
     """Build a platform adapter.
 
     `schema` carries per-tenant routing (ADR-0006). SQLite ignores it: it has no
     schema concept, so a tenant is a separate file and the routing already lives in
     the connection URI.
+
+    Public because `context` -- which owns adapter lifetime -- has to construct them.
     """
     normalized = db_type.lower()
     if normalized == "sqlite":
@@ -245,7 +280,7 @@ class SQLitePlatformAdapter:
         return int(conn.execute("select last_insert_rowid()").fetchone()[0])
 
     def _schema_statements(self) -> list[str]:
-        return [_sqlite_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, SQLITE) for stmt in SCHEMA_DEFINITIONS]
 
     def _migrate_model_config_schema(self, conn: sqlite3.Connection) -> None:
         try:
@@ -259,7 +294,7 @@ class SQLitePlatformAdapter:
         legacy_rows = conn.execute("select config_key, config_value from model_config").fetchall()
         legacy = {row["config_key"]: row["config_value"] for row in legacy_rows}
         conn.execute("alter table model_config rename to model_config_legacy")
-        conn.execute(_sqlite_ddl(_MODEL_CONFIG_DDL))
+        conn.execute(statement_for(_MODEL_CONFIG_DDL, SQLITE))
         conn.execute(
             """
             insert into model_config (
@@ -325,7 +360,7 @@ class PostgreSQLPlatformAdapter:
             return _scalar(cur.fetchone())
 
     def _schema_statements(self) -> list[str]:
-        return [_postgresql_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, POSTGRESQL) for stmt in SCHEMA_DEFINITIONS]
 
 
 # -- MySQL Platform Adapter --
@@ -365,7 +400,7 @@ class MySQLPlatformAdapter:
             return _scalar(cur.fetchone())
 
     def _schema_statements(self) -> list[str]:
-        return [_mysql_ddl(stmt) for stmt in SCHEMA_DEFINITIONS]
+        return [statement_for(stmt, MYSQL) for stmt in SCHEMA_DEFINITIONS]
 
 
 # -- Schema definitions (dialect-neutral) --
@@ -586,6 +621,97 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
         "text not null default ''",
         "text",
     ),
+    # Relation semantics (generality #4). Existing rows carry `many_to_one` /
+    # `association` / optional, which is the weakest classification and therefore
+    # the safe default: it never overstates a link's strength, so nothing that was
+    # previously allowed becomes cascading.
+    ColumnMigration(
+        "business_relation",
+        "cardinality",
+        "text not null default 'many_to_one'",
+        "text not null default 'many_to_one'",
+        "varchar(50) not null default 'many_to_one'",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "relation_kind",
+        "text not null default 'association'",
+        "text not null default 'association'",
+        "varchar(50) not null default 'association'",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "optional",
+        "integer not null default 1",
+        "integer not null default 1",
+        "integer not null default 1",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "inference_reason",
+        "text not null default ''",
+        "text not null default ''",
+        "text",
+    ),
+    # For a many-to-many collapsed from a junction table: which table it came from,
+    # and the two columns that linked the sides. Kept so the relation can be
+    # explained and traversed without re-deriving the junction.
+    ColumnMigration(
+        "business_relation",
+        "junction_table",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "junction_source_column",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    ColumnMigration(
+        "business_relation",
+        "junction_target_column",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    # Derived attributes and units (generality #7 and #10). Empty means "a plain
+    # mapped column with no declared unit", so every existing attribute keeps its
+    # current behaviour: comparison stays a plain numeric comparison.
+    ColumnMigration(
+        "business_attribute",
+        "derived_expression",
+        "text not null default ''",
+        "text not null default ''",
+        "text",
+    ),
+    ColumnMigration(
+        "business_attribute",
+        "unit",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(50) not null default ''",
+    ),
+    # Type hierarchy (generality #6). Empty means "a standalone type", so every
+    # existing object keeps evaluating exactly its own rules.
+    ColumnMigration(
+        "business_object",
+        "parent_object_code",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
+    # Which ancestor rule this one supersedes (generality #6). Empty means it
+    # supersedes nothing, so every existing rule keeps applying.
+    ColumnMigration(
+        "business_rule",
+        "overrides",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(255) not null default ''",
+    ),
 )
 
 
@@ -645,18 +771,6 @@ def _apply_column_migrations(conn: Any, db_type: str) -> list[str]:
                 conn.rollback()
             raise
     return applied
-
-
-def _sqlite_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("sqlite", next(iter(stmt.values())))
-
-
-def _postgresql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("postgresql", next(iter(stmt.values())))
-
-
-def _mysql_ddl(stmt: dict[str, str]) -> str:
-    return stmt.get("mysql", next(iter(stmt.values())))
 
 
 def _parse_mysql_uri(connection_uri: str) -> dict[str, Any]:

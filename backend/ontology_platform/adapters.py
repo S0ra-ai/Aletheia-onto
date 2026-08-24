@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Protocol
+from typing import Any, Callable, Iterable, Iterator, Protocol, Union
 from urllib.parse import urlparse
 
 from .config import QUERY_LIMITS
 from .instance_key import InstanceKey, parse_key_columns
 from .registry import Registry, RegistryError, load_entry_point_plugins
+from .sql_dialects import (
+    SqlDialect,
+    columns_query,
+    foreign_keys_query,
+    primary_keys_query,
+    resolve_dialect,
+    tables_query,
+)
+
+# Either a dialect name or a profile. Widened rather than replaced so the existing call
+# sites that pass `"postgresql"` keep working.
+DialectLike = Union[str, SqlDialect]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -181,13 +196,13 @@ class SQLiteAdapter:
     def test_connection(self, connection_uri: str) -> dict[str, Any]:
         path = Path(connection_uri)
         if not path.exists():
-            return _connection_status(self.source_type, False, "not_found", f"SQLite 数据库文件不存在: {path}")
+            return connection_status(self.source_type, False, "not_found", f"SQLite 数据库文件不存在: {path}")
         try:
             with sqlite3.connect(path) as conn:
                 conn.execute("select 1").fetchone()
-            return _connection_status(self.source_type, True, "ok", "SQLite 数据库连接成功。")
+            return connection_status(self.source_type, True, "ok", "SQLite 数据库连接成功。")
         except sqlite3.Error as error:
-            return _connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", str(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         with sqlite3.connect(Path(connection_uri)) as conn:
@@ -208,20 +223,20 @@ class PostgreSQLAdapter:
         try:
             psycopg = _optional_import("psycopg", "PostgreSQL 接入需要安装 psycopg。")
         except RuntimeError as error:
-            return _connection_status(self.source_type, False, "driver_missing", str(error))
+            return connection_status(self.source_type, False, "driver_missing", str(error))
         try:
             with psycopg.connect(connection_uri, connect_timeout=3) as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("select 1")
                     cursor.fetchone()
-            return _connection_status(self.source_type, True, "ok", "PostgreSQL 数据库连接成功。")
+            return connection_status(self.source_type, True, "ok", "PostgreSQL 数据库连接成功。")
         except Exception as error:
-            return _connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", str(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         psycopg = _optional_import("psycopg", "PostgreSQL 接入需要安装 psycopg。")
         with psycopg.connect(connection_uri, row_factory=psycopg.rows.dict_row) as conn:
-            return _scan_information_schema(conn, "postgresql")
+            return scan_information_schema(conn, "postgresql")
 
     @contextmanager
     def runtime(self, connection_uri: str) -> Iterator[RuntimeDatabase]:
@@ -237,7 +252,7 @@ class MySQLAdapter:
         try:
             pymysql = _optional_import("pymysql", "MySQL 接入需要安装 PyMySQL。")
         except RuntimeError as error:
-            return _connection_status(self.source_type, False, "driver_missing", str(error))
+            return connection_status(self.source_type, False, "driver_missing", str(error))
         try:
             options = _parse_mysql_uri(connection_uri)
             options["connect_timeout"] = 3
@@ -245,15 +260,15 @@ class MySQLAdapter:
                 with conn.cursor() as cursor:
                     cursor.execute("select 1")
                     cursor.fetchone()
-            return _connection_status(self.source_type, True, "ok", "MySQL 数据库连接成功。")
+            return connection_status(self.source_type, True, "ok", "MySQL 数据库连接成功。")
         except Exception as error:
-            return _connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", str(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         pymysql = _optional_import("pymysql", "MySQL 接入需要安装 PyMySQL。")
         options = _parse_mysql_uri(connection_uri)
         with pymysql.connect(cursorclass=pymysql.cursors.DictCursor, **options) as conn:
-            return _scan_information_schema(conn, "mysql")
+            return scan_information_schema(conn, "mysql")
 
     @contextmanager
     def runtime(self, connection_uri: str) -> Iterator[RuntimeDatabase]:
@@ -264,47 +279,87 @@ class MySQLAdapter:
 
 
 class SQLRuntime:
-    def __init__(self, conn: Any, dialect: str):
+    """Runtime reads for any SQL database, driven by a dialect profile.
+
+    One implementation rather than one per database: the queries are plain
+    single-table selects, and everything that differs (quoting, placeholders, row
+    limiting) comes from the profile.
+    """
+
+    def __init__(self, conn: Any, dialect: DialectLike):
         self.conn = conn
-        self.dialect = dialect
+        self.profile = resolve_dialect(dialect)
+        # Kept as the profile name so existing callers reading `.dialect` still see a
+        # string, which is what they did before profiles existed.
+        self.dialect = self.profile.name
 
     def fetch_primary_keys(self, table_name: str, primary_key: str, limit: int = 50) -> list[Any]:
         columns = parse_key_columns(primary_key)
-        table = _quote_identifier(table_name, self.dialect)
+        table = self.profile.quote(table_name)
         if len(columns) == 1:
-            column = _quote_identifier(columns[0], self.dialect)
+            column = self.profile.quote(columns[0])
             rows = self._fetch_all(
-                f"select {column} as instance_id from {table} order by {column} limit %s",
-                (limit,),
+                f"select {column} as instance_id from {table} order by {column} {self.profile.limit_clause(limit)}",
+                (),
             )
             return [row["instance_id"] for row in rows]
-        selected = ", ".join(_quote_identifier(column, self.dialect) for column in columns)
-        rows = self._fetch_all(f"select {selected} from {table} order by {selected} limit %s", (limit,))
+        selected = ", ".join(self.profile.quote(column) for column in columns)
+        rows = self._fetch_all(
+            f"select {selected} from {table} order by {selected} {self.profile.limit_clause(limit)}",
+            (),
+        )
         return [InstanceKey.from_row(primary_key, row).token for row in rows]
 
     def browse_rows(self, table_name: str, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
-        table = _quote_identifier(table_name, self.dialect)
+        table = self.profile.quote(table_name)
         total_row = self._fetch_one(f"select count(*) as row_count from {table}", ()) or {"row_count": 0}
-        rows = self._fetch_all(f"select * from {table} limit %s offset %s", (limit, offset))
+        # `fetch first` requires an ORDER BY to be deterministic, and browsing an
+        # unordered page is meaningless anyway -- the same offset would return different
+        # rows on consecutive calls.
+        order = self._browse_order(table_name)
+        rows = self._fetch_all(
+            f"select * from {table}{order} {self.profile.limit_clause(limit, offset)}",
+            (),
+        )
         return rows, int(total_row["row_count"])
+
+    def _browse_order(self, table_name: str) -> str:
+        """An ORDER BY for paging, using the primary key when one is discoverable.
+
+        Falls back to no ordering rather than raising: browsing is a convenience view,
+        and a table without a key is still worth looking at. `fetch first` dialects
+        need *some* order to page deterministically, so those get the first column.
+        """
+        try:
+            keys = _primary_keys(self.conn, table_name, self.profile)
+        except Exception:
+            keys = []
+        if keys:
+            return " order by " + ", ".join(self.profile.quote(column) for column in keys)
+        if self.profile.row_limit_style == "fetch_first":
+            # Ordering by ordinal position is portable and enough to make paging stable.
+            return " order by 1"
+        return ""
 
     def fetch_one(self, table_name: str, primary_key: str, instance_id: str) -> dict[str, Any] | None:
         key = InstanceKey.from_token(primary_key, instance_id)
-        conditions, params = key.where_clause(lambda column: _quote_identifier(column, self.dialect), placeholder="%s")
+        conditions, params = key.where_clause(self.profile.quote, placeholder=self.profile.placeholder())
         return self._fetch_one(
-            f"select * from {_quote_identifier(table_name, self.dialect)} where {conditions}",
+            f"select * from {self.profile.quote(table_name)} where {conditions}",
             params,
         )
 
     def fetch_related_one(self, table_name: str, column_name: str, value: Any) -> dict[str, Any] | None:
         return self._fetch_one(
-            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            f"select * from {self.profile.quote(table_name)} "
+            f"where {self.profile.quote(column_name)} = {self.profile.placeholder()}",
             (value,),
         )
 
     def fetch_related_many(self, table_name: str, column_name: str, value: Any) -> list[dict[str, Any]]:
         return self._fetch_all(
-            f"select * from {_quote_identifier(table_name, self.dialect)} where {_quote_identifier(column_name, self.dialect)} = %s",
+            f"select * from {self.profile.quote(table_name)} "
+            f"where {self.profile.quote(column_name)} = {self.profile.placeholder()}",
             (value,),
         )
 
@@ -378,7 +433,7 @@ def _profile_sqlite_column(
         f"""
         select distinct {quoted_column} as value from {quoted_table}
         where {quoted_column} is not null
-        limit 5
+        limit {QUERY_LIMITS.column_profile_samples}
         """
     ).fetchall()
     samples = [row["value"] for row in sample_rows]
@@ -389,50 +444,32 @@ def _profile_sqlite_column(
     )
 
 
-def _scan_information_schema(conn: Any, dialect: str) -> list[SourceTableInfo]:
-    table_rows = _fetch_dicts(
-        conn,
-        """
-        select table_name
-        from information_schema.tables
-        where table_schema = current_schema()
-          and table_type = 'BASE TABLE'
-        order by table_name
-        """
-        if dialect == "postgresql"
-        else """
-        select table_name
-        from information_schema.tables
-        where table_schema = database()
-          and table_type = 'BASE TABLE'
-        order by table_name
-        """,
-    )
-    return [_scan_information_schema_table(conn, row["table_name"], dialect) for row in table_rows]
+def scan_information_schema(conn: Any, dialect: DialectLike) -> list[SourceTableInfo]:
+    """Scan every base table in the connection's schema.
+
+    One implementation for every SQL database: `information_schema` is standard, and the
+    parts that genuinely differ come from the dialect profile (see `sql_dialects`). This
+    used to be a binary `if postgresql else mysql`, which meant a third database could
+    not be added without editing this function -- i.e. a fork.
+
+    Public because a third-party adapter's whole job is to supply a connection and a
+    dialect and then call this. Keeping it private meant every new database had to
+    reach across a module boundary for it.
+    """
+    profile = resolve_dialect(dialect)
+    table_rows = _fetch_dicts(conn, tables_query(profile))
+    return [_scan_information_schema_table(conn, row["table_name"], profile) for row in table_rows]
 
 
-def _scan_information_schema_table(conn: Any, table_name: str, dialect: str) -> SourceTableInfo:
-    row_count = _estimated_row_count(conn, table_name, dialect)
-    column_rows = _fetch_dicts(
-        conn,
-        """
-        select column_name, data_type, is_nullable, ordinal_position
-        from information_schema.columns
-        where table_schema = current_schema()
-          and table_name = %s
-        order by ordinal_position
-        """
-        if dialect == "postgresql"
-        else """
-        select column_name, data_type, is_nullable, ordinal_position
-        from information_schema.columns
-        where table_schema = database()
-          and table_name = %s
-        order by ordinal_position
-        """,
-        (table_name,),
-    )
-    primary_keys = _primary_keys(conn, table_name, dialect)
+def _scan_information_schema_table(conn: Any, table_name: str, dialect: DialectLike) -> SourceTableInfo:
+    profile = resolve_dialect(dialect)
+    row_count = _estimated_row_count(conn, table_name, profile)
+    # Oracle and 达梦 fold unquoted identifiers to upper case in the catalog, so a
+    # lookup for `contracts` matches nothing while `CONTRACTS` succeeds -- and the
+    # failure is silent: the table simply appears to have no columns.
+    catalog_name = profile.catalog_name(table_name)
+    column_rows = _fetch_dicts(conn, columns_query(profile), (catalog_name,))
+    primary_keys = _primary_keys(conn, table_name, profile)
     columns = [
         SourceColumnInfo(
             name=row["column_name"],
@@ -440,7 +477,7 @@ def _scan_information_schema_table(conn: Any, table_name: str, dialect: str) -> 
             nullable=row["is_nullable"].upper() == "YES",
             ordinal=int(row["ordinal_position"]) - 1,
             is_primary_key=row["column_name"] in primary_keys,
-            profile=_profile_sql_column(conn, table_name, row["column_name"], row_count, dialect),
+            profile=_profile_sql_column(conn, table_name, row["column_name"], row_count, profile),
         )
         for row in column_rows
     ]
@@ -449,27 +486,35 @@ def _scan_information_schema_table(conn: Any, table_name: str, dialect: str) -> 
         row_count=row_count,
         primary_key=",".join(primary_keys),
         columns=columns,
-        foreign_keys=_foreign_keys(conn, table_name, dialect),
+        foreign_keys=_foreign_keys(conn, table_name, profile),
     )
 
 
-def _estimated_row_count(conn: Any, table_name: str, dialect: str) -> int:
+def _estimated_row_count(conn: Any, table_name: str, dialect: DialectLike) -> int:
     try:
-        rows = _fetch_dicts(conn, f"select count(*) as count from {_quote_identifier(table_name, dialect)}")
+        rows = _fetch_dicts(conn, f"select count(*) as count from {resolve_dialect(dialect).quote(table_name)}")
         return int(rows[0]["count"]) if rows else 0
     except Exception:
         return 0
 
 
-def _profile_sql_column(conn: Any, table_name: str, column_name: str, row_count: int, dialect: str) -> ColumnProfile:
-    table_ref = _quote_identifier(table_name, dialect)
-    column_ref = _quote_identifier(column_name, dialect)
+def _profile_sql_column(
+    conn: Any, table_name: str, column_name: str, row_count: int, dialect: DialectLike
+) -> ColumnProfile:
+    profile = resolve_dialect(dialect)
+    table_ref = profile.quote(table_name)
+    column_ref = profile.quote(column_name)
     try:
         null_rows = _fetch_dicts(conn, f"select count(*) as count from {table_ref} where {column_ref} is null")
         distinct_rows = _fetch_dicts(conn, f"select count(distinct {column_ref}) as count from {table_ref}")
+        # `limit 5` is not portable: Oracle, SQL Server and 达梦 need `fetch first`.
+        # A hardcoded `limit` here would make profiling fail on those, and the failure
+        # is swallowed below -- so every column would silently come back unprofiled.
         sample_rows = _fetch_dicts(
             conn,
-            f"select distinct {column_ref} as value from {table_ref} where {column_ref} is not null limit 5",
+            f"select distinct {column_ref} as value from {table_ref} "
+            f"where {column_ref} is not null order by {column_ref} "
+            f"{profile.limit_clause(QUERY_LIMITS.column_profile_samples)}",
         )
     except Exception:
         return ColumnProfile(samples=[], null_ratio=0, distinct_count=0, enum_candidate=False)
@@ -485,65 +530,15 @@ def _profile_sql_column(conn: Any, table_name: str, column_name: str, row_count:
     )
 
 
-def _primary_keys(conn: Any, table_name: str, dialect: str) -> list[str]:
-    rows = _fetch_dicts(
-        conn,
-        """
-        select kcu.column_name
-        from information_schema.table_constraints tc
-        join information_schema.key_column_usage kcu
-          on tc.constraint_name = kcu.constraint_name
-         and tc.table_schema = kcu.table_schema
-         and tc.table_name = kcu.table_name
-        where tc.constraint_type = 'PRIMARY KEY'
-          and tc.table_schema = current_schema()
-          and tc.table_name = %s
-        order by kcu.ordinal_position
-        """
-        if dialect == "postgresql"
-        else """
-        select kcu.column_name
-        from information_schema.table_constraints tc
-        join information_schema.key_column_usage kcu
-          on tc.constraint_name = kcu.constraint_name
-         and tc.table_schema = kcu.table_schema
-         and tc.table_name = kcu.table_name
-        where tc.constraint_type = 'PRIMARY KEY'
-          and tc.table_schema = database()
-          and tc.table_name = %s
-        order by kcu.ordinal_position
-        """,
-        (table_name,),
-    )
+def _primary_keys(conn: Any, table_name: str, dialect: DialectLike) -> list[str]:
+    profile = resolve_dialect(dialect)
+    rows = _fetch_dicts(conn, primary_keys_query(profile), (profile.catalog_name(table_name),))
     return [row["column_name"] for row in rows]
 
 
-def _foreign_keys(conn: Any, table_name: str, dialect: str) -> list[SourceForeignKeyInfo]:
-    rows = _fetch_dicts(
-        conn,
-        """
-        select kcu.column_name, ccu.table_name as target_table, ccu.column_name as target_column
-        from information_schema.table_constraints tc
-        join information_schema.key_column_usage kcu
-          on tc.constraint_name = kcu.constraint_name
-         and tc.table_schema = kcu.table_schema
-        join information_schema.constraint_column_usage ccu
-          on ccu.constraint_name = tc.constraint_name
-         and ccu.table_schema = tc.table_schema
-        where tc.constraint_type = 'FOREIGN KEY'
-          and tc.table_schema = current_schema()
-          and tc.table_name = %s
-        """
-        if dialect == "postgresql"
-        else """
-        select kcu.column_name, kcu.referenced_table_name as target_table, kcu.referenced_column_name as target_column
-        from information_schema.key_column_usage kcu
-        where kcu.table_schema = database()
-          and kcu.table_name = %s
-          and kcu.referenced_table_name is not null
-        """,
-        (table_name,),
-    )
+def _foreign_keys(conn: Any, table_name: str, dialect: DialectLike) -> list[SourceForeignKeyInfo]:
+    profile = resolve_dialect(dialect)
+    rows = _fetch_dicts(conn, foreign_keys_query(profile), (profile.catalog_name(table_name),))
     return [
         SourceForeignKeyInfo(
             column_name=row["column_name"],
@@ -564,10 +559,14 @@ def _fetch_dicts(conn: Any, query: str, params: tuple[Any, ...] = ()) -> list[di
     return [{str(key).lower(): value for key, value in dict(row).items()} for row in rows]
 
 
-def _quote_identifier(identifier: str, dialect: str = "postgresql") -> str:
-    if dialect == "mysql":
-        return "`" + identifier.replace("`", "``") + "`"
-    return '"' + identifier.replace('"', '""') + '"'
+def _quote_identifier(identifier: str, dialect: DialectLike = "postgresql") -> str:
+    """Quote an identifier for one dialect.
+
+    Delegates to the dialect profile so a newly registered database gets correct quoting
+    without this function knowing it exists. SQL Server's `[…]` is why quoting is a pair
+    of characters rather than one.
+    """
+    return resolve_dialect(dialect).quote(identifier)
 
 
 def _parse_mysql_uri(connection_uri: str) -> dict[str, Any]:
@@ -604,7 +603,13 @@ def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
     return distinct_count <= ceiling
 
 
-def _connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
+def connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
+    """The shape every adapter's `test_connection` returns.
+
+    Public because a third-party adapter must produce the same shape, and the frontend
+    distinguishes `driver_missing` from `connection_error` to tell an operator whether to
+    install a package or fix a credential.
+    """
     return {
         "sourceType": source_type,
         "reachable": reachable,
@@ -621,6 +626,32 @@ def _connection_status(source_type: str, reachable: bool, status: str, message: 
 register_adapter("sqlite", SQLiteAdapter)
 register_adapter("postgresql", PostgreSQLAdapter, aliases=("postgres", "pgsql"))
 register_adapter("mysql", MySQLAdapter)
+
+
+def load_builtin_optional_adapters() -> list[str]:
+    """Register the built-in adapters that live in their own modules.
+
+    CSV needs no driver, so it should be available without the caller knowing to import
+    `file_adapter` -- nobody would guess that. It cannot be registered at this module's
+    import time, though: `file_adapter` imports *this* module, so a top-level import here
+    would be a cycle (see `tests/test_module_boundaries.py`).
+
+    Called from `load_adapter_plugins`, which every entry point already runs through, so
+    a plain `import ontology_platform.adapters` ends up with CSV available.
+    """
+    registered: list[str] = []
+    for module_name in ("file_adapter", "rest_adapter"):
+        try:
+            importlib.import_module(f".{module_name}", __package__)
+            registered.append(module_name)
+        except Exception as error:  # pragma: no cover - defensive
+            # A built-in adapter failing to import is a platform bug, but it must not
+            # stop the platform from starting with the adapters that do work.
+            logger.warning("内置适配器 %s 注册失败: %s", module_name, error)
+    return registered
+
+
+load_builtin_optional_adapters()
 
 # Third-party adapters shipped as installable packages. Failures are logged, not
 # raised: a broken plugin must not stop the platform from starting.

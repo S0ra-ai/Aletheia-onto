@@ -12,9 +12,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .access_policy import PUBLIC_PATHS, describe_policy, is_public, required_capability
+from .access_policy import (
+    PUBLIC_PATHS,
+    VERSION_PREFIXES,
+    describe_policy,
+    is_public,
+    required_capability,
+)
+from .adapters import supported_source_types
 from .agent import agent_chat, get_agent_roles
 from .agent_roles import delete_agent_role, init_agent_role_schema, upsert_agent_role
+from .aggregation import (
+    AggregateSpec,
+    AggregationError,
+    define_aggregate,
+    init_aggregate_schema,
+    list_aggregates,
+)
 from .auth import (
     ROLE_CAPABILITIES,
     AuthenticationError,
@@ -32,7 +46,7 @@ from .auth import (
     resolve_principal,
     set_user_status,
 )
-from .automation import execute_operation, preflight_operation
+from .automation import execute_operation, preflight_operation, supported_executor_schemes
 from .contract_documents import parse_rule_docx_bytes
 from .conversations import (
     escalate_conversation,
@@ -48,7 +62,36 @@ from .conversations import (
 from .coverage import build_semantic_coverage
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
+from .db_executors import registered_database_targets
 from .decisions import list_decisions
+from .derived_attributes import (
+    DerivedAttributeError,
+    DerivedSpec,
+    UnitError,
+    define_derived_attribute,
+    known_units,
+    list_derived_attributes,
+    set_attribute_unit,
+)
+from .entity_resolution import (
+    CrossSourceLink,
+    EntityResolutionError,
+    MatchKey,
+    declare_cross_source_link,
+    describe_cross_source,
+    init_entity_resolution_schema,
+)
+from .events import (
+    MAX_EVENT_HISTORY,
+    EventError,
+    EventType,
+    declare_event_type,
+    init_event_schema,
+    instance_timeline,
+    list_event_types,
+    record_event,
+)
+from .generic_sql_adapter import describe_bundled_sql_sources, register_bundled_sql_sources
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -130,6 +173,13 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
+from .sql_dialects import known_dialects
+from .temporal import (
+    TemporalError,
+    init_temporal_schema,
+    instance_history,
+    record_attribute_version,
+)
 from .tenancy import (
     TenantError,
     list_tenants,
@@ -137,6 +187,7 @@ from .tenancy import (
     tenant_context,
     tenant_statistics,
 )
+from .type_hierarchy import HierarchyError, declare_subtype, describe_hierarchy
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
 from .workflow_permission import (
@@ -162,6 +213,10 @@ async def lifespan(app: FastAPI):
         init_auth_schema(conn)
         init_agent_role_schema(conn)
         init_knowledge_schema(conn)
+        init_aggregate_schema(conn)
+        init_event_schema(conn)
+        init_temporal_schema(conn)
+        init_entity_resolution_schema(conn)
         init_conversation_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
@@ -185,6 +240,11 @@ DEV_ADMIN_PRINCIPAL = Principal(user_id=0, username="dev-anonymous", display_nam
 
 app = FastAPI(title="本体改造研发平台", version="0.2.0", lifespan=lifespan)
 
+# The version this build serves under a prefix. Taken from access_policy so the router
+# and the authorization matcher can never disagree about which prefix exists -- a
+# mismatch would mean a served route with no policy entry.
+VERSION_PREFIX = VERSION_PREFIXES[0]
+
 _allowed_origins = [
     origin.strip()
     for origin in os.environ.get(
@@ -200,6 +260,41 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def mount_versioned_routes(application: FastAPI) -> None:
+    """Serve every route under `/v1` as well as bare.
+
+    Called once after all routes are declared. Without a version prefix there is
+    nowhere to put a breaking change: the first external caller freezes the current
+    shape permanently. Serving both means existing callers -- including this repo's own
+    frontend -- keep working while new ones pin `/v1`.
+
+    Routes are re-registered rather than the app being mounted as a sub-application,
+    because a sub-application does not inherit the parent's middleware, and the
+    middleware is what authenticates and authorizes every request. A `/v1` tree without
+    it would be an unauthenticated copy of the whole API.
+
+    `include_in_schema=False` on the copies keeps OpenAPI showing each operation once,
+    so generated clients do not get two of everything.
+    """
+    from fastapi.routing import APIRoute
+
+    for route in list(application.routes):
+        if not isinstance(route, APIRoute) or route.path.startswith(VERSION_PREFIX):
+            continue
+        if route.path in ("/openapi.json", "/docs", "/redoc"):
+            continue
+        application.router.add_api_route(
+            f"{VERSION_PREFIX}{route.path}",
+            route.endpoint,
+            methods=list(route.methods or []),
+            name=f"v1_{route.name}",
+            response_model=route.response_model,
+            status_code=route.status_code,
+            dependencies=list(route.dependencies),
+            include_in_schema=False,
+        )
 
 
 def _bearer_token(request: Request) -> str:
@@ -1091,12 +1186,25 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: Opti
 
 
 @app.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
-def assess_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
+def assess_object_instance(
+    object_code: str,
+    instance_id: str,
+    ontologyId: Optional[int] = None,
+    asOf: str = "",
+) -> dict[str, object]:
+    """Assess one instance, optionally as of a past moment.
+
+    `asOf` is what a compliance audit actually asks: was the January approval correct given
+    what was known in January. Assessing against today's values answers a different
+    question, so the moment is echoed in the response and stored with the decision.
+    """
     try:
         resolved = (
             ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
         )
-        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
+        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
+    except TemporalError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -1116,7 +1224,15 @@ def assess_object_decision_consistency(object_code: str, payload: DecisionConsis
 
 
 @app.post("/semantic/natural-language/query")
-def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object]:
+def ask_semantic_kernel(
+    payload: NaturalLanguageQueryCreate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Answer a question, filtering citations by what the caller may read.
+
+    The role comes from the authenticated identity, never from the request body: a caller
+    who could name their own role would grant themselves any document.
+    """
     try:
         return query_natural_language(
             DEFAULT_PLATFORM_DB,
@@ -1127,6 +1243,7 @@ def ask_semantic_kernel(payload: NaturalLanguageQueryCreate) -> dict[str, object
             payload.instanceId,
             payload.history,
             payload.useModel,
+            role_code=principal.role_code,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1189,6 +1306,10 @@ def chat_with_agent(
             payload.history or None,
             payload.sessionId,
             actor=principal.actor,
+            # Citations are filtered by what this caller may read. Taken from the
+            # authenticated identity, never from the payload's `roleId` -- that names an
+            # agent persona, which is not an authorisation.
+            role_code=principal.role_code,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1482,8 +1603,6 @@ def _tenant_base_context() -> Any:
     Uses the process default, so provisioning targets whatever platform database
     the deployment is configured with rather than a hardcoded path.
     """
-    from .context import resolve_context
-
     return resolve_context(DEFAULT_PLATFORM_DB)
 
 
@@ -1591,6 +1710,421 @@ def resolvers() -> dict[str, object]:
     return {"kinds": list(supported_resolver_kinds())}
 
 
+class AggregateDefine(BaseModel):
+    name: str
+    function: str
+    targetTable: str
+    targetColumn: str
+    groupColumn: str
+    valueColumn: str = ""
+    excludeSelf: bool = False
+    selfColumn: str = ""
+    filterColumn: str = ""
+    filterValue: str = ""
+    description: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/aggregates")
+def ontology_aggregates(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    """Cross-object aggregates available to rules."""
+    return {"items": list_aggregates(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/aggregates")
+def define_object_aggregate(
+    ontology_id: int,
+    object_code: str,
+    payload: AggregateDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare an aggregate that rules for this object may reference by name.
+
+    Validated before storage, so an invalid definition is refused here rather than
+    surfacing later as a failed assessment.
+    """
+    spec = AggregateSpec(
+        name=payload.name,
+        function=payload.function,
+        target_table=payload.targetTable,
+        target_column=payload.targetColumn,
+        group_column=payload.groupColumn,
+        value_column=payload.valueColumn,
+        exclude_self=payload.excludeSelf,
+        self_column=payload.selfColumn,
+        filter_column=payload.filterColumn,
+        filter_value=payload.filterValue,
+    )
+    try:
+        return define_aggregate(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            spec,
+            description=payload.description,
+            actor=principal.actor,
+        )
+    except AggregationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class DerivedAttributeDefine(BaseModel):
+    code: str
+    name: str
+    expression: str
+    unit: str = ""
+    description: str = ""
+
+
+class AttributeUnitDeclare(BaseModel):
+    unit: str = ""
+
+
+@app.get("/source-types")
+def source_types() -> dict[str, object]:
+    """Data source types, including the ones declared but awaiting a driver.
+
+    Both lists are returned because "why is Oracle not in the dropdown" is otherwise
+    unanswerable from the UI: an active type and a declared-but-unavailable one look
+    identical if only the active list is exposed.
+    """
+    # Activating first means the response reflects what is actually reachable rather than
+    # what the catalogue lists.
+    register_bundled_sql_sources(replace=True)
+    return {
+        "available": list(supported_source_types()),
+        "declared": [
+            {
+                "sourceType": item["sourceType"],
+                "dialect": item["dialect"],
+                "driver": item["driverModule"],
+                "available": item["driverAvailable"],
+                "installHint": "" if item["driverAvailable"] else item["installHint"],
+            }
+            for item in describe_bundled_sql_sources()
+        ],
+        "dialects": list(known_dialects()),
+    }
+
+
+@app.get("/writeback-channels")
+def writeback_channels() -> dict[str, object]:
+    """Writeback channels, and what each declared database channel may actually write.
+
+    The declared statements are part of the answer: a channel that can write anything is a
+    very different thing from one that can perform three named operations, and an operator
+    reviewing automation needs to see which it is.
+    """
+    return {
+        "schemes": list(supported_executor_schemes()),
+        "databaseTargets": registered_database_targets(),
+    }
+
+
+@app.get("/units")
+def units() -> dict[str, object]:
+    """Units available for attribute declarations, grouped by dimension.
+
+    Comparison converts within a dimension and refuses across dimensions, so a
+    caller needs the dimension to know which units are interchangeable.
+    """
+    return {
+        "items": [
+            {
+                "code": unit.code,
+                "name": unit.name,
+                "dimension": unit.dimension,
+                "toCanonical": unit.to_canonical,
+            }
+            for unit in known_units()
+        ]
+    }
+
+
+@app.get("/ontologies/{ontology_id}/derived-attributes")
+def ontology_derived_attributes(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_derived_attributes(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/derived-attributes")
+def define_object_derived_attribute(
+    ontology_id: int,
+    object_code: str,
+    payload: DerivedAttributeDefine,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a computed attribute that rules may reference by code.
+
+    Validated through the rule sandbox before storage, so an unusable expression is
+    refused here rather than surfacing later as a failed assessment.
+    """
+    try:
+        return define_derived_attribute(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            DerivedSpec(
+                code=payload.code,
+                name=payload.name,
+                expression=payload.expression,
+                unit=payload.unit,
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/attributes/{attribute_code}/unit")
+def declare_attribute_unit(
+    ontology_id: int,
+    object_code: str,
+    attribute_code: str,
+    payload: AttributeUnitDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare the unit an attribute is measured in. An empty unit clears it."""
+    try:
+        return set_attribute_unit(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            attribute_code,
+            payload.unit,
+            actor=principal.actor,
+        )
+    except (DerivedAttributeError, UnitError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+class EventTypeDeclare(BaseModel):
+    code: str
+    name: str
+    category: str = "interaction"
+    payloadFields: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class EventRecord(BaseModel):
+    eventCode: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    occurredAt: str = ""
+    correlationId: str = ""
+
+
+class SubtypeDeclare(BaseModel):
+    parentObjectCode: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/event-types")
+def ontology_event_types(ontology_id: int, objectCode: str = "") -> dict[str, object]:
+    return {"items": list_event_types(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/event-types")
+def declare_object_event_type(
+    ontology_id: int,
+    object_code: str,
+    payload: EventTypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare a kind of event that can happen to instances of this object."""
+    try:
+        return declare_event_type(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            EventType(
+                code=payload.code,
+                name=payload.name,
+                object_code=object_code,
+                category=payload.category,
+                payload_fields=list(payload.payloadFields),
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def append_instance_event(
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    payload: EventRecord,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Append one event to an instance's history.
+
+    Recording does not trigger automation: an event that could fire side effects
+    would make replaying history re-execute business actions.
+    """
+    try:
+        return record_event(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            instance_id,
+            payload.eventCode,
+            payload=dict(payload.payload),
+            actor=principal.actor,
+            occurred_at=payload.occurredAt,
+            correlation_id=payload.correlationId,
+        )
+    except EventError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+def instance_events(
+    ontology_id: int, object_code: str, instance_id: str, limit: int = MAX_EVENT_HISTORY
+) -> dict[str, object]:
+    """One instance's event history, newest first."""
+    return instance_timeline(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, limit)
+
+
+class AttributeVersionRecord(BaseModel):
+    attributeCode: str
+    value: object = None
+    validFrom: str = ""
+    source: str = ""
+
+
+@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+def record_instance_attribute_version(
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    payload: AttributeVersionRecord,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Record a new value for one attribute, closing the version it supersedes.
+
+    Append-only: nothing is overwritten, so a verdict recorded earlier still cites a value
+    that exists.
+    """
+    try:
+        return record_attribute_version(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            instance_id,
+            payload.attributeCode,
+            payload.value,
+            valid_from=payload.validFrom or None,
+            actor=principal.actor,
+            source=payload.source,
+        )
+    except TemporalError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+def instance_attribute_history(
+    ontology_id: int, object_code: str, instance_id: str, attributeCode: str = ""
+) -> dict[str, object]:
+    """One instance's attribute history, with the window it can actually answer for."""
+    return instance_history(DEFAULT_PLATFORM_DB, ontology_id, object_code, instance_id, attribute_code=attributeCode)
+
+
+class MatchKeyDeclare(BaseModel):
+    primaryColumn: str
+    secondaryColumn: str
+    normalize: bool = True
+
+
+class CrossSourceLinkDeclare(BaseModel):
+    name: str
+    secondaryDataSourceId: int
+    secondaryTable: str
+    matchKeys: list[MatchKeyDeclare] = Field(default_factory=list)
+    prefix: str = ""
+    mergeStrategy: str = "conflict"
+    requireUnique: bool = True
+    description: str = ""
+
+
+@app.get("/ontologies/{ontology_id}/cross-source-links")
+def ontology_cross_source_links(ontology_id: int) -> dict[str, object]:
+    """本体的跨源对应声明。
+
+    一并返回说明文字，因为「匹配是声明的、不是推断的」是这套机制的前提，
+    而一个只看到列表的调用方会以为平台在做模糊匹配。
+    """
+    return describe_cross_source(DEFAULT_PLATFORM_DB, ontology_id)
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/cross-source-links")
+def declare_object_cross_source_link(
+    ontology_id: int,
+    object_code: str,
+    payload: CrossSourceLinkDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """声明这个对象如何对应到另一个数据源的一张表。
+
+    匹配键必须显式给出：跨源判定会把「这两行是同一实例」写进判定链，
+    因此它必须是可审阅的声明，而不是相似度推断出来的结果。
+    """
+    try:
+        return declare_cross_source_link(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            CrossSourceLink(
+                name=payload.name,
+                primary_object_code=object_code,
+                secondary_data_source_id=payload.secondaryDataSourceId,
+                secondary_table=payload.secondaryTable,
+                match_keys=tuple(
+                    MatchKey(
+                        primary_column=key.primaryColumn,
+                        secondary_column=key.secondaryColumn,
+                        normalize=key.normalize,
+                    )
+                    for key in payload.matchKeys
+                ),
+                prefix=payload.prefix,
+                merge_strategy=payload.mergeStrategy,
+                require_unique=payload.requireUnique,
+                description=payload.description,
+            ),
+            actor=principal.actor,
+        )
+    except EntityResolutionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/ontologies/{ontology_id}/hierarchy")
+def ontology_hierarchy(ontology_id: int) -> dict[str, object]:
+    """The declared type hierarchy, with inherited rule counts and overrides."""
+    return {"items": describe_hierarchy(DEFAULT_PLATFORM_DB, ontology_id)}
+
+
+@app.put("/ontologies/{ontology_id}/objects/{object_code}/parent")
+def declare_object_subtype(
+    ontology_id: int,
+    object_code: str,
+    payload: SubtypeDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare this object as a subtype of another, or clear the declaration.
+
+    A subtype evaluates its ancestors' rules as well as its own, so this changes what
+    every assessment of the object checks.
+    """
+    try:
+        return declare_subtype(
+            DEFAULT_PLATFORM_DB,
+            ontology_id,
+            object_code,
+            payload.parentObjectCode,
+            actor=principal.actor,
+        )
+    except HierarchyError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.get("/workbench")
 def workbench(decisionLimit: int = 8) -> dict[str, object]:
     """Aggregated platform state for the workbench screen.
@@ -1649,6 +2183,7 @@ def decisions(limit: int = 50) -> dict[str, object]:
 # Workflow & Permission Management
 # ============================================================
 
+from .context import resolve_context
 from .workflow_permission import (
     add_workflow_state,
     add_workflow_transition,
@@ -1658,6 +2193,7 @@ from .workflow_permission import (
     create_role,
     create_workflow,
     delete_workflow,
+    enter_workflow,
     get_available_actions,
     get_instance_history,
     get_instance_state,
@@ -1849,8 +2385,6 @@ def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str
 @app.post("/workflows/{workflow_id}/enter")
 def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
     try:
-        from .workflow_permission import enter_workflow
-
         return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -2008,3 +2542,7 @@ def files() -> dict[str, str]:
         "platformDb": redact_connection_uri(config.connection_uri) or str(Path(DEFAULT_PLATFORM_DB).resolve()),
         "sampleDb": str(Path(DEFAULT_SAMPLE_DB).resolve()),
     }
+
+
+# Must be last: it copies whatever routes exist at the time it runs.
+mount_versioned_routes(app)

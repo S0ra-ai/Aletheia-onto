@@ -1,5 +1,90 @@
-# Lint and format configuration only. Packaging is deferred to ROADMAP stage E,
-# where the split into aletheia-core / -web / -admin is decided.
+# The distribution is a single installable package. The split into
+# aletheia-core / -web / -admin (ADR-0001) stays deferred: it depends on the SPI shapes,
+# which need a second real use case before they can be frozen (ROADMAP stage D). What
+# is *not* deferred is being installable at all -- a framework nobody can `pip install`
+# is a repository, not a framework.
+#
+# Optional extras carry the split's eventual seams without pre-committing to them: a
+# user who only wants the kernel installs no web server, and can migrate to
+# `aletheia-core` later without changing their imports.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aletheia-onto"
+version = "0.5.0"
+description = "为传统业务系统安装可核验的业务语义内核：本体、语义映射、规则推理与决策留痕"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+keywords = ["ontology", "semantic", "business-rules", "knowledge-graph", "legacy-modernization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+# The kernel's own dependencies. Deliberately empty of a web framework: the ontology,
+# rule engine and decision records work without one, and a library that drags in a
+# server cannot be embedded in someone else's application.
+dependencies = []
+
+[project.optional-dependencies]
+# Pinned rather than ranged. A range on a rule-engine dependency means a transitive
+# upgrade can change a verdict, and a verdict is what this platform is accountable for.
+web = [
+    "fastapi==0.111.1",
+    "uvicorn[standard]==0.30.3",
+    "httpx==0.27.2",
+    # Declared rather than inherited: `api.py` uses File()/Form(), and FastAPI moved
+    # the multipart parser out of its base install into `fastapi[standard]`. Relying on
+    # the transitive copy means a FastAPI upgrade turns document upload into a 500 at
+    # request time, not an install-time error.
+    "python-multipart==0.0.20",
+]
+postgresql = ["psycopg[binary]==3.2.9"]
+mysql = ["PyMySQL==1.1.1"]
+# Document ingestion for the knowledge layer.
+documents = ["python-docx==1.1.2"]
+dev = [
+    "pytest==8.3.2",
+    "ruff==0.16.4",
+    "mypy==1.19.1",
+]
+# Everything, for a deployment that does not want to reason about extras.
+all = [
+    "aletheia-onto[web]",
+    "aletheia-onto[postgresql]",
+    "aletheia-onto[mysql]",
+    "aletheia-onto[documents]",
+]
+
+[project.scripts]
+aletheia = "ontology_platform.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/S0ra-ai/Aletheia-onto"
+Documentation = "https://github.com/S0ra-ai/Aletheia-onto/blob/main/README.md"
+Changelog = "https://github.com/S0ra-ai/Aletheia-onto/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = { "" = "backend" }
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["ontology_platform*"]
+
+[tool.setuptools.package-data]
+# PEP 561: without this marker a consumer's type checker silently ignores our
+# annotations, so a wrong call site looks fine until runtime.
+ontology_platform = ["py.typed"]
 
 [tool.ruff]
 line-length = 120
@@ -36,6 +121,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# The package facade groups its exports by concern (onboarding, ontology lifecycle,
+# assessment, expressiveness, extension points) with a comment per group. That grouping
+# is how a newcomer finds the right entry point; alphabetical order would scatter it.
+"backend/ontology_platform/__init__.py" = ["RUF022"]
 # Tests and scripts insert backend/ into sys.path before importing the package,
 # so imports legitimately follow executable statements.
 "tests/*" = ["E402"]

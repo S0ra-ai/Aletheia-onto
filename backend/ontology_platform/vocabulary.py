@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .database import connect
+from .industry_blueprints import list_industry_blueprints
 
 
 @dataclass(frozen=True)
@@ -183,8 +184,6 @@ def blueprint_attribute_labels(platform_db: Path | str) -> dict[str, str]:
 
     Used while generating a first draft, before business attributes exist.
     """
-    from .industry_blueprints import list_industry_blueprints
-
     labels: dict[str, str] = {}
     for blueprint in list_industry_blueprints(platform_db):
         hints = blueprint.get("attributeHints") or {}
@@ -196,8 +195,6 @@ def blueprint_attribute_labels(platform_db: Path | str) -> dict[str, str]:
 
 def blueprint_object_labels(platform_db: Path | str) -> dict[str, str]:
     """Object labels contributed by every registered industry blueprint."""
-    from .industry_blueprints import list_industry_blueprints
-
     labels: dict[str, str] = {}
     for blueprint in list_industry_blueprints(platform_db):
         hints = blueprint.get("objectHints") or {}

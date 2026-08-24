@@ -22,9 +22,10 @@ from .natural_language import (
     INTENT_KNOWLEDGE_OVERVIEW,
     INTENT_PREFLIGHT,
     INTENT_UNKNOWN,
-    _compact_evidence,
-    _compact_json,
-    _detect_intent,
+    compact_evidence,
+    compact_json,
+    detect_intent,
+    query_natural_language,
 )
 from .ontology import explain_instance
 from .semantic_kernel import assess_decision_consistency, assess_instance
@@ -68,6 +69,7 @@ def agent_chat(
     session_id: str | None = None,
     actor: str = "",
     persist: bool = True,
+    role_code: str = "",
 ) -> dict[str, Any]:
     """Answer one turn, persisting the exchange by default.
 
@@ -104,7 +106,9 @@ def agent_chat(
     history = history or []
 
     if not model_client.configured:
-        result = _fallback_agent_chat(platform_db, message, role, data_source_id, object_code, history)
+        result = _fallback_agent_chat(
+            platform_db, message, role, data_source_id, object_code, history, role_code=role_code
+        )
     else:
         result = _llm_agent_chat(
             platform_db, model_client, message, role, data_source_id, object_code, history, session_id
@@ -190,9 +194,9 @@ def _llm_agent_chat(
             "role": "system",
             "content": (
                 "## 可用业务上下文\n"
-                f"{_compact_json(semantic_context)}\n\n"
+                f"{compact_json(semantic_context)}\n\n"
                 f"## 已初始化知识库\n"
-                f"{_compact_json(knowledge_context)}\n\n"
+                f"{compact_json(knowledge_context)}\n\n"
                 f"## 工具调用说明\n"
                 f"{tool_descriptions}"
             ),
@@ -222,7 +226,7 @@ def _llm_agent_chat(
                         "role": "user",
                         "content": (
                             "以下是工具调用返回的精确数据，请基于这些数据完善你的回答，"
-                            "用自然、专业的语言直接回应用户的问题：\n" + _compact_json(tool_results)
+                            "用自然、专业的语言直接回应用户的问题：\n" + compact_json(tool_results)
                         ),
                     },
                 ]
@@ -280,10 +284,10 @@ def _fallback_agent_chat(
     data_source_id: int | None,
     object_code: str | None,
     history: list[dict[str, str]],
+    *,
+    role_code: str = "",
 ) -> dict[str, Any]:
-    intent = _detect_intent(message)
-    from .natural_language import query_natural_language
-
+    intent = detect_intent(message)
     try:
         result = query_natural_language(
             platform_db,
@@ -292,6 +296,9 @@ def _fallback_agent_chat(
             object_code=object_code,
             history=history,
             use_model=False,
+            # The permission role, not the agent role: citations must be filtered by what
+            # the *caller* may read, and an agent persona is not an authorisation.
+            role_code=role_code,
         )
         answer = result.get("answer", "")
         # Frame the answer in the role's own domain rather than matching against
@@ -463,13 +470,13 @@ def _execute_tool_calls(
                 oid = _find_ontology_id(platform_db, data_source_id, oc)
                 if oid and iid:
                     result = explain_instance(platform_db, oid, oc, iid)
-                    results.append({"tool": tool_name, "args": args, "result": _compact_evidence(result)})
+                    results.append({"tool": tool_name, "args": args, "result": compact_evidence(result)})
             elif tool_name == "assess_instance":
                 iid = args.get("instanceId", "")
                 oid = _find_ontology_id(platform_db, data_source_id, oc)
                 if oid and iid:
                     result = assess_instance(platform_db, oid, oc, iid)
-                    results.append({"tool": tool_name, "args": args, "result": _compact_evidence(result)})
+                    results.append({"tool": tool_name, "args": args, "result": compact_evidence(result)})
             elif tool_name == "preflight_operation":
                 iid = args.get("instanceId", "")
                 oid = _find_ontology_id(platform_db, data_source_id, oc)
@@ -488,7 +495,7 @@ def _execute_tool_calls(
                     continue
                 if oid and sid and iid:
                     result = preflight_operation(platform_db, oid, sid, op, iid, oc)
-                    results.append({"tool": tool_name, "args": args, "result": _compact_evidence(result)})
+                    results.append({"tool": tool_name, "args": args, "result": compact_evidence(result)})
             elif tool_name == "knowledge_overview":
                 sid = data_source_id or _find_data_source_id(platform_db, None, oc)
                 if sid:
@@ -513,7 +520,7 @@ def _execute_tool_calls(
                 oid = _find_ontology_id(platform_db, data_source_id, oc)
                 if oid:
                     result = assess_decision_consistency(platform_db, oid, oc, limit=20)
-                    results.append({"tool": tool_name, "args": args, "result": _compact_evidence(result)})
+                    results.append({"tool": tool_name, "args": args, "result": compact_evidence(result)})
             else:
                 results.append({"tool": tool_name, "args": args, "error": f"未知工具: {tool_name}"})
         except Exception as exc:

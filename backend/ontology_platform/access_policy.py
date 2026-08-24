@@ -4,6 +4,16 @@ Authorization lives in one table instead of being spread across 80+ endpoint
 signatures, so the effective policy can be reviewed and tested as data. The
 matcher is deny-by-default: an unlisted route requires admin, which means a new
 endpoint cannot accidentally ship unprotected.
+
+## Version prefixes are stripped before matching
+
+Every route is served both bare (`/ontologies/1`) and under `/v1`, so existing
+callers keep working while new ones pin a version. The prefix is removed here rather
+than duplicated in every rule -- and that is a security property, not tidiness: a
+policy list that only matched the bare form would leave `/v1/auth/users` unmatched,
+which the deny-by-default fallback would then treat as admin-only. That fails safe,
+but the reverse mistake on a *public* path would not, so the stripping happens in one
+place that is tested.
 """
 
 from __future__ import annotations
@@ -54,6 +64,25 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
 )
 
 ANY_METHOD = ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+# Version prefixes recognised on incoming paths. Adding `/v2` later means adding it
+# here, not re-writing the rule table.
+VERSION_PREFIXES: tuple[str, ...] = ("/v1",)
+
+
+def strip_version_prefix(path: str) -> str:
+    """The path as the rule table declares it, with any version prefix removed.
+
+    `/v1` alone maps to `/`, not to the empty string, so a bare version root still
+    looks like a path and cannot accidentally match a rule anchored at `^$`.
+    """
+    for prefix in VERSION_PREFIXES:
+        if path == prefix:
+            return "/"
+        if path.startswith(prefix + "/"):
+            return path[len(prefix) :]
+    return path
+
 
 # Order matters: the first match wins, so specific rules precede generic ones.
 RULES: tuple[Rule, ...] = (
@@ -118,6 +147,42 @@ RULES: tuple[Rule, ...] = (
     # Changing how an object resolves its instances alters what every rule for
     # that object evaluates against, so it is a modelling write.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/resolver", CAP_WRITE, "配置实例解析器"),
+    # An aggregate becomes part of what every rule for that object evaluates
+    # against, so declaring one is a modelling write.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/aggregates", CAP_WRITE, "定义跨对象聚合"),
+    # A derived attribute or a declared unit changes what every rule reading that
+    # name evaluates against -- a unit change silently rescales a threshold -- so
+    # both are modelling writes.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/derived-attributes", CAP_WRITE, "定义派生属性"),
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/attributes/[^/]+/unit", CAP_WRITE, "声明属性单位"),
+    # A subtype evaluates its ancestors' rules as well as its own, so declaring one
+    # changes what every assessment of the object checks.
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/parent", CAP_WRITE, "声明类型层级"),
+    _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/event-types", CAP_WRITE, "声明事件类型"),
+    # 跨源对应决定「哪两行是同一实例」，因此它改变每一次判定读到的数据——是建模写操作。
+    _rule(
+        ("PUT",),
+        r"/ontologies/[0-9]+/objects/[^/]+/cross-source-links",
+        CAP_WRITE,
+        "声明跨源对应",
+    ),
+    # Recording an event is not a modelling change, but history is append-only and
+    # feeds explanations, so it needs write capability rather than read.
+    _rule(
+        ("POST",),
+        r"/ontologies/[0-9]+/objects/[^/]+/instances/[^/]+/events",
+        CAP_WRITE,
+        "记录业务事件",
+    ),
+    # Attribute history is append-only and feeds as-of verdicts, so recording a version is
+    # a write. It is not a modelling change, but it does change what a past-tense
+    # assessment concludes.
+    _rule(
+        ("POST",),
+        r"/ontologies/[0-9]+/objects/[^/]+/instances/[^/]+/versions",
+        CAP_WRITE,
+        "记录属性历史版本",
+    ),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 
@@ -178,7 +243,7 @@ def load_policy_plugins() -> list[str]:
 def required_capability(method: str, path: str) -> str:
     """Return the capability needed for a request, defaulting to admin."""
     normalized_method = method.upper()
-    normalized_path = path.rstrip("/") or "/"
+    normalized_path = strip_version_prefix(path).rstrip("/") or "/"
     for rule in (*_PLUGIN_RULES, *RULES):
         if normalized_method in rule.methods and rule.pattern.match(normalized_path):
             return rule.capability
@@ -186,7 +251,13 @@ def required_capability(method: str, path: str) -> str:
 
 
 def is_public(path: str) -> bool:
-    normalized = path.rstrip("/") or "/"
+    """Whether a path is reachable without a token.
+
+    The version prefix is stripped first, so `/v1/health` is public exactly as
+    `/health` is. Without this the versioned login endpoint would demand a token to
+    obtain a token.
+    """
+    normalized = strip_version_prefix(path).rstrip("/") or "/"
     return normalized in PUBLIC_PATHS or normalized.startswith("/docs")
 
 
