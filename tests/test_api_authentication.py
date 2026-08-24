@@ -276,10 +276,20 @@ def test_authentication_is_on_unless_explicitly_disabled() -> None:
     Asserted per interpreter here rather than in a workflow step, which is where this
     check used to live -- a check that cannot run before pushing reports the problem
     after review has already started.
+
+    Reloads `http_runtime`, which is where the switch is resolved. `api` re-exports it
+    for its middleware, so reloading `api` alone would re-bind the old value and the
+    assertions would pass without testing anything.
     """
+    import ontology_platform.http_runtime as runtime
+
+    assert runtime.AUTH_ENABLED, "认证不能默认关闭"
+    # The middleware reads its own module-level copy, so the two must agree: a router
+    # that thought authentication was off while the middleware thought it was on would
+    # fail open.
     import ontology_platform.api as api_module
 
-    assert api_module.AUTH_ENABLED, "认证不能默认关闭"
+    assert api_module.AUTH_ENABLED is runtime.AUTH_ENABLED
 
     # Only the documented opt-in values disable it. A typo (`ONTOLOGY_AUTH_DISABLED=ture`)
     # must leave authentication on: guessing at intent here would mean guessing in favour
@@ -294,14 +304,14 @@ def test_authentication_is_on_unless_explicitly_disabled() -> None:
             ("", True),
         ):
             patch.setenv("ONTOLOGY_AUTH_DISABLED", value)
-            assert importlib.reload(api_module).AUTH_ENABLED is expected, (
+            assert importlib.reload(runtime).AUTH_ENABLED is expected, (
                 f"ONTOLOGY_AUTH_DISABLED={value!r} 时认证应为 {expected}"
             )
 
     # Reload once more with the variable gone, so a later test does not inherit a module
     # left in the disabled state -- that would silently weaken every assertion after it.
-    importlib.reload(api_module)
-    assert api_module.AUTH_ENABLED
+    importlib.reload(runtime)
+    assert runtime.AUTH_ENABLED
 
 
 def test_every_role_capability_is_a_known_capability() -> None:

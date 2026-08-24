@@ -658,7 +658,7 @@ def test_the_endpoint_requires_write_capability() -> None:
 
 def test_the_api_exposes_links_with_the_declared_matching_note() -> None:
     """只看到列表的调用方会以为平台在做模糊匹配。"""
-    from ontology_platform.api import ontology_cross_source_links
+    from ontology_platform.routers.metamodel_routes import ontology_cross_source_links
 
     payload = ontology_cross_source_links(1)
     assert "note" in payload

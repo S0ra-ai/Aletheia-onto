@@ -66,6 +66,12 @@ dev = [
     # free. It sat in `web` until 3.11, which made every deployment install a client it
     # never imports.
     "httpx==0.28.1",
+    # Verifies that exported OWL/SHACL/Turtle actually parses. A test dependency rather
+    # than a runtime one: the platform *writes* RDF and never reads it, and the kernel
+    # stays dependency-free. Not optional in CI though -- asserting that an export
+    # "contains" a substring is how a syntactically invalid Turtle document shipped
+    # unnoticed, since an invalid document contains substrings just as well as a valid one.
+    "rdflib==7.6.0",
 ]
 # Everything, for a deployment that does not want to reason about extras.
 all = [
@@ -138,10 +144,6 @@ ignore = [
 # so imports legitimately follow executable statements.
 "tests/*" = ["E402"]
 "scripts/*" = ["E402"]
-# api.py has one mid-file import block for the workflow/permission routes.
-# Recorded in docs/architecture-debt.md; to be resolved when api.py is split
-# into APIRouters (ROADMAP stage E).
-"backend/ontology_platform/api.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

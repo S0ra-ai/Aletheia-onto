@@ -531,8 +531,13 @@ def test_an_openapi_derived_source_is_usable(rest_server) -> None:
 def test_the_api_exposes_available_and_declared_source_types() -> None:
     """Both lists, because "why is Oracle not in the dropdown" is otherwise unanswerable
     from the UI: an active type and a declared-but-unavailable one look identical when only
-    the active list is exposed."""
-    from ontology_platform.api import source_types
+    the active list is exposed.
+
+    Called through the router module rather than imported from `ontology_platform.api`:
+    the endpoint moved when the HTTP layer was split into routers, and an import of the
+    handler by name breaks on a move that changes no behaviour.
+    """
+    from ontology_platform.routers.data_source_routes import source_types
 
     payload = source_types()
     assert "csv" in payload["available"]
@@ -547,7 +552,7 @@ def test_the_api_exposes_available_and_declared_source_types() -> None:
 def test_the_api_exposes_writeback_channels_and_their_statements() -> None:
     """A channel that can write anything differs from one that can perform three named
     operations, and an operator reviewing automation needs to see which it is."""
-    from ontology_platform.api import writeback_channels
+    from ontology_platform.routers.data_source_routes import writeback_channels
 
     payload = writeback_channels()
     assert {"http", "https"} <= set(payload["schemes"])

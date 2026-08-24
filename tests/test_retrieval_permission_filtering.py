@@ -197,15 +197,25 @@ def test_the_api_takes_the_role_from_the_authenticated_identity() -> None:
 
     以源码断言，因为这是一条**不该存在**的数据流——运行时测试只能证明当前路径正确，
     无法阻止有人日后从请求体里读它。
+
+    按 AST 取函数体，而不是按装饰器文本切片。原实现以 `api.index("@app.", ...)` 定位
+    下一个端点，因此把路由改挂到 `APIRouter` 上就让它抛异常——一条安全不变量不应该
+    因为一次纯结构调整而失效，何况「找不到分隔符」与「检查通过」在当时几乎无从区分。
     """
-    api = (ROOT / "backend" / "ontology_platform" / "api.py").read_text(encoding="utf-8")
-    assert "role_code=principal.role_code" in api
+    import ast
+
+    source = (ROOT / "backend" / "ontology_platform" / "api.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
     # 问答与智能体端点不得从请求体取权限角色。
     # （`payload.roleCode` 在创建用户端点里是正当的：那是管理员为**他人**指定角色，
     #  且该端点本身需要 platform:admin。）
-    for handler in ("def ask_semantic_kernel", "def chat_with_agent"):
-        start = api.index(handler)
-        body = api[start : api.index("@app.", start + 1)]
+    for handler in ("ask_semantic_kernel", "chat_with_agent"):
+        assert handler in functions, f"未找到端点 {handler}——若已改名，请同步本测试而不是删除它"
+        body = ast.unparse(functions[handler])
         assert "role_code=principal.role_code" in body, f"{handler} 未使用认证身份的角色"
         assert "payload.roleCode" not in body, f"{handler} 从请求体取了权限角色"
 

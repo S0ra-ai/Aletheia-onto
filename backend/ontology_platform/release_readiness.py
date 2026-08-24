@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .axioms import check_axioms
 from .coverage import build_semantic_coverage
 from .database import connect
 from .metadata import analyze_schema_drift, assess_data_source_readiness
@@ -51,6 +52,10 @@ def assess_ontology_release_readiness(platform_db: Path | str, ontology_id: int)
 
     data_source_ids = sorted({row["data_source_id"] for row in objects if row["data_source_id"] is not None})
     data_source_reports = [_data_source_report(platform_db, data_source_id) for data_source_id in data_source_ids]
+    # Re-checked here rather than trusted from declaration time: an axiom that held when
+    # written can be broken later by the model moving underneath it -- a subtype added, a
+    # relation retargeted, an attribute made optional.
+    axiom_report = check_axioms(platform_db, ontology_id)
     gates = [
         _gate(
             "ontology_status",
@@ -115,6 +120,24 @@ def assess_ontology_release_readiness(platform_db: Path | str, ontology_id: int)
             "warning",
             f"{sum(1 for row in object_rule_rows if row['total'] > 0)}/{len(object_rule_rows)} 个对象具备规则。",
             "为缺少规则的业务对象补充校验、风险或权限规则。",
+        ),
+        _gate(
+            "axioms_satisfied",
+            "公理一致性",
+            axiom_report["satisfied"],
+            # A blocker, not a warning. A model that contradicts its own axioms makes
+            # every verdict derived from it suspect, so "publish anyway" is not a
+            # trade-off a deployment should be offered.
+            "blocker",
+            (
+                f"已声明 {axiom_report['declared']} 条公理，全部成立。"
+                if axiom_report["satisfied"]
+                else "违反 "
+                + str(len(axiom_report["violations"]))
+                + " 条公理: "
+                + "；".join(item["detail"] for item in axiom_report["violations"][:3])
+            ),
+            "修正模型声明，或移除已不适用的公理。公理描述模型本身，不针对单个实例。",
         ),
     ]
     for report in data_source_reports:

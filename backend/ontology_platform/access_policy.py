@@ -144,6 +144,9 @@ RULES: tuple[Rule, ...] = (
     # Provisioning a tenant creates schemas and tables, which is strictly an
     # administrative act.
     _rule(("POST",), r"/tenants", CAP_ADMIN, "开通租户"),
+    # 配额是平台对租户设的上限，不是租户自己的设置。若租户能改，上限就不成立——
+    # 因此写操作要求 platform:admin，与开通租户同级。
+    _rule(("PUT",), r"/tenants/[^/]+/quotas", CAP_ADMIN, "设置租户配额"),
     # Changing how an object resolves its instances alters what every rule for
     # that object evaluates against, so it is a modelling write.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/resolver", CAP_WRITE, "配置实例解析器"),
@@ -159,6 +162,10 @@ RULES: tuple[Rule, ...] = (
     # changes what every assessment of the object checks.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/parent", CAP_WRITE, "声明类型层级"),
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/event-types", CAP_WRITE, "声明事件类型"),
+    # 公理约束模型自身，且违反公理会阻断发布——因此声明它是建模写操作，
+    # 而**删除**它移除的是一道发布门禁，与「跳过审核」同级，需要发布权限。
+    _rule(("PUT",), r"/ontologies/[0-9]+/axioms", CAP_WRITE, "声明本体公理"),
+    _rule(("DELETE",), r"/ontologies/[0-9]+/axioms/[^/]+", CAP_PUBLISH, "移除本体公理"),
     # 跨源对应决定「哪两行是同一实例」，因此它改变每一次判定读到的数据——是建模写操作。
     _rule(
         ("PUT",),

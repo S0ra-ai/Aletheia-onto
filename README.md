@@ -229,6 +229,21 @@ Oracle／SQL Server／达梦／人大金仓／openGauss 已内置声明与方言
 装上对应驱动即出现在数据源列表里。接一个未内置的 SQL 库不需要写适配器——
 声明 4 行即可，见[扩展指南](docs/extending.md#10-接一个新的-sql-数据库)。
 
+**导出为标准词汇。** 对标 GB/T 48000.3—2026 对 OWL/RDF 的采用要求，
+本体可直接导出为外部 RDF 工具**能解释**（而非仅能读取）的形式：
+
+```bash
+aletheia export 1 --format owl    > ontology.ttl   # owl:Class／rdfs:domain／rdfs:range
+aletheia export 1 --format shacl  > shapes.ttl     # SHACL 形状，可交给校验器
+aletheia export 1 --format jsonld > asset.jsonld   # 平台词汇，字段更全
+```
+
+两套词汇并存而非替换：`owl`／`shacl` 用标准术语，换来互操作；
+`jsonld`／`turtle` 用平台自有术语，保留标准词汇无对应词的字段
+（来源表、规则表达式、映射置信度）。
+SHACL 形状**由同一份声明生成而非手写**——手写的一份会与发布门禁漂移，
+而漂移的那份会声明平台并不执行的约束。
+
 **回溯判定。** 合规审计问的通常是过去某一刻：
 
 ```bash
@@ -504,10 +519,12 @@ _不是_：算法、模型、策略引擎脚本。
 | **规则函数可注册**（不放宽沙箱） | ✅ | `semantic_kernel.py`、`registry.py` |
 | 规则 fail-closed 语义 | ✅ | `semantic_kernel.py` |
 | 写入时表达式校验（含未知字段提示） | ✅ | `governance.py`、`semantic_kernel.py` |
-| 语义资产导出 JSON-LD／Turtle | ✅ | `ontology.py` |
+| 语义资产导出 JSON-LD／Turtle（平台词汇，字段更全） | ✅ | `ontology.py` |
+| **OWL/RDFS 导出**（`owl:Class`／`rdfs:domain`／`rdfs:range`／`rdfs:subClassOf`） | ✅ | `standard_vocabulary.py` |
+| **SHACL 形状导出**（由同一份声明生成，非手写） | ✅ | `standard_vocabulary.py` |
 | 业务对象／属性／关系手工 CRUD | ⚠️ | 无端点，只能重新生成草案或审核映射 |
 | 规则依赖 `depends_on` | ⚠️ | 有读写，求值时不使用，仅按 `priority` 排序 |
-| 本体导入（SHACL／reasoner／命名空间管理） | 📋 | 只能导出 |
+| 本体导入（reasoner／命名空间管理） | 📋 | 只能导出 |
 | 值域映射 `value_to_state`（走审核流程） | ✅ | `value_mapping.py` |
 | 复合主键（实例键抽象） | ✅ | `instance_key.py` |
 | **实例解析器**：主从表／判别列分区／自定义 SQL | ✅ | `instance_resolver.py` |
@@ -521,7 +538,9 @@ _不是_：算法、模型、策略引擎脚本。
 | **规则覆盖**（显式声明，校验必须在上级链内） | ✅ | `type_hierarchy.py`、`governance.py` |
 | **跨源实体消解**（一个对象跨两个数据源，匹配是声明的） | ✅ | `entity_resolution.py` |
 | **跨源聚合**（「这个客户在 ERP 里的订单总额」） | ✅ | `aggregation.py`：`targetDataSourceId` |
-| 时态与生效期（属性级历史） | 📋 | 规则有生效期，属性无 |
+| **时态与生效期**（属性级版本 + as-of 回溯判定） | ✅ | `temporal.py` |
+| **业务事件**（只追加事件流 + 状态流转统一时间线） | ✅ | `events.py` |
+| **公理**（六类模型级约束，违反阻断发布） | ✅ | `axioms.py` |
 
 ### 治理与留痕
 
@@ -538,6 +557,8 @@ _不是_：算法、模型、策略引擎脚本。
 | **统一时间线**（状态流转自动镜像，实例只有一条时间线） | ✅ | `events.py`、`workflow_permission.py` |
 | **事件计数**（「上个月被驳回多少次」无需读文本） | ✅ | `events.py` |
 | **属性级时态**（版本化、有效时间与事务时间分离） | ✅ | `temporal.py` |
+| **审计报表**（从未触发的规则、覆盖门禁的发布、留痕完整性） | ✅ | `audit_reports.py` |
+| **租户配额**（存于基础库，租户无法自行调高） | ✅ | `quotas.py` |
 | **as-of 判定**（按当时的值与当时生效的规则回溯判定） | ✅ | `temporal.py`、`semantic_kernel.py` |
 | **历史覆盖区间上报**（区间外为「未知」，不是「无变化」） | ✅ | `temporal.py` |
 | **直写库／存储过程写回**（语句声明、值绑定、无 WHERE 拒绝） | ✅ | `db_executors.py` |
@@ -637,7 +658,9 @@ _不是_：算法、模型、策略引擎脚本。
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
 - 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 135 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- HTTP 层共 144 个端点，**已开始拆分 APIRouter**（`routers/`）：
+  工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
+  共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
 - DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
   因此阻塞于分包边界。
@@ -649,7 +672,7 @@ _不是_：算法、模型、策略引擎脚本。
 
 ## 设计决策
 
-九项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
+十一项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
 
 ### 1. 规则引擎 fail-closed
 
@@ -747,6 +770,43 @@ _不是_：算法、模型、策略引擎脚本。
 证据：`tests/test_type_hierarchy_and_events.py` ·
 [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
 
+### 10. 公理约束模型，规则判定实例
+
+两者回答不同问题，混为一谈有具体代价。规则对实例求值（「这份合同超额，阻断」），
+公理断言模型本身（「合同的甲乙方永远不能是同一主体」）。
+
+把公理写成规则，它只能报出一个违规实例，**永远报不出真正的问题**——
+问题是模型允许了一种业务上不存在的形状。而此前一个自相矛盾的模型照样能发布：
+没有任何门禁看过「这些声明能不能同时为真」。
+
+因此公理在建模期校验，违反是**阻断**而非警告：自相矛盾的模型产出的每个判定都可疑。
+声明期与发布期都查——声明期让写公理的人立刻看到矛盾，
+发布期抓的是公理写下时成立、之后模型在它下面变了的情况。
+
+引用不存在对象的公理直接**拒绝**：它恒真，什么都不约束也什么都不报，
+于是建模者相信有一道控制而其实没有。这比没有公理更糟。
+
+证据：`tests/test_axioms.py` ·
+[ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md)
+
+### 11. OWL 是词汇，不是推理机
+
+对标 GB/T 48000.3—2026 采用 OWL/RDF/SHACL 作为**表达词汇**，
+同时继续拒绝完整 DL 推理（ADR-0005）。
+
+此前导出 JSON-LD 与 Turtle 并不构成互操作：语法是标准的，每个术语都是自造的。
+懂 OWL 的消费方知道 `rdfs:domain` 的含义并能据此行动，
+它无法知道 `ont:sourceObject` 是同一件事——于是导出机器**可读**而非机器**可解释**。
+
+明确不导出需要 DL 推理才有意义的构件（`owl:equivalentClass`、属性链）：
+由包含推理得出的结论无法回溯到某个人做过的声明，而可回溯性是本平台的产品本身。
+
+SHACL 形状由声明生成而非手写——手写的一份会与发布门禁漂移，
+而漂移后的形状会声明平台并不执行的约束。
+
+证据：`tests/test_standard_vocabulary.py` ·
+[ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md)
+
 ## 配置
 
 可配置项集中在 [`backend/ontology_platform/config.py`](backend/ontology_platform/config.py)，
@@ -823,7 +883,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1042 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1120 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -837,6 +897,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_audit_reports.py` | 18 | 从未触发的规则、覆盖门禁的发布、留痕完整性、区间半开 |
+| `test_tenant_quotas.py` | 16 | 配额存于基础库租户改不了、写前拦截、未声明即不限量、跨租户不串用量 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
 | `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
 | `test_cross_object_aggregation.py` | 46 | 聚合定义校验、fail-closed、行数上限、端到端 |
@@ -855,6 +917,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
+| `test_standard_vocabulary.py` | 24 | OWL/RDFS 映射、SHACL 形状生成、IRI 稳定性、导出必须能被 RDF 解析器解析 |
+| `test_axioms.py` | 20 | 公理五类校验、声明期拒绝、发布门禁阻断、缺表读作未配置 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
 | `test_documented_claims.py` | 4 | README 声明的测试数、分布表、端点数、Python 版本与代码一致 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |

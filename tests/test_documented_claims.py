@@ -18,7 +18,6 @@ exactly the ones a human reviewer skims past.
 
 from __future__ import annotations
 
-import ast
 import re
 import subprocess
 import sys
@@ -85,19 +84,19 @@ def test_the_per_file_breakdown_covers_every_test_file() -> None:
 
 
 def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
-    """`api.py` 的端点数是拆分 APIRouter 的进度指标，因此必须是实数而非约数。"""
-    tree = ast.parse((ROOT / "backend" / "ontology_platform" / "api.py").read_text(encoding="utf-8"))
-    routes = 0
-    for node in ast.walk(tree):
-        for decorator in getattr(node, "decorator_list", []):
-            func = decorator.func if isinstance(decorator, ast.Call) else decorator
-            if (
-                isinstance(func, ast.Attribute)
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "app"
-                and func.attr in {"get", "post", "put", "patch", "delete"}
-            ):
-                routes += 1
+    """The endpoint count is a claim about the API's size, so it has to be a real number.
+
+    Counted from the app itself rather than by grepping decorators. A source-text count
+    only saw routes declared on `app`, so moving routes onto an `APIRouter` made the
+    number drop without any endpoint disappearing -- the measurement tracked the file
+    layout instead of the surface it claimed to describe.
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.api import declared_routes
+
+    routes = len(declared_routes())
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     claimed = {int(found) for found in re.findall(r"(\d+)\s*个端点", readme)}

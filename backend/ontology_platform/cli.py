@@ -110,10 +110,12 @@ def _init_optional_schemas(conn: Any) -> None:
     from .agent_roles import init_agent_role_schema
     from .aggregation import init_aggregate_schema
     from .auth import init_auth_schema
+    from .axioms import init_axiom_schema
     from .conversations import init_conversation_schema
     from .entity_resolution import init_entity_resolution_schema
     from .events import init_event_schema
     from .knowledge_documents import init_knowledge_schema
+    from .quotas import init_quota_schema
     from .temporal import init_temporal_schema
     from .workflow_permission import init_workflow_and_permission_schema
 
@@ -127,6 +129,8 @@ def _init_optional_schemas(conn: Any) -> None:
         init_event_schema,
         init_temporal_schema,
         init_entity_resolution_schema,
+        init_axiom_schema,
+        init_quota_schema,
     ):
         initialise(conn)
 
@@ -230,6 +234,58 @@ def cmd_publish(args: argparse.Namespace) -> int:
         return _fail(f"发布被拒绝：{error}\n如确认要覆盖门禁，请显式传 --force（会写入审计）。")
     _print(result)
     return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    """Write an ontology out in platform or standard vocabulary.
+
+    On the CLI rather than only over HTTP because the consumer of a standard export is
+    usually a pipeline: hand the file to a SHACL validator, load it into a triple store,
+    diff it against the previous version. Requiring a running server and a token to
+    obtain a file makes that pipeline harder than it needs to be.
+    """
+    from .ontology import export_ontology_asset
+    from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
+
+    platform_db = _platform_db(args)
+    try:
+        if args.format in STANDARD_EXPORT_FORMATS:
+            asset = export_standard_asset(platform_db, args.ontology_id, args.format)
+        else:
+            asset = export_ontology_asset(platform_db, args.ontology_id, args.format)
+    except ValueError as error:
+        return _fail(str(error))
+
+    if args.output:
+        target = Path(args.output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(asset["content"], encoding="utf-8")
+        _print({"format": args.format, "written": str(target), "mediaType": asset["mediaType"]})
+    else:
+        # To stdout, so the file can be piped into a validator without a temporary path.
+        print(asset["content"], end="")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Build an audit report for a period.
+
+    On the CLI because a compliance report is usually produced on a schedule and filed,
+    not read in a browser. Exiting non-zero when blocker-level findings exist makes it
+    usable as a periodic check rather than only as a document.
+    """
+    from .audit_reports import AuditPeriodError, build_audit_report
+
+    try:
+        report = build_audit_report(_platform_db(args), start=args.start, end=args.end, ontology_id=args.ontology_id)
+    except AuditPeriodError as error:
+        return _fail(str(error))
+
+    _print(report)
+    # A report nobody reads is the normal outcome, so the exit code carries the verdict:
+    # blocker findings mean something in the period cannot be signed off as-is.
+    blockers = [item for item in report["findings"] if item["severity"] == "blocker"]
+    return 1 if blockers else 0
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
@@ -508,6 +564,23 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--actor", default="cli", help="记入审计的操作者")
     publish.add_argument("--force", action="store_true", help="覆盖发布门禁，未通过项数会写入审计")
     publish.set_defaults(func=cmd_publish)
+
+    export_cmd = sub.add_parser("export", help="导出本体：平台词汇（jsonld／turtle）或标准词汇（owl／shacl）")
+    export_cmd.add_argument("ontology_id", type=int)
+    export_cmd.add_argument(
+        "--format",
+        default="owl",
+        choices=("jsonld", "turtle", "owl", "shacl"),
+        help="owl／shacl 为 OWL/RDFS/SHACL 标准词汇，可被外部 RDF 工具解释；jsonld／turtle 为平台词汇，字段更全",
+    )
+    export_cmd.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
+    export_cmd.set_defaults(func=cmd_export)
+
+    audit = sub.add_parser("audit", help="生成一段时间的审计报表（存在阻断级发现时退出码非 0）")
+    audit.add_argument("--start", required=True, help="起始时刻（含），如 2026-08-01")
+    audit.add_argument("--end", required=True, help="结束时刻（不含），如 2026-09-01")
+    audit.add_argument("--ontology-id", type=int, default=None, help="仅统计某个本体")
+    audit.set_defaults(func=cmd_audit)
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")

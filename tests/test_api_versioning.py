@@ -17,7 +17,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastapi.routing import APIRoute
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -32,19 +31,43 @@ from ontology_platform.access_policy import (
 
 
 def _routes():
-    from ontology_platform.api import app
+    """Every route the app declares, bare form only.
 
-    return [route for route in app.routes if isinstance(route, APIRoute)]
+    Read from `declared_routes()` rather than `app.routes`: FastAPI 0.141 expands
+    `include_router` lazily, so the app holds placeholder objects instead of routes and
+    a reflective walk silently returns nothing. Silently is what makes it dangerous --
+    every assertion in this module iterates routes, so an empty list turns the whole
+    file into a suite that passes by checking nothing.
+    """
+    from ontology_platform.api import declared_routes
+
+    routes = declared_routes()
+    # The guard the lazy-expansion change would have needed: an enumeration that can
+    # return nothing must be asserted non-empty at the source.
+    assert len(routes) > 100, f"仅枚举到 {len(routes)} 条路由，说明枚举方式已失效"
+    return routes
 
 
 def test_every_route_is_also_served_under_the_version_prefix() -> None:
+    """Asserted by routing a request, not by inspecting a list.
+
+    The earlier version compared declared paths against declared `/v1` paths. That
+    passed while `/v1` was in fact unreachable: the routes were registered through a
+    mechanism the comparison could not see. Asking the app to resolve the path is the
+    only check that fails when the prefix stops working.
+    """
+    from ontology_platform.api import app
+    from starlette.routing import Match
+
     prefix = VERSION_PREFIXES[0]
-    paths = {route.path for route in _routes()}
-    bare = {path for path in paths if not path.startswith(prefix)}
-    # The docs and schema endpoints are served by FastAPI itself, not copied.
-    bare -= {"/openapi.json", "/docs", "/redoc"}
-    missing = [path for path in sorted(bare) if f"{prefix}{path}" not in paths]
-    assert not missing, f"以下路由缺少 {prefix} 版本: {missing}"
+    unreachable = []
+    for route in _routes():
+        target = f"{prefix}{_concrete(route.path)}"
+        method = sorted(route.methods or {"GET"})[0]
+        scope = {"type": "http", "method": method, "path": target, "headers": [], "query_string": b""}
+        if not any(candidate.matches(scope)[0] is Match.FULL for candidate in app.routes):
+            unreachable.append(f"{method} {target}")
+    assert not unreachable, f"以下路由的 {prefix} 版本无法路由到: {unreachable[:5]}"
 
 
 def test_the_versioned_copy_needs_the_same_capability() -> None:
@@ -109,21 +132,37 @@ def test_openapi_lists_each_operation_once() -> None:
     assert not versioned, f"OpenAPI 中出现了重复的版本化路径: {versioned[:5]}"
 
 
-def test_the_versioned_routes_share_the_bare_handlers() -> None:
-    """Copied routes, not a mounted sub-application: a sub-app would not inherit the
-    parent's middleware, and the middleware is what authenticates every request."""
+def test_the_versioned_tree_is_behind_the_same_middleware() -> None:
+    """The property worth protecting: `/v1` is not an unauthenticated copy of the API.
+
+    One router included twice, rather than a sub-application mounted at `/v1` -- a
+    sub-application does not inherit the parent's middleware, and the middleware is what
+    authenticates every request.
+
+    Checked by sending real unauthenticated requests, because that is the only form of
+    evidence that distinguishes the two arrangements at runtime. A protected route must
+    answer 401 on both forms; if the versioned tree bypassed the middleware it would
+    reach the handler instead and answer 200, 404 or 422 -- anything but 401.
+    """
+    from fastapi.testclient import TestClient
+    from ontology_platform.api import app
+
     prefix = VERSION_PREFIXES[0]
-    by_path = {route.path: route for route in _routes()}
-    checked = 0
-    for path, route in by_path.items():
-        if path.startswith(prefix):
-            continue
-        versioned = by_path.get(f"{prefix}{path}")
-        if versioned is None:
-            continue
-        assert versioned.endpoint is route.endpoint, path
-        checked += 1
-    assert checked > 100, f"仅校验了 {checked} 条路由，远少于预期"
+    protected = [route for route in _routes() if not is_public(_concrete(route.path))]
+    assert len(protected) > 100, f"仅 {len(protected)} 条受保护路由，枚举可能已失效"
+
+    leaked = []
+    with TestClient(app) as client:
+        for route in protected:
+            real = _concrete(route.path)
+            for method in sorted(route.methods or ()):
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                for path in (real, f"{prefix}{real}"):
+                    status = client.request(method, path).status_code
+                    if status != 401:
+                        leaked.append(f"{method} {path} -> {status}")
+    assert not leaked, f"以下路由未鉴权即可到达（应为 401）: {leaked[:8]}"
 
 
 # -- Policy coverage --
@@ -145,6 +184,9 @@ EXPECTED_ADMIN_ONLY = {
     "POST /model/config",
     "DELETE /model/config",
     "POST /tenants",
+    # 配额是平台对租户设的上限，不是租户的设置项。若租户能改，上限就不成立——
+    # 因此与「开通租户」同级，仅管理员。
+    "PUT /tenants/1/quotas",
     "POST /permissions/roles",
     "POST /permissions/policies",
     "POST /tools",

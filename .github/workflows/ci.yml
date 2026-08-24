@@ -110,6 +110,29 @@ jobs:
       # inline version read only the Chinese one, and the English copy fell behind while
       # the build stayed green).
 
+  # A single stable check name that gates on the whole matrix.
+  #
+  # Branch protection matches required checks *by name*, so making the matrix job itself
+  # required does not work: its name carries the version, which means one required check
+  # per version, and the previously required name never appears again -- silently blocking
+  # every merge until someone edits the protection rule. That is exactly what happened
+  # when the matrix was introduced.
+  #
+  # This job's name never changes, so adding or dropping a Python version does not touch
+  # branch protection. `needs` makes it wait for every matrix leg, and the explicit result
+  # check makes it fail when any leg fails -- without it, a skipped or failed dependency
+  # would leave this job "successful" and the gate would pass on a red matrix.
+  backend-matrix:
+    name: 后端测试（含 MySQL 与 PostgreSQL）
+    runs-on: ubuntu-latest
+    needs: backend
+    if: always()
+    steps:
+      - name: 校验矩阵每个版本都通过
+        run: |
+          echo "matrix result: ${{ needs.backend.result }}"
+          test "${{ needs.backend.result }}" = "success"
+
   quickstart:
     name: README 快速开始可执行性验证
     runs-on: ubuntu-latest
