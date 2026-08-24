@@ -17,6 +17,50 @@ Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神
 
 ---
 
+## 60 秒上手
+
+```bash
+pip install aletheia-onto        # 内核零第三方依赖
+aletheia demo                    # 接入 → 建模 → 判定，一条命令跑通
+```
+
+```json
+{ "ontologyId": 1, "objectCode": "contract", "decision": "approved" }
+```
+
+接你自己的系统：
+
+```bash
+aletheia init
+aletheia connect postgresql://user:pass@host/db --domain 合同管理
+aletheia model 1                 # 扫描元数据，生成本体草案
+aletheia assess 1 contract 1     # 对一个实例产出可核验的判定
+```
+
+判定不通过时，返回的是**为什么**——哪条规则、依据哪些字段值、是否需要人工复核。
+完整路径见[快速开始](#快速开始)。
+
+## 我想做什么
+
+按你的目的选入口，不必通读本文。
+
+| 我想…… | 去哪里 |
+|---|---|
+| 先看它能产出什么 | [效果图](#效果图) · [解决什么问题](#解决什么问题) |
+| 装上并跑通一遍 | [快速开始](#快速开始) |
+| 接入我自己的数据库 | [快速开始](#快速开始) · [平台库三方言](#平台库三方言) |
+| 起一个自己的项目 | `aletheia new`，见[快速开始](#快速开始) |
+| 知道它到底做到了哪一步 | [能力矩阵](#能力矩阵) · [当前限制](#当前限制) |
+| 接一个平台不支持的数据库／规则函数／检索后端 | [扩展指南](docs/extending.md) |
+| 导出为 OWL／SHACL 给别的工具用 | [快速开始](#快速开始)的「导出为标准词汇」 |
+| 上生产 | [私有化部署](#私有化部署) · `aletheia preflight` |
+| 理解某个设计为什么是这样 | [设计决策](#设计决策) · [ADR 全集](docs/adr/) |
+| 对标 GB/T 48000.3—2026 国标 | [ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md) |
+
+> **本文档偏长，因为它记录取舍而不只是用法。** 想快速判断这个项目是否适合你，
+> 读[解决什么问题](#解决什么问题)与[当前限制](#当前限制)两节即可——
+> 后者逐项写明了做不到什么，以及为什么那是设计而非缺陷。
+
 ## 解决什么问题
 
 通用 RAG 框架优化的是「检索到的内容像不像答案」。Aletheia 优化的是
@@ -952,7 +996,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1228 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1303 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -966,6 +1010,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_documentation_links.py` | 75 | 文档链接与锚点有效、无空章节、不声称已实现的能力缺失 |
 | `test_platform_db_consistency.py` | 7 | serve 与其他命令用同一个平台库，并在启动时告知路径 |
 | `test_derive_completeness.py` | 7 | 派生新版本复制工作流与规则求值列，但不复制实例状态 |
 | `test_codegen.py` | 16 | 关系类型化为目标对象、仅已发布本体、产物通过真实 tsc --strict |
@@ -1091,5 +1136,3 @@ aletheia preflight --workers 4 --expect-origin https://ontology.example.com
 拒绝它会让人索性跳过整个检查。
 
 完整取舍见 [ADR-0017](docs/adr/0017-deployment-preflight.md)。
-
-## 配置
