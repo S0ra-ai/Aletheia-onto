@@ -6,6 +6,7 @@ from typing import Any
 
 from .database import connect, last_insert_id
 from .release_readiness import assess_ontology_release_readiness
+from .schema import table_exists
 from .semantic_kernel import validate_rule_expression
 from .type_hierarchy import inherited_rule_scopes
 
@@ -246,6 +247,7 @@ def derive_ontology_version(
             conn, source_ontology_id, new_ontology_id, object_id_map, attribute_id_map, source["version"]
         )
         rule_count = _copy_business_rules(conn, source_ontology_id, new_ontology_id)
+        workflow_count = _copy_workflows(conn, source_ontology_id, new_ontology_id)
 
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
@@ -261,6 +263,7 @@ def derive_ontology_version(
                         "newVersion": version,
                         "mappings": mapping_count,
                         "rules": rule_count,
+                        "workflows": workflow_count,
                     },
                     ensure_ascii=False,
                 ),
@@ -722,9 +725,10 @@ def _copy_business_rules(conn: Any, source_ontology_id: int, new_ontology_id: in
             """
             insert into business_rule (
                 ontology_id, code, name, rule_type, scope_object_code,
-                expression, severity, natural_language, status
+                expression, severity, natural_language, status,
+                priority, category, effective_start, effective_end, depends_on
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_ontology_id,
@@ -736,9 +740,132 @@ def _copy_business_rules(conn: Any, source_ontology_id: int, new_ontology_id: in
                 rule["severity"],
                 rule["natural_language"],
                 rule["status"],
+                # These five were dropped, which changed behaviour rather than only losing
+                # metadata: `priority` decides evaluation order, `effective_start`/`_end`
+                # decide whether a rule applies at all, and `depends_on` is read by the
+                # engine. A derived version therefore evaluated the same rules differently
+                # from the version it came from -- and "the new version gives a different
+                # verdict" is the one thing `derive` must not do silently.
+                _rule_column(rule, "priority", 0),
+                _rule_column(rule, "category", ""),
+                _rule_column(rule, "effective_start", None),
+                _rule_column(rule, "effective_end", None),
+                _rule_column(rule, "depends_on", "[]"),
             ),
         )
     return len(rules)
+
+
+def _rule_column(row: Any, column: str, default: Any) -> Any:
+    """One rule column, tolerating a database that predates it.
+
+    `priority`, `category`, the effective dates and `depends_on` were added after
+    `business_rule` shipped. A deployment that has not applied the column addition would
+    otherwise fail every `derive` with a KeyError -- and an upgrade that breaks derivation is
+    worse than one that derives without a column nobody set.
+    """
+    try:
+        value = row[column]
+    except (KeyError, IndexError):
+        return default
+    return default if value is None and default is not None else value
+
+
+def _copy_workflows(conn: Any, source_ontology_id: int, new_ontology_id: int) -> int:
+    """Copy workflow definitions, their states and their transitions.
+
+    Previously not copied, and recorded in README as "工作流与本体版本脱钩". The consequence
+    was concrete: deriving a new version produced an ontology whose objects had no state
+    machine, so every instance entering it had nowhere to go -- and the failure appeared as
+    "this object has no workflow", which reads as a modelling omission rather than as
+    something `derive` dropped.
+
+    **Instances are deliberately not copied.** A workflow *definition* is part of the model;
+    an instance's current state is data about a specific contract. Copying instance states
+    into a new version would assert that a contract is simultaneously at two points in two
+    state machines, and reconciling that later requires knowing which one the business
+    considers authoritative -- a question the platform cannot answer for them.
+
+    Missing tables mean the feature was never used, which is zero workflows rather than an
+    error: a deployment that never configured a workflow must still be able to derive.
+    """
+    if not table_exists(conn, "workflow_definition"):
+        return 0
+
+    definitions = conn.execute(
+        "select * from workflow_definition where ontology_id = ? order by id",
+        (source_ontology_id,),
+    ).fetchall()
+
+    for definition in definitions:
+        conn.execute(
+            """
+            insert into workflow_definition (
+                ontology_id, object_code, name, description, initial_state, status
+            )
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_ontology_id,
+                definition["object_code"],
+                definition["name"],
+                definition["description"],
+                definition["initial_state"],
+                definition["status"],
+            ),
+        )
+        new_workflow_id = last_insert_id(conn)
+
+        for state in conn.execute(
+            "select * from workflow_state where workflow_id = ? order by sort_order, id",
+            (int(definition["id"]),),
+        ).fetchall():
+            conn.execute(
+                """
+                insert into workflow_state (
+                    workflow_id, code, name, description, is_terminal, color, sort_order
+                )
+                values (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_workflow_id,
+                    state["code"],
+                    state["name"],
+                    state["description"],
+                    state["is_terminal"],
+                    state["color"],
+                    state["sort_order"],
+                ),
+            )
+
+        for transition in conn.execute(
+            "select * from workflow_transition where workflow_id = ? order by sort_order, id",
+            (int(definition["id"]),),
+        ).fetchall():
+            conn.execute(
+                """
+                insert into workflow_transition (
+                    workflow_id, from_state, to_state, action_code, name,
+                    guard_expression, requires_review, review_role, sort_order
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    new_workflow_id,
+                    transition["from_state"],
+                    transition["to_state"],
+                    transition["action_code"],
+                    transition["name"],
+                    # The guard is what makes a transition refusable. Dropping it would turn
+                    # every gated transition into an open one, silently.
+                    transition["guard_expression"],
+                    transition["requires_review"],
+                    transition["review_role"],
+                    transition["sort_order"],
+                ),
+            )
+
+    return len(definitions)
 
 
 def _remap_mapping_target(target_ref: str, object_id_map: dict[int, int], attribute_id_map: dict[int, int]) -> str:
