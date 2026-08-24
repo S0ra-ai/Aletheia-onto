@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from urllib.parse import quote
 
 from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
@@ -1010,14 +1011,49 @@ def _map_data_type(sql_type: str) -> str:
 
 
 def _ontology_base_uri(ontology: dict[str, Any]) -> str:
+    """The versioned base IRI for one ontology.
+
+    Keyed on **name** rather than row id. `unique(name, version)` is what makes an
+    ontology identifiable in this schema, and `derive` deliberately carries the name
+    forward while allocating a new row -- so an id-based IRI changes when nothing about
+    the concept did.
+
+    That matters because these IRIs are what an external consumer references. With the
+    id in the path, deriving 0.2.0 from 0.1.0 moved every class to a new namespace, and
+    a consumer's stored reference pointed at a version that would never be updated
+    again. Nothing failed loudly: their queries simply returned the old model forever.
+
+    The version stays in the path on purpose. Two versions of an ontology can disagree
+    about what a class means, so a consumer that pinned 0.1.0 must keep resolving 0.1.0
+    -- collapsing the version would silently change the meaning of an existing
+    reference, which is the failure the version is there to prevent.
+    """
     base = SEMANTIC_ASSET_NAMING.ontology_base.rstrip("/")
-    return f"{base}/{ontology['id']}/v/{_uri_part(str(ontology['version']))}/"
+    return f"{base}/{ontology_slug(str(ontology['name']))}/v/{_uri_part(str(ontology['version']))}/"
 
 
 def _uri_part(value: str) -> str:
     normalized = re.sub(r"[^0-9a-zA-Z_.-]+", "-", value.strip())
     normalized = re.sub(r"-+", "-", normalized).strip("-")
     return normalized or "item"
+
+
+def ontology_slug(name: str) -> str:
+    """An ontology name as an IRI path segment, preserving non-ASCII by encoding it.
+
+    `_uri_part` replaces every non-ASCII run with `-` and falls back to `item` when
+    nothing survives. For an object *code* that is fine -- codes come from column names
+    and are ASCII. For an ontology *name* it is not: this codebase is Chinese, so
+    「合同管理本体」and「客户管理本体」both collapsed to `item`, and every Chinese-named
+    ontology in a deployment shared one namespace. Two unrelated models would then export
+    classes with identical IRIs, and merging their graphs would silently conflate them.
+
+    Percent-encoding instead, which is what IRIs are for. `quote` is used with an empty
+    safe set so `/` inside a name cannot introduce a path segment -- a name containing a
+    slash would otherwise change the shape of every IRI derived from it.
+    """
+    encoded = quote(name.strip(), safe="")
+    return encoded or "unnamed"
 
 
 def _ttl_literal(value: object) -> str:

@@ -881,7 +881,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1083 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1086 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -913,7 +913,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
-| `test_standard_vocabulary.py` | 21 | OWL/RDFS 映射、SHACL 形状生成、导出必须能被 RDF 解析器解析 |
+| `test_standard_vocabulary.py` | 24 | OWL/RDFS 映射、SHACL 形状生成、IRI 稳定性、导出必须能被 RDF 解析器解析 |
 | `test_axioms.py` | 20 | 公理五类校验、声明期拒绝、发布门禁阻断、缺表读作未配置 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
 | `test_documented_claims.py` | 4 | README 声明的测试数、分布表、端点数、Python 版本与代码一致 |

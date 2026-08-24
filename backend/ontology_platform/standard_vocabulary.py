@@ -76,6 +76,7 @@ from .axioms import (
 )
 from .config import SEMANTIC_ASSET_NAMING
 from .database import connect
+from .ontology import ontology_slug
 
 __all__ = [
     "STANDARD_EXPORT_FORMATS",
@@ -231,8 +232,19 @@ def _cardinalities(conn: Any, ontology_id: int) -> dict[str, str]:
 
 
 def _base(ontology: dict[str, Any]) -> str:
+    """Same base IRI as the platform-vocabulary export, for the same reason.
+
+    Keyed on name, not row id: `derive` carries the name forward and allocates a new row,
+    so an id-based IRI would move every class to a new namespace when nothing about the
+    concept changed -- and an external consumer's stored reference would keep resolving
+    the superseded version forever, with nothing failing to signal it.
+
+    Deliberately identical to `ontology._ontology_base_uri`. Two IRI schemes for one
+    ontology would mean the standard and platform exports describe different resources,
+    and a consumer merging them would get two disconnected graphs.
+    """
     base = SEMANTIC_ASSET_NAMING.ontology_base.rstrip("/")
-    return f"{base}/{ontology['id']}/v/{_slug(str(ontology['version']))}/"
+    return f"{base}/{ontology_slug(str(ontology['name']))}/v/{_slug(str(ontology['version']))}/"
 
 
 def _slug(value: str) -> str:

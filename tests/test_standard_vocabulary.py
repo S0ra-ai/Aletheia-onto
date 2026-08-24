@@ -384,6 +384,109 @@ def test_the_datatype_table_covers_the_types_the_scanner_produces() -> None:
         assert data_type in XSD_BY_DATA_TYPE, f"{data_type} 未映射到 XSD 类型"
 
 
+# -- IRI stability --
+
+
+def test_deriving_a_new_version_keeps_the_namespace_and_changes_only_the_version(modelled) -> None:
+    """An exported IRI is what an external consumer stores. It must move only when the
+    meaning does.
+
+    The IRI was keyed on the ontology row id, and `derive` allocates a new row while
+    carrying the name forward -- so deriving 0.2.0 moved every class to a different
+    namespace even though nothing about the concept changed. Nothing failed loudly: a
+    consumer's stored reference simply kept resolving the superseded version forever.
+
+    The version *does* stay in the path. Two versions can disagree about what a class
+    means, so a consumer pinned to 0.1.0 must keep resolving 0.1.0 -- collapsing the
+    version would silently change the meaning of an existing reference.
+    """
+    from ontology_platform.governance import derive_ontology_version, publish_ontology
+
+    platform_db, ontology_id = modelled["platform_db"], modelled["ontology_id"]
+
+    def class_iris(target_id: int) -> list[str]:
+        graph = rdflib.Graph()
+        graph.parse(
+            data=export_standard_asset(platform_db, target_id, "owl")["content"],
+            format="turtle",
+        )
+        return sorted(str(subject) for subject in graph.subjects(rdflib.RDF.type, OWL.Class))
+
+    before = class_iris(ontology_id)
+
+    with connect(platform_db) as conn:
+        conn.execute(
+            "update semantic_mapping set status = 'confirmed' where ontology_id = ?",
+            (ontology_id,),
+        )
+    publish_ontology(platform_db, ontology_id, "tester")
+    derived = derive_ontology_version(platform_db, ontology_id, "0.2.0", "tester")
+    derived_id = derived.get("id") or derived["ontology"]["id"]
+
+    after = class_iris(derived_id)
+    assert len(before) == len(after)
+
+    def namespace(iri: str) -> str:
+        return iri.rsplit("/v/", 1)[0]
+
+    assert namespace(before[0]) == namespace(after[0]), (
+        f"派生新版本改变了命名空间：{namespace(before[0])} -> {namespace(after[0])}"
+    )
+    assert "/v/0.1.0/" in before[0] and "/v/0.2.0/" in after[0], (before[0], after[0])
+
+
+def test_a_chinese_ontology_name_survives_in_the_iri(tmp_path: Path) -> None:
+    """Two Chinese-named ontologies must not share one namespace.
+
+    The slug helper replaced every non-ASCII run with `-` and fell back to `item`, so
+    「合同管理本体」and「客户管理本体」produced identical IRIs. Merging their exported
+    graphs would then conflate two unrelated models, and nothing would report it.
+    """
+    from ontology_platform.ontology import ontology_slug
+
+    contract = ontology_slug("合同管理本体")
+    customer = ontology_slug("客户管理本体")
+    assert contract != customer, "不同中文本体名产生了相同的 IRI 片段"
+    assert contract and contract != "item"
+    # A slash inside a name must not introduce a path segment, or it would change the
+    # shape of every IRI derived from that ontology.
+    assert "/" not in ontology_slug("A/B 本体")
+
+
+def test_both_exports_describe_the_same_resources(modelled) -> None:
+    """One ontology, one IRI scheme.
+
+    The platform-vocabulary export and the standard one must agree on the namespace, or a
+    consumer merging them gets two disconnected graphs describing what is actually the
+    same model.
+    """
+    from ontology_platform.ontology import export_ontology_asset
+
+    platform_db, ontology_id = modelled["platform_db"], modelled["ontology_id"]
+
+    platform_graph = rdflib.Graph()
+    platform_graph.parse(
+        data=export_ontology_asset(platform_db, ontology_id, "turtle")["content"],
+        format="turtle",
+    )
+    standard_graph = rdflib.Graph()
+    standard_graph.parse(
+        data=export_standard_asset(platform_db, ontology_id, "owl")["content"],
+        format="turtle",
+    )
+
+    def namespaces(graph) -> set[str]:
+        return {
+            str(subject).rsplit("/v/", 1)[0]
+            for subject in graph.subjects()
+            if isinstance(subject, rdflib.URIRef) and "/v/" in str(subject)
+        }
+
+    assert namespaces(platform_graph) == namespaces(standard_graph), (
+        f"两套导出的命名空间不一致：{namespaces(platform_graph)} / {namespaces(standard_graph)}"
+    )
+
+
 # -- Reachable from the CLI --
 
 
