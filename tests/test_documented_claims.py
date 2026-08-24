@@ -144,3 +144,27 @@ def test_every_claimed_python_version_is_actually_tested() -> None:
         assert f"3.{badge.group(1)}" == oldest_tested, (
             f"{filename} 徽章声明 3.{badge.group(1)}，实际底线 {oldest_tested}"
         )
+
+
+def test_the_documented_signature_migration_count_is_current() -> None:
+    """A debt number that drifts is a debt nobody can tell is shrinking.
+
+    Three documents quote how many `platform_db: Path | str` signatures remain, and the
+    number is the only evidence that the migration is progressing at all. Left to manual
+    upkeep it goes stale in the wrong direction: the count grew from 172 to 186 while all
+    three files still said 172, so the debt looked like it was being paid down while it
+    was being added to.
+    """
+    import re as regex
+
+    package = ROOT / "backend" / "ontology_platform"
+    actual = sum(
+        len(regex.findall(r"platform_db: Path \| str", path.read_text(encoding="utf-8")))
+        for path in sorted(package.glob("*.py"))
+    )
+
+    for filename in ("README.md", "ROADMAP.md", "docs/architecture-debt.md"):
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        claimed = {int(found) for found in regex.findall(r"(\d+) 处 `platform_db", text)}
+        assert claimed, f"{filename} 未声明待迁移签名数量"
+        assert actual in claimed, f"{filename} 声明 {sorted(claimed)} 处，实际 {actual} 处"
