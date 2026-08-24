@@ -5,12 +5,12 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
-from pathlib import Path
 from typing import Any, Sequence
 
 from .adapters import RuntimeDatabase, get_adapter
 from .aggregation import aggregate_context, compute_aggregates, load_aggregate_specs
 from .config import clamp_page_size, clamp_sample_size
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .decisions import record_decision_in_connection
 from .derived_attributes import (
@@ -124,7 +124,7 @@ class SemanticRuntime:
 # dunder attributes are the entry point for sandbox escapes via __class__,
 # __globals__ and friends.
 def assess_instance(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -331,7 +331,7 @@ def assess_instance(
 
 
 def assess_decision_consistency(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_ids: list[str] | None = None,
@@ -406,7 +406,7 @@ def assess_decision_consistency(
     return report
 
 
-def list_instance_ids(platform_db: Path | str, ontology_id: int, object_code: str, limit: int = 50) -> list[Any]:
+def list_instance_ids(platform_db: PlatformDb, ontology_id: int, object_code: str, limit: int = 50) -> list[Any]:
     resolved_limit = clamp_page_size(limit)
     with connect(platform_db) as platform:
         runtime = _runtime_target(platform, ontology_id, object_code)
@@ -419,7 +419,7 @@ def list_instance_ids(platform_db: Path | str, ontology_id: int, object_code: st
             return list(runtime["resolver"].list_ids(database, resolved_limit))
 
 
-def available_rule_names(platform_db: Path | str, ontology_id: int, object_code: str) -> list[str]:
+def available_rule_names(platform_db: PlatformDb, ontology_id: int, object_code: str) -> list[str]:
     """List the names a rule for this object may reference.
 
     Combines the source table's own columns with the related table names that

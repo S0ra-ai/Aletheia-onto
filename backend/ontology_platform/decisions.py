@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .context import PlatformDb
 from .database import connect
 
 
 def record_decision(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     decision_type: str,
     status: str,
     recommendation: str = "",
@@ -83,7 +83,7 @@ def record_decision_in_connection(
     return _decision_row(row)
 
 
-def list_decisions(platform_db: Path | str, limit: int = 50) -> list[dict[str, Any]]:
+def list_decisions(platform_db: PlatformDb, limit: int = 50) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """

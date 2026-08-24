@@ -5,10 +5,10 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 from .config import MODEL_PROVIDER_DEFAULTS
+from .context import PlatformDb
 from .database import connect
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
@@ -130,7 +130,7 @@ class OpenRouterConfig:
         )
 
     @classmethod
-    def from_db_or_env(cls, platform_db: Path | str) -> "OpenRouterConfig":
+    def from_db_or_env(cls, platform_db: PlatformDb) -> "OpenRouterConfig":
         env_config = cls.from_env()
         with connect(platform_db) as conn:
             row = conn.execute("select * from model_config where id = 1").fetchone()
@@ -228,7 +228,7 @@ class OpenRouterClient:
 
 
 def generate_semantic_suggestions(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     client: OpenRouterClient | None = None,
 ) -> dict[str, Any]:
@@ -276,7 +276,7 @@ def generate_semantic_suggestions(
 
 
 def generate_blueprint_draft(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     client: OpenRouterClient | None = None,
 ) -> dict[str, Any]:
@@ -327,7 +327,7 @@ def generate_blueprint_draft(
 
 
 def generate_ontology_reasoning_chain(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     client: OpenRouterClient | None = None,
 ) -> dict[str, Any]:
@@ -380,7 +380,7 @@ def generate_ontology_reasoning_chain(
         }
 
 
-def get_model_config(platform_db: Path | str) -> dict[str, Any]:
+def get_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     config = OpenRouterConfig.from_db_or_env(platform_db)
     source = _model_config_source(platform_db)
     return {
@@ -404,7 +404,7 @@ def get_model_config(platform_db: Path | str) -> dict[str, Any]:
     }
 
 
-def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dict[str, Any]:
+def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dict[str, Any]:
     current = OpenRouterConfig.from_db_or_env(platform_db)
     api_key = payload.get("apiKey")
     if api_key is None or api_key == "":
@@ -485,7 +485,7 @@ def update_model_config(platform_db: Path | str, payload: dict[str, Any]) -> dic
     return {"success": True, "message": "模型配置已保存。"}
 
 
-def reset_model_config(platform_db: Path | str) -> dict[str, Any]:
+def reset_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     with connect(platform_db) as conn:
         conn.execute("delete from model_config where id = 1")
         conn.execute(
@@ -495,7 +495,7 @@ def reset_model_config(platform_db: Path | str) -> dict[str, Any]:
     return {"success": True, "message": "模型配置已重置为环境变量默认值。"}
 
 
-def test_model_config(platform_db: Path | str) -> dict[str, Any]:
+def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
     status = client.status()
     if not client.configured:
@@ -529,7 +529,7 @@ def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeo
     return json.loads(body)
 
 
-def _metadata_prompt_payload(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def _metadata_prompt_payload(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
@@ -778,7 +778,7 @@ def _slug(value: str) -> str:
 
 
 def _record_model_invocation(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     result: ModelResult | None,
     purpose: str,
     status: str,
@@ -817,7 +817,7 @@ def _mask_api_key(api_key: str) -> str:
     return f"{api_key[:6]}...{api_key[-4:]}"
 
 
-def _model_config_source(platform_db: Path | str) -> str:
+def _model_config_source(platform_db: PlatformDb) -> str:
     with connect(platform_db) as conn:
         row = conn.execute("select id from model_config where id = 1").fetchone()
         if row is not None:

@@ -4,12 +4,12 @@ import json
 import logging
 import re
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Any, Iterable
 
 from .adapters import get_adapter
 from .automation import preflight_operation
 from .config import RESOLUTION_CONFIDENCE
+from .context import PlatformDb
 from .database import connect
 from .knowledge_base import build_reasoning_chain
 from .knowledge_documents import load_confirmed_entries
@@ -59,7 +59,7 @@ def _first_str(*candidates: Any) -> str | None:
 
 
 def query_natural_language(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     question: str,
     ontology_id: int | None = None,
     data_source_id: int | None = None,
@@ -216,7 +216,7 @@ def query_natural_language(
 
 
 def _interpret_with_model(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     client: OpenRouterClient,
     question: str,
     history: list[dict[str, str]],
@@ -337,7 +337,7 @@ def detect_intent(question: str) -> str:
     return INTENT_COMPLIANCE if _extract_instance_hint(question) else INTENT_UNKNOWN
 
 
-def _semantic_context(platform_db: Path | str) -> dict[str, Any]:
+def _semantic_context(platform_db: PlatformDb) -> dict[str, Any]:
     with connect(platform_db) as conn:
         sources = conn.execute(
             "select id, name, domain, system_category from data_source order by id desc limit 10"
@@ -372,7 +372,7 @@ def _semantic_context(platform_db: Path | str) -> dict[str, Any]:
 
 
 def _resolve_target(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     question: str,
     ontology_id: int | None,
     data_source_id: int | None,
@@ -408,7 +408,7 @@ def _resolve_target(
 
 
 def _object_for_business_code(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     vocabulary: DomainVocabulary,
     business_code: str,
 ) -> str | None:
@@ -501,7 +501,7 @@ def _extract_instance_hint(question: str, vocabulary: DomainVocabulary | None = 
     return None
 
 
-def _latest_ontology_id(platform_db: Path | str, data_source_id: int | None, object_code: str) -> int:
+def _latest_ontology_id(platform_db: PlatformDb, data_source_id: int | None, object_code: str) -> int:
     with connect(platform_db) as conn:
         if data_source_id is not None:
             row = conn.execute(
@@ -538,7 +538,7 @@ def _latest_ontology_id(platform_db: Path | str, data_source_id: int | None, obj
         return int(row["id"])
 
 
-def _data_source_for_object(platform_db: Path | str, ontology_id: int, object_code: str) -> int | None:
+def _data_source_for_object(platform_db: PlatformDb, ontology_id: int, object_code: str) -> int | None:
     with connect(platform_db) as conn:
         row = conn.execute(
             """
@@ -554,7 +554,7 @@ def _data_source_for_object(platform_db: Path | str, ontology_id: int, object_co
         return int(row["data_source_id"]) if row is not None else None
 
 
-def _resolve_instance_id(platform_db: Path | str, ontology_id: int, object_code: str, hint: str | None) -> str | None:
+def _resolve_instance_id(platform_db: PlatformDb, ontology_id: int, object_code: str, hint: str | None) -> str | None:
     if hint is None:
         return None
     if hint.isdigit():
@@ -626,7 +626,7 @@ ACTION_KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 
 
 def _default_operation_code(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     question: str,
     object_code: str,
     data_source_id: int | None,
@@ -726,7 +726,7 @@ def _friendly_recommendation(recommendation: str) -> str:
 
 
 def _retrieve_citations(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     question: str,
     *,

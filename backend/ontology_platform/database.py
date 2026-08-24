@@ -832,7 +832,7 @@ def connect(db_path: "ContextLike" = "") -> Any:
     """Open a platform-database connection.
 
     Accepts a `PlatformContext`, a path, or nothing. The widened parameter is what
-    lets the 156 existing `platform_db: Path | str` call sites keep working while
+    lets the 156 existing `platform_db: PlatformDb` call sites keep working while
     new code passes a context explicitly.
     """
     from .context import resolve_context

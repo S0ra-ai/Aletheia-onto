@@ -57,7 +57,6 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
 from typing import Any, Optional
 
 from .auth import (
@@ -69,6 +68,7 @@ from .auth import (
     hash_token,
     utc_now,
 )
+from .context import PlatformDb
 from .database import connect
 from .schema import SchemaBundle
 
@@ -194,7 +194,7 @@ def init_sso_schema(conn: Any) -> None:
     SCHEMA.apply(conn)
 
 
-def describe_sso(platform_db: Path | str, config: Optional[SsoConfig] = None) -> dict[str, Any]:
+def describe_sso(platform_db: PlatformDb, config: Optional[SsoConfig] = None) -> dict[str, Any]:
     """Whether SSO is usable, and what it would grant. Never the secret.
 
     Reports the *effective* state including whether any group is mapped, because SSO that
@@ -220,7 +220,7 @@ def describe_sso(platform_db: Path | str, config: Optional[SsoConfig] = None) ->
 
 
 def declare_group_mapping(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     provider_group: str,
     role_code: str,
     *,
@@ -261,7 +261,7 @@ def declare_group_mapping(
     return {"providerGroup": group, "roleCode": role, "note": note}
 
 
-def remove_group_mapping(platform_db: Path | str, provider_group: str, *, actor: str = "system") -> dict[str, Any]:
+def remove_group_mapping(platform_db: PlatformDb, provider_group: str, *, actor: str = "system") -> dict[str, Any]:
     group = (provider_group or "").strip()
     with connect(platform_db) as conn:
         init_sso_schema(conn)
@@ -277,7 +277,7 @@ def remove_group_mapping(platform_db: Path | str, provider_group: str, *, actor:
     return {"removed": group}
 
 
-def list_group_mappings(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_group_mappings(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         if not SCHEMA.has_tables(conn):
             return []
@@ -357,7 +357,7 @@ def verify_assertion(assertion: str, config: Optional[SsoConfig] = None) -> dict
     return claims
 
 
-def _mapped_role(platform_db: Path | str, groups: Any) -> Optional[str]:
+def _mapped_role(platform_db: PlatformDb, groups: Any) -> Optional[str]:
     """The platform role for these provider groups, or None.
 
     When an identity carries several mapped groups, the **most capable** role wins. The
@@ -380,7 +380,7 @@ def _mapped_role(platform_db: Path | str, groups: Any) -> Optional[str]:
 
 
 def login_with_assertion(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     assertion: str,
     *,
     config: Optional[SsoConfig] = None,

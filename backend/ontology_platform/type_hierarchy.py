@@ -53,9 +53,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ class Expansion:
 
 
 def declare_subtype(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     parent_object_code: str,
@@ -320,7 +320,7 @@ def inherited_rule_scopes(conn: Any, ontology_id: int, object_code: str) -> list
     return [object_code, *ancestors_of(conn, ontology_id, object_code)]
 
 
-def describe_hierarchy(platform_db: Path | str, ontology_id: int) -> list[dict[str, Any]]:
+def describe_hierarchy(platform_db: PlatformDb, ontology_id: int) -> list[dict[str, Any]]:
     """The declared hierarchy, for review and for the graph view."""
     with connect(platform_db) as conn:
         rows = conn.execute(

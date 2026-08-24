@@ -33,9 +33,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .retrieval import tokenize
 from .schema import SchemaBundle
@@ -296,7 +296,7 @@ def _content_hash(text: str) -> str:
 
 
 def ingest_document(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     title: str,
     text: str,
@@ -402,7 +402,7 @@ def summarize_tokens(text: str) -> dict[str, int]:
 
 
 def review_knowledge_entry(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     entry_id: int,
     status: str,
     *,
@@ -468,7 +468,7 @@ def _refresh_document_status(conn: Any, document_id: int) -> None:
     conn.execute("update knowledge_document set status = ? where id = ?", (status, document_id))
 
 
-def list_documents(platform_db: Path | str, ontology_id: int) -> list[dict[str, Any]]:
+def list_documents(platform_db: PlatformDb, ontology_id: int) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
@@ -500,7 +500,7 @@ def list_documents(platform_db: Path | str, ontology_id: int) -> list[dict[str, 
 
 
 def list_entries(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     *,
     document_id: Optional[int] = None,

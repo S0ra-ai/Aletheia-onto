@@ -4,10 +4,10 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin
 
+from .context import PlatformDb
 from .database import connect
 from .decisions import record_decision
 from .registry import Registry, load_entry_point_plugins
@@ -16,7 +16,7 @@ from .workflow_permission import get_available_actions, get_instance_state, get_
 
 
 def preflight_operation(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     data_source_id: int,
     operation_code: str,
@@ -109,7 +109,7 @@ def preflight_operation(
 
 
 def execute_operation(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     data_source_id: int,
     operation_code: str,
@@ -350,7 +350,7 @@ def _load_api_headers(value: str | None) -> dict[str, str]:
 
 
 def _check_workflow_state(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -380,7 +380,7 @@ def _check_workflow_state(
 
 
 def _try_workflow_transition(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -421,7 +421,7 @@ def _try_workflow_transition(
         return None
 
 
-def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, Any], result: dict[str, Any]) -> None:
+def _audit_execution(platform_db: PlatformDb, actor: str, operation: dict[str, Any], result: dict[str, Any]) -> None:
     with connect(platform_db) as conn:
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
@@ -445,7 +445,7 @@ def _audit_execution(platform_db: Path | str, actor: str, operation: dict[str, A
 
 
 def _record_execution_decision(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     actor: str,
     operation_code: str,
     preflight: dict[str, Any],

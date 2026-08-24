@@ -13,21 +13,19 @@ adapter -- plus the tenant identity that multi-tenancy will need. Contexts are
 independent: creating one does not disturb another, and none of them disturbs the
 process-wide default.
 
-## Why the old API still works
+## Both a path and a context are accepted, everywhere
 
-156 function signatures take `platform_db: Path | str`. Rewriting all of them in
-one change would be a very large diff with the failure mode "missed one", and a
-missed one in a tenancy context means cross-tenant data access. So this lands as a
-*widening* rather than a replacement:
+Every function taking `platform_db` is annotated `PlatformDb`, which is a context, a
+path, or a string. The runtime always accepted all three -- each one resolves through
+`connect()` / `resolve_context()` -- but the annotations said `Path | str`, and that
+was worse than saying nothing: it told a type checker to **reject code that works**.
+So multi-tenancy and embedding were documented as supported while being unreachable
+for any downstream that runs mypy.
 
-- `connect()` and `initialize_platform_db()` accept a `PlatformContext` wherever
-  they accepted a path, because `resolve_context()` treats a path, a string, a
-  context, or nothing as valid input.
-- The global default remains for callers that never opt in.
-
-That makes the migration incremental and reviewable: a module moves to explicit
-contexts when it is touched, and both styles work meanwhile. `use_context()` marks
-the boundary where a request-scoped context is bound.
+Widened rather than replaced. A hard switch to context-only would break every
+existing caller for no behavioural gain, and the global default is what makes the
+single-tenant case free of ceremony. `use_context()` marks the boundary where a
+request-scoped context is bound.
 
 Stability: experimental (ADR-0007).
 """
@@ -195,11 +193,18 @@ def use_context(context: PlatformContext) -> Iterator[PlatformContext]:
 
 ContextLike = Union[PlatformContext, Path, str, None]
 
+# What a function that *requires* a platform binding accepts. Separate from `ContextLike`
+# because that one includes `None`, which means "use the process default" -- correct for
+# `resolve_context`, wrong for a parameter the caller must supply. Annotating a required
+# argument as optional would tell a type checker that omitting it is fine, and the failure
+# would then be a runtime resolution against whatever default happened to be configured.
+PlatformDb = Union[PlatformContext, Path, str]
+
 
 def resolve_context(source: ContextLike = None) -> PlatformContext:
     """Interpret whatever a caller passed as a context.
 
-    Accepting four shapes is what lets 156 existing `platform_db: Path | str`
+    Accepting four shapes is what lets every `platform_db: PlatformDb`
     signatures keep working untouched while new code passes a context explicitly:
 
     - a `PlatformContext` -- used directly

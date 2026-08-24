@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 
 
-def build_semantic_coverage(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def build_semantic_coverage(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:

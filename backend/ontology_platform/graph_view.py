@@ -21,13 +21,13 @@ Design notes:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 
 
-def build_ontology_graph(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def build_ontology_graph(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     """Nodes and edges for one ontology version."""
     with connect(platform_db) as conn:
         ontology = conn.execute(

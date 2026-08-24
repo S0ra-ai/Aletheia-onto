@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 
 
@@ -211,7 +211,7 @@ BLUEPRINTS: dict[str, IndustryBlueprint] = {
 }
 
 
-def list_industry_blueprints(platform_db: Path | str | None = None) -> list[dict[str, Any]]:
+def list_industry_blueprints(platform_db: PlatformDb | None = None) -> list[dict[str, Any]]:
     blueprints = dict(BLUEPRINTS)
     if platform_db is not None:
         blueprints.update(_custom_blueprints(platform_db))
@@ -219,7 +219,7 @@ def list_industry_blueprints(platform_db: Path | str | None = None) -> list[dict
 
 
 def get_industry_blueprint(
-    blueprint_id: str | None, domain: str | None = None, platform_db: Path | str | None = None
+    blueprint_id: str | None, domain: str | None = None, platform_db: PlatformDb | None = None
 ) -> IndustryBlueprint:
     blueprints = dict(BLUEPRINTS)
     if platform_db is not None:
@@ -238,7 +238,7 @@ def get_industry_blueprint(
 
 
 def infer_industry_blueprint(
-    table_names: list[str], domain: str | None = None, platform_db: Path | str | None = None
+    table_names: list[str], domain: str | None = None, platform_db: PlatformDb | None = None
 ) -> IndustryBlueprint:
     if domain:
         try:
@@ -261,7 +261,7 @@ def infer_industry_blueprint(
     return best_blueprint
 
 
-def upsert_industry_blueprint(platform_db: Path | str, payload: dict[str, Any]) -> dict[str, Any]:
+def upsert_industry_blueprint(platform_db: PlatformDb, payload: dict[str, Any]) -> dict[str, Any]:
     blueprint = _blueprint_from_payload(payload, "custom")
     with connect(platform_db) as conn:
         conn.execute(
@@ -307,7 +307,7 @@ def upsert_industry_blueprint(platform_db: Path | str, payload: dict[str, Any]) 
     return blueprint.to_dict()
 
 
-def _custom_blueprints(platform_db: Path | str) -> dict[str, IndustryBlueprint]:
+def _custom_blueprints(platform_db: PlatformDb) -> dict[str, IndustryBlueprint]:
     with connect(platform_db) as conn:
         rows = conn.execute("select * from industry_blueprint order by id").fetchall()
         return {

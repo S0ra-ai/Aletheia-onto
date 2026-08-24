@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 from .metadata import assess_data_source_readiness, list_source_apis
 from .ontology import summarize_ontology
 
 
-def build_kernel_package(platform_db: Path | str, data_source_id: int, base_url: str = "/") -> dict[str, Any]:
+def build_kernel_package(platform_db: PlatformDb, data_source_id: int, base_url: str = "/") -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
@@ -68,7 +68,7 @@ def build_kernel_package(platform_db: Path | str, data_source_id: int, base_url:
     return package
 
 
-def export_kernel_package(platform_db: Path | str, data_source_id: int, base_url: str = "/") -> dict[str, str]:
+def export_kernel_package(platform_db: PlatformDb, data_source_id: int, base_url: str = "/") -> dict[str, str]:
     package = build_kernel_package(platform_db, data_source_id, base_url)
     return {
         "filename": f"semantic-kernel-datasource-{data_source_id}.json",

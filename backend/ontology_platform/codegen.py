@@ -51,6 +51,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 from .ontology import summarize_ontology
 
@@ -130,7 +131,7 @@ def _field_name(code: str) -> str:
     return code if re.match(r"^[A-Za-z_$][A-Za-z0-9_$]*$", code) else f'"{code}"'
 
 
-def generate_typescript(platform_db: Path | str, ontology_id: int, *, allow_draft: bool = False) -> str:
+def generate_typescript(platform_db: PlatformDb, ontology_id: int, *, allow_draft: bool = False) -> str:
     """Project one ontology into TypeScript declarations plus a typed client.
 
     `allow_draft` exists for local iteration and defaults to off. A draft's shape changes
@@ -331,7 +332,7 @@ def _client_section(ontology: dict[str, Any], objects: list[dict[str, Any]]) -> 
 
 
 def write_typescript(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     output: Path | str,
     *,

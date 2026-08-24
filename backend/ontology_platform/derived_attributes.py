@@ -59,9 +59,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Optional, Protocol
 
+from .context import PlatformDb
 from .database import connect
 
 logger = logging.getLogger(__name__)
@@ -455,7 +455,7 @@ def apply_units(context: dict[str, Any], units_by_code: dict[str, str]) -> dict[
 
 
 def define_derived_attribute(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     spec: DerivedSpec,
@@ -529,7 +529,7 @@ def define_derived_attribute(
 
 
 def set_attribute_unit(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     attribute_code: str,
@@ -615,7 +615,7 @@ def load_attribute_units(conn: Any, ontology_id: int, object_code: str) -> dict[
     return units
 
 
-def list_derived_attributes(platform_db: Path | str, ontology_id: int, object_code: str = "") -> list[dict[str, Any]]:
+def list_derived_attributes(platform_db: PlatformDb, ontology_id: int, object_code: str = "") -> list[dict[str, Any]]:
     clauses = ["bo.ontology_id = ?", "ba.derived_expression <> ''"]
     params: list[Any] = [ontology_id]
     if object_code:

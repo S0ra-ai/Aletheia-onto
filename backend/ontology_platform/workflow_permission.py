@@ -5,9 +5,9 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .events import STATE_CHANGE, EventType, record_event
 from .schema import SchemaBundle
@@ -38,7 +38,7 @@ def _row_value(row: Any, column: str, default: Any = None) -> Any:
 
 
 def _evaluate_guard(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     expression: str,
     *,
     ontology_id: int,
@@ -499,7 +499,7 @@ def init_workflow_and_permission_schema(conn: Any) -> None:
 
 
 def create_workflow(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     name: str,
@@ -518,7 +518,7 @@ def create_workflow(
         return get_workflow(platform_db, wf_id)
 
 
-def get_workflow(platform_db: Path | str, workflow_id: int) -> dict[str, Any]:
+def get_workflow(platform_db: PlatformDb, workflow_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         wf = conn.execute("select * from workflow_definition where id = ?", (workflow_id,)).fetchone()
         if wf is None:
@@ -539,7 +539,7 @@ def get_workflow(platform_db: Path | str, workflow_id: int) -> dict[str, Any]:
         return result
 
 
-def get_workflow_by_object(platform_db: Path | str, ontology_id: int, object_code: str) -> dict[str, Any] | None:
+def get_workflow_by_object(platform_db: PlatformDb, ontology_id: int, object_code: str) -> dict[str, Any] | None:
     with connect(platform_db) as conn:
         row = conn.execute(
             "select id from workflow_definition where ontology_id = ? and object_code = ?",
@@ -550,7 +550,7 @@ def get_workflow_by_object(platform_db: Path | str, ontology_id: int, object_cod
         return get_workflow(platform_db, int(row["id"]))
 
 
-def list_workflows(platform_db: Path | str, ontology_id: int | None = None) -> list[dict[str, Any]]:
+def list_workflows(platform_db: PlatformDb, ontology_id: int | None = None) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         if ontology_id:
             rows = conn.execute(
@@ -561,7 +561,7 @@ def list_workflows(platform_db: Path | str, ontology_id: int | None = None) -> l
         return [dict(r) for r in rows]
 
 
-def delete_workflow(platform_db: Path | str, workflow_id: int) -> None:
+def delete_workflow(platform_db: PlatformDb, workflow_id: int) -> None:
     with connect(platform_db) as conn:
         conn.execute("delete from workflow_definition where id = ?", (workflow_id,))
         conn.commit()
@@ -573,7 +573,7 @@ def delete_workflow(platform_db: Path | str, workflow_id: int) -> None:
 
 
 def add_workflow_state(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     workflow_id: int,
     code: str,
     name: str,
@@ -595,7 +595,7 @@ def add_workflow_state(
 
 
 def add_workflow_transition(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     workflow_id: int,
     from_state: str,
     to_state: str,
@@ -637,7 +637,7 @@ def add_workflow_transition(
 
 
 def enter_workflow(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     workflow_id: int,
     object_code: str,
     instance_id: str,
@@ -689,7 +689,7 @@ def enter_workflow(
 
 
 def _mirror_state_change(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     *,
     ontology_id: int,
     object_code: str,
@@ -731,7 +731,7 @@ def _mirror_state_change(
         logger.warning("状态流转事件记录失败（流转本身已生效）: %s", error)
 
 
-def get_instance_state(platform_db: Path | str, workflow_id: int, instance_id: str) -> dict[str, Any] | None:
+def get_instance_state(platform_db: PlatformDb, workflow_id: int, instance_id: str) -> dict[str, Any] | None:
     with connect(platform_db) as conn:
         row = conn.execute(
             "select id from instance_workflow where workflow_id = ? and instance_id = ?",
@@ -742,7 +742,7 @@ def get_instance_state(platform_db: Path | str, workflow_id: int, instance_id: s
         return _get_instance_state(conn, int(row["id"]))
 
 
-def get_available_actions(platform_db: Path | str, workflow_id: int, instance_id: str) -> list[dict[str, Any]]:
+def get_available_actions(platform_db: PlatformDb, workflow_id: int, instance_id: str) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         inst = conn.execute(
             "select current_state from instance_workflow where workflow_id = ? and instance_id = ?",
@@ -759,7 +759,7 @@ def get_available_actions(platform_db: Path | str, workflow_id: int, instance_id
 
 
 def transition_instance(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     workflow_id: int,
     instance_id: str,
     action_code: str,
@@ -856,7 +856,7 @@ def transition_instance(
     return state
 
 
-def get_instance_history(platform_db: Path | str, workflow_id: int, instance_id: str) -> list[dict[str, Any]]:
+def get_instance_history(platform_db: PlatformDb, workflow_id: int, instance_id: str) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         inst = conn.execute(
             "select id from instance_workflow where workflow_id = ? and instance_id = ?",
@@ -935,7 +935,7 @@ def _seed_default_transitions(conn: Any, workflow_id: int) -> None:
 
 
 def create_role(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     code: str,
     name: str,
     description: str = "",
@@ -952,13 +952,13 @@ def create_role(
         return dict(row)
 
 
-def list_roles(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_roles(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         return [dict(r) for r in conn.execute("select * from permission_role order by id").fetchall()]
 
 
 def upsert_permission_policy(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     role_id: int,
     object_code: str,
     can_read: bool = True,
@@ -1022,7 +1022,7 @@ def upsert_permission_policy(
 
 
 def check_permission(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     role_code: str,
     object_code: str,
     operation: str = "read",
@@ -1104,7 +1104,7 @@ def check_permission(
     return result
 
 
-def _resolve_policy_ontology(platform_db: Path | str, object_code: str) -> int | None:
+def _resolve_policy_ontology(platform_db: PlatformDb, object_code: str) -> int | None:
     """Find the ontology owning an object code.
 
     permission_policy is keyed on a bare object_code with no ontology dimension,
@@ -1130,7 +1130,7 @@ def _resolve_policy_ontology(platform_db: Path | str, object_code: str) -> int |
     return int(rows[0]["ontology_id"])
 
 
-def list_policies(platform_db: Path | str, role_id: int | None = None) -> list[dict[str, Any]]:
+def list_policies(platform_db: PlatformDb, role_id: int | None = None) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         if role_id:
             rows = conn.execute(
@@ -1150,7 +1150,7 @@ def list_policies(platform_db: Path | str, role_id: int | None = None) -> list[d
 
 
 def register_tool(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     code: str,
     name: str,
     description: str = "",
@@ -1179,13 +1179,13 @@ def register_tool(
         return dict(row)
 
 
-def list_tools(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_tools(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         return [dict(r) for r in conn.execute("select * from tool_definition order by id").fetchall()]
 
 
 def authorize_tool(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     role_id: int,
     tool_id: int,
     allowed: bool = True,
@@ -1215,7 +1215,7 @@ def authorize_tool(
 
 
 def check_tool_authorization(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     role_code: str,
     tool_code: str,
 ) -> dict[str, Any]:
@@ -1246,7 +1246,7 @@ def check_tool_authorization(
 
 
 def log_tool_execution(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     tool_code: str,
     agent_role: str = "",
     object_code: str = "",
@@ -1285,7 +1285,7 @@ def log_tool_execution(
         return dict(row)
 
 
-def list_pending_reviews(platform_db: Path | str, limit: int = 50) -> list[dict[str, Any]]:
+def list_pending_reviews(platform_db: PlatformDb, limit: int = 50) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """select * from tool_execution_log
@@ -1297,7 +1297,7 @@ def list_pending_reviews(platform_db: Path | str, limit: int = 50) -> list[dict[
 
 
 def review_tool_execution(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     log_id: int,
     reviewer: str,
     decision: str,
@@ -1314,7 +1314,7 @@ def review_tool_execution(
         return dict(row)
 
 
-def seed_default_tools(platform_db: Path | str) -> None:
+def seed_default_tools(platform_db: PlatformDb) -> None:
     defaults = [
         ("explain_instance", "解释实例", "解释业务实例的详细属性和来源", "query", "low", False),
         ("assess_instance", "合规研判", "对业务实例执行规则合规性检查", "query", "medium", False),
@@ -1333,7 +1333,7 @@ def seed_default_tools(platform_db: Path | str) -> None:
             logger.debug("跳过工具 %s 的初始化: %s", code, error)
 
 
-def seed_default_roles_and_policies(platform_db: Path | str) -> None:
+def seed_default_roles_and_policies(platform_db: PlatformDb) -> None:
     roles = [
         ("admin", "系统管理员", "拥有所有权限", True),
         ("business_expert", "业务专家", "可查看和审核业务对象", False),

@@ -62,7 +62,6 @@ Stability: experimental (ADR-0007).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from .axioms import (
@@ -75,6 +74,7 @@ from .axioms import (
     list_axioms,
 )
 from .config import SEMANTIC_ASSET_NAMING
+from .context import PlatformDb
 from .database import connect
 from .ontology import ontology_slug
 
@@ -123,7 +123,7 @@ _PREFIXES = [
 
 
 def export_standard_asset(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     export_format: str = "owl",
 ) -> dict[str, str]:
@@ -151,7 +151,7 @@ def export_standard_asset(
     }
 
 
-def _model(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def _model(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     """Everything the two serialisations need, read once.
 
     Read here rather than through `summarize_ontology` because the standard forms need

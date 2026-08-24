@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 from .industry_blueprints import list_industry_blueprints
 
@@ -112,7 +112,7 @@ class DomainVocabulary:
 
 
 def load_vocabulary(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int | None = None,
     data_source_id: int | None = None,
 ) -> DomainVocabulary:
@@ -179,7 +179,7 @@ def load_vocabulary(
     return DomainVocabulary(objects=objects, attribute_labels=attribute_labels)
 
 
-def blueprint_attribute_labels(platform_db: Path | str) -> dict[str, str]:
+def blueprint_attribute_labels(platform_db: PlatformDb) -> dict[str, str]:
     """Column labels contributed by every registered industry blueprint.
 
     Used while generating a first draft, before business attributes exist.
@@ -193,7 +193,7 @@ def blueprint_attribute_labels(platform_db: Path | str) -> dict[str, str]:
     return labels
 
 
-def blueprint_object_labels(platform_db: Path | str) -> dict[str, str]:
+def blueprint_object_labels(platform_db: PlatformDb) -> dict[str, str]:
     """Object labels contributed by every registered industry blueprint."""
     labels: dict[str, str] = {}
     for blueprint in list_industry_blueprints(platform_db):
@@ -204,7 +204,7 @@ def blueprint_object_labels(platform_db: Path | str) -> dict[str, str]:
     return labels
 
 
-def default_object_code_for_ontology(platform_db: Path | str, ontology_id: int) -> str:
+def default_object_code_for_ontology(platform_db: PlatformDb, ontology_id: int) -> str:
     """The most connected business object of an ontology.
 
     Used as an implicit scope when an imported artefact does not name one.

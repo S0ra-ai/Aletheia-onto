@@ -23,9 +23,9 @@ Stability: experimental (ADR-0007).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 
 MAPPING_TYPE = "value_to_state"
@@ -41,7 +41,7 @@ def _source_ref(table_name: str, column_name: str) -> str:
 
 
 def register_value_mapping(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     table_name: str,
     column_name: str,
@@ -148,7 +148,7 @@ def load_value_mappings_in_connection(
 
 
 def load_value_mappings(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     *,
     include_pending: bool = False,
@@ -170,7 +170,7 @@ def state_for(mappings: dict[str, dict[str, str]], table_name: str, column_name:
 
 
 def suggest_value_mappings_from_enums(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     data_source_id: int,
     actor: str = "system",

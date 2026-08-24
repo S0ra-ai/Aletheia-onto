@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .metadata import (
     assess_data_source_readiness,
     check_business_api_gateway,
@@ -17,7 +17,7 @@ from .workflow_permission import seed_default_roles_and_policies
 
 
 def run_onboarding_pipeline(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     name: str,
     source_type: str,
     connection_uri: str,
