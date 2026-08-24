@@ -12,24 +12,31 @@ framework -- so these assert the properties that make the difference:
 - **Type annotations ship.** Without a `py.typed` marker a consumer's type checker
   ignores our annotations entirely (PEP 561), so a wrong call site looks fine until
   runtime.
+
+The *artefact* itself -- build a wheel, install it into an empty environment, run the
+CLI -- is verified by the `packaging` CI job, not from here. Building a wheel needs
+`build`, which is a release tool rather than a test dependency; a copy of that job
+living in pytest would either drag the tool into every developer's environment or fail
+only on CI, which is what it did. What this module keeps instead is an invariant that
+the job still exists and still installs into a clean environment, so the guarantee
+cannot quietly disappear along with the duplicate.
 """
 
 from __future__ import annotations
 
 import importlib
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 PACKAGE = ROOT / "backend" / "ontology_platform"
 PYPROJECT = (ROOT / "pyproject.toml").read_text()
+REQUIREMENTS = ROOT / "requirements.txt"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def _section(name: str) -> str:
@@ -88,6 +95,37 @@ def test_dependencies_are_pinned_not_ranged() -> None:
     # Self-referential extras in `all` carry no version and are fine.
     loose = [item for item in loose if not item.startswith("aletheia-onto[")]
     assert not loose, f"以下依赖未固定版本: {loose}"
+
+
+def test_only_pyproject_pins_versions() -> None:
+    """There is exactly one list of supported versions.
+
+    `requirements.txt` installs the project's own extras instead of repeating them. Two
+    lists of the same pins drift, and the drift is invisible in the worst way: CI goes
+    green against versions no user ever installs, so the break surfaces in someone
+    else's environment. It is also unfixable by an automated dependency update, which
+    edits `requirements.txt` without seeing `requires-python` and therefore proposes
+    releases that dropped the Python floor this project promises.
+    """
+    body = [line.strip() for line in REQUIREMENTS.read_text().splitlines()]
+    directives = [line for line in body if line and not line.startswith("#")]
+
+    assert directives == ["-e .[all,dev]"], f"requirements.txt 应只安装本项目 extras，实际: {directives}"
+
+
+def test_every_import_of_a_third_party_package_is_declared_by_an_extra() -> None:
+    """A dependency that is only inherited transitively is a dependency nobody pinned.
+
+    `api.py` uses FastAPI's `File()`/`Form()`, which need `python-multipart` -- a package
+    FastAPI has since moved out of its base install. Inheriting it means an upgrade turns
+    document upload into a 500 at request time rather than an error at install time, and
+    request time is after the user has already uploaded the file.
+    """
+    extras = _section("project.optional-dependencies")
+    api = (PACKAGE / "api.py").read_text()
+
+    if re.search(r"\b(File|Form|UploadFile)\b", api):
+        assert "python-multipart" in extras, "api.py 使用了 multipart 表单，但 extras 未声明 python-multipart"
 
 
 def test_the_cli_entry_point_is_declared_and_importable() -> None:
@@ -159,40 +197,21 @@ def test_the_data_directory_can_be_overridden(monkeypatch, tmp_path) -> None:
         importlib.reload(database)
 
 
-@pytest.mark.skipif(os.environ.get("CI") is None, reason="构建 wheel 较慢，只在 CI 上执行")
-def test_the_wheel_builds_and_installs_standalone(tmp_path) -> None:
-    """The end-to-end claim: a fresh environment can install and run the CLI.
+# -- The artefact-level check stays reachable --
 
-    Every other test here checks a declaration; this one checks the artefact. Slow, so
-    it is CI-only rather than skipped silently on a developer's machine.
+
+def test_ci_builds_the_wheel_and_installs_it_into_an_empty_environment() -> None:
+    """The declarations above are only worth as much as the artefact they describe.
+
+    Asserted against the workflow rather than performed here: the build belongs to a
+    release toolchain, and a job that installs into a *clean* environment is the only
+    place the "kernel has no third-party dependencies" claim can actually be observed --
+    inside pytest, fastapi is already importable, so the claim is untestable by
+    construction. This test exists so deleting that job fails the suite instead of
+    silently removing the only end-to-end packaging evidence.
     """
-    dist = tmp_path / "dist"
-    subprocess.run(
-        [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist)],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    )
-    wheels = list(dist.glob("*.whl"))
-    assert wheels, "未生成 wheel"
-
-    venv = tmp_path / "venv"
-    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True, capture_output=True)
-    binaries = venv / ("Scripts" if os.name == "nt" else "bin")
-    subprocess.run([str(binaries / "pip"), "install", "--quiet", str(wheels[0])], check=True, capture_output=True)
-    # `demo` exercises the whole loop with no extras installed, which is the strongest
-    # single check that the kernel really is dependency-free.
-    result = subprocess.run(
-        [
-            str(binaries / "aletheia"),
-            "--platform-db",
-            str(tmp_path / "platform.sqlite3"),
-            "demo",
-            "--sample-db",
-            str(tmp_path / "sample.sqlite3"),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert '"decision"' in result.stdout, result.stdout
+    workflow = WORKFLOW.read_text()
+    assert "python -m build --wheel" in workflow, "CI 不再构建 wheel"
+    assert "pip install dist/*.whl" in workflow, "CI 不再在干净环境安装 wheel"
+    # A build that is never run is a build that has already broken.
+    assert re.search(r"/tmp/clean/bin/aletheia\s", workflow), "CI 不再运行裸装后的 CLI"

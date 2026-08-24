@@ -26,7 +26,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff==0.16.4 mypy==1.19.1
+
+      # ruff and mypy are pinned by the `dev` extra rather than here: a version
+      # installed by the workflow is a version no contributor can reproduce
+      # locally, so the lint that gates the branch would differ from the lint
+      # that runs before the push.
 
       - name: ruff 静态检查
         run: python -m ruff check backend tests scripts

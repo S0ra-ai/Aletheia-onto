@@ -43,6 +43,11 @@ web = [
     "fastapi==0.111.1",
     "uvicorn[standard]==0.30.3",
     "httpx==0.27.2",
+    # Declared rather than inherited: `api.py` uses File()/Form(), and FastAPI moved
+    # the multipart parser out of its base install into `fastapi[standard]`. Relying on
+    # the transitive copy means a FastAPI upgrade turns document upload into a 500 at
+    # request time, not an install-time error.
+    "python-multipart==0.0.20",
 ]
 postgresql = ["psycopg[binary]==3.2.9"]
 mysql = ["PyMySQL==1.1.1"]
