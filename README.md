@@ -637,7 +637,9 @@ _不是_：算法、模型、策略引擎脚本。
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
 - 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 135 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- HTTP 层共 135 个端点，**已开始拆分 APIRouter**（`routers/`）：
+  工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
+  共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
 - DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
   因此阻塞于分包边界。

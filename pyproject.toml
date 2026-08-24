@@ -138,10 +138,6 @@ ignore = [
 # so imports legitimately follow executable statements.
 "tests/*" = ["E402"]
 "scripts/*" = ["E402"]
-# api.py has one mid-file import block for the workflow/permission routes.
-# Recorded in docs/architecture-debt.md; to be resolved when api.py is split
-# into APIRouters (ROADMAP stage E).
-"backend/ontology_platform/api.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

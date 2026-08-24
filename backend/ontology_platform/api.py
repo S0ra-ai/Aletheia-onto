@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
 from .access_policy import (
@@ -47,6 +48,7 @@ from .auth import (
     set_user_status,
 )
 from .automation import execute_operation, preflight_operation, supported_executor_schemes
+from .context import resolve_context
 from .contract_documents import parse_rule_docx_bytes
 from .conversations import (
     escalate_conversation,
@@ -106,6 +108,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .graph_view import build_ontology_graph
+from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, current_principal
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .instance_resolver import (
     ResolverError,
@@ -161,6 +164,7 @@ from .ontology import (
 from .operation_bindings import assess_operation_bindings
 from .release_readiness import assess_ontology_release_readiness
 from .retrieval import supported_embedding_models, supported_retrieval_backends
+from .routers import workflow_permission_router
 from .sample_data import (
     DEFAULT_EQUIPMENT_SAMPLE_DB,
     DEFAULT_SAMPLE_DB,
@@ -232,12 +236,6 @@ async def lifespan(app: FastAPI):
 
 logger = logging.getLogger(__name__)
 
-# Authentication is on by default; it can only be disabled explicitly for local
-# development, and the app logs loudly when it is.
-AUTH_ENABLED = os.environ.get("ONTOLOGY_AUTH_DISABLED", "").strip().lower() not in {"1", "true", "yes"}
-
-DEV_ADMIN_PRINCIPAL = Principal(user_id=0, username="dev-anonymous", display_name="开发匿名用户", role_code="admin")
-
 app = FastAPI(title="本体改造研发平台", version="0.2.0", lifespan=lifespan)
 
 # The version this build serves under a prefix. Taken from access_policy so the router
@@ -262,39 +260,39 @@ app.add_middleware(
 )
 
 
-def mount_versioned_routes(application: FastAPI) -> None:
-    """Serve every route under `/v1` as well as bare.
+def include_router_twice(application: FastAPI, router: APIRouter) -> None:
+    """Serve a router's routes bare and under `/v1`.
 
-    Called once after all routes are declared. Without a version prefix there is
-    nowhere to put a breaking change: the first external caller freezes the current
-    shape permanently. Serving both means existing callers -- including this repo's own
-    frontend -- keep working while new ones pin `/v1`.
+    Without a version prefix there is nowhere to put a breaking change: the first
+    external caller freezes the current shape permanently. Serving both means existing
+    callers -- including this repo's own frontend -- keep working while new ones pin
+    `/v1`.
 
-    Routes are re-registered rather than the app being mounted as a sub-application,
-    because a sub-application does not inherit the parent's middleware, and the
-    middleware is what authenticates and authorizes every request. A `/v1` tree without
-    it would be an unauthenticated copy of the whole API.
+    Two `include_router` calls rather than mounting a sub-application, because a
+    sub-application does not inherit the parent's middleware, and the middleware is what
+    authenticates and authorizes every request. A `/v1` tree without it would be an
+    unauthenticated copy of the whole API.
 
-    `include_in_schema=False` on the copies keeps OpenAPI showing each operation once,
-    so generated clients do not get two of everything.
+    This replaced a version that reflected over `application.routes` after all routes
+    were declared, copying each one to a prefixed path. That worked only while every
+    route was registered directly on the app: FastAPI 0.141 makes `include_router`
+    lazy, storing a placeholder that expands at startup, so the reflection saw
+    routers as a single opaque object and silently produced no `/v1` copies of them.
+    Silently is the problem -- the bare routes still worked, so nothing failed until a
+    versioned caller got a 404. Declaring both up front cannot drift that way.
+
+    `include_in_schema=False` on the prefixed copy keeps OpenAPI showing each operation
+    once, so generated clients do not get two of everything.
     """
-    from fastapi.routing import APIRoute
+    application.include_router(router)
+    application.include_router(router, prefix=VERSION_PREFIX, include_in_schema=False)
 
-    for route in list(application.routes):
-        if not isinstance(route, APIRoute) or route.path.startswith(VERSION_PREFIX):
-            continue
-        if route.path in ("/openapi.json", "/docs", "/redoc"):
-            continue
-        application.router.add_api_route(
-            f"{VERSION_PREFIX}{route.path}",
-            route.endpoint,
-            methods=list(route.methods or []),
-            name=f"v1_{route.name}",
-            response_model=route.response_model,
-            status_code=route.status_code,
-            dependencies=list(route.dependencies),
-            include_in_schema=False,
-        )
+
+# Routes still declared in this module. They go on a router rather than on `app`
+# directly so that every route -- these and the extracted ones -- reaches `/v1` by the
+# same mechanism. A mix of both would mean two ways for a route to be versioned, and
+# only one of them tested.
+core_router = APIRouter()
 
 
 def _bearer_token(request: Request) -> str:
@@ -346,16 +344,6 @@ async def enforce_access_policy(request: Request, call_next):
 
     request.state.principal = principal
     return await call_next(request)
-
-
-def current_principal(request: Request) -> Principal:
-    """The authenticated caller, for handlers that need the acting identity."""
-    principal = getattr(request.state, "principal", None)
-    if principal is None:
-        if not AUTH_ENABLED:
-            return DEV_ADMIN_PRINCIPAL
-        raise HTTPException(status_code=401, detail="缺少访问令牌")
-    return principal
 
 
 class DataSourceCreate(BaseModel):
@@ -508,7 +496,7 @@ class BusinessRuleCreate(BaseModel):
     dependsOn: Optional[str] = None
 
 
-@app.get("/health")
+@core_router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -539,7 +527,7 @@ class PasswordChange(BaseModel):
     newPassword: str
 
 
-@app.post("/auth/login")
+@core_router.post("/auth/login")
 def auth_login(payload: LoginCreate) -> dict[str, object]:
     try:
         return login(DEFAULT_PLATFORM_DB, payload.username, payload.password)
@@ -549,17 +537,17 @@ def auth_login(payload: LoginCreate) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/auth/logout")
+@core_router.post("/auth/logout")
 def auth_logout(request: Request) -> dict[str, object]:
     return logout(DEFAULT_PLATFORM_DB, _bearer_token(request))
 
 
-@app.get("/auth/me")
+@core_router.get("/auth/me")
 def auth_me(principal: Principal = Depends(current_principal)) -> dict[str, object]:
     return principal.public_dict()
 
 
-@app.post("/auth/change-password")
+@core_router.post("/auth/change-password")
 def auth_change_password(
     payload: PasswordChange,
     principal: Principal = Depends(current_principal),
@@ -572,12 +560,12 @@ def auth_change_password(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/auth/users")
+@core_router.get("/auth/users")
 def auth_list_users() -> dict[str, object]:
     return {"items": list_users(DEFAULT_PLATFORM_DB), "roles": sorted(ROLE_CAPABILITIES)}
 
 
-@app.post("/auth/users")
+@core_router.post("/auth/users")
 def auth_create_user(
     payload: UserCreate,
     principal: Principal = Depends(current_principal),
@@ -595,7 +583,7 @@ def auth_create_user(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.patch("/auth/users/{username}/status")
+@core_router.patch("/auth/users/{username}/status")
 def auth_set_user_status(
     username: str,
     payload: UserStatusUpdate,
@@ -607,7 +595,7 @@ def auth_set_user_status(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/auth/access-policy")
+@core_router.get("/auth/access-policy")
 def auth_access_policy() -> dict[str, object]:
     """Effective route-to-capability policy, for review."""
     return {
@@ -618,7 +606,7 @@ def auth_access_policy() -> dict[str, object]:
     }
 
 
-@app.post("/demo/bootstrap")
+@core_router.post("/demo/bootstrap")
 def bootstrap_demo() -> dict[str, object]:
     # ValueError here means a governance rule refused the request -- most often
     # "this ontology version is already published, derive a new one". That is a
@@ -650,7 +638,7 @@ def bootstrap_demo() -> dict[str, object]:
     return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 
-@app.post("/demo/bootstrap/equipment")
+@core_router.post("/demo/bootstrap/equipment")
 def bootstrap_equipment_demo() -> dict[str, object]:
     # Same as /demo/bootstrap: a refused governance rule is a 409, not a 500.
     try:
@@ -680,7 +668,7 @@ def bootstrap_equipment_demo() -> dict[str, object]:
     return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
 
 
-@app.post("/data-sources")
+@core_router.post("/data-sources")
 def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
     try:
         source = register_data_source(
@@ -699,7 +687,7 @@ def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
     return source.public_dict()
 
 
-@app.post("/onboarding/run")
+@core_router.post("/onboarding/run")
 def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
     try:
         return run_onboarding_pipeline(
@@ -722,13 +710,13 @@ def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/data-sources")
+@core_router.get("/data-sources")
 def get_data_sources() -> dict[str, object]:
     items = list_data_sources(DEFAULT_PLATFORM_DB)
     return {"dataSources": items, "data_sources": items}
 
 
-@app.post("/data-sources/test-connection")
+@core_router.post("/data-sources/test-connection")
 def test_unregistered_data_source(payload: DataSourceConnectionTest) -> dict[str, object]:
     try:
         return check_data_source_connection(
@@ -740,7 +728,7 @@ def test_unregistered_data_source(payload: DataSourceConnectionTest) -> dict[str
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/data-sources/{data_source_id}/test-connection")
+@core_router.post("/data-sources/{data_source_id}/test-connection")
 def test_registered_data_source(data_source_id: int) -> dict[str, object]:
     try:
         return check_data_source_connection(DEFAULT_PLATFORM_DB, data_source_id=data_source_id)
@@ -748,7 +736,7 @@ def test_registered_data_source(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/data-sources/{data_source_id}/test-api-gateway")
+@core_router.post("/data-sources/{data_source_id}/test-api-gateway")
 def test_registered_api_gateway(data_source_id: int) -> dict[str, object]:
     try:
         return check_business_api_gateway(DEFAULT_PLATFORM_DB, data_source_id=data_source_id)
@@ -756,7 +744,7 @@ def test_registered_api_gateway(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/data-sources/{data_source_id}/apis")
+@core_router.post("/data-sources/{data_source_id}/apis")
 def create_source_api(data_source_id: int, payload: SourceApiCreate) -> dict[str, object]:
     try:
         source_api = register_source_api(
@@ -775,12 +763,12 @@ def create_source_api(data_source_id: int, payload: SourceApiCreate) -> dict[str
     return source_api.__dict__
 
 
-@app.get("/data-sources/{data_source_id}/apis")
+@core_router.get("/data-sources/{data_source_id}/apis")
 def get_source_apis(data_source_id: int) -> dict[str, object]:
     return {"apis": list_source_apis(DEFAULT_PLATFORM_DB, data_source_id)}
 
 
-@app.post("/data-sources/{data_source_id}/apis/import-openapi")
+@core_router.post("/data-sources/{data_source_id}/apis/import-openapi")
 def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> dict[str, object]:
     try:
         return import_openapi_operations(DEFAULT_PLATFORM_DB, data_source_id, payload.spec)
@@ -788,7 +776,7 @@ def import_openapi_apis(data_source_id: int, payload: OpenApiImportCreate) -> di
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/data-sources/{data_source_id}/apis/import-openapi-url")
+@core_router.post("/data-sources/{data_source_id}/apis/import-openapi-url")
 def import_openapi_apis_from_url(data_source_id: int, payload: OpenApiUrlImportCreate) -> dict[str, object]:
     try:
         return import_openapi_operations_from_url(
@@ -798,7 +786,7 @@ def import_openapi_apis_from_url(data_source_id: int, payload: OpenApiUrlImportC
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/readiness")
+@core_router.get("/data-sources/{data_source_id}/readiness")
 def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
     try:
         return assess_data_source_readiness(DEFAULT_PLATFORM_DB, data_source_id)
@@ -806,7 +794,7 @@ def get_data_source_readiness(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/schema-drift")
+@core_router.get("/data-sources/{data_source_id}/schema-drift")
 def get_data_source_schema_drift(data_source_id: int) -> dict[str, object]:
     try:
         return analyze_schema_drift(DEFAULT_PLATFORM_DB, data_source_id)
@@ -814,7 +802,7 @@ def get_data_source_schema_drift(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/semantic-coverage")
+@core_router.get("/data-sources/{data_source_id}/semantic-coverage")
 def get_data_source_semantic_coverage(data_source_id: int) -> dict[str, object]:
     try:
         return build_semantic_coverage(DEFAULT_PLATFORM_DB, data_source_id)
@@ -822,7 +810,7 @@ def get_data_source_semantic_coverage(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/operation-bindings")
+@core_router.get("/data-sources/{data_source_id}/operation-bindings")
 def get_data_source_operation_bindings(data_source_id: int) -> dict[str, object]:
     try:
         return assess_operation_bindings(DEFAULT_PLATFORM_DB, data_source_id)
@@ -830,7 +818,7 @@ def get_data_source_operation_bindings(data_source_id: int) -> dict[str, object]
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/kernel-package")
+@core_router.get("/data-sources/{data_source_id}/kernel-package")
 def get_kernel_package(data_source_id: int) -> dict[str, object]:
     try:
         return build_kernel_package(DEFAULT_PLATFORM_DB, data_source_id)
@@ -838,7 +826,7 @@ def get_kernel_package(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/kernel-package/download")
+@core_router.get("/data-sources/{data_source_id}/kernel-package/download")
 def download_kernel_package(data_source_id: int) -> Response:
     try:
         asset = export_kernel_package(DEFAULT_PLATFORM_DB, data_source_id)
@@ -851,7 +839,7 @@ def download_kernel_package(data_source_id: int) -> Response:
     )
 
 
-@app.post("/data-sources/{data_source_id}/scan")
+@core_router.post("/data-sources/{data_source_id}/scan")
 def scan_source(data_source_id: int) -> dict[str, object]:
     try:
         return scan_data_source(DEFAULT_PLATFORM_DB, data_source_id)
@@ -859,7 +847,7 @@ def scan_source(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/tables")
+@core_router.get("/data-sources/{data_source_id}/tables")
 def list_source_tables(data_source_id: int) -> dict[str, object]:
     with connect(DEFAULT_PLATFORM_DB) as conn:
         tables = conn.execute(
@@ -869,7 +857,7 @@ def list_source_tables(data_source_id: int) -> dict[str, object]:
         return {"tables": [dict(row) for row in tables]}
 
 
-@app.get("/data-sources/{data_source_id}/tables/{table_name}/rows")
+@core_router.get("/data-sources/{data_source_id}/tables/{table_name}/rows")
 def browse_table_rows(data_source_id: int, table_name: str, limit: int = 50, offset: int = 0) -> dict[str, object]:
     try:
         return browse_source_table(DEFAULT_PLATFORM_DB, data_source_id, table_name, limit, offset)
@@ -877,7 +865,7 @@ def browse_table_rows(data_source_id: int, table_name: str, limit: int = 50, off
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/data-sources/{data_source_id}/initialize")
+@core_router.post("/data-sources/{data_source_id}/initialize")
 def initialize_data_source_knowledge_base(data_source_id: int) -> dict[str, object]:
     try:
         return initialize_knowledge_base(DEFAULT_PLATFORM_DB, data_source_id)
@@ -885,17 +873,17 @@ def initialize_data_source_knowledge_base(data_source_id: int) -> dict[str, obje
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/data-sources/{data_source_id}/reasoning-chain")
+@core_router.get("/data-sources/{data_source_id}/reasoning-chain")
 def get_data_source_reasoning_chain(data_source_id: int) -> dict[str, object]:
     return build_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
 
 
-@app.get("/knowledge-bases")
+@core_router.get("/knowledge-bases")
 def get_knowledge_bases() -> dict[str, object]:
     return {"items": list_knowledge_bases(DEFAULT_PLATFORM_DB)}
 
 
-@app.post("/ontologies/draft")
+@core_router.post("/ontologies/draft")
 def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
     try:
         return generate_ontology_draft(
@@ -905,12 +893,12 @@ def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/industry-blueprints")
+@core_router.get("/industry-blueprints")
 def get_industry_blueprints() -> dict[str, object]:
     return {"items": list_industry_blueprints(DEFAULT_PLATFORM_DB)}
 
 
-@app.post("/industry-blueprints")
+@core_router.post("/industry-blueprints")
 def upsert_blueprint(payload: IndustryBlueprintUpsert) -> dict[str, object]:
     try:
         return upsert_industry_blueprint(DEFAULT_PLATFORM_DB, payload.model_dump())
@@ -918,13 +906,13 @@ def upsert_blueprint(payload: IndustryBlueprintUpsert) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies")
+@core_router.get("/ontologies")
 def get_ontologies() -> dict[str, object]:
     items = list_ontologies(DEFAULT_PLATFORM_DB)
     return {"items": items, "ontologies": items}
 
 
-@app.get("/ontologies/{ontology_id}")
+@core_router.get("/ontologies/{ontology_id}")
 def get_ontology(ontology_id: int) -> dict[str, object]:
     with connect(DEFAULT_PLATFORM_DB) as conn:
         try:
@@ -933,7 +921,7 @@ def get_ontology(ontology_id: int) -> dict[str, object]:
             raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/export")
+@core_router.get("/ontologies/{ontology_id}/export")
 def export_ontology(ontology_id: int, format: str = "jsonld") -> Response:
     try:
         asset = export_ontology_asset(DEFAULT_PLATFORM_DB, ontology_id, format)
@@ -946,7 +934,7 @@ def export_ontology(ontology_id: int, format: str = "jsonld") -> Response:
     )
 
 
-@app.get("/ontologies/{ontology_id}/mappings")
+@core_router.get("/ontologies/{ontology_id}/mappings")
 def get_ontology_mappings(ontology_id: int, status: Optional[str] = None) -> dict[str, object]:
     try:
         return list_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, status)
@@ -954,7 +942,7 @@ def get_ontology_mappings(ontology_id: int, status: Optional[str] = None) -> dic
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/semantic-mappings/{mapping_id}/review")
+@core_router.post("/semantic-mappings/{mapping_id}/review")
 def review_mapping(
     mapping_id: int,
     payload: MappingReviewCreate,
@@ -966,7 +954,7 @@ def review_mapping(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/mappings/review")
+@core_router.post("/ontologies/{ontology_id}/mappings/review")
 def review_ontology_mappings(
     ontology_id: int,
     payload: BulkMappingReviewCreate,
@@ -980,7 +968,7 @@ def review_ontology_mappings(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/publish")
+@core_router.post("/ontologies/{ontology_id}/publish")
 def publish_ontology_version(
     ontology_id: int,
     payload: OntologyPublishCreate,
@@ -992,7 +980,7 @@ def publish_ontology_version(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/release-readiness")
+@core_router.get("/ontologies/{ontology_id}/release-readiness")
 def get_ontology_release_readiness(ontology_id: int) -> dict[str, object]:
     try:
         return assess_ontology_release_readiness(DEFAULT_PLATFORM_DB, ontology_id)
@@ -1000,7 +988,7 @@ def get_ontology_release_readiness(ontology_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/derive")
+@core_router.post("/ontologies/{ontology_id}/derive")
 def derive_ontology_draft(
     ontology_id: int,
     payload: OntologyDeriveCreate,
@@ -1012,7 +1000,7 @@ def derive_ontology_draft(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/rules")
+@core_router.get("/ontologies/{ontology_id}/rules")
 def get_business_rules(ontology_id: int) -> dict[str, object]:
     try:
         return list_business_rules(DEFAULT_PLATFORM_DB, ontology_id)
@@ -1020,7 +1008,7 @@ def get_business_rules(ontology_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/rules")
+@core_router.post("/ontologies/{ontology_id}/rules")
 def create_or_update_business_rule(
     ontology_id: int,
     payload: BusinessRuleCreate,
@@ -1049,7 +1037,7 @@ def create_or_update_business_rule(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/rules/import-word")
+@core_router.post("/ontologies/{ontology_id}/rules/import-word")
 async def import_business_rules_from_word(
     ontology_id: int,
     file: UploadFile = File(...),
@@ -1110,7 +1098,7 @@ async def import_business_rules_from_word(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/rules/validate-expression")
+@core_router.post("/ontologies/{ontology_id}/rules/validate-expression")
 def validate_ontology_rule_expression(ontology_id: int, payload: RuleExpressionValidateCreate) -> dict[str, object]:
     """Statically check a rule expression before it is saved."""
     available: Optional[list[str]] = None
@@ -1119,7 +1107,7 @@ def validate_ontology_rule_expression(ontology_id: int, payload: RuleExpressionV
     return validate_rule_expression(payload.expression, available)
 
 
-@app.get("/ontologies/{ontology_id}/rules/{rule_id}")
+@core_router.get("/ontologies/{ontology_id}/rules/{rule_id}")
 def get_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
     try:
         return get_business_rule(DEFAULT_PLATFORM_DB, ontology_id, rule_id)
@@ -1127,7 +1115,7 @@ def get_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.put("/ontologies/{ontology_id}/rules/{rule_id}")
+@core_router.put("/ontologies/{ontology_id}/rules/{rule_id}")
 def update_ontology_rule(
     ontology_id: int,
     rule_id: int,
@@ -1158,7 +1146,7 @@ def update_ontology_rule(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.delete("/ontologies/{ontology_id}/rules/{rule_id}")
+@core_router.delete("/ontologies/{ontology_id}/rules/{rule_id}")
 def delete_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
     try:
         return delete_business_rule(DEFAULT_PLATFORM_DB, ontology_id, rule_id)
@@ -1166,7 +1154,7 @@ def delete_ontology_rule(ontology_id: int, rule_id: int) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.patch("/ontologies/{ontology_id}/rules/{rule_id}/status")
+@core_router.patch("/ontologies/{ontology_id}/rules/{rule_id}/status")
 def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "published") -> dict[str, object]:
     try:
         return toggle_business_rule_status(DEFAULT_PLATFORM_DB, ontology_id, rule_id, status)
@@ -1174,7 +1162,7 @@ def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "p
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
+@core_router.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
 def explain_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
     try:
         resolved = (
@@ -1185,7 +1173,7 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: Opti
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
+@core_router.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
 def assess_object_instance(
     object_code: str,
     instance_id: str,
@@ -1209,7 +1197,7 @@ def assess_object_instance(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/semantic/objects/{object_code}/consistency")
+@core_router.post("/semantic/objects/{object_code}/consistency")
 def assess_object_decision_consistency(object_code: str, payload: DecisionConsistencyCreate) -> dict[str, object]:
     try:
         return assess_decision_consistency(
@@ -1223,7 +1211,7 @@ def assess_object_decision_consistency(object_code: str, payload: DecisionConsis
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/semantic/natural-language/query")
+@core_router.post("/semantic/natural-language/query")
 def ask_semantic_kernel(
     payload: NaturalLanguageQueryCreate,
     principal: Principal = Depends(current_principal),
@@ -1249,7 +1237,7 @@ def ask_semantic_kernel(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/agent/roles")
+@core_router.get("/agent/roles")
 def list_agent_roles() -> dict[str, object]:
     return {"roles": get_agent_roles(DEFAULT_PLATFORM_DB)}
 
@@ -1263,7 +1251,7 @@ class AgentRoleUpsert(BaseModel):
     dataSourceId: Optional[int] = None
 
 
-@app.post("/agent/roles")
+@core_router.post("/agent/roles")
 def create_or_update_agent_role(
     payload: AgentRoleUpsert,
     principal: Principal = Depends(current_principal),
@@ -1284,12 +1272,12 @@ def create_or_update_agent_role(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.delete("/agent/roles/{code}")
+@core_router.delete("/agent/roles/{code}")
 def remove_agent_role(code: str, principal: Principal = Depends(current_principal)) -> dict[str, object]:
     return delete_agent_role(DEFAULT_PLATFORM_DB, code, actor=principal.actor)
 
 
-@app.post("/agent/chat")
+@core_router.post("/agent/chat")
 def chat_with_agent(
     payload: AgentChatCreate,
     principal: Principal = Depends(current_principal),
@@ -1315,7 +1303,7 @@ def chat_with_agent(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/automation/operations/{operation_code}/preflight")
+@core_router.post("/automation/operations/{operation_code}/preflight")
 def preflight_business_operation(operation_code: str, payload: OperationPreflightCreate) -> dict[str, object]:
     try:
         return preflight_operation(
@@ -1330,7 +1318,7 @@ def preflight_business_operation(operation_code: str, payload: OperationPrefligh
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/automation/operations/{operation_code}/execute")
+@core_router.post("/automation/operations/{operation_code}/execute")
 def execute_business_operation(
     operation_code: str,
     payload: OperationExecuteCreate,
@@ -1353,32 +1341,32 @@ def execute_business_operation(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/model/status")
+@core_router.get("/model/status")
 def model_status() -> dict[str, object]:
     return OpenRouterClient(OpenRouterConfig.from_db_or_env(DEFAULT_PLATFORM_DB)).status()
 
 
-@app.get("/model/config")
+@core_router.get("/model/config")
 def get_openrouter_config() -> dict[str, object]:
     return get_model_config(DEFAULT_PLATFORM_DB)
 
 
-@app.post("/model/config")
+@core_router.post("/model/config")
 def update_openrouter_config(payload: ModelConfigUpdate) -> dict[str, object]:
     return update_model_config(DEFAULT_PLATFORM_DB, payload.model_dump(exclude_unset=True))
 
 
-@app.delete("/model/config")
+@core_router.delete("/model/config")
 def reset_openrouter_config() -> dict[str, object]:
     return reset_model_config(DEFAULT_PLATFORM_DB)
 
 
-@app.get("/model/config/test")
+@core_router.get("/model/config/test")
 def test_openrouter_config() -> dict[str, object]:
     return test_model_config(DEFAULT_PLATFORM_DB)
 
 
-@app.post("/ai/data-sources/{data_source_id}/ontology-suggestions")
+@core_router.post("/ai/data-sources/{data_source_id}/ontology-suggestions")
 def ai_ontology_suggestions(data_source_id: int) -> dict[str, object]:
     try:
         return generate_semantic_suggestions(DEFAULT_PLATFORM_DB, data_source_id)
@@ -1386,7 +1374,7 @@ def ai_ontology_suggestions(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/ai/data-sources/{data_source_id}/blueprint-draft")
+@core_router.post("/ai/data-sources/{data_source_id}/blueprint-draft")
 def ai_blueprint_draft(data_source_id: int) -> dict[str, object]:
     try:
         return generate_blueprint_draft(DEFAULT_PLATFORM_DB, data_source_id)
@@ -1394,7 +1382,7 @@ def ai_blueprint_draft(data_source_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/ai/data-sources/{data_source_id}/ontology-reasoning-chain")
+@core_router.post("/ai/data-sources/{data_source_id}/ontology-reasoning-chain")
 def ai_ontology_reasoning_chain(data_source_id: int) -> dict[str, object]:
     try:
         return generate_ontology_reasoning_chain(DEFAULT_PLATFORM_DB, data_source_id)
@@ -1408,12 +1396,12 @@ class KnowledgeEntryReview(BaseModel):
     ruleCode: Optional[str] = None
 
 
-@app.get("/ontologies/{ontology_id}/knowledge/documents")
+@core_router.get("/ontologies/{ontology_id}/knowledge/documents")
 def knowledge_documents(ontology_id: int) -> dict[str, object]:
     return {"items": list_documents(DEFAULT_PLATFORM_DB, ontology_id)}
 
 
-@app.get("/ontologies/{ontology_id}/knowledge/entries")
+@core_router.get("/ontologies/{ontology_id}/knowledge/entries")
 def knowledge_entries(
     ontology_id: int,
     documentId: Optional[int] = None,
@@ -1427,7 +1415,7 @@ def knowledge_entries(
     }
 
 
-@app.post("/ontologies/{ontology_id}/knowledge/documents")
+@core_router.post("/ontologies/{ontology_id}/knowledge/documents")
 async def upload_knowledge_document(
     ontology_id: int,
     file: UploadFile = File(...),
@@ -1463,7 +1451,7 @@ async def upload_knowledge_document(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/knowledge/entries/{entry_id}/review")
+@core_router.post("/knowledge/entries/{entry_id}/review")
 def review_entry(
     entry_id: int,
     payload: KnowledgeEntryReview,
@@ -1503,12 +1491,12 @@ class ConversationStatusUpdate(BaseModel):
     status: str
 
 
-@app.get("/conversations")
+@core_router.get("/conversations")
 def conversations(status: str = "", limit: int = 50) -> dict[str, object]:
     return {"items": list_conversations(DEFAULT_PLATFORM_DB, status=status, limit=limit)}
 
 
-@app.get("/conversations/{session_id}")
+@core_router.get("/conversations/{session_id}")
 def conversation_detail(session_id: str) -> dict[str, object]:
     try:
         return get_conversation(DEFAULT_PLATFORM_DB, session_id)
@@ -1516,7 +1504,7 @@ def conversation_detail(session_id: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.post("/conversations/{session_id}/escalate")
+@core_router.post("/conversations/{session_id}/escalate")
 def escalate(
     session_id: str,
     payload: EscalationCreate,
@@ -1535,7 +1523,7 @@ def escalate(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.patch("/conversations/{session_id}/status")
+@core_router.patch("/conversations/{session_id}/status")
 def update_conversation_status(
     session_id: str,
     payload: ConversationStatusUpdate,
@@ -1547,7 +1535,7 @@ def update_conversation_status(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/conversations/messages/{message_id}/feedback")
+@core_router.post("/conversations/messages/{message_id}/feedback")
 def create_feedback(
     message_id: int,
     payload: FeedbackCreate,
@@ -1573,7 +1561,7 @@ def create_feedback(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/feedback")
+@core_router.get("/feedback")
 def feedback_items(status: str = "", rating: str = "", limit: int = 100) -> dict[str, object]:
     return {
         "items": list_feedback(DEFAULT_PLATFORM_DB, status=status, rating=rating, limit=limit),
@@ -1581,7 +1569,7 @@ def feedback_items(status: str = "", rating: str = "", limit: int = 100) -> dict
     }
 
 
-@app.post("/feedback/{feedback_id}/resolve")
+@core_router.post("/feedback/{feedback_id}/resolve")
 def resolve_feedback_item(
     feedback_id: int,
     payload: FeedbackResolve,
@@ -1606,7 +1594,7 @@ def _tenant_base_context() -> Any:
     return resolve_context(DEFAULT_PLATFORM_DB)
 
 
-@app.get("/tenants")
+@core_router.get("/tenants")
 def tenants() -> dict[str, object]:
     """Provisioned tenants.
 
@@ -1621,7 +1609,7 @@ def tenants() -> dict[str, object]:
     }
 
 
-@app.post("/tenants")
+@core_router.post("/tenants")
 def create_tenant(
     payload: TenantCreate,
     principal: Principal = Depends(current_principal),
@@ -1648,7 +1636,7 @@ def create_tenant(
     return result
 
 
-@app.get("/tenants/{tenant}/statistics")
+@core_router.get("/tenants/{tenant}/statistics")
 def tenant_stats(tenant: str) -> dict[str, object]:
     """Row counts for one tenant, for verifying isolation after provisioning."""
     try:
@@ -1668,7 +1656,7 @@ class ResolverConfigure(BaseModel):
     idColumn: str = ""
 
 
-@app.get("/ontologies/{ontology_id}/objects/{object_code}/resolver")
+@core_router.get("/ontologies/{ontology_id}/objects/{object_code}/resolver")
 def object_resolver(ontology_id: int, object_code: str) -> dict[str, object]:
     """The instance resolver in effect for a business object."""
     try:
@@ -1677,7 +1665,7 @@ def object_resolver(ontology_id: int, object_code: str) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/resolver")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/resolver")
 def set_object_resolver(
     ontology_id: int,
     object_code: str,
@@ -1705,7 +1693,7 @@ def set_object_resolver(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/resolvers")
+@core_router.get("/resolvers")
 def resolvers() -> dict[str, object]:
     return {"kinds": list(supported_resolver_kinds())}
 
@@ -1724,13 +1712,13 @@ class AggregateDefine(BaseModel):
     description: str = ""
 
 
-@app.get("/ontologies/{ontology_id}/aggregates")
+@core_router.get("/ontologies/{ontology_id}/aggregates")
 def ontology_aggregates(ontology_id: int, objectCode: str = "") -> dict[str, object]:
     """Cross-object aggregates available to rules."""
     return {"items": list_aggregates(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/aggregates")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/aggregates")
 def define_object_aggregate(
     ontology_id: int,
     object_code: str,
@@ -1779,7 +1767,7 @@ class AttributeUnitDeclare(BaseModel):
     unit: str = ""
 
 
-@app.get("/source-types")
+@core_router.get("/source-types")
 def source_types() -> dict[str, object]:
     """Data source types, including the ones declared but awaiting a driver.
 
@@ -1806,7 +1794,7 @@ def source_types() -> dict[str, object]:
     }
 
 
-@app.get("/writeback-channels")
+@core_router.get("/writeback-channels")
 def writeback_channels() -> dict[str, object]:
     """Writeback channels, and what each declared database channel may actually write.
 
@@ -1820,7 +1808,7 @@ def writeback_channels() -> dict[str, object]:
     }
 
 
-@app.get("/units")
+@core_router.get("/units")
 def units() -> dict[str, object]:
     """Units available for attribute declarations, grouped by dimension.
 
@@ -1840,12 +1828,12 @@ def units() -> dict[str, object]:
     }
 
 
-@app.get("/ontologies/{ontology_id}/derived-attributes")
+@core_router.get("/ontologies/{ontology_id}/derived-attributes")
 def ontology_derived_attributes(ontology_id: int, objectCode: str = "") -> dict[str, object]:
     return {"items": list_derived_attributes(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/derived-attributes")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/derived-attributes")
 def define_object_derived_attribute(
     ontology_id: int,
     object_code: str,
@@ -1875,7 +1863,7 @@ def define_object_derived_attribute(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/attributes/{attribute_code}/unit")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/attributes/{attribute_code}/unit")
 def declare_attribute_unit(
     ontology_id: int,
     object_code: str,
@@ -1916,12 +1904,12 @@ class SubtypeDeclare(BaseModel):
     parentObjectCode: str = ""
 
 
-@app.get("/ontologies/{ontology_id}/event-types")
+@core_router.get("/ontologies/{ontology_id}/event-types")
 def ontology_event_types(ontology_id: int, objectCode: str = "") -> dict[str, object]:
     return {"items": list_event_types(DEFAULT_PLATFORM_DB, ontology_id, objectCode)}
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/event-types")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/event-types")
 def declare_object_event_type(
     ontology_id: int,
     object_code: str,
@@ -1947,7 +1935,7 @@ def declare_object_event_type(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+@core_router.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
 def append_instance_event(
     ontology_id: int,
     object_code: str,
@@ -1976,7 +1964,7 @@ def append_instance_event(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
+@core_router.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/events")
 def instance_events(
     ontology_id: int, object_code: str, instance_id: str, limit: int = MAX_EVENT_HISTORY
 ) -> dict[str, object]:
@@ -1991,7 +1979,7 @@ class AttributeVersionRecord(BaseModel):
     source: str = ""
 
 
-@app.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+@core_router.post("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
 def record_instance_attribute_version(
     ontology_id: int,
     object_code: str,
@@ -2020,7 +2008,7 @@ def record_instance_attribute_version(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
+@core_router.get("/ontologies/{ontology_id}/objects/{object_code}/instances/{instance_id}/versions")
 def instance_attribute_history(
     ontology_id: int, object_code: str, instance_id: str, attributeCode: str = ""
 ) -> dict[str, object]:
@@ -2045,7 +2033,7 @@ class CrossSourceLinkDeclare(BaseModel):
     description: str = ""
 
 
-@app.get("/ontologies/{ontology_id}/cross-source-links")
+@core_router.get("/ontologies/{ontology_id}/cross-source-links")
 def ontology_cross_source_links(ontology_id: int) -> dict[str, object]:
     """本体的跨源对应声明。
 
@@ -2055,7 +2043,7 @@ def ontology_cross_source_links(ontology_id: int) -> dict[str, object]:
     return describe_cross_source(DEFAULT_PLATFORM_DB, ontology_id)
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/cross-source-links")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/cross-source-links")
 def declare_object_cross_source_link(
     ontology_id: int,
     object_code: str,
@@ -2095,13 +2083,13 @@ def declare_object_cross_source_link(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/ontologies/{ontology_id}/hierarchy")
+@core_router.get("/ontologies/{ontology_id}/hierarchy")
 def ontology_hierarchy(ontology_id: int) -> dict[str, object]:
     """The declared type hierarchy, with inherited rule counts and overrides."""
     return {"items": describe_hierarchy(DEFAULT_PLATFORM_DB, ontology_id)}
 
 
-@app.put("/ontologies/{ontology_id}/objects/{object_code}/parent")
+@core_router.put("/ontologies/{ontology_id}/objects/{object_code}/parent")
 def declare_object_subtype(
     ontology_id: int,
     object_code: str,
@@ -2125,7 +2113,7 @@ def declare_object_subtype(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.get("/workbench")
+@core_router.get("/workbench")
 def workbench(decisionLimit: int = 8) -> dict[str, object]:
     """Aggregated platform state for the workbench screen.
 
@@ -2135,7 +2123,7 @@ def workbench(decisionLimit: int = 8) -> dict[str, object]:
     return build_workbench(DEFAULT_PLATFORM_DB, decisionLimit)
 
 
-@app.get("/ontologies/{ontology_id}/graph")
+@core_router.get("/ontologies/{ontology_id}/graph")
 def ontology_graph(ontology_id: int) -> dict[str, object]:
     """Nodes and edges for the knowledge graph preview."""
     try:
@@ -2144,7 +2132,7 @@ def ontology_graph(ontology_id: int) -> dict[str, object]:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@app.get("/governance/audit-log")
+@core_router.get("/governance/audit-log")
 def audit_log(limit: int = 50) -> dict[str, object]:
     with connect(DEFAULT_PLATFORM_DB) as conn:
         rows = conn.execute(
@@ -2159,7 +2147,7 @@ def audit_log(limit: int = 50) -> dict[str, object]:
         return {"items": [dict(row) for row in rows]}
 
 
-@app.get("/governance/model-invocations")
+@core_router.get("/governance/model-invocations")
 def model_invocations(limit: int = 50) -> dict[str, object]:
     with connect(DEFAULT_PLATFORM_DB) as conn:
         rows = conn.execute(
@@ -2174,367 +2162,12 @@ def model_invocations(limit: int = 50) -> dict[str, object]:
         return {"items": [dict(row) for row in rows]}
 
 
-@app.get("/governance/decisions")
+@core_router.get("/governance/decisions")
 def decisions(limit: int = 50) -> dict[str, object]:
     return {"items": list_decisions(DEFAULT_PLATFORM_DB, limit)}
 
 
-# ============================================================
-# Workflow & Permission Management
-# ============================================================
-
-from .context import resolve_context
-from .workflow_permission import (
-    add_workflow_state,
-    add_workflow_transition,
-    authorize_tool,
-    check_permission,
-    check_tool_authorization,
-    create_role,
-    create_workflow,
-    delete_workflow,
-    enter_workflow,
-    get_available_actions,
-    get_instance_history,
-    get_instance_state,
-    get_workflow,
-    get_workflow_by_object,
-    list_pending_reviews,
-    list_policies,
-    list_roles,
-    list_tools,
-    list_workflows,
-    register_tool,
-    review_tool_execution,
-    transition_instance,
-    upsert_permission_policy,
-)
-
-
-class WorkflowCreate(BaseModel):
-    ontologyId: int
-    objectCode: str
-    name: str
-    description: str = ""
-    initialState: str = "draft"
-
-
-class WorkflowStateAdd(BaseModel):
-    code: str
-    name: str
-    description: str = ""
-    isTerminal: bool = False
-    color: str = "#666666"
-    sortOrder: int = 0
-
-
-class WorkflowTransitionAdd(BaseModel):
-    fromState: str
-    toState: str
-    actionCode: str
-    name: str
-    guardExpression: str = ""
-    requiresReview: bool = False
-    reviewRole: str = ""
-    sortOrder: int = 0
-
-
-class WorkflowTransitionRun(BaseModel):
-    instanceId: str
-    actionCode: str
-    reason: str = ""
-    metadata: dict[str, object] = Field(default_factory=dict)
-
-
-class WorkflowEnterInstance(BaseModel):
-    objectCode: str
-    instanceId: str
-
-
-class RoleCreate(BaseModel):
-    code: str
-    name: str
-    description: str = ""
-    isSystem: bool = False
-
-
-class PermissionPolicyUpsert(BaseModel):
-    roleId: int
-    objectCode: str
-    canRead: bool = True
-    canWrite: bool = False
-    canExecute: bool = False
-    canDelete: bool = False
-    filterExpression: str = ""
-    description: str = ""
-
-
-class PermissionCheck(BaseModel):
-    roleCode: str
-    objectCode: str
-    operation: str = "read"
-
-
-class ToolRegister(BaseModel):
-    code: str
-    name: str
-    description: str = ""
-    toolType: str = "function"
-    inputSchema: dict[str, object] = Field(default_factory=dict)
-    riskLevel: str = "low"
-    requiresReview: bool = False
-
-
-class ToolAuthorize(BaseModel):
-    roleId: int
-    toolId: int
-    allowed: bool = True
-    maxCallsPerHour: int = 100
-
-
-class ToolAuthCheck(BaseModel):
-    roleCode: str
-    toolCode: str
-
-
-class ToolExecutionReview(BaseModel):
-    decision: str
-
-
-# -- Workflow Endpoints --
-
-
-@app.get("/workflows")
-def get_workflows(ontologyId: Optional[int] = None) -> dict[str, object]:
-    return {"items": list_workflows(DEFAULT_PLATFORM_DB, ontologyId)}
-
-
-@app.post("/workflows")
-def create_new_workflow(payload: WorkflowCreate) -> dict[str, object]:
-    try:
-        return create_workflow(
-            DEFAULT_PLATFORM_DB,
-            payload.ontologyId,
-            payload.objectCode,
-            payload.name,
-            payload.description,
-            payload.initialState,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/workflows/{workflow_id}")
-def get_workflow_detail(workflow_id: int) -> dict[str, object]:
-    try:
-        return get_workflow(DEFAULT_PLATFORM_DB, workflow_id)
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@app.get("/workflows/by-object/{ontology_id}/{object_code}")
-def get_workflow_for_object(ontology_id: int, object_code: str) -> dict[str, object]:
-    wf = get_workflow_by_object(DEFAULT_PLATFORM_DB, ontology_id, object_code)
-    if wf is None:
-        raise HTTPException(status_code=404, detail="该业务对象未配置工作流")
-    return wf
-
-
-@app.delete("/workflows/{workflow_id}")
-def delete_workflow_def(workflow_id: int) -> dict[str, object]:
-    delete_workflow(DEFAULT_PLATFORM_DB, workflow_id)
-    return {"deleted": True}
-
-
-@app.post("/workflows/{workflow_id}/states")
-def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
-    try:
-        return add_workflow_state(
-            DEFAULT_PLATFORM_DB,
-            workflow_id,
-            payload.code,
-            payload.name,
-            payload.description,
-            payload.isTerminal,
-            payload.color,
-            payload.sortOrder,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/workflows/{workflow_id}/transitions")
-def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str, object]:
-    try:
-        return add_workflow_transition(
-            DEFAULT_PLATFORM_DB,
-            workflow_id,
-            payload.fromState,
-            payload.toState,
-            payload.actionCode,
-            payload.name,
-            payload.guardExpression,
-            payload.requiresReview,
-            payload.reviewRole,
-            payload.sortOrder,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/workflows/{workflow_id}/enter")
-def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
-    try:
-        return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/workflows/{workflow_id}/instances/{instance_id}")
-def get_instance_workflow_state(workflow_id: int, instance_id: str) -> dict[str, object]:
-    state = get_instance_state(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="实例不在工作流中")
-    return state
-
-
-@app.get("/workflows/{workflow_id}/instances/{instance_id}/actions")
-def get_instance_available_actions(workflow_id: int, instance_id: str) -> dict[str, object]:
-    actions = get_available_actions(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
-    return {"actions": actions}
-
-
-@app.post("/workflows/{workflow_id}/transitions/run")
-def run_transition(
-    workflow_id: int,
-    payload: WorkflowTransitionRun,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return transition_instance(
-            DEFAULT_PLATFORM_DB,
-            workflow_id,
-            payload.instanceId,
-            payload.actionCode,
-            principal.actor,
-            payload.reason,
-            payload.metadata,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/workflows/{workflow_id}/instances/{instance_id}/history")
-def get_instance_workflow_history(workflow_id: int, instance_id: str) -> dict[str, object]:
-    return {"items": get_instance_history(DEFAULT_PLATFORM_DB, workflow_id, instance_id)}
-
-
-# -- Permission Endpoints --
-
-
-@app.get("/permissions/roles")
-def get_permission_roles() -> dict[str, object]:
-    return {"roles": list_roles(DEFAULT_PLATFORM_DB)}
-
-
-@app.post("/permissions/roles")
-def create_permission_role(payload: RoleCreate) -> dict[str, object]:
-    try:
-        return create_role(DEFAULT_PLATFORM_DB, payload.code, payload.name, payload.description, payload.isSystem)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/permissions/policies")
-def get_permission_policies(roleId: Optional[int] = None) -> dict[str, object]:
-    return {"policies": list_policies(DEFAULT_PLATFORM_DB, roleId)}
-
-
-@app.post("/permissions/policies")
-def upsert_policy(payload: PermissionPolicyUpsert) -> dict[str, object]:
-    try:
-        return upsert_permission_policy(
-            DEFAULT_PLATFORM_DB,
-            payload.roleId,
-            payload.objectCode,
-            payload.canRead,
-            payload.canWrite,
-            payload.canExecute,
-            payload.canDelete,
-            payload.filterExpression,
-            payload.description,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/permissions/check")
-def check_permission_endpoint(payload: PermissionCheck) -> dict[str, object]:
-    return check_permission(DEFAULT_PLATFORM_DB, payload.roleCode, payload.objectCode, payload.operation)
-
-
-# -- Tool Endpoints --
-
-
-@app.get("/tools")
-def get_all_tools() -> dict[str, object]:
-    return {"tools": list_tools(DEFAULT_PLATFORM_DB)}
-
-
-@app.post("/tools")
-def register_new_tool(payload: ToolRegister) -> dict[str, object]:
-    try:
-        return register_tool(
-            DEFAULT_PLATFORM_DB,
-            payload.code,
-            payload.name,
-            payload.description,
-            payload.toolType,
-            payload.inputSchema,
-            payload.riskLevel,
-            payload.requiresReview,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/tools/authorize")
-def authorize_tool_for_role(payload: ToolAuthorize) -> dict[str, object]:
-    try:
-        return authorize_tool(
-            DEFAULT_PLATFORM_DB,
-            payload.roleId,
-            payload.toolId,
-            payload.allowed,
-            payload.maxCallsPerHour,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.post("/tools/check-auth")
-def check_tool_auth(payload: ToolAuthCheck) -> dict[str, object]:
-    return check_tool_authorization(DEFAULT_PLATFORM_DB, payload.roleCode, payload.toolCode)
-
-
-@app.get("/tools/pending-reviews")
-def get_pending_reviews(limit: int = 50) -> dict[str, object]:
-    return {"items": list_pending_reviews(DEFAULT_PLATFORM_DB, limit)}
-
-
-@app.post("/tools/logs/{log_id}/review")
-def review_execution(
-    log_id: int,
-    payload: ToolExecutionReview,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return review_tool_execution(DEFAULT_PLATFORM_DB, log_id, principal.actor, payload.decision)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@app.get("/files")
+@core_router.get("/files")
 def files() -> dict[str, str]:
     config = get_platform_config()
     return {
@@ -2544,5 +2177,25 @@ def files() -> dict[str, str]:
     }
 
 
-# Must be last: it copies whatever routes exist at the time it runs.
-mount_versioned_routes(app)
+# Every router the app serves. Declared as data because it is what the version mounting
+# below iterates *and* what the tests enumerate: FastAPI 0.141 expands `include_router`
+# lazily, so `app.routes` holds placeholders rather than routes, and there is no
+# public way to walk them. Reaching into `_IncludedRouter` would tie the authorization
+# tests to a private structure that already changed once.
+ROUTERS: tuple[APIRouter, ...] = (core_router, workflow_permission_router)
+
+
+def declared_routes() -> list[APIRoute]:
+    """Every route this app serves, bare form only.
+
+    The one supported way to ask "what does this API expose". Used by the tests that
+    assert each route's `/v1` copy requires the same capability -- a check that has to
+    enumerate routes to mean anything, and would otherwise depend on FastAPI internals.
+    """
+    return [route for router in ROUTERS for route in router.routes if isinstance(route, APIRoute)]
+
+
+# Each router served bare and under `/v1`. Forgetting one means its routes are not
+# served at all, which fails on the first request rather than only for versioned callers.
+for _router in ROUTERS:
+    include_router_twice(app, _router)
