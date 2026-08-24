@@ -15,6 +15,17 @@ Stability: internal. The routes are the public surface; how they are grouped is 
 from __future__ import annotations
 
 from .auth_routes import router as auth_router
+from .data_source_routes import router as data_source_router
+from .knowledge_routes import router as knowledge_router
+from .metamodel_routes import router as metamodel_router
+from .model_governance_routes import router as model_governance_router
 from .workflow_permission_routes import router as workflow_permission_router
 
-__all__ = ["auth_router", "workflow_permission_router"]
+__all__ = [
+    "auth_router",
+    "data_source_router",
+    "knowledge_router",
+    "metamodel_router",
+    "model_governance_router",
+    "workflow_permission_router",
+]
