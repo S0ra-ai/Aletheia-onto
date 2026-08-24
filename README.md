@@ -660,7 +660,11 @@ _不是_：算法、模型、策略引擎脚本。
 - HTTP 层共 144 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
-- 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+- 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+  尚不能由 OpenAPI 生成：144 个端点均返回 `dict[str, object]`，响应 schema 是裸 object，
+  生成器只会产出 `unknown`。**请求侧的一致性已由测试守住**——
+  该测试发现了一处真实缺陷：前端一直在发送 4 个模型兼容性字段，
+  而 API 请求模型未声明它们，Pydantic 静默丢弃，于是 Azure 与本地 vLLM 配不上而界面报成功。
 - DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
   因此阻塞于分包边界。
 - **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
@@ -882,7 +886,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1121 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1133 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -896,6 +900,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
 | `test_audit_reports.py` | 18 | 从未触发的规则、覆盖门禁的发布、留痕完整性、区间半开 |
 | `test_tenant_quotas.py` | 16 | 配额存于基础库租户改不了、写前拦截、未声明即不限量、跨租户不串用量 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
