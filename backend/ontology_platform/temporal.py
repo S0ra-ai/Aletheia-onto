@@ -57,9 +57,9 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .schema import SchemaBundle
 
@@ -288,7 +288,7 @@ def _decode(raw: Optional[str], value_type: str) -> Any:
 
 
 def record_attribute_version(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -484,7 +484,7 @@ def coverage(
 
 
 def instance_history(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -505,7 +505,7 @@ def instance_history(
 
 
 def capture_snapshot(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,

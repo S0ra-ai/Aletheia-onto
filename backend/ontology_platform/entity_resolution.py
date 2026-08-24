@@ -52,9 +52,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Sequence
 
+from .context import PlatformDb
 from .database import connect
 from .instance_resolver import ResolverError, validate_identifier
 
@@ -302,7 +302,7 @@ def entity_resolution_tables_exist(conn: Any) -> bool:
 
 
 def declare_cross_source_link(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     link: CrossSourceLink,
     *,
@@ -407,7 +407,7 @@ def load_links(conn: Any, ontology_id: int, primary_object_code: str = "") -> li
 
 
 def list_cross_source_links(
-    platform_db: Path | str, ontology_id: int, primary_object_code: str = ""
+    platform_db: PlatformDb, ontology_id: int, primary_object_code: str = ""
 ) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         links = load_links(conn, ontology_id, primary_object_code)
@@ -629,7 +629,7 @@ def resolve_all(
     return merged, results
 
 
-def describe_cross_source(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def describe_cross_source(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     """本体的全部跨源对应，供审阅与图谱视图使用。"""
     links = list_cross_source_links(platform_db, ontology_id)
     return {

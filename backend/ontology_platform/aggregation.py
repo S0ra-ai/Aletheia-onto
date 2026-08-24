@@ -49,9 +49,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 from .instance_resolver import ResolverError
 from .instance_resolver import validate_identifier as _validate_sql_identifier
@@ -297,7 +297,7 @@ def init_aggregate_schema(conn: Any) -> None:
 
 
 def define_aggregate(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     scope_object_code: str,
     spec: AggregateSpec,
@@ -386,7 +386,7 @@ def define_aggregate(
     }
 
 
-def list_aggregates(platform_db: Path | str, ontology_id: int, scope_object_code: str = "") -> list[dict[str, Any]]:
+def list_aggregates(platform_db: PlatformDb, ontology_id: int, scope_object_code: str = "") -> list[dict[str, Any]]:
     clauses = ["ontology_id = ?"]
     params: list[Any] = [ontology_id]
     if scope_object_code:

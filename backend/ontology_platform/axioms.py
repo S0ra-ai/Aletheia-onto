@@ -64,9 +64,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .schema import SchemaBundle
 
@@ -238,7 +238,7 @@ def describe_axiom_kinds() -> list[dict[str, str]]:
     ]
 
 
-def declare_axiom(platform_db: Path | str, ontology_id: int, spec: AxiomSpec) -> dict[str, Any]:
+def declare_axiom(platform_db: PlatformDb, ontology_id: int, spec: AxiomSpec) -> dict[str, Any]:
     """Store an axiom, refusing one the model already violates.
 
     Checked before storing, not after. An axiom accepted into a model that contradicts
@@ -275,7 +275,7 @@ def declare_axiom(platform_db: Path | str, ontology_id: int, spec: AxiomSpec) ->
     }
 
 
-def remove_axiom(platform_db: Path | str, ontology_id: int, code: str) -> dict[str, Any]:
+def remove_axiom(platform_db: PlatformDb, ontology_id: int, code: str) -> dict[str, Any]:
     with connect(platform_db) as conn:
         init_axiom_schema(conn)
         cursor = conn.execute(
@@ -288,7 +288,7 @@ def remove_axiom(platform_db: Path | str, ontology_id: int, code: str) -> dict[s
     return {"removed": code}
 
 
-def list_axioms(platform_db: Path | str, ontology_id: int) -> list[dict[str, Any]]:
+def list_axioms(platform_db: PlatformDb, ontology_id: int) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         if not SCHEMA.has_tables(conn):
             return []
@@ -309,7 +309,7 @@ def list_axioms(platform_db: Path | str, ontology_id: int) -> list[dict[str, Any
     ]
 
 
-def check_axioms(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def check_axioms(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     """Re-check every axiom against the current model.
 
     Called by the release gates. Separate from `declare_axiom`'s check because the model
@@ -616,6 +616,6 @@ def _check_disjoint_attributes(conn: Any, ontology_id: int, spec: AxiomSpec) -> 
     return []
 
 
-def axioms_as_json(platform_db: Path | str, ontology_id: int) -> str:
+def axioms_as_json(platform_db: PlatformDb, ontology_id: int) -> str:
     """Declared axioms as JSON, for the kernel package and exports."""
     return json.dumps(list_axioms(platform_db, ontology_id), ensure_ascii=False)

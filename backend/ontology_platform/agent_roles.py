@@ -16,9 +16,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 from .schema import SchemaBundle
 
@@ -160,7 +160,7 @@ def slugify_domain(domain: str) -> str:
     return f"domain-{digest}-expert"
 
 
-def list_agent_roles(platform_db: Path | str) -> list[AgentRole]:
+def list_agent_roles(platform_db: PlatformDb) -> list[AgentRole]:
     """Roles for every onboarded domain, plus any persisted custom roles."""
     roles: dict[str, AgentRole] = {}
 
@@ -227,7 +227,7 @@ def generic_role() -> AgentRole:
     )
 
 
-def resolve_agent_role(platform_db: Path | str, role_id: str | None) -> AgentRole:
+def resolve_agent_role(platform_db: PlatformDb, role_id: str | None) -> AgentRole:
     """Resolve a role id, falling back to the first available role."""
     available = list_agent_roles(platform_db)
     if role_id:
@@ -284,7 +284,7 @@ def _summarize_knowledge(knowledge_context: dict[str, Any]) -> str:
 
 
 def upsert_agent_role(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     code: str,
     name: str,
     description: str = "",
@@ -320,7 +320,7 @@ def upsert_agent_role(
     return {"code": normalized, "name": name, "domain": domain, "source": "custom"}
 
 
-def delete_agent_role(platform_db: Path | str, code: str, actor: str = "system") -> dict[str, Any]:
+def delete_agent_role(platform_db: PlatformDb, code: str, actor: str = "system") -> dict[str, Any]:
     with connect(platform_db) as conn:
         conn.execute("delete from agent_role where code = ?", (code,))
         conn.execute(

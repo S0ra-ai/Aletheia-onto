@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from .adapters import get_adapter
 from .config import clamp_page_size
+from .context import PlatformDb
 from .database import connect
 from .metadata import scan_data_source
 from .ontology import generate_ontology_draft
 
 
-def initialize_knowledge_base(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def initialize_knowledge_base(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     scan = scan_data_source(platform_db, data_source_id)
     existing = [item for item in list_knowledge_bases(platform_db) if item["dataSourceId"] == data_source_id]
     ontology = None
@@ -38,7 +38,7 @@ def initialize_knowledge_base(platform_db: Path | str, data_source_id: int) -> d
 
 
 def browse_source_table(
-    platform_db: Path | str, data_source_id: int, table_name: str, limit: int = 50, offset: int = 0
+    platform_db: PlatformDb, data_source_id: int, table_name: str, limit: int = 50, offset: int = 0
 ) -> dict[str, Any]:
     limit = clamp_page_size(limit)
     offset = max(0, int(offset))
@@ -67,7 +67,7 @@ def browse_source_table(
     }
 
 
-def list_knowledge_bases(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_knowledge_bases(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """select ds.id as data_source_id, ds.name, ds.source_type, ds.domain,
@@ -103,7 +103,7 @@ def list_knowledge_bases(platform_db: Path | str) -> list[dict[str, Any]]:
         return items
 
 
-def build_reasoning_chain(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def build_reasoning_chain(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     bases = [item for item in list_knowledge_bases(platform_db) if item["dataSourceId"] == data_source_id]
     if not bases:
         return {
@@ -168,7 +168,7 @@ def build_reasoning_chain(platform_db: Path | str, data_source_id: int) -> dict[
     }
 
 
-def _scanned_columns(platform_db: Path | str, data_source_id: int, table_name: str) -> list[str]:
+def _scanned_columns(platform_db: PlatformDb, data_source_id: int, table_name: str) -> list[str]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """select sc.column_name from source_column sc join source_table st on st.id = sc.source_table_id

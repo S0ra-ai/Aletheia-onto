@@ -685,8 +685,9 @@ _不是_：算法、模型、策略引擎脚本。
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- 194 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
-  但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
+- **`platform_db` 签名已全部改为 `PlatformDb`**（上下文／路径／字符串三者皆可）。
+  此前标注写 `Path | str` 而运行时接受 context——**那比不标注更糟：它让类型检查器
+  拒绝本来可用的代码**，于是多租户与嵌入被文档声称支持、却对任何跑 mypy 的下游不可达。
 - HTTP 层共 149 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。

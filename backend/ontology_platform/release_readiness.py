@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from .axioms import check_axioms
+from .context import PlatformDb
 from .coverage import build_semantic_coverage
 from .database import connect
 from .metadata import analyze_schema_drift, assess_data_source_readiness
 
 
-def assess_ontology_release_readiness(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         ontology = conn.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
         if ontology is None:
@@ -199,7 +199,7 @@ def assess_ontology_release_readiness(platform_db: Path | str, ontology_id: int)
     }
 
 
-def _data_source_report(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def _data_source_report(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     try:
         drift = analyze_schema_drift(platform_db, data_source_id)
     except ValueError as error:

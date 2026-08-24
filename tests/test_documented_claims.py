@@ -146,28 +146,37 @@ def test_every_claimed_python_version_is_actually_tested() -> None:
         )
 
 
-def test_the_documented_signature_migration_count_is_current() -> None:
-    """A debt number that drifts is a debt nobody can tell is shrinking.
+def test_no_signature_narrows_back_to_a_path() -> None:
+    """`platform_db` must stay widened to `PlatformDb`, in every module.
 
-    Three documents quote how many `platform_db: Path | str` signatures remain, and the
-    number is the only evidence that the migration is progressing at all. Left to manual
-    upkeep it goes stale in the wrong direction: the count grew from 172 to 186 while all
-    three files still said 172, so the debt looked like it was being paid down while it
-    was being added to.
+    This replaces a test that tracked how many `Path | str` signatures remained. That count
+    existed because the migration was in progress, and it drifted in the worst direction --
+    172 became 186 while all three documents still said 172, so the debt read as shrinking
+    while it was being added to.
+
+    The migration is done, so the useful invariant is different: no new function may narrow
+    the annotation back. Narrowing does not break anything at runtime -- every one of these
+    resolves through `resolve_context()` -- which is exactly why it would go unnoticed. It
+    would simply make a type checker reject a supported call, and the caller who hits it
+    cannot tell whether the platform means to support contexts or not.
     """
     import re as regex
 
     package = ROOT / "backend" / "ontology_platform"
-    actual = sum(
-        len(regex.findall(r"platform_db: Path \| str", path.read_text(encoding="utf-8")))
-        for path in sorted(package.glob("*.py"))
-    )
+    offenders = {}
+    for path in sorted(package.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        # Signatures only. `context.py` discusses the old annotation in prose, and a docstring
+        # mentioning it is not a signature declaring it.
+        found = regex.findall(r"^\s*platform_db: Path \| str", source, regex.MULTILINE)
+        if found:
+            offenders[path.name] = len(found)
 
-    for filename in ("README.md", "ROADMAP.md", "docs/architecture-debt.md"):
-        text = (ROOT / filename).read_text(encoding="utf-8")
-        claimed = {int(found) for found in regex.findall(r"(\d+) 处 `platform_db", text)}
-        assert claimed, f"{filename} 未声明待迁移签名数量"
-        assert actual in claimed, f"{filename} 声明 {sorted(claimed)} 处，实际 {actual} 处"
+    assert not offenders, (
+        f"以下模块把 platform_db 标注收窄回 Path | str: {offenders}。"
+        "运行时仍可用，但类型检查器会拒绝传入 PlatformContext——"
+        "而多租户与嵌入正是靠传 context 实现的。"
+    )
 
 
 def test_the_documented_scale_is_current() -> None:

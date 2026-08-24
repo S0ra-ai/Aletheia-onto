@@ -45,9 +45,9 @@ Stability: experimental (ADR-0007).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 from .schema import table_exists
 
@@ -80,7 +80,7 @@ def describe_report_sections() -> list[dict[str, str]]:
 
 
 def build_audit_report(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     *,
     start: str,
     end: str,

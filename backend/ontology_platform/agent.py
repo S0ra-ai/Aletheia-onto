@@ -5,12 +5,12 @@ import logging
 import re
 import time as _time
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Any
 
 from .agent_roles import AgentRole, build_system_prompt, list_agent_roles, resolve_agent_role
 from .automation import preflight_operation
 from .config import ANSWER_CONFIDENCE
+from .context import PlatformDb
 from .conversations import append_message, ensure_conversation, load_history
 from .database import connect
 from .knowledge_base import build_reasoning_chain, list_knowledge_bases
@@ -35,12 +35,12 @@ from .workflow_permission import check_tool_authorization, log_tool_execution
 logger = logging.getLogger(__name__)
 
 
-def get_agent_roles(platform_db: Path | str) -> list[dict[str, Any]]:
+def get_agent_roles(platform_db: PlatformDb) -> list[dict[str, Any]]:
     """Roles available for the domains that have actually been onboarded."""
     return [role.public_dict() for role in list_agent_roles(platform_db)]
 
 
-def get_agent_role(platform_db: Path | str, role_id: str) -> dict[str, Any] | None:
+def get_agent_role(platform_db: PlatformDb, role_id: str) -> dict[str, Any] | None:
     for role in list_agent_roles(platform_db):
         if role.id == role_id:
             return role.public_dict()
@@ -60,7 +60,7 @@ class AgentTurn:
 
 
 def agent_chat(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     message: str,
     role_id: str | None = None,
     data_source_id: int | None = None,
@@ -161,7 +161,7 @@ def _citations_from(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _llm_agent_chat(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     model_client: OpenRouterClient,
     message: str,
     role: AgentRole,
@@ -278,7 +278,7 @@ def _llm_agent_chat(
 
 
 def _fallback_agent_chat(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     message: str,
     role: AgentRole,
     data_source_id: int | None,
@@ -334,7 +334,7 @@ def _fallback_agent_chat(
         }
 
 
-def _build_agent_context(platform_db: Path | str, data_source_id: int | None) -> dict[str, Any]:
+def _build_agent_context(platform_db: PlatformDb, data_source_id: int | None) -> dict[str, Any]:
     with connect(platform_db) as conn:
         sources = conn.execute(
             "select id, name, domain, system_category from data_source order by id desc limit 10"
@@ -371,7 +371,7 @@ def _build_agent_context(platform_db: Path | str, data_source_id: int | None) ->
 
 
 def _build_knowledge_context(
-    platform_db: Path | str, data_source_id: int | None, object_code: str | None
+    platform_db: PlatformDb, data_source_id: int | None, object_code: str | None
 ) -> dict[str, Any]:
     bases = list_knowledge_bases(platform_db)
     if data_source_id:
@@ -427,7 +427,7 @@ AGENT_TOOL_PRINCIPAL_ROLE = "ai_agent"
 
 
 def _execute_tool_calls(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     tool_calls: list[dict[str, Any]],
     data_source_id: int | None,
     object_code: str | None,
@@ -553,7 +553,7 @@ def _execute_tool_calls(
     return results
 
 
-def _default_object_code(platform_db: Path | str, data_source_id: int | None) -> str:
+def _default_object_code(platform_db: PlatformDb, data_source_id: int | None) -> str:
     """The object to assume when the model names none.
 
     Derived from the modelled ontology, so it adapts to whichever domain was
@@ -564,7 +564,7 @@ def _default_object_code(platform_db: Path | str, data_source_id: int | None) ->
     return term.code if term is not None else ""
 
 
-def _resolve_operation_code(platform_db: Path | str, data_source_id: int | None, object_code: str) -> str:
+def _resolve_operation_code(platform_db: PlatformDb, data_source_id: int | None, object_code: str) -> str:
     """Find a registered operation bound to this business object."""
     if data_source_id is None:
         return ""
@@ -587,7 +587,7 @@ def _resolve_operation_code(platform_db: Path | str, data_source_id: int | None,
     return rows[0]["operation_code"] if rows else ""
 
 
-def _find_ontology_id(platform_db: Path | str, data_source_id: int | None, object_code: str) -> int | None:
+def _find_ontology_id(platform_db: PlatformDb, data_source_id: int | None, object_code: str) -> int | None:
     with connect(platform_db) as conn:
         if data_source_id:
             row = conn.execute(
@@ -614,7 +614,7 @@ def _find_ontology_id(platform_db: Path | str, data_source_id: int | None, objec
         return int(row["id"]) if row else None
 
 
-def _find_data_source_id(platform_db: Path | str, ontology_id: int | None, object_code: str) -> int | None:
+def _find_data_source_id(platform_db: PlatformDb, ontology_id: int | None, object_code: str) -> int | None:
     with connect(platform_db) as conn:
         if ontology_id:
             row = conn.execute(

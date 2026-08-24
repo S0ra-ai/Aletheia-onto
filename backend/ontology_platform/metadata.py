@@ -5,10 +5,10 @@ import sqlite3
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
+from .context import PlatformDb
 from .credentials import redact_connection_uri
 from .database import connect, last_insert_id
 
@@ -56,7 +56,7 @@ class SourceApi:
 
 
 def register_data_source(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     name: str,
     source_type: str,
     connection_uri: str,
@@ -102,7 +102,7 @@ def register_data_source(
         return _row_to_data_source(row)
 
 
-def list_data_sources(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_data_sources(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
@@ -116,7 +116,7 @@ def list_data_sources(platform_db: Path | str) -> list[dict[str, Any]]:
 
 
 def register_source_api(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     operation_code: str,
     name: str,
@@ -173,7 +173,7 @@ def register_source_api(
         return _row_to_source_api(row)
 
 
-def list_source_apis(platform_db: Path | str, data_source_id: int) -> list[dict[str, Any]]:
+def list_source_apis(platform_db: PlatformDb, data_source_id: int) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             "select * from source_api where data_source_id = ? order by operation_code",
@@ -182,7 +182,7 @@ def list_source_apis(platform_db: Path | str, data_source_id: int) -> list[dict[
         return [dict(row) for row in rows]
 
 
-def import_openapi_operations(platform_db: Path | str, data_source_id: int, spec: dict[str, Any]) -> dict[str, Any]:
+def import_openapi_operations(platform_db: PlatformDb, data_source_id: int, spec: dict[str, Any]) -> dict[str, Any]:
     paths = spec.get("paths")
     if not isinstance(paths, dict):
         raise ValueError("OpenAPI 文档缺少 paths 对象")
@@ -226,7 +226,7 @@ def import_openapi_operations(platform_db: Path | str, data_source_id: int, spec
 
 
 def import_openapi_operations_from_url(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     url: str,
     timeout_seconds: float = 10,
@@ -256,7 +256,7 @@ def import_openapi_operations_from_url(
     return result
 
 
-def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
@@ -407,7 +407,7 @@ def assess_data_source_readiness(platform_db: Path | str, data_source_id: int) -
 
 
 def check_data_source_connection(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     source_type: str | None = None,
     connection_uri: str | None = None,
     data_source_id: int | None = None,
@@ -428,7 +428,7 @@ def check_data_source_connection(
 
 
 def check_business_api_gateway(
-    platform_db: Path | str, data_source_id: int, timeout_seconds: float = 3
+    platform_db: PlatformDb, data_source_id: int, timeout_seconds: float = 3
 ) -> dict[str, Any]:
     with connect(platform_db) as conn:
         source = conn.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
@@ -483,7 +483,7 @@ def check_business_api_gateway(
         }
 
 
-def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as platform:
         source = platform.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:
@@ -531,7 +531,7 @@ def scan_data_source(platform_db: Path | str, data_source_id: int) -> dict[str, 
         return {"dataSourceId": data_source_id, "tables": scanned_tables}
 
 
-def analyze_schema_drift(platform_db: Path | str, data_source_id: int) -> dict[str, Any]:
+def analyze_schema_drift(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:
     with connect(platform_db) as platform:
         source = platform.execute("select * from data_source where id = ?", (data_source_id,)).fetchone()
         if source is None:

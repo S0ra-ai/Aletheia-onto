@@ -22,9 +22,9 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect
 from .schema import ColumnAddition, SchemaBundle
 
@@ -278,7 +278,7 @@ def _parse(value: Any) -> Optional[datetime]:
 
 
 def create_user(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     username: str,
     password: str,
     role_code: str = DEFAULT_ROLE,
@@ -319,7 +319,7 @@ def create_user(
         return _user_dict(row)
 
 
-def list_users(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_users(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             "select id, username, display_name, role_code, status, created_at, last_login_at from platform_user order by id"
@@ -327,7 +327,7 @@ def list_users(platform_db: Path | str) -> list[dict[str, Any]]:
         return [_user_dict(row) for row in rows]
 
 
-def set_user_status(platform_db: Path | str, username: str, status: str, actor: str = "system") -> dict[str, Any]:
+def set_user_status(platform_db: PlatformDb, username: str, status: str, actor: str = "system") -> dict[str, Any]:
     if status not in {"active", "disabled"}:
         raise ValueError("用户状态只能是 active 或 disabled")
     normalized = (username or "").strip().lower()
@@ -352,7 +352,7 @@ def set_user_status(platform_db: Path | str, username: str, status: str, actor: 
         return _user_dict(updated)
 
 
-def change_password(platform_db: Path | str, username: str, current_password: str, new_password: str) -> dict[str, Any]:
+def change_password(platform_db: PlatformDb, username: str, current_password: str, new_password: str) -> dict[str, Any]:
     normalized = (username or "").strip().lower()
     with connect(platform_db) as conn:
         row = conn.execute(
@@ -381,7 +381,7 @@ def change_password(platform_db: Path | str, username: str, current_password: st
 
 
 def login(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     username: str,
     password: str,
     ttl_hours: float | None = None,
@@ -444,13 +444,13 @@ def login(
     }
 
 
-def logout(platform_db: Path | str, token: str) -> dict[str, Any]:
+def logout(platform_db: PlatformDb, token: str) -> dict[str, Any]:
     with connect(platform_db) as conn:
         conn.execute("update user_session set revoked = 1 where token_hash = ?", (hash_token(token),))
     return {"success": True, "message": "已退出登录。"}
 
 
-def resolve_principal(platform_db: Path | str, token: str) -> Principal:
+def resolve_principal(platform_db: PlatformDb, token: str) -> Principal:
     if not token:
         raise AuthenticationError("缺少访问令牌")
     with connect(platform_db) as conn:
@@ -490,13 +490,13 @@ def authorize(principal: Principal, capability: str) -> None:
         raise AuthorizationError(f"角色 {principal.role_code} 缺少所需权限 {capability}")
 
 
-def purge_expired_sessions(platform_db: Path | str) -> int:
+def purge_expired_sessions(platform_db: PlatformDb) -> int:
     with connect(platform_db) as conn:
         cursor = conn.execute("delete from user_session where expires_at < ?", (format_moment(utc_now()),))
         return int(getattr(cursor, "rowcount", 0) or 0)
 
 
-def ensure_bootstrap_admin(platform_db: Path | str) -> Optional[dict[str, Any]]:
+def ensure_bootstrap_admin(platform_db: PlatformDb) -> Optional[dict[str, Any]]:
     """Create the first admin so a fresh deployment is reachable.
 
     Password comes from ONTOLOGY_ADMIN_PASSWORD. When it is unset a random one

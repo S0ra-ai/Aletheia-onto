@@ -5,12 +5,12 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import quote
 
 from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .derived_attributes import UnitError, get_unit
 from .events import EVENT_CATEGORY_LABELS, EVENT_TABLE, EVENT_TYPE_TABLE, event_tables_exist
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_ontology_draft(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     data_source_id: int,
     name: str | None = None,
     domain: str | None = None,
@@ -97,7 +97,7 @@ def generate_ontology_draft(
         return summary
 
 
-def resolve_ontology_for_object(platform_db: Path | str, object_code: str) -> int:
+def resolve_ontology_for_object(platform_db: PlatformDb, object_code: str) -> int:
     """Find the newest ontology that models the given business object.
 
     Callers used to default to ontology id 1, which silently pointed at whatever
@@ -120,7 +120,7 @@ def resolve_ontology_for_object(platform_db: Path | str, object_code: str) -> in
         return int(row["id"])
 
 
-def explain_instance(platform_db: Path | str, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
+def explain_instance(platform_db: PlatformDb, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
     with connect(platform_db) as platform:
         ontology = platform.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
         if ontology is None:
@@ -229,7 +229,7 @@ def _recent_events(
     ]
 
 
-def list_ontologies(platform_db: Path | str) -> list[dict[str, Any]]:
+def list_ontologies(platform_db: PlatformDb) -> list[dict[str, Any]]:
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
@@ -325,7 +325,7 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
     }
 
 
-def export_ontology_asset(platform_db: Path | str, ontology_id: int, export_format: str = "jsonld") -> dict[str, str]:
+def export_ontology_asset(platform_db: PlatformDb, ontology_id: int, export_format: str = "jsonld") -> dict[str, str]:
     export_format = export_format.lower()
     if export_format not in {"jsonld", "turtle", "ttl"}:
         raise ValueError("仅支持 jsonld 或 turtle 导出格式")
@@ -614,7 +614,7 @@ class DraftLexicon:
         return column_name in self.attribute_labels
 
 
-def _build_lexicon(platform_db: Path | str) -> DraftLexicon:
+def _build_lexicon(platform_db: PlatformDb) -> DraftLexicon:
     return DraftLexicon(
         object_labels=blueprint_object_labels(platform_db),
         attribute_labels=blueprint_attribute_labels(platform_db),

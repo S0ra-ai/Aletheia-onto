@@ -32,9 +32,9 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .schema import SchemaBundle
 
@@ -216,7 +216,7 @@ def init_conversation_schema(conn: Any) -> None:
 
 
 def ensure_conversation(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     session_id: Optional[str] = None,
     *,
     role_id: str = "",
@@ -269,7 +269,7 @@ def _conversation_dict(row: Any) -> dict[str, Any]:
 
 
 def append_message(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     session_id: str,
     role: str,
     content: str,
@@ -329,7 +329,7 @@ def append_message(
     return {"messageId": message_id, "conversationId": conversation["id"], "sessionId": conversation["sessionId"]}
 
 
-def load_history(platform_db: Path | str, session_id: str, *, limit: int = MAX_HISTORY_TURNS) -> list[dict[str, str]]:
+def load_history(platform_db: PlatformDb, session_id: str, *, limit: int = MAX_HISTORY_TURNS) -> list[dict[str, str]]:
     """Recent turns in the shape the model client expects.
 
     Returns the *last* `limit` turns in chronological order: a model prompt needs
@@ -352,7 +352,7 @@ def load_history(platform_db: Path | str, session_id: str, *, limit: int = MAX_H
     return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
 
 
-def list_conversations(platform_db: Path | str, *, status: str = "", limit: int = 50) -> list[dict[str, Any]]:
+def list_conversations(platform_db: PlatformDb, *, status: str = "", limit: int = 50) -> list[dict[str, Any]]:
     capped = max(1, min(int(limit), 200))
     clauses = []
     params: list[Any] = []
@@ -369,7 +369,7 @@ def list_conversations(platform_db: Path | str, *, status: str = "", limit: int 
     return [_conversation_dict(row) for row in rows]
 
 
-def get_conversation(platform_db: Path | str, session_id: str) -> dict[str, Any]:
+def get_conversation(platform_db: PlatformDb, session_id: str) -> dict[str, Any]:
     """One conversation with its messages and any feedback on them."""
     with connect(platform_db) as conn:
         row = conn.execute("select * from conversation where session_id = ?", (session_id,)).fetchone()
@@ -437,7 +437,7 @@ def _feedback_dict(row: Any) -> dict[str, Any]:
 
 
 def submit_feedback(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     message_id: int,
     rating: str,
     *,
@@ -512,7 +512,7 @@ def submit_feedback(
 
 
 def resolve_feedback(
-    platform_db: Path | str, feedback_id: int, *, resolution: str = "resolved", actor: str = ""
+    platform_db: PlatformDb, feedback_id: int, *, resolution: str = "resolved", actor: str = ""
 ) -> dict[str, Any]:
     """Close a feedback item after acting on it."""
     if resolution not in {"resolved", "dismissed", "open"}:
@@ -529,7 +529,7 @@ def resolve_feedback(
 
 
 def escalate_conversation(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     session_id: str,
     *,
     assignee: str = "",
@@ -568,7 +568,7 @@ def escalate_conversation(
 
 
 def set_conversation_status(
-    platform_db: Path | str, session_id: str, status: str, *, actor: str = ""
+    platform_db: PlatformDb, session_id: str, status: str, *, actor: str = ""
 ) -> dict[str, Any]:
     if status not in CONVERSATION_STATUSES:
         raise ValueError(f"不支持的会话状态: {status}。可选: {'、'.join(CONVERSATION_STATUSES)}")
@@ -584,7 +584,7 @@ def set_conversation_status(
 
 
 def list_feedback(
-    platform_db: Path | str, *, status: str = "", rating: str = "", limit: int = 100
+    platform_db: PlatformDb, *, status: str = "", rating: str = "", limit: int = 100
 ) -> list[dict[str, Any]]:
     capped = max(1, min(int(limit), 500))
     clauses = []
@@ -602,7 +602,7 @@ def list_feedback(
     return [_feedback_dict(row) for row in rows]
 
 
-def feedback_summary(platform_db: Path | str) -> dict[str, Any]:
+def feedback_summary(platform_db: PlatformDb) -> dict[str, Any]:
     """Aggregate counts for the workbench.
 
     Reports raw counts rather than an average score: an average tells you nothing

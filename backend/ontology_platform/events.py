@@ -49,9 +49,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Optional
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .schema import SchemaBundle
 
@@ -297,7 +297,7 @@ def init_event_schema(conn: Any) -> None:
 
 
 def declare_event_type(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     event_type: EventType,
     *,
@@ -370,7 +370,7 @@ def declare_event_type(
     return event_type.to_json()
 
 
-def list_event_types(platform_db: Path | str, ontology_id: int, object_code: str = "") -> list[dict[str, Any]]:
+def list_event_types(platform_db: PlatformDb, ontology_id: int, object_code: str = "") -> list[dict[str, Any]]:
     clauses = ["ontology_id = ?"]
     params: list[Any] = [ontology_id]
     if object_code:
@@ -387,7 +387,7 @@ def list_event_types(platform_db: Path | str, ontology_id: int, object_code: str
 
 
 def record_event(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -499,7 +499,7 @@ def record_event(
 
 
 def instance_timeline(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     instance_id: str,
@@ -536,7 +536,7 @@ def instance_timeline(
 
 
 def count_events(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     object_code: str,
     event_code: str,

@@ -17,9 +17,9 @@ because a list of 40 undifferentiated items is not actionable.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def _rows(conn: Any, query: str, params: tuple[Any, ...] = ()) -> list[Any]:
         return []
 
 
-def build_workbench(platform_db: Path | str, decision_limit: int = 8) -> dict[str, Any]:
+def build_workbench(platform_db: PlatformDb, decision_limit: int = 8) -> dict[str, Any]:
     """Aggregate platform state for the workbench screen."""
     with connect(platform_db) as conn:
         data_sources = _data_source_health(conn)

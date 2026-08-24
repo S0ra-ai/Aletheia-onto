@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
+from .context import PlatformDb
 from .database import connect, last_insert_id
 from .release_readiness import assess_ontology_release_readiness
 from .schema import table_exists
@@ -32,7 +32,7 @@ def _validate_rule_write(rule_type: str, severity: str, expression: str) -> None
         raise ValueError(f"规则表达式不可执行: {validation['error']}")
 
 
-def list_semantic_mappings(platform_db: Path | str, ontology_id: int, status: str | None = None) -> dict[str, Any]:
+def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: str | None = None) -> dict[str, Any]:
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
         params: list[Any] = [ontology_id]
@@ -58,7 +58,7 @@ def list_semantic_mappings(platform_db: Path | str, ontology_id: int, status: st
 
 
 def review_semantic_mapping(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     mapping_id: int,
     status: str,
     reviewer: str,
@@ -95,7 +95,7 @@ def review_semantic_mapping(
 
 
 def bulk_review_semantic_mappings(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     status: str,
     reviewer: str,
@@ -133,7 +133,7 @@ def bulk_review_semantic_mappings(
 
 
 def publish_ontology(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     publisher: str,
     force: bool = False,
@@ -212,12 +212,12 @@ def publish_ontology(
     return summary
 
 
-def _assess_release_gates(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def _assess_release_gates(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     return assess_ontology_release_readiness(platform_db, ontology_id)
 
 
 def derive_ontology_version(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     source_ontology_id: int,
     version: str,
     actor: str,
@@ -272,7 +272,7 @@ def derive_ontology_version(
         return _ontology_derivation_summary(conn, new_ontology_id, source_ontology_id, mapping_count, rule_count)
 
 
-def list_business_rules(platform_db: Path | str, ontology_id: int) -> dict[str, Any]:
+def list_business_rules(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
         rows = conn.execute(
@@ -289,7 +289,7 @@ def list_business_rules(platform_db: Path | str, ontology_id: int) -> dict[str, 
         return {"ontologyId": ontology_id, "items": [dict(row) for row in rows]}
 
 
-def get_business_rule(platform_db: Path | str, ontology_id: int, rule_id: int) -> dict[str, Any]:
+def get_business_rule(platform_db: PlatformDb, ontology_id: int, rule_id: int) -> dict[str, Any]:
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
         rule = conn.execute(
@@ -302,7 +302,7 @@ def get_business_rule(platform_db: Path | str, ontology_id: int, rule_id: int) -
 
 
 def update_business_rule(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     rule_id: int,
     code: str,
@@ -379,7 +379,7 @@ def update_business_rule(
 
 
 def delete_business_rule(
-    platform_db: Path | str, ontology_id: int, rule_id: int, actor: str = "system"
+    platform_db: PlatformDb, ontology_id: int, rule_id: int, actor: str = "system"
 ) -> dict[str, Any]:
     with connect(platform_db) as conn:
         ontology = _require_ontology(conn, ontology_id)
@@ -406,7 +406,7 @@ def delete_business_rule(
 
 
 def toggle_business_rule_status(
-    platform_db: Path | str, ontology_id: int, rule_id: int, status: str, actor: str = "system"
+    platform_db: PlatformDb, ontology_id: int, rule_id: int, status: str, actor: str = "system"
 ) -> dict[str, Any]:
     if status not in {"draft", "published", "disabled"}:
         raise ValueError(f"不支持的状态: {status}")
@@ -436,7 +436,7 @@ def toggle_business_rule_status(
 
 
 def upsert_business_rule(
-    platform_db: Path | str,
+    platform_db: PlatformDb,
     ontology_id: int,
     code: str,
     name: str,
