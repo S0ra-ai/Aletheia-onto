@@ -218,15 +218,26 @@ def verify_password(password: str, password_hash: str, salt: str, iterations: in
     return hmac.compare_digest(candidate, password_hash)
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
+    """The stored form of a bearer token.
+
+    Public because SSO issues sessions too, and both paths must derive the digest
+    identically -- a second implementation would produce tokens that authenticate on one
+    path and not the other, which reads as a random logout.
+    """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _now() -> datetime:
+def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _format(moment: datetime) -> str:
+def format_moment(moment: datetime) -> str:
+    """The timestamp format every session and audit row uses.
+
+    Public for the same reason as `hash_token`: two login paths writing two formats into
+    one column means expiry comparisons work for one of them.
+    """
     return moment.strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -307,7 +318,7 @@ def set_user_status(platform_db: Path | str, username: str, status: str, actor: 
             raise ValueError(f"用户不存在: {normalized}")
         conn.execute(
             "update platform_user set status = ?, updated_at = ? where id = ?",
-            (status, _format(_now()), int(row["id"])),
+            (status, format_moment(utc_now()), int(row["id"])),
         )
         if status == "disabled":
             conn.execute("update user_session set revoked = 1 where user_id = ?", (int(row["id"]),))
@@ -336,7 +347,7 @@ def change_password(platform_db: Path | str, username: str, current_password: st
         password_hash, salt, iterations = hash_password(new_password)
         conn.execute(
             "update platform_user set password_hash = ?, password_salt = ?, iterations = ?, updated_at = ? where id = ?",
-            (password_hash, salt, iterations, _format(_now()), int(row["id"])),
+            (password_hash, salt, iterations, format_moment(utc_now()), int(row["id"])),
         )
         # Changing a password invalidates existing sessions.
         conn.execute("update user_session set revoked = 1 where user_id = ?", (int(row["id"]),))
@@ -377,14 +388,14 @@ def login(
 
         token = secrets.token_urlsafe(TOKEN_BYTES)
         ttl = float(ttl_hours or os.environ.get("ONTOLOGY_SESSION_TTL_HOURS") or DEFAULT_SESSION_TTL_HOURS)
-        expires_at = _now() + timedelta(hours=ttl)
+        expires_at = utc_now() + timedelta(hours=ttl)
         conn.execute(
             "insert into user_session (token_hash, user_id, expires_at, last_seen_at) values (?, ?, ?, ?)",
-            (_hash_token(token), int(row["id"]), _format(expires_at), _format(_now())),
+            (hash_token(token), int(row["id"]), format_moment(expires_at), format_moment(utc_now())),
         )
         conn.execute(
             "update platform_user set last_login_at = ? where id = ?",
-            (_format(_now()), int(row["id"])),
+            (format_moment(utc_now()), int(row["id"])),
         )
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
@@ -399,14 +410,14 @@ def login(
     return {
         "token": token,
         "tokenType": "Bearer",
-        "expiresAt": _format(expires_at),
+        "expiresAt": format_moment(expires_at),
         "user": principal.public_dict(),
     }
 
 
 def logout(platform_db: Path | str, token: str) -> dict[str, Any]:
     with connect(platform_db) as conn:
-        conn.execute("update user_session set revoked = 1 where token_hash = ?", (_hash_token(token),))
+        conn.execute("update user_session set revoked = 1 where token_hash = ?", (hash_token(token),))
     return {"success": True, "message": "已退出登录。"}
 
 
@@ -422,20 +433,20 @@ def resolve_principal(platform_db: Path | str, token: str) -> Principal:
             join platform_user u on u.id = s.user_id
             where s.token_hash = ?
             """,
-            (_hash_token(token),),
+            (hash_token(token),),
         ).fetchone()
         if row is None:
             raise AuthenticationError("访问令牌无效")
         if int(row["revoked"]):
             raise AuthenticationError("访问令牌已失效，请重新登录")
         expires_at = _parse(row["expires_at"])
-        if expires_at is not None and expires_at < _now():
+        if expires_at is not None and expires_at < utc_now():
             raise AuthenticationError("访问令牌已过期，请重新登录")
         if row["status"] != "active":
             raise AuthenticationError("用户已被禁用")
         conn.execute(
             "update user_session set last_seen_at = ? where id = ?",
-            (_format(_now()), int(row["session_id"])),
+            (format_moment(utc_now()), int(row["session_id"])),
         )
         return Principal(
             user_id=int(row["user_id"]),
@@ -452,7 +463,7 @@ def authorize(principal: Principal, capability: str) -> None:
 
 def purge_expired_sessions(platform_db: Path | str) -> int:
     with connect(platform_db) as conn:
-        cursor = conn.execute("delete from user_session where expires_at < ?", (_format(_now()),))
+        cursor = conn.execute("delete from user_session where expires_at < ?", (format_moment(utc_now()),))
         return int(getattr(cursor, "rowcount", 0) or 0)
 
 

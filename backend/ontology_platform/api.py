@@ -102,6 +102,7 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
+from .sso import init_sso_schema
 from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
 from .temporal import (
     TemporalError,
@@ -139,6 +140,7 @@ async def lifespan(app: FastAPI):
         init_conversation_schema(conn)
         init_axiom_schema(conn)
         init_quota_schema(conn)
+        init_sso_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:

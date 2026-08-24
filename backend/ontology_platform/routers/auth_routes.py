@@ -33,8 +33,26 @@ from ..auth import (
     set_user_status,
 )
 from ..http_runtime import bearer_token, current_principal, platform_db
+from ..sso import (
+    SsoError,
+    declare_group_mapping,
+    describe_sso,
+    list_group_mappings,
+    login_with_assertion,
+    remove_group_mapping,
+)
 
 router = APIRouter()
+
+
+class SsoLogin(BaseModel):
+    assertion: str
+
+
+class SsoGroupMapping(BaseModel):
+    providerGroup: str
+    roleCode: str
+    note: str = ""
 
 
 class LoginCreate(BaseModel):
@@ -139,3 +157,74 @@ def auth_access_policy() -> dict[str, object]:
         "rules": describe_policy(),
         "publicPaths": sorted(PUBLIC_PATHS),
     }
+
+
+# -- SSO --
+
+
+@router.get("/auth/sso")
+def sso_status() -> dict[str, object]:
+    """Whether SSO is usable, and what it would grant. Never the signing secret.
+
+    Reports whether any group is mapped, because SSO that verifies correctly and maps
+    nothing rejects every login -- and "configured but nobody can sign in" is otherwise
+    indistinguishable from a signature problem.
+    """
+    return describe_sso(platform_db())
+
+
+@router.post("/auth/sso/login")
+def sso_login(payload: SsoLogin) -> dict[str, object]:
+    """Exchange a verified provider assertion for a platform session.
+
+    Public like `/auth/login`: it is how a token is obtained. What makes that safe is that
+    the assertion is verified against a configured key before anything else happens -- an
+    unverified token is a token the caller wrote themselves.
+
+    An identity whose groups map to no platform role is refused rather than given a default
+    one. A default would silently grant every employee read access to every business object
+    the platform reaches.
+    """
+    try:
+        return login_with_assertion(platform_db(), payload.assertion)
+    except SsoError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+
+@router.get("/auth/sso/mappings")
+def sso_mappings() -> dict[str, object]:
+    return {"items": list_group_mappings(platform_db())}
+
+
+@router.put("/auth/sso/mappings")
+def declare_sso_mapping(
+    payload: SsoGroupMapping,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Map a provider group to a platform role.
+
+    This is where authority is decided, which is why it is separate from the provider: an
+    OIDC token can carry any claim including `role: admin`, and trusting it would move the
+    authorization boundary into someone else's configuration.
+    """
+    try:
+        return declare_group_mapping(
+            platform_db(),
+            payload.providerGroup,
+            payload.roleCode,
+            note=payload.note,
+            actor=principal.actor,
+        )
+    except SsoError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.delete("/auth/sso/mappings/{provider_group}")
+def remove_sso_mapping(
+    provider_group: str,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return remove_group_mapping(platform_db(), provider_group, actor=principal.actor)
+    except SsoError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error

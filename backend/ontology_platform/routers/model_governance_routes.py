@@ -53,6 +53,19 @@ class ModelConfigUpdate(BaseModel):
     appTitle: Optional[str] = None
     serviceTier: Optional[str] = None
     timeoutSeconds: Optional[float] = None
+    # The compatibility settings. `update_model_config` has always read these four, and
+    # the frontend has always sent them -- but they were missing here, and Pydantic drops
+    # an undeclared field silently. So configuring Azure (which needs `api-key` rather
+    # than `Authorization: Bearer`) or a local vLLM (which rejects OpenRouter's extra
+    # fields with a 400) appeared to succeed and changed nothing.
+    #
+    # Silently is what made it costly: the settings screen reported success, the values
+    # vanished, and the next model call failed for a reason that pointed at the endpoint
+    # rather than at the save.
+    authStyle: Optional[str] = None
+    authHeader: Optional[str] = None
+    extraHeaders: Optional[dict[str, str]] = None
+    sendProviderExtras: Optional[bool] = None
 
 
 @router.get("/model/status")
