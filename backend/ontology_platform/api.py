@@ -14,9 +14,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
 from .access_policy import (
-    PUBLIC_PATHS,
     VERSION_PREFIXES,
-    describe_policy,
     is_public,
     required_capability,
 )
@@ -31,21 +29,14 @@ from .aggregation import (
     list_aggregates,
 )
 from .auth import (
-    ROLE_CAPABILITIES,
     AuthenticationError,
     AuthorizationError,
     Principal,
     authorize,
-    change_password,
-    create_user,
     ensure_bootstrap_admin,
     init_auth_schema,
-    list_users,
-    login,
-    logout,
     purge_expired_sessions,
     resolve_principal,
-    set_user_status,
 )
 from .automation import execute_operation, preflight_operation, supported_executor_schemes
 from .context import resolve_context
@@ -108,7 +99,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .graph_view import build_ontology_graph
-from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, current_principal
+from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .instance_resolver import (
     ResolverError,
@@ -164,7 +155,7 @@ from .ontology import (
 from .operation_bindings import assess_operation_bindings
 from .release_readiness import assess_ontology_release_readiness
 from .retrieval import supported_embedding_models, supported_retrieval_backends
-from .routers import workflow_permission_router
+from .routers import auth_router, workflow_permission_router
 from .sample_data import (
     DEFAULT_EQUIPMENT_SAMPLE_DB,
     DEFAULT_SAMPLE_DB,
@@ -295,13 +286,6 @@ def include_router_twice(application: FastAPI, router: APIRouter) -> None:
 core_router = APIRouter()
 
 
-def _bearer_token(request: Request) -> str:
-    header = request.headers.get("Authorization", "")
-    if header.lower().startswith("bearer "):
-        return header[7:].strip()
-    return ""
-
-
 @app.middleware("http")
 async def enforce_access_policy(request: Request, call_next):
     """Authenticate every request and check the route's capability.
@@ -317,7 +301,7 @@ async def enforce_access_policy(request: Request, call_next):
         return await call_next(request)
 
     try:
-        principal = resolve_principal(DEFAULT_PLATFORM_DB, _bearer_token(request))
+        principal = resolve_principal(DEFAULT_PLATFORM_DB, bearer_token(request))
     except AuthenticationError as error:
         return JSONResponse(
             status_code=401,
@@ -499,111 +483,6 @@ class BusinessRuleCreate(BaseModel):
 @core_router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-# ============================================================
-# Authentication
-# ============================================================
-
-
-class LoginCreate(BaseModel):
-    username: str
-    password: str
-
-
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    roleCode: str = "analyst"
-    displayName: str = ""
-
-
-class UserStatusUpdate(BaseModel):
-    status: str
-
-
-class PasswordChange(BaseModel):
-    currentPassword: str
-    newPassword: str
-
-
-@core_router.post("/auth/login")
-def auth_login(payload: LoginCreate) -> dict[str, object]:
-    try:
-        return login(DEFAULT_PLATFORM_DB, payload.username, payload.password)
-    except AuthenticationError as error:
-        raise HTTPException(status_code=401, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.post("/auth/logout")
-def auth_logout(request: Request) -> dict[str, object]:
-    return logout(DEFAULT_PLATFORM_DB, _bearer_token(request))
-
-
-@core_router.get("/auth/me")
-def auth_me(principal: Principal = Depends(current_principal)) -> dict[str, object]:
-    return principal.public_dict()
-
-
-@core_router.post("/auth/change-password")
-def auth_change_password(
-    payload: PasswordChange,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return change_password(DEFAULT_PLATFORM_DB, principal.username, payload.currentPassword, payload.newPassword)
-    except AuthenticationError as error:
-        raise HTTPException(status_code=401, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.get("/auth/users")
-def auth_list_users() -> dict[str, object]:
-    return {"items": list_users(DEFAULT_PLATFORM_DB), "roles": sorted(ROLE_CAPABILITIES)}
-
-
-@core_router.post("/auth/users")
-def auth_create_user(
-    payload: UserCreate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return create_user(
-            DEFAULT_PLATFORM_DB,
-            payload.username,
-            payload.password,
-            payload.roleCode,
-            payload.displayName,
-            actor=principal.actor,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.patch("/auth/users/{username}/status")
-def auth_set_user_status(
-    username: str,
-    payload: UserStatusUpdate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return set_user_status(DEFAULT_PLATFORM_DB, username, payload.status, actor=principal.actor)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.get("/auth/access-policy")
-def auth_access_policy() -> dict[str, object]:
-    """Effective route-to-capability policy, for review."""
-    return {
-        "authEnabled": AUTH_ENABLED,
-        "roles": {role: sorted(caps) for role, caps in ROLE_CAPABILITIES.items()},
-        "rules": describe_policy(),
-        "publicPaths": sorted(PUBLIC_PATHS),
-    }
 
 
 @core_router.post("/demo/bootstrap")
@@ -2182,7 +2061,7 @@ def files() -> dict[str, str]:
 # lazily, so `app.routes` holds placeholders rather than routes, and there is no
 # public way to walk them. Reaching into `_IncludedRouter` would tie the authorization
 # tests to a private structure that already changed once.
-ROUTERS: tuple[APIRouter, ...] = (core_router, workflow_permission_router)
+ROUTERS: tuple[APIRouter, ...] = (core_router, auth_router, workflow_permission_router)
 
 
 def declared_routes() -> list[APIRoute]:

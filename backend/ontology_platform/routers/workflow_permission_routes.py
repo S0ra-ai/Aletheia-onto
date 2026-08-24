@@ -22,8 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import Principal
-from ..database import DEFAULT_PLATFORM_DB
-from ..http_runtime import current_principal
+from ..http_runtime import current_principal, platform_db
 from ..workflow_permission import (
     add_workflow_state,
     add_workflow_transition,
@@ -151,14 +150,14 @@ class ToolExecutionReview(BaseModel):
 
 @router.get("/workflows")
 def get_workflows(ontologyId: Optional[int] = None) -> dict[str, object]:
-    return {"items": list_workflows(DEFAULT_PLATFORM_DB, ontologyId)}
+    return {"items": list_workflows(platform_db(), ontologyId)}
 
 
 @router.post("/workflows")
 def create_new_workflow(payload: WorkflowCreate) -> dict[str, object]:
     try:
         return create_workflow(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             payload.ontologyId,
             payload.objectCode,
             payload.name,
@@ -172,14 +171,14 @@ def create_new_workflow(payload: WorkflowCreate) -> dict[str, object]:
 @router.get("/workflows/{workflow_id}")
 def get_workflow_detail(workflow_id: int) -> dict[str, object]:
     try:
-        return get_workflow(DEFAULT_PLATFORM_DB, workflow_id)
+        return get_workflow(platform_db(), workflow_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.get("/workflows/by-object/{ontology_id}/{object_code}")
 def get_workflow_for_object(ontology_id: int, object_code: str) -> dict[str, object]:
-    wf = get_workflow_by_object(DEFAULT_PLATFORM_DB, ontology_id, object_code)
+    wf = get_workflow_by_object(platform_db(), ontology_id, object_code)
     if wf is None:
         raise HTTPException(status_code=404, detail="该业务对象未配置工作流")
     return wf
@@ -187,7 +186,7 @@ def get_workflow_for_object(ontology_id: int, object_code: str) -> dict[str, obj
 
 @router.delete("/workflows/{workflow_id}")
 def delete_workflow_def(workflow_id: int) -> dict[str, object]:
-    delete_workflow(DEFAULT_PLATFORM_DB, workflow_id)
+    delete_workflow(platform_db(), workflow_id)
     return {"deleted": True}
 
 
@@ -195,7 +194,7 @@ def delete_workflow_def(workflow_id: int) -> dict[str, object]:
 def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
     try:
         return add_workflow_state(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             workflow_id,
             payload.code,
             payload.name,
@@ -212,7 +211,7 @@ def add_state(workflow_id: int, payload: WorkflowStateAdd) -> dict[str, object]:
 def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str, object]:
     try:
         return add_workflow_transition(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             workflow_id,
             payload.fromState,
             payload.toState,
@@ -230,14 +229,14 @@ def add_transition(workflow_id: int, payload: WorkflowTransitionAdd) -> dict[str
 @router.post("/workflows/{workflow_id}/enter")
 def enter_instance_to_workflow(workflow_id: int, payload: WorkflowEnterInstance) -> dict[str, object]:
     try:
-        return enter_workflow(DEFAULT_PLATFORM_DB, workflow_id, payload.objectCode, payload.instanceId)
+        return enter_workflow(platform_db(), workflow_id, payload.objectCode, payload.instanceId)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("/workflows/{workflow_id}/instances/{instance_id}")
 def get_instance_workflow_state(workflow_id: int, instance_id: str) -> dict[str, object]:
-    state = get_instance_state(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
+    state = get_instance_state(platform_db(), workflow_id, instance_id)
     if state is None:
         raise HTTPException(status_code=404, detail="实例不在工作流中")
     return state
@@ -245,7 +244,7 @@ def get_instance_workflow_state(workflow_id: int, instance_id: str) -> dict[str,
 
 @router.get("/workflows/{workflow_id}/instances/{instance_id}/actions")
 def get_instance_available_actions(workflow_id: int, instance_id: str) -> dict[str, object]:
-    actions = get_available_actions(DEFAULT_PLATFORM_DB, workflow_id, instance_id)
+    actions = get_available_actions(platform_db(), workflow_id, instance_id)
     return {"actions": actions}
 
 
@@ -257,7 +256,7 @@ def run_transition(
 ) -> dict[str, object]:
     try:
         return transition_instance(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             workflow_id,
             payload.instanceId,
             payload.actionCode,
@@ -271,7 +270,7 @@ def run_transition(
 
 @router.get("/workflows/{workflow_id}/instances/{instance_id}/history")
 def get_instance_workflow_history(workflow_id: int, instance_id: str) -> dict[str, object]:
-    return {"items": get_instance_history(DEFAULT_PLATFORM_DB, workflow_id, instance_id)}
+    return {"items": get_instance_history(platform_db(), workflow_id, instance_id)}
 
 
 # -- Roles and object permissions --
@@ -279,27 +278,27 @@ def get_instance_workflow_history(workflow_id: int, instance_id: str) -> dict[st
 
 @router.get("/permissions/roles")
 def get_permission_roles() -> dict[str, object]:
-    return {"roles": list_roles(DEFAULT_PLATFORM_DB)}
+    return {"roles": list_roles(platform_db())}
 
 
 @router.post("/permissions/roles")
 def create_permission_role(payload: RoleCreate) -> dict[str, object]:
     try:
-        return create_role(DEFAULT_PLATFORM_DB, payload.code, payload.name, payload.description, payload.isSystem)
+        return create_role(platform_db(), payload.code, payload.name, payload.description, payload.isSystem)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("/permissions/policies")
 def get_permission_policies(roleId: Optional[int] = None) -> dict[str, object]:
-    return {"policies": list_policies(DEFAULT_PLATFORM_DB, roleId)}
+    return {"policies": list_policies(platform_db(), roleId)}
 
 
 @router.post("/permissions/policies")
 def upsert_policy(payload: PermissionPolicyUpsert) -> dict[str, object]:
     try:
         return upsert_permission_policy(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             payload.roleId,
             payload.objectCode,
             payload.canRead,
@@ -315,7 +314,7 @@ def upsert_policy(payload: PermissionPolicyUpsert) -> dict[str, object]:
 
 @router.post("/permissions/check")
 def check_permission_endpoint(payload: PermissionCheck) -> dict[str, object]:
-    return check_permission(DEFAULT_PLATFORM_DB, payload.roleCode, payload.objectCode, payload.operation)
+    return check_permission(platform_db(), payload.roleCode, payload.objectCode, payload.operation)
 
 
 # -- Tool registry and execution review --
@@ -323,14 +322,14 @@ def check_permission_endpoint(payload: PermissionCheck) -> dict[str, object]:
 
 @router.get("/tools")
 def get_all_tools() -> dict[str, object]:
-    return {"tools": list_tools(DEFAULT_PLATFORM_DB)}
+    return {"tools": list_tools(platform_db())}
 
 
 @router.post("/tools")
 def register_new_tool(payload: ToolRegister) -> dict[str, object]:
     try:
         return register_tool(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             payload.code,
             payload.name,
             payload.description,
@@ -347,7 +346,7 @@ def register_new_tool(payload: ToolRegister) -> dict[str, object]:
 def authorize_tool_for_role(payload: ToolAuthorize) -> dict[str, object]:
     try:
         return authorize_tool(
-            DEFAULT_PLATFORM_DB,
+            platform_db(),
             payload.roleId,
             payload.toolId,
             payload.allowed,
@@ -359,12 +358,12 @@ def authorize_tool_for_role(payload: ToolAuthorize) -> dict[str, object]:
 
 @router.post("/tools/check-auth")
 def check_tool_auth(payload: ToolAuthCheck) -> dict[str, object]:
-    return check_tool_authorization(DEFAULT_PLATFORM_DB, payload.roleCode, payload.toolCode)
+    return check_tool_authorization(platform_db(), payload.roleCode, payload.toolCode)
 
 
 @router.get("/tools/pending-reviews")
 def get_pending_reviews(limit: int = 50) -> dict[str, object]:
-    return {"items": list_pending_reviews(DEFAULT_PLATFORM_DB, limit)}
+    return {"items": list_pending_reviews(platform_db(), limit)}
 
 
 @router.post("/tools/logs/{log_id}/review")
@@ -374,6 +373,6 @@ def review_execution(
     principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
     try:
-        return review_tool_execution(DEFAULT_PLATFORM_DB, log_id, principal.actor, payload.decision)
+        return review_tool_execution(platform_db(), log_id, principal.actor, payload.decision)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
