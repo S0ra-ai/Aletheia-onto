@@ -209,6 +209,19 @@ aletheia doctor    # 报告当前配置、已安装 extra 与已注册扩展点
 }
 ```
 
+**从脚手架起步。** `new` 生成一个依赖平台的项目骨架，**不是 fork**——
+升级即 `pip install -U aletheia-onto`，生成的代码无需改动：
+
+```bash
+aletheia new --list-extensions          # 先看有哪些扩展点、各自适用什么场景
+aletheia new mycorp --extension rule-function --domain 合同管理
+cd mycorp && pip install -e . && python -m mycorp init
+```
+
+生成物包含配置模块、按需生成的扩展点骨架、一致性契约脚本，
+以及不含任何可用默认值的 `.env.example`。用 `python -m mycorp` 而非 `aletheia`：
+后者不会加载你注册的扩展。
+
 接自己的系统：
 
 ```bash
@@ -228,6 +241,17 @@ aletheia doctor        # 列出可用数据源，以及未激活的需要哪个�
 Oracle／SQL Server／达梦／人大金仓／openGauss 已内置声明与方言，
 装上对应驱动即出现在数据源列表里。接一个未内置的 SQL 库不需要写适配器——
 声明 4 行即可，见[扩展指南](docs/extending.md#10-接一个新的-sql-数据库)。
+
+**由本体生成前端类型。** 手写镜像做不到的那部分：关系被类型化为它指向的**对象**，
+而不是 `number`——手写版把每个外键都写成数字，于是没有任何东西阻止把合同 id
+传给需要客户的地方。
+
+```bash
+aletheia codegen 1 --output src/types/ontology.ts
+```
+
+只接受**已发布**本体：草案的对象与属性会在映射审核期间变动，据此生成的类型
+描述的是没人同意过的模型。产物经真实 `tsc --strict` 编译验证。
 
 **导出为标准词汇。** 对标 GB/T 48000.3—2026 对 OWL/RDF 的采用要求，
 本体可直接导出为外部 RDF 工具**能解释**（而非仅能读取）的形式：
@@ -657,14 +681,16 @@ _不是_：算法、模型、策略引擎脚本。
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- 192 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
+- 194 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
 - HTTP 层共 149 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
-  尚不能由 OpenAPI 生成：144 个端点均返回 `dict[str, object]`，响应 schema 是裸 object，
-  生成器只会产出 `unknown`。**请求侧的一致性已由测试守住**——
+  平台自身的类型尚不能由 OpenAPI 生成：149 个端点均返回 `dict[str, object]`，
+  响应 schema 是裸 object，生成器只会产出 `unknown`。
+  **但用户本体的类型已可生成**（`aletheia codegen`），且那才是手写做不对的部分。
+  **请求侧的一致性已由测试守住**——
   该测试发现了一处真实缺陷：前端一直在发送 4 个模型兼容性字段，
   而 API 请求模型未声明它们，Pydantic 静默丢弃，于是 Azure 与本地 vLLM 配不上而界面报成功。
 - **版本化迁移已具备**（`migrations.py`）：账本记录已应用版本，改列／回填／删表这类
@@ -912,7 +938,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1179 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1214 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -926,6 +952,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_codegen.py` | 16 | 关系类型化为目标对象、仅已发布本体、产物通过真实 tsc --strict |
+| `test_scaffold.py` | 19 | 生成的代码被真实执行：能编译、能注册、能建库、不含平台私有引用 |
 | `test_migrations.py` | 12 | 旧库补齐、新装跳过、重跑无变更、失败即中止后续 |
 | `test_sso.py` | 32 | 签名伪造、alg:none 绕过、未映射即拒绝、禁用本地账号优先 |
 | `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
@@ -975,7 +1003,7 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 
 ## 规模
 
-73 个后端模块约 31800 行，149 个 API 端点，45 张平台表，前端 React + antd。
+75 个后端模块约 32500 行，149 个 API 端点，45 张平台表，前端 React + antd。
 
 ## 示例
 
