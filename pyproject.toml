@@ -66,6 +66,12 @@ dev = [
     # free. It sat in `web` until 3.11, which made every deployment install a client it
     # never imports.
     "httpx==0.28.1",
+    # Verifies that exported OWL/SHACL/Turtle actually parses. A test dependency rather
+    # than a runtime one: the platform *writes* RDF and never reads it, and the kernel
+    # stays dependency-free. Not optional in CI though -- asserting that an export
+    # "contains" a substring is how a syntactically invalid Turtle document shipped
+    # unnoticed, since an invalid document contains substrings just as well as a valid one.
+    "rdflib==7.6.0",
 ]
 # Everything, for a deployment that does not want to reason about extras.
 all = [

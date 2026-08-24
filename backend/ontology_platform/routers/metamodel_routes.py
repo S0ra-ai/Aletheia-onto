@@ -22,6 +22,15 @@ from pydantic import BaseModel, Field
 
 from ..aggregation import AggregateSpec, AggregationError, define_aggregate, list_aggregates
 from ..auth import Principal
+from ..axioms import (
+    AxiomError,
+    AxiomSpec,
+    check_axioms,
+    declare_axiom,
+    describe_axiom_kinds,
+    list_axioms,
+    remove_axiom,
+)
 from ..derived_attributes import (
     DerivedAttributeError,
     DerivedSpec,
@@ -62,6 +71,14 @@ router = APIRouter()
 
 
 # -- Request models --
+
+
+class AxiomDeclare(BaseModel):
+    code: str
+    kind: str
+    subject: str
+    object: str = ""
+    note: str = ""
 
 
 class ResolverConfigure(BaseModel):
@@ -489,3 +506,72 @@ def declare_object_subtype(
         )
     except HierarchyError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+# -- Axioms --
+
+
+@router.get("/axiom-kinds")
+def axiom_kinds() -> dict[str, object]:
+    """Every axiom kind, with the consequence of violating it.
+
+    The consequence is the useful half. "Irreflexive" tells a modeller nothing; "a
+    contract's two parties cannot be the same entity" tells them whether they need it.
+    """
+    return {"items": describe_axiom_kinds()}
+
+
+@router.get("/ontologies/{ontology_id}/axioms")
+def ontology_axioms(ontology_id: int) -> dict[str, object]:
+    """Declared axioms, plus whether the model currently satisfies them.
+
+    Both in one response because the list alone is misleading: an axiom that is declared
+    but violated looks identical to one that holds, and the difference decides whether
+    this ontology can be published.
+    """
+    report = check_axioms(platform_db(), ontology_id)
+    return {
+        "items": list_axioms(platform_db(), ontology_id),
+        "satisfied": report["satisfied"],
+        "violations": report["violations"],
+        "note": "公理描述模型本身，不针对单个实例；违反公理会阻断发布。",
+    }
+
+
+@router.put("/ontologies/{ontology_id}/axioms")
+def declare_ontology_axiom(
+    ontology_id: int,
+    payload: AxiomDeclare,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Declare an axiom, refused if the model already violates it.
+
+    Refused rather than stored-and-reported, so the person who wrote the axiom sees the
+    contradiction. Storing it would defer the failure to whoever next tries to publish.
+    """
+    try:
+        return declare_axiom(
+            platform_db(),
+            ontology_id,
+            AxiomSpec(
+                code=payload.code,
+                kind=payload.kind,
+                subject=payload.subject,
+                object=payload.object,
+                note=payload.note,
+            ),
+        )
+    except AxiomError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.delete("/ontologies/{ontology_id}/axioms/{code}")
+def remove_ontology_axiom(
+    ontology_id: int,
+    code: str,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    try:
+        return remove_axiom(platform_db(), ontology_id, code)
+    except AxiomError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error

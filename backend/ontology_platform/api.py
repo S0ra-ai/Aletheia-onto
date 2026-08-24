@@ -34,6 +34,7 @@ from .auth import (
     resolve_principal,
 )
 from .automation import execute_operation, preflight_operation
+from .axioms import init_axiom_schema
 from .context import resolve_context
 from .contract_documents import parse_rule_docx_bytes
 from .conversations import (
@@ -101,6 +102,7 @@ from .semantic_kernel import (
     available_rule_names,
     validate_rule_expression,
 )
+from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
 from .temporal import (
     TemporalError,
     init_temporal_schema,
@@ -142,6 +144,7 @@ async def lifespan(app: FastAPI):
         init_temporal_schema(conn)
         init_entity_resolution_schema(conn)
         init_conversation_schema(conn)
+        init_axiom_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:
@@ -463,8 +466,23 @@ def get_ontology(ontology_id: int) -> dict[str, object]:
 
 @core_router.get("/ontologies/{ontology_id}/export")
 def export_ontology(ontology_id: int, format: str = "jsonld") -> Response:
+    """Export one ontology in platform or standard vocabulary.
+
+    One endpoint rather than two, because "export this ontology" is one operation and the
+    vocabulary is a parameter of it. A separate `/export-owl` would make the standard
+    forms look like a different feature, and a caller comparing them would have to
+    discover that the second exists.
+
+    `jsonld` and `turtle` use this platform's own `ont:` terms, which carry fields
+    standard vocabulary has no word for -- source tables, rule expressions, mapping
+    confidence. `owl` and `shacl` use OWL/RDFS/SHACL, which is what another tool can
+    interpret rather than merely read (GB/T 48000.3—2026).
+    """
     try:
-        asset = export_ontology_asset(DEFAULT_PLATFORM_DB, ontology_id, format)
+        if format.lower() in STANDARD_EXPORT_FORMATS:
+            asset = export_standard_asset(DEFAULT_PLATFORM_DB, ontology_id, format)
+        else:
+            asset = export_ontology_asset(DEFAULT_PLATFORM_DB, ontology_id, format)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return Response(

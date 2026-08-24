@@ -110,6 +110,7 @@ def _init_optional_schemas(conn: Any) -> None:
     from .agent_roles import init_agent_role_schema
     from .aggregation import init_aggregate_schema
     from .auth import init_auth_schema
+    from .axioms import init_axiom_schema
     from .conversations import init_conversation_schema
     from .entity_resolution import init_entity_resolution_schema
     from .events import init_event_schema
@@ -127,6 +128,7 @@ def _init_optional_schemas(conn: Any) -> None:
         init_event_schema,
         init_temporal_schema,
         init_entity_resolution_schema,
+        init_axiom_schema,
     ):
         initialise(conn)
 
@@ -229,6 +231,37 @@ def cmd_publish(args: argparse.Namespace) -> int:
         # The gate's findings are the useful output here, not a traceback.
         return _fail(f"发布被拒绝：{error}\n如确认要覆盖门禁，请显式传 --force（会写入审计）。")
     _print(result)
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    """Write an ontology out in platform or standard vocabulary.
+
+    On the CLI rather than only over HTTP because the consumer of a standard export is
+    usually a pipeline: hand the file to a SHACL validator, load it into a triple store,
+    diff it against the previous version. Requiring a running server and a token to
+    obtain a file makes that pipeline harder than it needs to be.
+    """
+    from .ontology import export_ontology_asset
+    from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
+
+    platform_db = _platform_db(args)
+    try:
+        if args.format in STANDARD_EXPORT_FORMATS:
+            asset = export_standard_asset(platform_db, args.ontology_id, args.format)
+        else:
+            asset = export_ontology_asset(platform_db, args.ontology_id, args.format)
+    except ValueError as error:
+        return _fail(str(error))
+
+    if args.output:
+        target = Path(args.output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(asset["content"], encoding="utf-8")
+        _print({"format": args.format, "written": str(target), "mediaType": asset["mediaType"]})
+    else:
+        # To stdout, so the file can be piped into a validator without a temporary path.
+        print(asset["content"], end="")
     return 0
 
 
@@ -508,6 +541,17 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--actor", default="cli", help="记入审计的操作者")
     publish.add_argument("--force", action="store_true", help="覆盖发布门禁，未通过项数会写入审计")
     publish.set_defaults(func=cmd_publish)
+
+    export_cmd = sub.add_parser("export", help="导出本体：平台词汇（jsonld／turtle）或标准词汇（owl／shacl）")
+    export_cmd.add_argument("ontology_id", type=int)
+    export_cmd.add_argument(
+        "--format",
+        default="owl",
+        choices=("jsonld", "turtle", "owl", "shacl"),
+        help="owl／shacl 为 OWL/RDFS/SHACL 标准词汇，可被外部 RDF 工具解释；jsonld／turtle 为平台词汇，字段更全",
+    )
+    export_cmd.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
+    export_cmd.set_defaults(func=cmd_export)
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")

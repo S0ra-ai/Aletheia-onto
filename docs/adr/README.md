@@ -23,6 +23,7 @@
 | [0016](0016-shipped-conformance-suites.md) | 一致性契约随包发布 | Accepted |
 | [0017](0017-deployment-preflight.md) | 部署前自检与私有化部署形态 | Accepted |
 | [0018](0018-cross-source-entity-resolution.md) | 跨源实体消解：匹配是声明的 | Accepted |
+| [0019](0019-axioms-and-standard-vocabulary.md) | 公理是一等公民，OWL 是词汇而非推理机 | Accepted |
 
 格式：Context（处境）／Decision（决定）／Alternatives considered（被否决的方案）／
 Consequences（后果，含负面）。

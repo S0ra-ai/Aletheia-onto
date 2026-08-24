@@ -8,6 +8,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
@@ -1199,7 +1201,14 @@ def test_ontology_exports_jsonld_and_turtle_assets(tmp_path: Path) -> None:
     assert turtle["filename"].endswith(".ttl")
     assert "@prefix ont:" in turtle["content"]
     assert "ont:BusinessObject" in turtle["content"]
-    assert "bp:object/contract" in turtle["content"]
+
+    # Parsed, not pattern-matched. The previous version of this test asserted the output
+    # contained `bp:object/contract` -- which is *itself* invalid Turtle, because a
+    # prefixed name's local part cannot contain `/`. So the assertion pinned the bug in
+    # place: the export shipped unparseable by any RDF tool, and this test stayed green,
+    # because a syntactically invalid document contains a substring just as well as a
+    # valid one.
+    _assert_parses_as_turtle(turtle["content"])
 
     try:
         export_ontology_asset(platform_db, ontology["id"], "xml")
@@ -1207,6 +1216,20 @@ def test_ontology_exports_jsonld_and_turtle_assets(tmp_path: Path) -> None:
         assert "jsonld" in str(error)
     else:
         raise AssertionError("不支持的本体导出格式应被拒绝")
+
+
+def _assert_parses_as_turtle(content: str) -> None:
+    """Parse with a real RDF library, or state plainly that it could not be checked.
+
+    `rdflib` is not a dependency of this project -- the kernel is dependency-free by
+    design -- so this skips rather than fails when it is absent. Skipping is honest;
+    silently passing would restore exactly the false confidence this test exists to
+    remove. CI installs it, so the check does run where it gates merges.
+    """
+    rdflib = pytest.importorskip("rdflib", reason="需要 rdflib 才能验证 Turtle 语法")
+    graph = rdflib.Graph()
+    graph.parse(data=content, format="turtle")
+    assert len(graph) > 0, "Turtle 解析成功但没有三元组"
 
 
 def test_model_config_persists_masks_and_resets(tmp_path: Path) -> None:

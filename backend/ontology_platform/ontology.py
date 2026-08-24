@@ -495,7 +495,7 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     for item in detail["objects"]:
         lines.extend(
             [
-                f"bp:object/{_uri_part(item['code'])} a ont:BusinessObject ;",
+                f"{_ttl_iri(base, 'object', item['code'])} a ont:BusinessObject ;",
                 f"  ont:code {_ttl_literal(item['code'])} ;",
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:description {_ttl_literal(item['description'])} ;",
@@ -507,7 +507,7 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     for item in detail["attributes"]:
         lines.extend(
             [
-                f"bp:object/{_uri_part(item['objectCode'])}/attribute/{_uri_part(item['code'])} a ont:BusinessAttribute ;",
+                f"{_ttl_iri(base, 'object', item['objectCode'], 'attribute', item['code'])} a ont:BusinessAttribute ;",
                 f"  ont:code {_ttl_literal(item['code'])} ;",
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:dataType {_ttl_literal(item['dataType'])} ;",
@@ -515,22 +515,22 @@ def _export_turtle(detail: dict[str, Any]) -> str:
                 f"  ont:unit {_ttl_literal(item['unit'])} ;",
                 f"  ont:derivedExpression {_ttl_literal(item['derivedExpression'])} ;",
                 f"  ont:sourceColumn {_ttl_literal(item['sourceColumn'])} ;",
-                f"  ont:belongsTo bp:object/{_uri_part(item['objectCode'])} .",
+                f"  ont:belongsTo {_ttl_iri(base, 'object', item['objectCode'])} .",
                 "",
             ]
         )
     for item in detail["relations"]:
         lines.extend(
             [
-                f"bp:relation/{_uri_part(item['code'])} a ont:BusinessRelation ;",
+                f"{_ttl_iri(base, 'relation', item['code'])} a ont:BusinessRelation ;",
                 f"  ont:code {_ttl_literal(item['code'])} ;",
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:relationType {_ttl_literal(item['relationType'])} ;",
                 f"  ont:cardinality {_ttl_literal(item['cardinality'])} ;",
                 f"  ont:relationKind {_ttl_literal(item['relationKind'])} ;",
                 f"  ont:optional {'true' if item['optional'] else 'false'} ;",
-                f"  ont:sourceObject bp:object/{_uri_part(item['sourceCode'])} ;",
-                f"  ont:targetObject bp:object/{_uri_part(item['targetCode'])} ;",
+                f"  ont:sourceObject {_ttl_iri(base, 'object', item['sourceCode'])} ;",
+                f"  ont:targetObject {_ttl_iri(base, 'object', item['targetCode'])} ;",
                 f"  ont:sourceForeignKey {_ttl_literal(item['sourceForeignKey'])} .",
                 "",
             ]
@@ -538,11 +538,11 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     for item in detail["rules"]:
         lines.extend(
             [
-                f"bp:rule/{_uri_part(item['code'])} a ont:BusinessRule ;",
+                f"{_ttl_iri(base, 'rule', item['code'])} a ont:BusinessRule ;",
                 f"  ont:code {_ttl_literal(item['code'])} ;",
                 f"  ont:name {_ttl_literal(item['name'])} ;",
                 f"  ont:ruleType {_ttl_literal(item['ruleType'])} ;",
-                f"  ont:scopeObject bp:object/{_uri_part(item['scopeObjectCode'])} ;",
+                f"  ont:scopeObject {_ttl_iri(base, 'object', item['scopeObjectCode'])} ;",
                 f"  ont:expression {_ttl_literal(item['expression'])} ;",
                 f"  ont:severity {_ttl_literal(item['severity'])} ;",
                 f"  ont:naturalLanguage {_ttl_literal(item['naturalLanguage'])} ;",
@@ -553,7 +553,7 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     for item in detail["mappings"]:
         lines.extend(
             [
-                f"bp:mapping/{item['id']} a ont:SemanticMapping ;",
+                f"{_ttl_iri(base, 'mapping', str(item['id']))} a ont:SemanticMapping ;",
                 f"  ont:mappingType {_ttl_literal(item['mappingType'])} ;",
                 f"  ont:sourceRef {_ttl_literal(item['sourceRef'])} ;",
                 f"  ont:targetRef {_ttl_literal(item['targetRef'])} ;",
@@ -1022,6 +1022,23 @@ def _uri_part(value: str) -> str:
 
 def _ttl_literal(value: object) -> str:
     return json.dumps("" if value is None else str(value), ensure_ascii=False)
+
+
+def _ttl_iri(base: str, *segments: str) -> str:
+    """An absolute IRI in angle brackets, for use as a Turtle subject or object.
+
+    Written in full rather than as a prefixed name (`bp:object/contract`) because a
+    prefixed name's local part cannot contain `/` in Turtle: the parser stops at the
+    slash and the whole statement is a syntax error.
+
+    This export emitted prefixed names with slashes since it shipped, which meant **no
+    RDF parser could read the Turtle output** the README promises. The tests did not
+    catch it because they asserted the output *contained* certain substrings, and an
+    invalid document contains them just as well as a valid one. `tests/test_metadata_flow.py`
+    now parses the result with a real RDF library instead.
+    """
+    path = "/".join(_uri_part(segment) for segment in segments)
+    return f"<{base}{path}>"
 
 
 def _ttl_bool(value: object) -> str:

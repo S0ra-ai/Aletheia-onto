@@ -159,6 +159,10 @@ RULES: tuple[Rule, ...] = (
     # changes what every assessment of the object checks.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/parent", CAP_WRITE, "声明类型层级"),
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/event-types", CAP_WRITE, "声明事件类型"),
+    # 公理约束模型自身，且违反公理会阻断发布——因此声明它是建模写操作，
+    # 而**删除**它移除的是一道发布门禁，与「跳过审核」同级，需要发布权限。
+    _rule(("PUT",), r"/ontologies/[0-9]+/axioms", CAP_WRITE, "声明本体公理"),
+    _rule(("DELETE",), r"/ontologies/[0-9]+/axioms/[^/]+", CAP_PUBLISH, "移除本体公理"),
     # 跨源对应决定「哪两行是同一实例」，因此它改变每一次判定读到的数据——是建模写操作。
     _rule(
         ("PUT",),

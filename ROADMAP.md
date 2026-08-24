@@ -144,10 +144,12 @@ CI 会构建 wheel、在干净环境裸装、校验内核零第三方依赖并�
 ### 阶段 F 脚手架与生成器
 
 ✅ **CLI 已完成**（`cli.py`）：`init` / `connect` / `model` / `assess` /
-`publish` / `demo` / `serve` / `doctor` / `verify` / `preflight`。
+`publish` / `export` / `demo` / `serve` / `doctor` / `verify` / `preflight`。
 `publish` 受发布门禁约束，且**待审核映射无法用 `--force` 跳过**。
 `verify` 对第三方扩展跑一致性契约（ADR-0016），
 `preflight` 做部署前自检（ADR-0017）；两者失败时退出码非 0，可直接作 CI 门禁。
+`export` 输出 OWL／SHACL／JSON-LD／Turtle——标准词汇形式在 CLI 上而非仅在 HTTP 上，
+因为它的消费方通常是流水线：交给 SHACL 校验器、载入三元组库、与上一版本做 diff。
 
 🚧 仍待完成：scaffold 仓库、代码生成器。
 
