@@ -54,7 +54,7 @@ mysql = ["PyMySQL==1.1.1"]
 # Document ingestion for the knowledge layer.
 documents = ["python-docx==1.1.2"]
 dev = [
-    "pytest==8.3.2",
+    "pytest==9.1.1",
     "ruff==0.16.4",
     "mypy==1.19.1",
 ]
