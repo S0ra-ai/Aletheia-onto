@@ -582,6 +582,8 @@ _不是_：算法、模型、策略引擎脚本。
 | 多租户隔离（独立 schema + `tenant_id` 双保险） | ✅ | `tenancy.py` |
 | 租户开通与枚举 | ✅ | `tenancy.py` |
 | 跨租户访问检测（fail-closed） | ✅ | `tenancy.py` |
+| **SSO 单点登录**（JWT 断言校验，组→角色映射） | ✅ | `sso.py` |
+| **SSO 未映射即拒绝**（不给默认角色） | ✅ | `sso.py` |
 | 数据字典、部门／岗位数据权限 | 📋 | — |
 
 ### 语义服务
@@ -655,9 +657,9 @@ _不是_：算法、模型、策略引擎脚本。
 ### 工程限制
 
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- 186 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
+- 192 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- HTTP 层共 144 个端点，**已开始拆分 APIRouter**（`routers/`）：
+- HTTP 层共 149 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
@@ -825,6 +827,28 @@ SHACL 形状由声明生成而非手写——手写的一份会与发布门禁�
 | `ONTOLOGY_AUTH_DISABLED` | 设为 `1` 关闭全部认证，**仅限本地开发** | 未设（认证开启） |
 | `ONTOLOGY_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔 | `http://127.0.0.1:3000,http://localhost:3000` |
 
+### SSO（单点登录）
+
+三项全部设置后 SSO 才启用——半配置状态按「SSO 关闭」处理，而非「SSO 开启且接受任意断言」。
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `ONTOLOGY_SSO_ISSUER` | 期望的 `iss`，不匹配即拒绝 | 未设（SSO 关闭） |
+| `ONTOLOGY_SSO_AUDIENCE` | 期望的 `aud`，防止其他服务的令牌在此复用 | 未设（SSO 关闭） |
+| `ONTOLOGY_SSO_SECRET` | 签名校验密钥。放环境变量而非库里——库里的凭据等于每份备份里的凭据 | 未设（SSO 关闭） |
+| `ONTOLOGY_SSO_ALGORITHM` | `HS256`／`HS384`／`HS512`。**算法取自配置，绝不取自令牌头** | `HS256` |
+| `ONTOLOGY_SSO_GROUP_CLAIM` | 承载组的声明名 | `groups` |
+| `ONTOLOGY_SSO_USERNAME_CLAIM` | 承载用户标识的声明名 | `sub` |
+
+**身份由提供方断言，权限由平台决定。** OIDC 令牌可以带任何声明，包括 `role: admin`——
+信它就等于把授权边界搬进了别人的配置里。因此声明绝不直接变成权限：
+由管理员声明「提供方组 → 平台角色」的映射，**未映射到任何角色的身份直接被拒绝**，
+而不是给一个默认角色——默认角色看起来安全，实际会静默地把「读取平台可达的全部业务对象」
+授予目录里的每一名员工。
+
+本地账号并不被取代：提供方不可达时仍需要一条进得去的路，
+而「IdP 挂了所以没人能修 IdP 集成」是真实存在的故障形态。
+
 ### 平台库
 
 | 变量 | 作用 | 默认 |
@@ -886,7 +910,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1133 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1166 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -900,6 +924,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_sso.py` | 32 | 签名伪造、alg:none 绕过、未映射即拒绝、禁用本地账号优先 |
 | `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
 | `test_audit_reports.py` | 18 | 从未触发的规则、覆盖门禁的发布、留痕完整性、区间半开 |
 | `test_tenant_quotas.py` | 16 | 配额存于基础库租户改不了、写前拦截、未声明即不限量、跨租户不串用量 |
@@ -919,7 +944,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
 | `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
 | `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
-| `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
+| `test_api_versioning.py` | 21 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS 映射、SHACL 形状生成、IRI 稳定性、导出必须能被 RDF 解析器解析 |
 | `test_axioms.py` | 20 | 公理五类校验、声明期拒绝、发布门禁阻断、缺表读作未配置 |

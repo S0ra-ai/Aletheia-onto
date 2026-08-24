@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+from .sso import SsoConfig, list_group_mappings
+
 logger = logging.getLogger(__name__)
 
 # `critical` means an attacker or an accident can cause harm today. `warning` means the
@@ -164,6 +166,7 @@ def check_deployment(
     _check_platform_store(report, platform_db, worker_count)
     _check_credential_exposure(report, platform_db)
     _check_model_configuration(report)
+    _check_sso(report, platform_db)
     return report
 
 
@@ -367,6 +370,62 @@ def _check_model_configuration(report: PreflightReport) -> None:
                 detail=f"{name} 存在于环境变量中：它会进入崩溃转储与容器 inspect。",
                 remedy="改用密钥挂载，或通过平台的模型配置接口存储（会被脱敏）",
             )
+
+
+def _check_sso(report: PreflightReport, platform_db: Optional[Any]) -> None:
+    """SSO that verifies correctly and maps nothing rejects every login.
+
+    A blocker rather than a warning, but only when SSO is *enabled*: the failure shape is a
+    deployment that switched to federated login, restarted, and found nobody could sign in
+    -- with the platform reporting healthy, because verification is working exactly as
+    configured. That is indistinguishable from a signature problem from the outside, and
+    the two have opposite fixes.
+
+    Not checked when SSO is off: a deployment using password login must not be told it has
+    an SSO problem.
+    """
+    config = SsoConfig.from_env()
+    if not config.enabled:
+        partial = [
+            name
+            for name, value in (
+                ("ONTOLOGY_SSO_ISSUER", config.issuer),
+                ("ONTOLOGY_SSO_AUDIENCE", config.audience),
+                ("ONTOLOGY_SSO_SECRET", config.secret),
+            )
+            if value
+        ]
+        if partial:
+            # Half-configured is worth reporting: the operator believes SSO is on, and it
+            # silently is not.
+            report.add(
+                "SSO 配置完整",
+                False,
+                severity=WARNING,
+                detail=f"仅设置了 {'、'.join(partial)}，三项不全时 SSO 不会启用。",
+                remedy="补齐 ONTOLOGY_SSO_ISSUER / AUDIENCE / SECRET，或全部移除以明确使用口令登录",
+            )
+        return
+
+    if config.algorithm not in ("HS256", "HS384", "HS512"):
+        report.add(
+            "SSO 签名算法受支持",
+            False,
+            detail=f"ONTOLOGY_SSO_ALGORITHM={config.algorithm} 不受支持，SSO 登录会全部失败。",
+            remedy="改用 HS256／HS384／HS512，或自行注册验签实现",
+        )
+
+    mappings = list_group_mappings(platform_db) if platform_db is not None else []
+    report.add(
+        "SSO 组角色映射已声明",
+        bool(mappings),
+        detail=(
+            f"已声明 {len(mappings)} 条组到角色映射。"
+            if mappings
+            else "SSO 已启用但未声明任何组映射：未映射的身份会被拒绝，因此没有人能登录。"
+        ),
+        remedy="通过 PUT /auth/sso/mappings 声明提供方组到平台角色的映射",
+    )
 
 
 def describe_checks() -> list[dict[str, str]]:

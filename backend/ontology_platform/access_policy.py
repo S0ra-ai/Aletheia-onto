@@ -56,6 +56,11 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
     {
         "/health",
         "/auth/login",
+        # How an SSO session is obtained, so it cannot require one. Safe because the
+        # assertion is verified against a configured signing key before anything else
+        # happens -- and when SSO is not configured the endpoint refuses outright rather
+        # than trusting unverified claims.
+        "/auth/sso/login",
         "/docs",
         "/redoc",
         "/openapi.json",
@@ -92,6 +97,10 @@ RULES: tuple[Rule, ...] = (
     _rule(("POST",), r"/auth/change-password", CAP_READ, "修改自己的密码"),
     # -- User administration --
     _rule(ANY_METHOD, r"/auth/users.*", CAP_ADMIN, "用户管理"),
+    # 组到角色的映射就是权限本身：改它等于改谁能做什么，因此与用户管理同级。
+    # 读取映射同样限管理员——它披露了组织的组结构与各组被授予的权限。
+    _rule(ANY_METHOD, r"/auth/sso/mappings.*", CAP_ADMIN, "SSO 组角色映射"),
+    _rule(("GET",), r"/auth/sso", CAP_ADMIN, "查看 SSO 配置状态"),
     # -- Governance: review and publish are distinct capabilities --
     _rule(("POST",), r"/semantic-mappings/\d+/review", CAP_REVIEW, "审核语义映射"),
     _rule(("POST",), r"/ontologies/\d+/mappings/review", CAP_REVIEW, "批量审核语义映射"),

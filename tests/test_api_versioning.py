@@ -184,6 +184,10 @@ EXPECTED_ADMIN_ONLY = {
     "POST /model/config",
     "DELETE /model/config",
     "POST /tenants",
+    # 组到角色的映射就是权限本身：改它等于改谁能做什么。读取它也限管理员——
+    # 它披露了组织的组结构与各组被授予的权限。
+    "PUT /auth/sso/mappings",
+    "DELETE /auth/sso/mappings/1",
     # 配额是平台对租户设的上限，不是租户的设置项。若租户能改，上限就不成立——
     # 因此与「开通租户」同级，仅管理员。
     "PUT /tenants/1/quotas",
