@@ -17,16 +17,21 @@ name = "aletheia-onto"
 version = "0.5.0"
 description = "为传统业务系统安装可核验的业务语义内核：本体、语义映射、规则推理与决策留痕"
 readme = "README.md"
-requires-python = ">=3.9"
+# 3.11 rather than 3.9: 3.9 reached end of life in October 2025, and the current
+# releases of FastAPI, psycopg, pytest and mypy all require 3.10+. Holding the old
+# floor meant every dependency update had to be refused, which is how a project
+# accumulates known vulnerabilities while its CI stays green. 3.11 is supported
+# until October 2027, so it is the oldest floor that does not expire during the
+# lifetime of a deployment installed today.
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 keywords = ["ontology", "semantic", "business-rules", "knowledge-graph", "legacy-modernization"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Database",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
@@ -40,23 +45,27 @@ dependencies = []
 # Pinned rather than ranged. A range on a rule-engine dependency means a transitive
 # upgrade can change a verdict, and a verdict is what this platform is accountable for.
 web = [
-    "fastapi==0.111.1",
-    "uvicorn[standard]==0.30.3",
-    "httpx==0.27.2",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
     # Declared rather than inherited: `api.py` uses File()/Form(), and FastAPI moved
     # the multipart parser out of its base install into `fastapi[standard]`. Relying on
     # the transitive copy means a FastAPI upgrade turns document upload into a 500 at
     # request time, not an install-time error.
-    "python-multipart==0.0.20",
+    "python-multipart==0.0.32",
 ]
-postgresql = ["psycopg[binary]==3.2.9"]
-mysql = ["PyMySQL==1.1.1"]
+postgresql = ["psycopg[binary]==3.3.4"]
+mysql = ["PyMySQL==1.2.0"]
 # Document ingestion for the knowledge layer.
-documents = ["python-docx==1.1.2"]
+documents = ["python-docx==1.2.0"]
 dev = [
-    "pytest==8.3.2",
+    "pytest==9.1.1",
     "ruff==0.16.4",
-    "mypy==1.19.1",
+    "mypy==2.3.1",
+    # Only `fastapi.testclient` needs an HTTP client; the platform's own outbound calls
+    # (REST data sources, model endpoints) use `urllib` so the kernel stays dependency
+    # free. It sat in `web` until 3.11, which made every deployment install a client it
+    # never imports.
+    "httpx==0.28.1",
 ]
 # Everything, for a deployment that does not want to reason about extras.
 all = [
@@ -88,7 +97,7 @@ ontology_platform = ["py.typed"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py311"
 extend-exclude = ["frontend", ".venv", "examples"]
 
 [tool.ruff.lint]
@@ -139,7 +148,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 files = ["backend/ontology_platform"]
 # Deliberately permissive to start: the goal is to catch outright type errors
 # without blocking the branch on annotating 12k lines. Tighten incrementally

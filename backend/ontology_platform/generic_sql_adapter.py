@@ -211,7 +211,12 @@ class _MappingCursor:
     def _as_mapping(self, row: Any) -> dict[str, Any]:
         if isinstance(row, dict):
             return row
-        return dict(zip(self._columns(), row))
+        # strict: a row that does not match `cursor.description` means the driver is
+        # not behaving as DB-API describes. Zipping to the shorter of the two would
+        # silently drop trailing columns, and a dropped column reads downstream as an
+        # attribute the instance does not have -- a rule referencing it then fails
+        # closed for a reason nobody can find. Better to name the driver here.
+        return dict(zip(self._columns(), row, strict=True))
 
     def close(self) -> None:
         self._cursor.close()

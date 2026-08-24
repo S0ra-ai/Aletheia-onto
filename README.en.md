@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
 English | [简体中文](README.md)
 
@@ -163,7 +163,9 @@ DashScope, and the screen shows the full URL that will actually be called.
 
 ## Quick start
 
-Requires Python 3.9+ (Node.js 18+ for the frontend). Every command below was run in a
+Requires Python 3.11+ (Node.js 18+ for the frontend). CI runs the full suite on
+3.11, 3.12 and 3.13 -- a version that is claimed but never executed breaks in a
+user's environment first. Every command below was run in a
 clean environment.
 
 ### Install as a package
@@ -655,7 +657,7 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**1040 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1042 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 | File | Count | Covers |

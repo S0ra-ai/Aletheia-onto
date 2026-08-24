@@ -26,6 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+PYPROJECT = ROOT / "pyproject.toml"
 READMES = {"README.md": "(\\d+)\\s*个测试", "README.en.md": r"\*\*(\d+) tests\*\*"}
 
 
@@ -101,3 +103,45 @@ def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
     claimed = {int(found) for found in re.findall(r"(\d+)\s*个端点", readme)}
     assert claimed, "README 未声明端点数量"
     assert routes in claimed, f"README 声明 {sorted(claimed)} 个端点，实际 {routes}"
+
+
+def test_every_claimed_python_version_is_actually_tested() -> None:
+    """The badge, the classifiers and the test matrix must agree.
+
+    A version in the badge that no job runs is the worst kind of claim: Python keeps
+    syntax compatible across releases but removes stdlib modules and changes defaults,
+    and this platform reads schemas through `sqlite3` and enforces its rule sandbox
+    through `ast` -- both of which move between versions. So "supports 3.13" can only be
+    established by running it.
+
+    The floor is checked in the other direction too. `requires-python` is what pip
+    enforces, and a floor lower than the oldest tested version means pip cheerfully
+    installs into an interpreter nobody has ever run the suite on.
+    """
+    pyproject = PYPROJECT.read_text(encoding="utf-8")
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    matrix = re.search(r"python-version: \[([^\]]+)\]", workflow)
+    assert matrix, "CI 未声明 Python 版本矩阵"
+    tested = {version.strip().strip('"') for version in matrix.group(1).split(",")}
+
+    classifiers = set(re.findall(r"Programming Language :: Python :: (3\.\d+)", pyproject))
+    assert classifiers == tested, f"classifiers 声明 {sorted(classifiers)}，CI 实际测试 {sorted(tested)}"
+
+    floor = re.search(r'requires-python = ">=(3\.\d+)"', pyproject)
+    assert floor, "pyproject 未声明 requires-python"
+
+    def as_tuple(version: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in version.split("."))
+
+    oldest_tested = min(tested, key=as_tuple)
+    assert floor.group(1) == oldest_tested, (
+        f"requires-python 为 {floor.group(1)}，但最旧的被测版本是 {oldest_tested}——pip 会安装到从未跑过测试的解释器上"
+    )
+
+    for filename, pattern in (("README.md", r"python-3\.(\d+)%2B"), ("README.en.md", r"python-3\.(\d+)%2B")):
+        badge = re.search(pattern, (ROOT / filename).read_text(encoding="utf-8"))
+        assert badge, f"{filename} 缺少 Python 版本徽章"
+        assert f"3.{badge.group(1)}" == oldest_tested, (
+            f"{filename} 徽章声明 3.{badge.group(1)}，实际底线 {oldest_tested}"
+        )

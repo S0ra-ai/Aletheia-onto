@@ -12,7 +12,7 @@ python3 -m venv .venv
 cd frontend && npm install && cd ..
 ```
 
-需要 Python 3.9+ 与 Node.js 18+。
+需要 Python 3.11+ 与 Node.js 18+。
 
 ## 提交前必须通过
 

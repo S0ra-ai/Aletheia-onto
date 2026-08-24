@@ -92,11 +92,14 @@ class InstanceKey:
             return str(self.values[0])
         return PAIR_SEPARATOR.join(
             f"{_encode(column)}{VALUE_SEPARATOR}{_encode(str(value))}"
-            for column, value in zip(self.columns, self.values)
+            # strict is redundant given __post_init__, and stated anyway: a token is
+            # what a decision record stores, so a key silently missing a column would
+            # make two different instances share one audit identity.
+            for column, value in zip(self.columns, self.values, strict=True)
         )
 
     def as_mapping(self) -> dict[str, Any]:
-        return dict(zip(self.columns, self.values))
+        return dict(zip(self.columns, self.values, strict=True))
 
     def where_clause(self, quote: Any, placeholder: str = "?") -> tuple[str, tuple[Any, ...]]:
         """Build a parameterised WHERE fragment.
@@ -110,7 +113,7 @@ class InstanceKey:
     def describe(self) -> str:
         if not self.composite:
             return str(self.values[0])
-        return ", ".join(f"{c}={v}" for c, v in zip(self.columns, self.values))
+        return ", ".join(f"{c}={v}" for c, v in zip(self.columns, self.values, strict=True))
 
     @classmethod
     def from_token(cls, primary_key: str | None, token: str) -> "InstanceKey":

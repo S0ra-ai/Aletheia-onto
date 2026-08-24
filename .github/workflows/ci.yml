@@ -14,12 +14,11 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # Must match the python_version in pyproject.toml. Running mypy on a
-          # newer interpreter while configured for 3.9 makes it parse installed
-          # third-party code (anyio) with 3.9 syntax rules and fail on `match`.
-          # 3.9 is also the minimum version the README claims to support, so
-          # linting against it is what we actually promise.
-          python-version: "3.9"
+          # Must match the python_version in pyproject.toml: running mypy on a newer
+          # interpreter than it is configured for makes it parse installed third-party
+          # code under the older syntax rules and fail on code it does not own. This is
+          # also the floor the README promises, so linting here is linting what we ship.
+          python-version: "3.11"
           cache: pip
 
       - name: 安装依赖
@@ -44,8 +43,18 @@ jobs:
         run: python -m mypy
 
   backend:
-    name: 后端测试（含 MySQL 与 PostgreSQL）
+    name: 后端测试 py${{ matrix.python-version }}（含 MySQL 与 PostgreSQL）
     runs-on: ubuntu-latest
+
+    # Every version in the README's badge and in pyproject's classifiers, run rather
+    # than declared. A claimed version that nothing executes is a claim that breaks in
+    # a user's environment first: Python keeps syntax compatible but removes stdlib
+    # modules and changes defaults between releases, and this platform reads schemas
+    # through sqlite3 and enforces its rule sandbox through `ast` -- both of which move.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
 
     services:
       mysql:
@@ -76,7 +85,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: 安装依赖
@@ -92,23 +101,14 @@ jobs:
           ONTOLOGY_TEST_POSTGRES_URI: postgresql://postgres:postgres@127.0.0.1:5432/
         run: python -m pytest -v
 
-      - name: 校验认证默认开启
-        run: |
-          python - <<'PY'
-          import sys
-          sys.path.insert(0, "backend")
-          import ontology_platform.api as api
-          assert api.AUTH_ENABLED, "认证不能默认关闭"
-          from ontology_platform.access_policy import required_capability
-          assert required_capability("POST", "/unknown/route") == "platform:admin"
-          print("认证默认开启，未登记路由默认仅管理员可访问")
-          PY
-
-      # The README's countable claims -- test total, per-file breakdown, endpoint count --
-      # are checked by tests/test_documented_claims.py rather than here. A check that only
-      # runs in CI cannot be run before pushing, so it reports drift after review has
-      # started; and this step read only the Chinese README, which let the English one
-      # fall behind while the build stayed green.
+      # Two checks that used to be inline scripts here now live in the suite above, so
+      # they run on every interpreter in the matrix and before a push rather than after:
+      # authentication being on unless explicitly disabled
+      # (tests/test_api_authentication.py, with counter-examples proving it can fail),
+      # and the README's countable claims -- test total, per-file breakdown, endpoint
+      # count (tests/test_documented_claims.py, which also covers README.en.md; the
+      # inline version read only the Chinese one, and the English copy fell behind while
+      # the build stayed green).
 
   quickstart:
     name: README 快速开始可执行性验证
@@ -189,9 +189,10 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # The minimum version README claims, so "installable on 3.9" is verified
-          # rather than assumed.
-          python-version: "3.9"
+          # The floor the README claims, so "installable on the oldest supported
+          # version" is verified rather than assumed. The wheel is pure Python, so
+          # building on the floor is what the newer versions install too.
+          python-version: "3.11"
           cache: pip
 
       - name: 构建 wheel

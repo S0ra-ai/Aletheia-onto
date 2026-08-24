@@ -124,7 +124,11 @@ def bm25_rank(
         document_frequency[token] = sum(1 for summary in summaries if token in summary)
 
     hits: list[RetrievalHit] = []
-    for entry, summary, length in zip(entries, summaries, lengths):
+    # strict: the three sequences are derived from `entries` one-to-one. If they ever
+    # diverge, zipping to the shortest would drop entries from the candidate set
+    # without saying so -- a citation missing from an answer is indistinguishable from
+    # a citation that did not match.
+    for entry, summary, length in zip(entries, summaries, lengths, strict=True):
         score = 0.0
         for token in query_tokens:
             frequency = summary.get(token, 0)
@@ -177,7 +181,10 @@ def hashed_embedding(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -> list[
 def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
-    return sum(a * b for a, b in zip(left, right))
+    # Lengths are already checked above, where mismatch returns 0.0 rather than raising:
+    # two embeddings of different width mean the vectors came from different models, and
+    # a similarity search must degrade to "no match" instead of failing the whole answer.
+    return sum(a * b for a, b in zip(left, right, strict=True))
 
 
 # -- Extension points --

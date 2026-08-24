@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
 [English](README.en.md) | 简体中文
 
@@ -179,7 +179,9 @@ BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的�
 
 ## 快速开始
 
-需要 Python 3.9+（前端另需 Node.js 18+）。以下命令均在干净环境中实测通过。
+需要 Python 3.11+（前端另需 Node.js 18+）。以下命令均在干净环境中实测通过。
+CI 在 3.11／3.12／3.13 上各跑一遍完整测试——声明支持而不执行的版本，
+会先在用户环境里出问题。
 
 ### 作为包安装
 
@@ -821,7 +823,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1040 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1042 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -854,9 +856,9 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
 | `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
-| `test_documented_claims.py` | 3 | README 声明的测试数、分布表、端点数与代码一致 |
+| `test_documented_claims.py` | 4 | README 声明的测试数、分布表、端点数、Python 版本与代码一致 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
-| `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
+| `test_api_authentication.py` | 28 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
 | `test_rule_engine_safety.py` | 17 | 沙箱逃逸、fail-closed 语义、发布门禁 |
 | `test_platform_database_dialects.py` | 10 | 三方言作为平台库 |

@@ -264,6 +264,46 @@ def test_unlisted_routes_default_to_admin_only() -> None:
     assert required_capability("PUT", "/another/new/thing") == "platform:admin"
 
 
+def test_authentication_is_on_unless_explicitly_disabled() -> None:
+    """The default must be "authenticated", not "convenient".
+
+    `ONTOLOGY_AUTH_DISABLED` exists for local development, and the whole API -- including
+    writeback to legacy systems -- is reachable with no token while it is set. So the
+    dangerous direction is a change that makes *absence* of the variable mean disabled:
+    nothing would fail, every test would still pass, and the exposure would only be
+    visible to whoever found the open port.
+
+    Asserted per interpreter here rather than in a workflow step, which is where this
+    check used to live -- a check that cannot run before pushing reports the problem
+    after review has already started.
+    """
+    import ontology_platform.api as api_module
+
+    assert api_module.AUTH_ENABLED, "认证不能默认关闭"
+
+    # Only the documented opt-in values disable it. A typo (`ONTOLOGY_AUTH_DISABLED=ture`)
+    # must leave authentication on: guessing at intent here would mean guessing in favour
+    # of exposure.
+    with pytest.MonkeyPatch.context() as patch:
+        for value, expected in (
+            ("1", False),
+            ("true", False),
+            ("YES", False),
+            ("ture", True),
+            ("0", True),
+            ("", True),
+        ):
+            patch.setenv("ONTOLOGY_AUTH_DISABLED", value)
+            assert importlib.reload(api_module).AUTH_ENABLED is expected, (
+                f"ONTOLOGY_AUTH_DISABLED={value!r} 时认证应为 {expected}"
+            )
+
+    # Reload once more with the variable gone, so a later test does not inherit a module
+    # left in the disabled state -- that would silently weaken every assertion after it.
+    importlib.reload(api_module)
+    assert api_module.AUTH_ENABLED
+
+
 def test_every_role_capability_is_a_known_capability() -> None:
     from ontology_platform.auth import ALL_CAPABILITIES
 
