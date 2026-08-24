@@ -112,7 +112,7 @@ Dify 的同类产品，失去差异化。
 两项不变量由 `tests/test_module_boundaries.py` 守住——
 只靠文档记录的约束会一次一个「顺手的延迟 import」地退化。
 
-🚧 仍待完成：172 处 `platform_db` 签名迁移、DDL 迁 Alembic（依赖分包边界）。
+🚧 仍待完成：186 处 `platform_db` 签名迁移、DDL 迁 Alembic（依赖分包边界）。
 
 逐项工作清单见 [docs/architecture-debt.md](docs/architecture-debt.md)。
 
