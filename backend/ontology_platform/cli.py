@@ -267,6 +267,27 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Build an audit report for a period.
+
+    On the CLI because a compliance report is usually produced on a schedule and filed,
+    not read in a browser. Exiting non-zero when blocker-level findings exist makes it
+    usable as a periodic check rather than only as a document.
+    """
+    from .audit_reports import AuditPeriodError, build_audit_report
+
+    try:
+        report = build_audit_report(_platform_db(args), start=args.start, end=args.end, ontology_id=args.ontology_id)
+    except AuditPeriodError as error:
+        return _fail(str(error))
+
+    _print(report)
+    # A report nobody reads is the normal outcome, so the exit code carries the verdict:
+    # blocker findings mean something in the period cannot be signed off as-is.
+    blockers = [item for item in report["findings"] if item["severity"] == "blocker"]
+    return 1 if blockers else 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     """Run the whole loop against a built-in sample system."""
     from .metadata import register_data_source, register_source_api, scan_data_source
@@ -554,6 +575,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export_cmd.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
     export_cmd.set_defaults(func=cmd_export)
+
+    audit = sub.add_parser("audit", help="生成一段时间的审计报表（存在阻断级发现时退出码非 0）")
+    audit.add_argument("--start", required=True, help="起始时刻（含），如 2026-08-01")
+    audit.add_argument("--end", required=True, help="结束时刻（不含），如 2026-09-01")
+    audit.add_argument("--ontology-id", type=int, default=None, help="仅统计某个本体")
+    audit.set_defaults(func=cmd_audit)
 
     demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
     demo.add_argument("--sample-db", default="", help="样例业务库输出路径")

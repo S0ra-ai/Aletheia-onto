@@ -23,6 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from ..audit_reports import AuditPeriodError, build_audit_report, describe_report_sections
 from ..database import connect
 from ..decisions import list_decisions
 from ..http_runtime import platform_db
@@ -136,3 +137,36 @@ def model_invocations(limit: int = 50) -> dict[str, object]:
 @router.get("/governance/decisions")
 def decisions(limit: int = 50) -> dict[str, object]:
     return {"items": list_decisions(platform_db(), limit)}
+
+
+# -- Audit reports --
+
+
+@router.get("/governance/audit-report/sections")
+def audit_report_sections() -> dict[str, object]:
+    """What the report answers, so a caller knows what to ask for.
+
+    Each section is named by the audit question it addresses rather than by the table it
+    reads: an auditor arrives with "who changed a published rule", not with "show me
+    audit_log".
+    """
+    return {"items": describe_report_sections()}
+
+
+@router.get("/governance/audit-report")
+def audit_report(start: str, end: str, ontologyId: Optional[int] = None) -> dict[str, object]:
+    """One audit report over one period.
+
+    `start` and `end` are required, with no default window. A report over "everything"
+    invites the reader to treat it as a statement about a period it does not describe, and
+    a finding attached to the wrong period is a wrong finding.
+
+    Distinct from `/governance/audit-log`, which returns raw events. That endpoint answers
+    "what happened recently"; this one answers the questions an auditor actually arrives
+    with -- which controls never fired, which gates were overridden, and how much of the
+    period is re-examinable at all.
+    """
+    try:
+        return build_audit_report(platform_db(), start=start, end=end, ontology_id=ontologyId)
+    except AuditPeriodError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
