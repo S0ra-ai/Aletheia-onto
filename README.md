@@ -540,7 +540,7 @@ _不是_：算法、模型、策略引擎脚本。
 | **跨源聚合**（「这个客户在 ERP 里的订单总额」） | ✅ | `aggregation.py`：`targetDataSourceId` |
 | **时态与生效期**（属性级版本 + as-of 回溯判定） | ✅ | `temporal.py` |
 | **业务事件**（只追加事件流 + 状态流转统一时间线） | ✅ | `events.py` |
-| **公理**（五类模型级约束，违反阻断发布） | ✅ | `axioms.py` |
+| **公理**（六类模型级约束，违反阻断发布） | ✅ | `axioms.py` |
 
 ### 治理与留痕
 
@@ -656,7 +656,7 @@ _不是_：算法、模型、策略引擎脚本。
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
 - 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- HTTP 层共 139 个端点，**已开始拆分 APIRouter**（`routers/`）：
+- HTTP 层共 142 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
@@ -881,7 +881,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1086 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1102 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -895,6 +895,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
 | `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
 | `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
+| `test_tenant_quotas.py` | 16 | 配额存于基础库租户改不了、写前拦截、未声明即不限量、跨租户不串用量 |
 | `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
 | `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
 | `test_cross_object_aggregation.py` | 46 | 聚合定义校验、fail-closed、行数上限、端到端 |

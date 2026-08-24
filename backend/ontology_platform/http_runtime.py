@@ -30,8 +30,17 @@ from fastapi import HTTPException, Request
 
 from . import database
 from .auth import Principal
+from .context import resolve_context
+from .quotas import QuotaExceeded, check_quota
 
-__all__ = ["AUTH_ENABLED", "DEV_ADMIN_PRINCIPAL", "bearer_token", "current_principal", "platform_db"]
+__all__ = [
+    "AUTH_ENABLED",
+    "DEV_ADMIN_PRINCIPAL",
+    "bearer_token",
+    "current_principal",
+    "enforce_quota",
+    "platform_db",
+]
 
 # Authentication is on by default; it can only be disabled explicitly for local
 # development, and the app logs loudly when it is. Only the documented opt-in values
@@ -85,3 +94,25 @@ def current_principal(request: Request) -> Principal:
             return DEV_ADMIN_PRINCIPAL
         raise HTTPException(status_code=401, detail="缺少访问令牌")
     return principal
+
+
+def enforce_quota(resource: str, *, requested: int = 1) -> None:
+    """Refuse a write that would take this tenant past a declared limit.
+
+    Translates `QuotaExceeded` into **429**, not 400 or 403. The distinction is what the
+    caller does next: 400 invites them to fix the request, 403 to obtain permission, and
+    both are wrong -- the request is valid and they are allowed to make it. 429 says the
+    limit is the issue, which is the only reading that leads to the right action
+    (reduce the batch, or ask an administrator to raise the quota).
+
+    A deployment with no quotas declared reaches the underlying check and returns
+    immediately, so this costs one lookup on a table that is usually empty. Placed in the
+    runtime module rather than in each router so the status code cannot differ between
+    endpoints -- a 429 on one path and a 400 on another would make a client's retry logic
+    depend on which endpoint it hit.
+    """
+    context = resolve_context(platform_db())
+    try:
+        check_quota(context, context.tenant, resource, requested=requested)
+    except QuotaExceeded as error:
+        raise HTTPException(status_code=429, detail=str(error)) from error

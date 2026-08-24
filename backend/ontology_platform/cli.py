@@ -115,6 +115,7 @@ def _init_optional_schemas(conn: Any) -> None:
     from .entity_resolution import init_entity_resolution_schema
     from .events import init_event_schema
     from .knowledge_documents import init_knowledge_schema
+    from .quotas import init_quota_schema
     from .temporal import init_temporal_schema
     from .workflow_permission import init_workflow_and_permission_schema
 
@@ -129,6 +130,7 @@ def _init_optional_schemas(conn: Any) -> None:
         init_temporal_schema,
         init_entity_resolution_schema,
         init_axiom_schema,
+        init_quota_schema,
     ):
         initialise(conn)
 

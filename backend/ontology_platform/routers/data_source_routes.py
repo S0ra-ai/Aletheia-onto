@@ -27,7 +27,7 @@ from ..coverage import build_semantic_coverage
 from ..database import connect
 from ..db_executors import registered_database_targets
 from ..generic_sql_adapter import describe_bundled_sql_sources, register_bundled_sql_sources
-from ..http_runtime import platform_db
+from ..http_runtime import enforce_quota, platform_db
 from ..kernel_package import build_kernel_package, export_kernel_package
 from ..knowledge_base import (
     browse_source_table,
@@ -103,6 +103,10 @@ class OpenApiUrlImportCreate(BaseModel):
 
 @router.post("/data-sources")
 def create_data_source(payload: DataSourceCreate) -> dict[str, object]:
+    # Before the write, so a refused registration leaves nothing behind. Registering a
+    # source is what pulls a whole schema into the platform, so it is the other write
+    # worth gating alongside document ingestion.
+    enforce_quota("data_sources")
     try:
         source = register_data_source(
             platform_db(),

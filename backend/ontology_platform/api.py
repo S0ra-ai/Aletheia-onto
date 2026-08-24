@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +34,6 @@ from .auth import (
 )
 from .automation import execute_operation, preflight_operation
 from .axioms import init_axiom_schema
-from .context import resolve_context
 from .contract_documents import parse_rule_docx_bytes
 from .conversations import (
     init_conversation_schema,
@@ -81,6 +79,7 @@ from .ontology import (
     resolve_ontology_for_object,
     summarize_ontology,
 )
+from .quotas import init_quota_schema
 from .release_readiness import assess_ontology_release_readiness
 from .routers import (
     auth_router,
@@ -88,6 +87,7 @@ from .routers import (
     knowledge_router,
     metamodel_router,
     model_governance_router,
+    tenancy_router,
     workflow_permission_router,
 )
 from .sample_data import (
@@ -106,13 +106,6 @@ from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
 from .temporal import (
     TemporalError,
     init_temporal_schema,
-)
-from .tenancy import (
-    TenantError,
-    list_tenants,
-    provision_tenant,
-    tenant_context,
-    tenant_statistics,
 )
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
@@ -145,6 +138,7 @@ async def lifespan(app: FastAPI):
         init_entity_resolution_schema(conn)
         init_conversation_schema(conn)
         init_axiom_schema(conn)
+        init_quota_schema(conn)
     seed_default_tools(DEFAULT_PLATFORM_DB)
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:
@@ -899,70 +893,6 @@ def execute_business_operation(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-class TenantCreate(BaseModel):
-    tenant: str
-
-
-def _tenant_base_context() -> Any:
-    """The context tenants are provisioned from.
-
-    Uses the process default, so provisioning targets whatever platform database
-    the deployment is configured with rather than a hardcoded path.
-    """
-    return resolve_context(DEFAULT_PLATFORM_DB)
-
-
-@core_router.get("/tenants")
-def tenants() -> dict[str, object]:
-    """Provisioned tenants.
-
-    Multi-tenancy is opt-in: a single-tenant deployment provisions nothing and this
-    returns an empty list, which is not an error.
-    """
-    base = _tenant_base_context()
-    return {
-        "items": list_tenants(base),
-        "isolationModel": "separate-schema-plus-tenant-id",
-        "dbType": base.db_type,
-    }
-
-
-@core_router.post("/tenants")
-def create_tenant(
-    payload: TenantCreate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    """Provision a tenant: create its schema and base tables.
-
-    Idempotent, so it is safe to call on every deployment.
-    """
-    try:
-        result = provision_tenant(_tenant_base_context(), payload.tenant)
-    except TenantError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    with connect(DEFAULT_PLATFORM_DB) as conn:
-        conn.execute(
-            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            (
-                principal.actor,
-                "provision_tenant",
-                "tenant",
-                result["tenant"],
-                json.dumps({"schema": result["schema"]}, ensure_ascii=False),
-            ),
-        )
-    return result
-
-
-@core_router.get("/tenants/{tenant}/statistics")
-def tenant_stats(tenant: str) -> dict[str, object]:
-    """Row counts for one tenant, for verifying isolation after provisioning."""
-    try:
-        return tenant_statistics(tenant_context(_tenant_base_context(), tenant))
-    except TenantError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
 @core_router.get("/workbench")
 def workbench(decisionLimit: int = 8) -> dict[str, object]:
     """Aggregated platform state for the workbench screen.
@@ -1004,6 +934,7 @@ ROUTERS: tuple[APIRouter, ...] = (
     knowledge_router,
     metamodel_router,
     model_governance_router,
+    tenancy_router,
     workflow_permission_router,
 )
 

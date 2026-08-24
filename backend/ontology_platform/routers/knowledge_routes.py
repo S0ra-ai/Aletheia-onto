@@ -39,7 +39,7 @@ from ..conversations import (
     set_conversation_status,
     submit_feedback,
 )
-from ..http_runtime import current_principal, platform_db
+from ..http_runtime import current_principal, enforce_quota, platform_db
 from ..knowledge_documents import (
     extract_text_from_docx,
     ingest_document,
@@ -114,6 +114,11 @@ async def upload_knowledge_document(
     content = await file.read()
     name = file.filename or "document"
     try:
+        # Checked before parsing and before any row is written. A quota discovered
+        # afterwards has to undo a partially ingested document, and the tenant is then
+        # unsure what actually landed. Document ingestion is also the write most able to
+        # fill a shared platform database, which is what makes it the one worth gating.
+        enforce_quota("knowledge_documents")
         if name.lower().endswith(".docx"):
             text = extract_text_from_docx(content)
         else:

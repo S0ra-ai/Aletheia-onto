@@ -184,6 +184,9 @@ EXPECTED_ADMIN_ONLY = {
     "POST /model/config",
     "DELETE /model/config",
     "POST /tenants",
+    # 配额是平台对租户设的上限，不是租户的设置项。若租户能改，上限就不成立——
+    # 因此与「开通租户」同级，仅管理员。
+    "PUT /tenants/1/quotas",
     "POST /permissions/roles",
     "POST /permissions/policies",
     "POST /tools",
