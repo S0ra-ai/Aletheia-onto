@@ -168,3 +168,69 @@ def test_the_documented_signature_migration_count_is_current() -> None:
         claimed = {int(found) for found in regex.findall(r"(\d+) 处 `platform_db", text)}
         assert claimed, f"{filename} 未声明待迁移签名数量"
         assert actual in claimed, f"{filename} 声明 {sorted(claimed)} 处，实际 {actual} 处"
+
+
+def test_the_documented_scale_is_current() -> None:
+    """The "规模" line is the first thing a reader checks against reality.
+
+    It had drifted badly -- 29 modules and 98 endpoints against an actual 71 and 149 --
+    which is the kind of error that costs more than it looks: a reader who verifies one
+    headline number and finds it less than half right stops trusting every other number in
+    the document, including the ones that are correct.
+
+    Counted with tolerance rather than exactly for the line total, since prose cannot
+    reasonably track single-line edits. Module and endpoint counts are exact: those change
+    only when something is added or removed.
+    """
+    import re as regex
+
+    package = ROOT / "backend" / "ontology_platform"
+    modules = sorted(path for path in package.rglob("*.py") if "__pycache__" not in str(path))
+    lines = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in modules)
+
+    import sys
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.api import declared_routes
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    claim = regex.search(r"(\d+) 个后端模块约 (\d+) 行，(\d+) 个 API 端点，(\d+) 张平台表", readme)
+    assert claim, "README 规模一节格式已变，请同步本测试"
+    stated_modules, stated_lines, stated_endpoints, stated_tables = (int(value) for value in claim.groups())
+
+    assert stated_modules == len(modules), f"声明 {stated_modules} 个模块，实际 {len(modules)}"
+    assert stated_endpoints == len(declared_routes()), f"声明 {stated_endpoints} 个端点，实际 {len(declared_routes())}"
+    # Within 5%: close enough to be honest, loose enough not to fail on a comment edit.
+    assert abs(stated_lines - lines) / lines < 0.05, f"声明约 {stated_lines} 行，实际 {lines}"
+
+    tables = _platform_table_count()
+    assert stated_tables == tables, f"声明 {stated_tables} 张平台表，实际 {tables}"
+
+
+def _platform_table_count() -> int:
+    """Tables a freshly initialised platform database contains.
+
+    Counted by running `aletheia init` rather than by grepping DDL: feature modules own
+    their own `SchemaBundle`, so a grep of `database.py` would miss every table added since
+    the metamodel grew -- which is most of them. Driving the CLI also means the count is
+    what a user actually gets, not what the internals could produce.
+    """
+    import contextlib
+    import io
+    import sqlite3
+    import sys
+    import tempfile
+    from pathlib import Path as FsPath
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.cli import main
+
+    database = FsPath(tempfile.mkdtemp()) / "scale.sqlite3"
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert main(["--platform-db", str(database), "init"]) == 0
+    with sqlite3.connect(database) as raw:
+        return int(
+            raw.execute(
+                "select count(*) from sqlite_master where type = 'table' and name not like 'sqlite_%'"
+            ).fetchone()[0]
+        )

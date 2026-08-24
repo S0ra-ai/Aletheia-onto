@@ -910,7 +910,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1166 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+**1167 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
 对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
@@ -949,7 +949,7 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS 映射、SHACL 形状生成、IRI 稳定性、导出必须能被 RDF 解析器解析 |
 | `test_axioms.py` | 20 | 公理五类校验、声明期拒绝、发布门禁阻断、缺表读作未配置 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
-| `test_documented_claims.py` | 5 | README 声明的测试数、分布表、端点数、Python 版本、技术债计数与代码一致 |
+| `test_documented_claims.py` | 6 | README 声明的测试数、分布表、端点数、Python 版本、技术债计数与代码一致 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 28 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
@@ -972,7 +972,7 @@ CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开�
 
 ## 规模
 
-29 个后端模块约 13400 行，98 个 API 端点，31 张平台表，前端 React + antd。
+71 个后端模块约 31400 行，149 个 API 端点，44 张平台表，前端 React + antd。
 
 ## 示例
 
