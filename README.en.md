@@ -655,8 +655,8 @@ can be revoked, and changing a password invalidates all existing sessions.
 .venv/bin/python -m pytest
 ```
 
-**1035 tests**, all passing. Three skip by environment: the MySQL/PostgreSQL cases skip when
-no server is reachable, and the wheel build runs only in CI.
+**1040 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+no server is reachable.
 
 | File | Count | Covers |
 |---|--:|---|
@@ -686,7 +686,7 @@ no server is reachable, and the wheel build runs only in CI.
 | `test_temporal_validity.py` | 35 | half-open windows, backdated inserts, as-of verdicts use past values, absence is not interpolated |
 | `test_cli.py` | 35 | CLI loop, release gate not bypassable, errors without tracebacks |
 | `test_api_versioning.py` | 20 | `/v1` and bare paths authorize identically, public paths survive versioning, no endpoint silently lands on the admin default |
-| `test_packaging.py` | 13 | dependency-free kernel, version agreement, PEP 561, cwd-independent default path |
+| `test_packaging.py` | 15 | dependency-free kernel, single source of pins, PEP 561, cwd-independent default path |
 | `test_module_boundaries.py` | 6 | no import cycles, no cross-module private imports, resolvable `__all__` |
 | `test_metadata_flow.py` | 34 | onboarding, scanning, drafting, readiness |
 | `test_api_authentication.py` | 27 | auth, sessions, capability policy, trusted actor |

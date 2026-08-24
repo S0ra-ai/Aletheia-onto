@@ -635,7 +635,7 @@ _不是_：算法、模型、策略引擎脚本。
 - **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
 - 172 处 `platform_db: Path | str` 签名**尚未改为上下文对象**——现在能接受它，
   但逐模块迁移是后续工作（[ADR-0010](docs/adr/0010-platform-context-replaces-global-singleton.md)）。
-- `api.py` 单文件 133 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
+- `api.py` 单文件 135 个端点，**尚未拆分为 APIRouter**（`/v1` 前缀已有）。
 - 前端 `types/index.ts` 手写 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
 - DDL 调度已统一到 `schema.py`，但**尚未迁移 Alembic**——迁移需归属于某个分发包，
   因此阻塞于分包边界。
@@ -821,8 +821,8 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 .venv/bin/python -m pytest
 ```
 
-**1035 个测试**，全绿。其中 3 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例
-自动跳过，wheel 构建用例只在 CI 上执行。分布：
+**1040 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
+对应用例自动跳过。分布：
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
@@ -852,8 +852,9 @@ SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
 | `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
 | `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
 | `test_api_versioning.py` | 20 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
-| `test_packaging.py` | 13 | 内核零依赖、版本一致、PEP 561、默认路径不依赖工作目录 |
+| `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
 | `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
+| `test_documented_claims.py` | 3 | README 声明的测试数、分布表、端点数与代码一致 |
 | `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
 | `test_api_authentication.py` | 27 | 认证、会话、能力策略、actor 可信 |
 | `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
