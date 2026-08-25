@@ -27,7 +27,15 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 PYPROJECT = ROOT / "pyproject.toml"
-READMES = {"README.md": "(\\d+)\\s*个测试", "README.en.md": r"\*\*(\d+) tests\*\*"}
+# Where each language states the test total. Both READMEs carry it as a badge; the testing
+# pages carry it in prose. Checked in every place it appears, because one stale copy is
+# enough to teach a reader that the numbers here cannot be trusted.
+TEST_TOTAL_SOURCES = {
+    "README.md": r"tests-(\d+)%20passing",
+    "README.zh-CN.md": r"tests-(\d+)%20passing",
+    "docs/testing.md": r"\*\*(\d+) tests\*\*",
+    "docs/testing.zh-CN.md": r"\*\*(\d+) 个测试\*\*",
+}
 
 
 def _collected_counts() -> dict[str, int]:
@@ -53,7 +61,7 @@ def test_both_readmes_state_the_real_test_total() -> None:
     assert counts, "未能从 pytest 解析每个文件的收集数量"
     total = sum(counts.values())
 
-    for filename, pattern in READMES.items():
+    for filename, pattern in TEST_TOTAL_SOURCES.items():
         claimed = {int(found) for found in re.findall(pattern, (ROOT / filename).read_text(encoding="utf-8"))}
         assert claimed, f"{filename} 未声明测试总数"
         assert total in claimed, f"{filename} 声明 {sorted(claimed)}，实际收集到 {total}"
@@ -67,9 +75,15 @@ def test_the_per_file_breakdown_covers_every_test_file() -> None:
     with two modules testing the same thing.
     """
     counts = _collected_counts()
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    # The table moved out of the README when the entry point was shortened. Both language
+    # versions carry it, and both are checked: a breakdown that is right in one language and
+    # stale in the other is worse than one place being wrong, because the reader who checks
+    # the stale copy has no reason to suspect the other exists.
+    testing = "\n".join(
+        (ROOT / "docs" / name).read_text(encoding="utf-8") for name in ("testing.zh-CN.md", "testing.md")
+    )
     documented = {
-        name: int(count) for name, count in re.findall(r"^\| `(test_\S+\.py)` \| (\d+) \|", readme, re.MULTILINE)
+        name: int(count) for name, count in re.findall(r"^\| `(test_\S+\.py)` \| (\d+) \|", testing, re.MULTILINE)
     }
 
     actual = {Path(path).name: count for path, count in counts.items()}
@@ -98,10 +112,10 @@ def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
 
     routes = len(declared_routes())
 
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    claimed = {int(found) for found in re.findall(r"(\d+)\s*个端点", readme)}
-    assert claimed, "README 未声明端点数量"
-    assert routes in claimed, f"README 声明 {sorted(claimed)} 个端点，实际 {routes}"
+    limitations = (ROOT / "docs" / "limitations.zh-CN.md").read_text(encoding="utf-8")
+    claimed = {int(found) for found in re.findall(r"(\d+)\s*个端点", limitations)}
+    assert claimed, "docs/limitations.zh-CN.md 未声明端点数量"
+    assert routes in claimed, f"文档声明 {sorted(claimed)} 个端点，实际 {routes}"
 
 
 def test_every_claimed_python_version_is_actually_tested() -> None:
@@ -138,7 +152,7 @@ def test_every_claimed_python_version_is_actually_tested() -> None:
         f"requires-python 为 {floor.group(1)}，但最旧的被测版本是 {oldest_tested}——pip 会安装到从未跑过测试的解释器上"
     )
 
-    for filename, pattern in (("README.md", r"python-3\.(\d+)%2B"), ("README.en.md", r"python-3\.(\d+)%2B")):
+    for filename, pattern in (("README.md", r"python-3\.(\d+)%2B"), ("README.zh-CN.md", r"python-3\.(\d+)%2B")):
         badge = re.search(pattern, (ROOT / filename).read_text(encoding="utf-8"))
         assert badge, f"{filename} 缺少 Python 版本徽章"
         assert f"3.{badge.group(1)}" == oldest_tested, (
@@ -202,9 +216,9 @@ def test_the_documented_scale_is_current() -> None:
     sys.path.insert(0, str(ROOT / "backend"))
     from ontology_platform.api import declared_routes
 
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    claim = regex.search(r"(\d+) 个后端模块约 (\d+) 行，(\d+) 个 API 端点，(\d+) 张平台表", readme)
-    assert claim, "README 规模一节格式已变，请同步本测试"
+    testing = (ROOT / "docs" / "testing.zh-CN.md").read_text(encoding="utf-8")
+    claim = regex.search(r"(\d+) 个后端模块约 (\d+) 行，(\d+) 个 API 端点，(\d+) 张平台表", testing)
+    assert claim, "docs/testing.zh-CN.md 规模一节格式已变，请同步本测试"
     stated_modules, stated_lines, stated_endpoints, stated_tables = (int(value) for value in claim.groups())
 
     assert stated_modules == len(modules), f"声明 {stated_modules} 个模块，实际 {len(modules)}"

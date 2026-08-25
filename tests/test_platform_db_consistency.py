@@ -186,5 +186,8 @@ def test_serve_announces_the_database_it_will_use(tmp_path: Path, monkeypatch, c
 
 def test_the_new_variable_is_documented() -> None:
     """A resolution rule nobody can find is a rule that gets rediscovered by debugging."""
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "ONTOLOGY_PLATFORM_DB_FILE" in readme, "README 未记录该环境变量"
+    # Documented in both languages: a resolution rule that only one audience can find is
+    # one the other audience rediscovers by debugging.
+    for filename in ("docs/configuration.md", "docs/configuration.zh-CN.md"):
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        assert "ONTOLOGY_PLATFORM_DB_FILE" in text, f"{filename} 未记录该环境变量"
