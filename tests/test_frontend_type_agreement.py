@@ -159,10 +159,10 @@ def test_the_response_side_is_recorded_as_debt_rather_than_claimed_as_done() -> 
             if response_schema.get("$ref") or response_schema.get("properties"):
                 typed += 1
 
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    limitations = (ROOT / "docs" / "limitations.zh-CN.md").read_text(encoding="utf-8")
     if typed:
-        assert "OpenAPI 生成前端类型" not in readme, (
+        assert "OpenAPI 生成前端类型" not in limitations, (
             f"{typed} 个端点已有响应类型，可以生成前端类型了——请移除该项技术债记录。"
         )
     else:
-        assert "手写" in readme, "响应仍无类型，README 应如实记录前端类型为手写"
+        assert "手写" in limitations, "响应仍无类型，限制文档应如实记录前端类型为手写"

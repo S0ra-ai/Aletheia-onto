@@ -126,18 +126,57 @@ def test_the_readme_answers_where_to_start_before_it_explains_itself() -> None:
     the first install command land past line 180, after the naming rationale and a product
     comparison. Someone evaluating the project in two minutes never got there.
     """
-    text = ROOT.joinpath("README.md").read_text(encoding="utf-8")
-    lines = text.splitlines()
+    for filename, nav_heading in (("README.md", "## Where to go"), ("README.zh-CN.md", "## 我想做什么")):
+        text = ROOT.joinpath(filename).read_text(encoding="utf-8")
+        lines = text.splitlines()
 
-    install = next(
-        (index for index, line in enumerate(lines) if "pip install aletheia-onto" in line),
-        None,
-    )
-    assert install is not None, "README 未包含安装命令"
-    assert install < 60, f"首个安装命令在第 {install + 1} 行，太靠后——评估者读不到那里"
+        install = next(
+            (index for index, line in enumerate(lines) if "pip install aletheia-onto" in line),
+            None,
+        )
+        assert install is not None, f"{filename} 未包含安装命令"
+        assert install < 60, f"{filename} 首个安装命令在第 {install + 1} 行，太靠后——评估者读不到那里"
 
-    # And a map, so a reader with a specific goal does not have to read linearly.
-    assert "## 我想做什么" in text, "README 缺少按目的导航的入口表"
+        # And a map, so a reader with a specific goal does not have to read linearly.
+        assert nav_heading in text, f"{filename} 缺少按目的导航的入口表"
+
+
+def test_both_readmes_stay_short_enough_to_read() -> None:
+    """The entry point is not the manual.
+
+    A reader deciding whether to try the project needs a different document from one
+    implementing against it, and a single file cannot be both without failing the first. The
+    Chinese README was 1139 lines before its nine long sections moved into `docs/`.
+
+    The limit is generous rather than tight: the point is to catch a section quietly growing
+    back, not to police paragraph counts.
+    """
+    for filename in ("README.md", "README.zh-CN.md"):
+        length = len(ROOT.joinpath(filename).read_text(encoding="utf-8").splitlines())
+        assert length < 260, f"{filename} 已 {length} 行——深度内容应移入 docs/ 并留链接"
+
+
+def test_each_readme_links_to_the_other() -> None:
+    """English-first, with the Chinese version one click away rather than lost in the tree."""
+    english = ROOT.joinpath("README.md").read_text(encoding="utf-8")
+    chinese = ROOT.joinpath("README.zh-CN.md").read_text(encoding="utf-8")
+    assert "README.zh-CN.md" in english, "英文 README 未链接中文版"
+    assert "README.md" in chinese, "中文 README 未链接英文版"
+
+
+def test_every_screenshot_is_referenced_by_a_document() -> None:
+    """An unreferenced image is one nobody will notice has gone stale.
+
+    Screenshots were all re-captured against the current UI; the risk now is a page being
+    renamed and its image quietly orphaned, so the file lingers while the claim it supported
+    disappears.
+    """
+    images = sorted(path.name for path in ROOT.joinpath("docs", "images").glob("*.png"))
+    assert images, "docs/images 下没有截图"
+
+    corpus = "\n".join(path.read_text(encoding="utf-8") for path in DOCUMENTS)
+    orphaned = [name for name in images if name not in corpus]
+    assert not orphaned, f"以下截图未被任何文档引用: {orphaned}"
 
 
 def test_the_docs_index_does_not_claim_shipped_features_are_missing() -> None:

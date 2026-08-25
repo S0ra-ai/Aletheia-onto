@@ -1,1138 +1,155 @@
+<div align="center">
+
 # Aletheia
 
-> 让埋在表结构里的业务语义显形，并让每个判定都可核验。
+**A verifiable semantic kernel for legacy business systems.**
+
+Turn the meaning buried in your database schema into a governed domain ontology —
+and make every verdict answer *why*.
 
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-1348%20passing-brightgreen.svg)](docs/testing.md)
 
-[English](README.en.md) | 简体中文
+English · [简体中文](README.zh-CN.md)
 
-Aletheia（ἀλήθεια）是古希腊语的「真理」，亦为真理女神之名。它的字面义是
-**「去蔽」——使被隐藏之物显现**。这与本项目要做的事高度一致：业务语义被掩埋在
-表名、字段与外键中，Aletheia 把它揭示为可治理的领域本体，并让每个判定结论都可核验。
-
-神话中它的对立面是 Pseudologoi（谎言之灵）——看似合理却无法核验的言说。
-这正是本项目要解决的问题。
+</div>
 
 ---
 
-## 60 秒上手
+## Why Aletheia
+
+Retrieval frameworks optimise for *"does this look like an answer"*.
+Aletheia optimises for **"can this answer be questioned"**.
+
+For decisions about entitlements, money, compliance or approvals, an answer that merely
+looks right is worthless — nobody can sign off on it. So every verdict carries four things:
+
+| | Comes from |
+|---|---|
+| **Verdict** — order A123 does not qualify for a refund | rule engine |
+| **Governing rule** — `refund_window_check` | business rule definition |
+| **Evidence** — delivered 2026-07-28, 24 days ago, past the 15-day window | structured query |
+| **Decision record** — a persisted `decision_record`, auditable and attributable | decision trail |
+
+```
+「Order A123 does not qualify for a refund: delivered more than 15 days ago
+ (rule refund_window_check), per Article 3.2 of the After-Sales Policy.」
+```
+
+"More than 15 days" comes from a structured query. "Does not qualify" comes from the rule
+engine. "Article 3.2" comes from document retrieval, anchored to that rule and confirmed
+through governance before it can be cited.
+
+**The difference from Dify / FastGPT / LangChain is not retrieval quality — it is whether
+the conclusion can be interrogated.** Retrieval precision is an explicit non-goal.
+
+<div align="center">
+
+![Semantic Q&A with evidence](docs/images/01-semantic-qa-with-evidence.png)
+
+*A verdict with its intent, confidence, recommended action and semantic evidence.*
+
+</div>
+
+## Quick start
 
 ```bash
-pip install aletheia-onto        # 内核零第三方依赖
-aletheia demo                    # 接入 → 建模 → 判定，一条命令跑通
+pip install aletheia-onto     # dependency-free kernel
+aletheia demo                 # connect → model → assess, in one command
 ```
 
 ```json
 { "ontologyId": 1, "objectCode": "contract", "decision": "approved" }
 ```
 
-接你自己的系统：
+Point it at your own system:
 
 ```bash
 aletheia init
-aletheia connect postgresql://user:pass@host/db --domain 合同管理
-aletheia model 1                 # 扫描元数据，生成本体草案
-aletheia assess 1 contract 1     # 对一个实例产出可核验的判定
+aletheia connect postgresql://user:pass@host/db --domain contracts
+aletheia model 1                  # scan metadata, draft an ontology
+aletheia assess 1 contract 1      # produce a verifiable verdict for one instance
 ```
 
-判定不通过时，返回的是**为什么**——哪条规则、依据哪些字段值、是否需要人工复核。
-完整路径见[快速开始](#快速开始)。
-
-## 我想做什么
-
-按你的目的选入口，不必通读本文。
-
-| 我想…… | 去哪里 |
-|---|---|
-| 先看它能产出什么 | [效果图](#效果图) · [解决什么问题](#解决什么问题) |
-| 装上并跑通一遍 | [快速开始](#快速开始) |
-| 接入我自己的数据库 | [快速开始](#快速开始) · [平台库三方言](#平台库三方言) |
-| 起一个自己的项目 | `aletheia new`，见[快速开始](#快速开始) |
-| 知道它到底做到了哪一步 | [能力矩阵](#能力矩阵) · [当前限制](#当前限制) |
-| 接一个平台不支持的数据库／规则函数／检索后端 | [扩展指南](docs/extending.md) |
-| 导出为 OWL／SHACL 给别的工具用 | [快速开始](#快速开始)的「导出为标准词汇」 |
-| 上生产 | [私有化部署](#私有化部署) · `aletheia preflight` |
-| 理解某个设计为什么是这样 | [设计决策](#设计决策) · [ADR 全集](docs/adr/) |
-| 对标 GB/T 48000.3—2026 国标 | [ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md) |
-
-> **本文档偏长，因为它记录取舍而不只是用法。** 想快速判断这个项目是否适合你，
-> 读[解决什么问题](#解决什么问题)与[当前限制](#当前限制)两节即可——
-> 后者逐项写明了做不到什么，以及为什么那是设计而非缺陷。
-
-## 解决什么问题
-
-通用 RAG 框架优化的是「检索到的内容像不像答案」。Aletheia 优化的是
-**「答案能不能被追问」**。
-
-对权益、金额、合规、审批这类判定场景，一个「看起来对」的回答没有价值，
-因为没有人能为它签字。Aletheia 的判定类结论必须同时给出四样东西：
-
-| | 来源 |
-|---|---|
-| **结论** —— 订单 A123 不满足退款条件 | 规则引擎 |
-| **依据规则** —— `refund_window_check` | 业务规则定义 |
-| **证据链** —— 签收日期 2026-07-28，距今 24 天，超过 15 天窗口 | 结构化查询 |
-| **决策记录** —— 落库的 `decision_record`，可审计、可复核、可追责 | 决策留痕 |
-
-目标形态是这样一句客服回答：
-
-> 「订单 A123 不满足退款条件，因签收已超 15 天（规则 `refund_window_check`），
-> 依据《售后政策》第 3.2 条。」
-
-其中「超 15 天」来自结构化查询，「不满足」来自规则引擎，
-「第 3.2 条」来自文档检索。
-
-**三段现已全部打通。** 「第 3.2 条」由文档知识层提供：条款按编号切分、
-锚定到具体规则、经审核后才可被引用（见[文档知识库](#文档知识库)）。
-
-检索质量不是本项目的优势，也明确列在 Non-Goals 中；默认实现为零外部依赖的
-BM25，追求召回质量的部署可注册 pgvector 等后端。**可核验的引用**才是差异点。
-
-与 Dify／FastGPT／LangChain 的差别不在检索精度，而在结论的可追问性。
-
-## 效果图
-
-以下均为真实运行截图，非示意图或设计稿。数据来自内置的合成示例系统
-（`examples/contract-system` 与设备运维样例），不含任何真实业务信息。
-
-### 工作台：一屏看清「接下来该做什么」
-
-![工作台](docs/images/06-workbench.png)
-
-待处理事项按阻断优先排序，每条都指向可以处理它的页面。
-所有数字都是既有表的只读投影，不会与它所汇总的页面产生分歧。
-
-### 语义问答：结论 + 依据规则 + 证据
-
-![语义问答与判定依据](docs/images/01-semantic-qa-with-evidence.png)
-
-返回的不是一段自由文本，而是有结构的判定：**加粗的结论**、
-**逐条规则的判定与原因**（每条带规则编码，如 `clause_content_required`，可回查）、
-以及以表格呈现的批量决策分布。回答以 Markdown 渲染，
-因此「哪条规则、为什么、结论是什么」可以分辨，而不是糊成一段。
-
-左侧角色「设备运维业务专家」由已接入领域运行时派生——平台没有内置任何行业角色。
-
-### 数据接入与元数据扫描
-
-![数据源接入与元数据扫描](docs/images/02-data-source-onboarding.png)
-
-接入既有数据库后自动扫描：表、字段、类型、外键关系、枚举候选、接入准备度评分。
-连接串中的密码段已脱敏。
-
-### 领域本体与业务对象
-
-![领域本体与业务对象](docs/images/03-ontology-objects.png)
-
-由元数据生成的本体草案：业务对象、属性、关系，以及每条语义映射的置信度与审核状态。
-
-### 治理与发布门禁
-
-![治理与发布门禁](docs/images/04-governance-release-gate.png)
-
-发布前评估 release-readiness。存在阻断项时拒绝发布，`force` 覆盖会连同
-未通过门禁数一并写入审计。
-
-### 角色与对象权限
-
-![角色与对象权限](docs/images/05-roles-and-permissions.png)
-
-6 种能力 × 6 种角色，对象级读写执行删除策略。
-
-> ⚠️ 图中的「行级过滤表达式」字段目前**有存储但未生效**，
-> `check_permission` 只原样返回、不做过滤。详见[当前限制](#当前限制)。
-
-### 知识图谱预览
-
-![知识图谱预览](docs/images/07-knowledge-graph.png)
-
-本体是图，但其余页面都以表格呈现，这会掩盖恰恰需要被看见的问题：
-没有任何关联的孤立对象、自引用层级、以及不产出判定的对象簇。
-颜色编码的是**诊断**而非装饰——红色表示未绑定来源表，橙色表示无规则。
-圆圈大小为关联数量，悬停显示该关联依据的外键列。
-
-图中如实标注了关系表达力的限制：`relation_type` 恒为 `references`、无基数、无多对多。
-
-### 多租户隔离
-
-按 [ADR-0006](docs/adr/0006-tenant-isolation-model.md) 落地**双层隔离**——
-两层的失效模式不重叠,任何单层出问题另一层仍拦得住:
-
-| 层 | 作用 | 各方言实现 |
-|---|---|---|
-| **schema** | 挡住忘写租户过滤的查询 | PG `search_path`／MySQL database／SQLite 独立文件 |
-| **`tenant_id`** | 把路由错误变成可见报错,而非静默跨租户读取 | 关键表加列 + 写入自动填充 |
-
-共享表方案被否决的原因很具体:它把正确性押在「每条查询都记得加过滤」上,
-而**漏写过滤在单租户测试数据下完全看不出来**。
-
-租户标识受严格校验(`^[a-z][a-z0-9_]{0,38}$`)——它会被插入 DDL 与 `search_path`,
-而这两处无法用绑定参数,因此必须先证明其安全。
-
-`require_tenant()` 在无法确定租户时**拒绝而非猜测**,与 ADR-0002 同一立场。
-
-### 文档知识库
-
-![文档知识库](docs/images/09-knowledge-base.png)
-
-制度与合同条款按**条款编号**切分（`第3.2条`、`3.1`、`一、`、`Article 7`），
-保留人类可引用的定位。两条治理约束写进了流程：
-
-1. **条目默认 pending，未确认不可被检索。** 一段被错误切分的条款若直接成为判定依据，
-   产生的是「看起来有据可查但依据是错的」——比没有依据更危险。
-2. **确认时必须锚定**业务对象或规则。未锚定的文本无法回答
-   「这段话凭什么支持这个结论」，因此不构成依据。
-
-检索顺序是**先按锚定收窄候选，再排序**——这与「全库检索后看命中什么」方向相反，
-也是引用可归因而非仅相似的原因。
-
-### 反馈闭环
-
-![反馈闭环](docs/images/10-feedback-loop.png)
-
-用户对判定结论的评价会**锚定到具体消息与决策记录**——「这个判定不对」只有在
-知道是哪个判定时才可行动。
-
-两处刻意不做的设计：
-
-1. **不提供满意度平均分。** 平均分不告诉你该修哪一条;按评价分类计数、
-   「结论错误」排在最前，才是可行动的。
-2. **不提供「一键应用纠正」。** 纠正是一方主张而非新规则，
-   要成为规则或知识条目须走治理流程（ADR-0002）。
-
-### 模型配置：适配自定义订阅
-
-![模型配置](docs/images/08-model-config.png)
-
-平台使用 OpenAI 兼容的 chat/completions 协议，因此任何实现该协议的服务都可接入。
-仅可配 Base URL 是不够的——各家在**如何传密钥**与**能容忍哪些额外字段**上并不一致，
-因此另有兼容性设置：
-
-| 设置 | 解决的问题 |
-|---|---|
-| 鉴权方式（bearer／api-key／自定义／不发送） | Azure 用 `api-key` 头；本地服务常无需密钥 |
-| 发送 OpenRouter 扩展字段（可关闭） | vLLM、LM Studio 等对未知字段直接返回 400 |
-| 附加请求头（JSON） | 部分网关需要租户或分组标识 |
-
-内置 OpenRouter／OpenAI／中转站／Azure／自建 vLLM／阿里云百炼预设，
-并显示**实际会被调用的完整地址**。未配置密钥时回退本地启发式，功能不中断。
-
-完整配置项与排错见[接入自定义模型服务](docs/model-endpoints.md)。
-
-## 快速开始
-
-需要 Python 3.11+（前端另需 Node.js 18+）。以下命令均在干净环境中实测通过。
-CI 在 3.11／3.12／3.13 上各跑一遍完整测试——声明支持而不执行的版本，
-会先在用户环境里出问题。
-
-### 作为包安装
-
-内核**零第三方依赖**，不装 web 服务器也能跑通完整闭环。
+Scaffold a project that depends on the platform — **not a fork**, so upgrading is
+`pip install -U aletheia-onto`:
 
 ```bash
-pip install aletheia-onto          # 内核：本体、规则、判定、留痕
-pip install 'aletheia-onto[all]'   # 加上 HTTP 层、PostgreSQL／MySQL、文档解析
-```
-
-```bash
-aletheia demo      # 用内置样例系统跑通：接入 → 建模 → 判定
-aletheia doctor    # 报告当前配置、已安装 extra 与已注册扩展点
-```
-
-`aletheia demo` 的输出（内核裸装，无任何 extra）：
-
-```json
-{
-  "platformDb": "~/.aletheia/platform.sqlite3",
-  "ontologyId": 1,
-  "objectCode": "contract",
-  "decision": "approved",
-  "next": "aletheia serve  # 打开 http://127.0.0.1:8000/docs"
-}
-```
-
-**从脚手架起步。** `new` 生成一个依赖平台的项目骨架，**不是 fork**——
-升级即 `pip install -U aletheia-onto`，生成的代码无需改动：
-
-```bash
-aletheia new --list-extensions          # 先看有哪些扩展点、各自适用什么场景
-aletheia new mycorp --extension rule-function --domain 合同管理
+aletheia new --list-extensions
+aletheia new mycorp --extension rule-function --domain contracts
 cd mycorp && pip install -e . && python -m mycorp init
 ```
 
-生成物包含配置模块、按需生成的扩展点骨架、一致性契约脚本，
-以及不含任何可用默认值的 `.env.example`。用 `python -m mycorp` 而非 `aletheia`：
-后者不会加载你注册的扩展。
+→ **[Full quick start](docs/quickstart.md)** · [Configuration](docs/configuration.md)
 
-接自己的系统：
+## What you get
 
-```bash
-aletheia init
-aletheia connect postgresql://user:pass@host/db --domain 合同管理
-aletheia model 1
-aletheia assess 1 contract 1
-```
-
-**接入不限于数据库。** 拿不到生产库凭据时，导出文件与 API 同样能跑通全链路：
-
-```bash
-aletheia connect /path/to/extract --type csv --domain 合同管理   # 一个 CSV 目录
-aletheia doctor        # 列出可用数据源，以及未激活的需要哪个驱动
-```
-
-Oracle／SQL Server／达梦／人大金仓／openGauss 已内置声明与方言，
-装上对应驱动即出现在数据源列表里。接一个未内置的 SQL 库不需要写适配器——
-声明 4 行即可，见[扩展指南](docs/extending.md#10-接一个新的-sql-数据库)。
-
-**由本体生成前端类型。** 手写镜像做不到的那部分：关系被类型化为它指向的**对象**，
-而不是 `number`——手写版把每个外键都写成数字，于是没有任何东西阻止把合同 id
-传给需要客户的地方。
-
-```bash
-aletheia codegen 1 --output src/types/ontology.ts
-```
-
-只接受**已发布**本体：草案的对象与属性会在映射审核期间变动，据此生成的类型
-描述的是没人同意过的模型。产物经真实 `tsc --strict` 编译验证。
-
-**导出为标准词汇。** 对标 GB/T 48000.3—2026 对 OWL/RDF 的采用要求，
-本体可直接导出为外部 RDF 工具**能解释**（而非仅能读取）的形式：
-
-```bash
-aletheia export 1 --format owl    > ontology.ttl   # owl:Class／rdfs:domain／rdfs:range
-aletheia export 1 --format shacl  > shapes.ttl     # SHACL 形状，可交给校验器
-aletheia export 1 --format jsonld > asset.jsonld   # 平台词汇，字段更全
-```
-
-两套词汇并存而非替换：`owl`／`shacl` 用标准术语，换来互操作；
-`jsonld`／`turtle` 用平台自有术语，保留标准词汇无对应词的字段
-（来源表、规则表达式、映射置信度）。
-SHACL 形状**由同一份声明生成而非手写**——手写的一份会与发布门禁漂移，
-而漂移的那份会声明平台并不执行的约束。
-
-**回溯判定。** 合规审计问的通常是过去某一刻：
-
-```bash
-aletheia assess 1 contract 1 --as-of 2026-01-31
-```
-
-按当时的属性值与**当时生效的规则**判定。拿今天的值重新判定回答的是另一个问题。
-
-`aletheia assess` 只输出判定与未通过的规则；完整证据用 `--verbose`，
-或从决策留痕里查。`aletheia publish` 受发布门禁约束，
-**待审核的语义映射无法用 `--force` 跳过**——在没人看过的映射上发布，
-会让由它得出的每个判定都无法追责。
-
-### 从源码运行
-
-```bash
-git clone git@github.com:S0ra-ai/Aletheia-onto.git && cd Aletheia-onto
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-ONTOLOGY_ADMIN_PASSWORD=change-me-please .venv/bin/python -m uvicorn \
-    ontology_platform.api:app --app-dir backend --host 127.0.0.1 --port 8000
-```
-
-服务起来后：
-
-- 健康检查 `http://127.0.0.1:8000/health` → `{"status":"ok"}`
-- API 文档 `http://127.0.0.1:8000/docs`
-
-每个端点同时以裸路径与 `/v1` 前缀提供（`/ontologies/1` 与 `/v1/ontologies/1`），
-两条路径经过同一套鉴权中间件与同一份权限策略。新接入方请固定 `/v1`。
-
-默认平台库是 SQLite，**无需任何外部数据库服务**。
-未设置 `ONTOLOGY_ADMIN_PASSWORD` 时会生成随机管理员口令并打印在启动日志中。
-
-### 登录并完成一次问答
-
-```bash
-# 1. 登录，取得令牌
-TOKEN=$(curl -fsS -X POST http://127.0.0.1:8000/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"change-me-please"}' \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-
-# 2. 载入示例本体（合同管理样例，4 张表）
-curl -fsS -X POST http://127.0.0.1:8000/demo/bootstrap \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}'
-
-# 3. 问一个问题
-curl -fsS -X POST http://127.0.0.1:8000/semantic/natural-language/query \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"question":"整体合规情况如何？","ontologyId":1,"useModel":false}'
-```
-
-第 3 步的实际返回（未配置模型密钥，走本地启发式）：
-
-```json
-{
-  "answer": "合同 的批量决策一致性为 mixed。已评估 3 条：通过 2、复核 1、阻断 0、错误 0。",
-  "intent": "decision_consistency",
-  "confidence": 0.82
-}
-```
-
-不带令牌访问受保护端点会得到 `401`。CI 的 `quickstart` job 每次都会重跑上面这条链路。
-
-### 前端（可选）
-
-```bash
-cd frontend && npm install && npm run dev
-```
-
-前端默认 `http://127.0.0.1:3000`，需通过 `ONTOLOGY_ALLOWED_ORIGINS` 允许其来源。
-
-## 架构
-
-```mermaid
-flowchart TB
-    subgraph L1["接入层 ✅"]
-        DS["数据源适配器<br/>SQLite / MySQL / PostgreSQL"]
-        OAPI["OpenAPI 导入<br/>业务操作登记"]
-    end
-
-    subgraph L2["语义内核 ✅"]
-        META["元数据扫描<br/>字段画像 / 枚举识别 / 外键 / 结构漂移"]
-        ONTO["本体建模<br/>业务对象 / 属性 / 关系"]
-        MAP["语义映射<br/>table_to_object / column_to_attribute"]
-        RULE["规则引擎<br/>AST 白名单沙箱 / fail-closed"]
-    end
-
-    subgraph L3["治理与留痕 ✅"]
-        GOV["映射审核 / 版本发布<br/>发布门禁 release-readiness"]
-        TRACE["决策留痕<br/>inference_result / explanation_trace<br/>decision_record / audit_log"]
-        AUTH["认证授权<br/>6 能力 × 6 角色 / 集中式策略表"]
-    end
-
-    subgraph L4["语义服务 ✅"]
-        NL["自然语言问答<br/>意图路由 / 实例识别"]
-        AGENT["智能体<br/>角色由已接入领域派生"]
-        PRE["操作预检<br/>写回执行（HTTP）"]
-        EXPORT["语义资产导出<br/>JSON-LD / Turtle"]
-    end
-
-    subgraph L5["📋 规划中，尚无实现"]
-        RAG["文档摄取与检索"]
-        TENANT["多租户隔离"]
-        RESOLVER["实例解析器 SPI<br/>多表 join / 判别列分区 / 跨源"]
-        CHAN["渠道接入"]
-    end
-
-    DS --> META --> ONTO --> MAP --> RULE
-    OAPI --> ONTO
-    MAP --> GOV
-    RULE --> TRACE
-    GOV --> ONTO
-    RULE --> NL --> AGENT
-    RULE --> PRE
-    ONTO --> EXPORT
-    AUTH -.->|贯穿| L4
-    RAG -.->|规划| NL
-    RESOLVER -.->|规划| ONTO
-    TENANT -.->|规划| L3
-```
-
-## 核心概念
-
-这一节是平台的本体词汇表。术语按「本体结构 → 与遗留系统的对应 → 判定与留痕」
-三层排列，每条给出它在平台里的确切含义，以及**它刻意不是什么**——
-本体领域的词被用得很松，说清边界比给定义更有用。
-
-### 一、本体结构
-
-**领域本体（Ontology）** —— 对业务对象、属性、关系、事件、状态、规则的形式化表达，
-带版本。由元数据扫描生成草案，经人工审核后发布为不可变版本；
-已发布本体不可修改，只能派生新版本。
-_不是_：知识图谱、数据模型、数据字典。
-
-**元模型（Metamodel）** —— 描述领域本体自身结构的模型：规定一个本体可以包含
-哪些对象、哪些关系类型、哪些生命周期信息。行业本体是元模型的实例。
-完整定义见 [核心元模型设计](docs/02-核心元模型设计.md)。
-
-**业务对象（BusinessObject）** —— 业务人员能稳定识别并讨论的对象：客户、合同、
-设备、工单。它**不等于一张表**——由实例解析器决定哪些行构成它的实例
-（ADR-0011）。
-_不是_：实体、表记录、DTO。
-
-**实例（Instance）** —— 业务对象的一个具体个体，由实例键标识。
-
-**实例键（InstanceKey）** —— 标识一个实例的列组合。支持复合主键：
-连接表、版本化表、分区历史表在遗留 schema 中很常见（ADR-0008）。
-
-**实例解析器（InstanceResolver）** —— 「哪些行是这个对象的实例」的可替换策略。
-四种内置：单表、主从 join、判别列分区、自定义 SQL；可注册第三方实现（ADR-0011）。
-
-**属性（Attribute）** —— 业务对象的一个具名特征。分两种来源：
-
-- **映射属性**：镜像一个来源列
-- **派生属性（DerivedAttribute）**：由表达式算出，如 `毛利率 = (收入 - 成本) / 收入`。
-  定义一次，所有规则共用，避免同一口径在多条规则里漂移（ADR-0013）
-
-**单位与量纲（Unit / Dimension）** —— 属性可声明单位。同量纲比较自动换算，
-跨量纲比较直接拒绝。这不是便利功能：万元与元混用时，
-`合同金额 500 > 额度 1000000` 会得出「未超额」——用正确数据产出的错误判定（ADR-0013）。
-
-**关系（Relation）** —— 两个业务对象之间的链接，带**基数**（一对一／多对一／
-一对多／多对多）与**强弱**：
-
-| 类型 | 含义 | 判定依据 |
-|---|---|---|
-| 组成（composition） | 身份依赖，子离开父即无意义 | 外键在子表主键内 |
-| 聚合（aggregation） | 父必需，但子身份独立 | 外键非空且不在主键内 |
-| 关联（association） | 父可选 | 外键可空 |
-
-分类只依据声明结构，不看数据分布——从采样推断的关系会随数据改变含义，
-引用它的判定就不可复现（ADR-0012）。
-
-**类型层级（TypeHierarchy）** —— 声明「企业客户是客户的子类型」。
-子类型继承祖先的规则、聚合与派生属性。这是沿声明链的确定性展开，
-**不是 DL 包含推理**：平台不推断谁是谁的子类型，只展开已声明的链（ADR-0014）。
-
-**规则覆盖（Override）** —— 子类型可声明某条规则取代祖先的某条规则，
-用于合法业务例外。必须显式声明而非同名推断：同名有歧义，
-推断会静默停用某个团队的管控。削弱允许，不可见地削弱不允许（ADR-0014）。
-
-**跨对象聚合（Aggregate）** —— 具名的、可审阅的组级取值，如
-「该客户所有生效合同总额」。规则因此能表达「总额不得超过信用额度」。
-声明为数据而不是规则里的内联 join——「为什么」的答案必须是一份运维能读的定义，
-而不是一句没人审过的查询（ADR-0012）。
-
-**状态（State）与工作流** —— 业务对象实例的生命周期位置与允许的流转。
-流转守卫（guard）在规则沙箱中求值，求值失败即阻断流转。
-
-**业务事件（Event）** —— 实例上发生过的事，只追加。声明类型后记录，
-带载荷、发生时间与操作者。事件**不触发任何东西**：
-能触发自动化的事件会让回放历史重新执行业务动作（ADR-0014）。
-_不是_：消息、日志、埋点。
-
-**时间线（Timeline）** —— 一个实例的完整事件序列，按来源时间排序。
-状态流转自动镜像进来，所以实例只有一条时间线而不是每个子系统一条。
-
-**行业蓝图（IndustryBlueprint）** —— 一个行业的对象命名、属性命名与规则模板集合。
-平台**不内置领域词汇**，词汇由蓝图在运行时提供，新行业靠导入蓝图而不是改平台代码
-（ADR-0003）。
-
-### 二、与遗留系统的对应
-
-**业务系统接入** —— 把遗留系统的表、接口、动作与能力边界登记到平台。
-平台**读元数据，不搬运数据**。
-
-**语义映射（SemanticMapping）** —— 遗留系统的表与字段到本体概念的可追踪对应关系。
-每条映射有 `pending`／`confirmed` 状态与审核人留痕。
-_不是_：ETL 映射、数据同步关系。
-
-**值域映射（ValueMapping）** —— 遗留编码到语义状态的对应，如 `status='A'` ↔ 生效中。
-映射后两种写法在规则里等价，业务人员不必背魔法值（ADR-0008）。
-
-**结构漂移（Drift）** —— 来源库结构与已扫描元数据的差异。
-发布门禁会做漂移检测，因为在漂移的映射上判定等于在未验证数据上判定。
-
-### 三、判定与留痕
-
-**业务规则（BusinessRule）** —— 可解释的判定条件，在 AST 白名单沙箱中求值。
-写入时即校验表达式可执行性，不可执行的规则被直接拒绝。
-_不是_：算法、模型、策略引擎脚本。
-
-**fail-closed** —— 表达式无法求值（列改名、类型不符、语法错误）时按**未通过**处理，
-并附上原因。反过来会让结构漂移静默停用一条阻断规则，而自动化仍在跑（ADR-0002）。
-
-**语义研判（Assessment）** —— 对某个实例输出通过状态、阻断原因与建议动作。
-一次研判会展开类型层级、计算聚合与派生属性、施加单位、求值全部适用规则。
-
-**决策留痕** —— 一次判定产生四层记录：规则级 `inference_result`、
-证据链 `explanation_trace`、决策级 `decision_record`、操作级 `audit_log`。
-
-**解释（Explanation）** —— 一个实例的可读说明：属性取值、来源表、上级类型、
-近期事件时间线。回答的是「它是什么、它怎么变成现在这样」。
-
-**发布门禁（ReleaseGate）** —— 发布前评估 release-readiness，存在阻断项则拒绝发布。
-`force` 覆盖会连同未通过门禁数一并写入审计。
-
-**逃生舱（Escape Hatch）** —— 结构表达力不够时下沉到自定义实现的口子：
-自定义 SQL 作对象来源、自定义规则函数、派生属性表达式、写回执行器 SPI、
-数据源适配器 SPI。通用性靠「结构表达力 + 逃生舱」实现，不靠推理能力（ADR-0005）。
-
-## 能力矩阵
-
-✅ 已实现且有测试覆盖　⚠️ 部分实现（逻辑未生效）　📋 计划中（零实现）
-
-### 数据接入
-
-| 能力 | 状态 | 实现位置 |
-|---|:--:|---|
-| SQLite／MySQL／PostgreSQL 适配器 | ✅ | `adapters.py` |
-| 元数据扫描、字段画像、枚举识别、外键关系 | ✅ | `metadata.py`、`adapters.py` |
-| 结构漂移对比 | ✅ | `metadata.py` |
-| OpenAPI 导入业务操作 | ✅ | `operation_bindings.py`、`onboarding.py` |
-| 平台库三方言（作为平台自身存储） | ✅ | `database.py` |
-| **数据源适配器可注册**（第三方无需 fork） | ✅ | `registry.py`、`adapters.py` |
-| **可执行一致性契约随包发布**（5 个扩展点，第三方可自验） | ✅ | `conformance.py` |
-| **部署前自检**（免鉴权暴露等静默误配置在流水线阶段被拦） | ✅ | `deployment.py`、`deploy/` |
-| **问答回归测试集**（断言结构性属性，不锚定措辞） | ✅ | `tests/test_answer_regression.py` |
-| **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
-| **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
-| Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
-| **CSV／TSV 目录数据源**（类型与主键推断，外键不猜） | ✅ | `file_adapter.py` |
-| **REST／OpenAPI 数据源**（字段声明式，非采样） | ✅ | `rest_adapter.py` |
-
-### 本体与规则
-
-| 能力 | 状态 | 实现位置 |
-|---|:--:|---|
-| 按行业蓝图生成对象／属性／关系／映射候选 | ✅ | `ontology.py`、`industry_blueprints.py` |
-| 行业蓝图导入 | ✅ | `industry_blueprints.py` |
-| 规则引擎 AST 白名单沙箱求值 | ✅ | `semantic_kernel.py` |
-| **规则函数可注册**（不放宽沙箱） | ✅ | `semantic_kernel.py`、`registry.py` |
-| 规则 fail-closed 语义 | ✅ | `semantic_kernel.py` |
-| 写入时表达式校验（含未知字段提示） | ✅ | `governance.py`、`semantic_kernel.py` |
-| 语义资产导出 JSON-LD／Turtle（平台词汇，字段更全） | ✅ | `ontology.py` |
-| **OWL/RDFS 导出**（`owl:Class`／`rdfs:domain`／`rdfs:range`／`rdfs:subClassOf`） | ✅ | `standard_vocabulary.py` |
-| **SHACL 形状导出**（由同一份声明生成，非手写） | ✅ | `standard_vocabulary.py` |
-| 业务对象／属性／关系手工 CRUD | ⚠️ | 无端点，只能重新生成草案或审核映射 |
-| 规则依赖 `depends_on` | ⚠️ | 有读写，求值时不使用，仅按 `priority` 排序 |
-| 本体导入（reasoner／命名空间管理） | 📋 | 只能导出 |
-| 值域映射 `value_to_state`（走审核流程） | ✅ | `value_mapping.py` |
-| 复合主键（实例键抽象） | ✅ | `instance_key.py` |
-| **实例解析器**：主从表／判别列分区／自定义 SQL | ✅ | `instance_resolver.py` |
-| 解析器可注册（第三方策略） | ✅ | `instance_resolver.py` |
-| **关系基数与强弱**（一对一／多对一／多对多，组成／聚合／关联） | ✅ | `relations.py` |
-| **中间表折叠为多对多**，且中间表对象保留其属性 | ✅ | `relations.py`、`semantic_kernel.py` |
-| **跨对象聚合**（客户所有合同总额等组级取值） | ✅ | `aggregation.py` |
-| **派生属性**（表达式计算，复用规则沙箱） | ✅ | `derived_attributes.py` |
-| **单位与量纲**（同量纲换算，跨量纲拒绝） | ✅ | `derived_attributes.py` |
-| **类型层级**（子类型继承规则／聚合／派生属性） | ✅ | `type_hierarchy.py` |
-| **规则覆盖**（显式声明，校验必须在上级链内） | ✅ | `type_hierarchy.py`、`governance.py` |
-| **跨源实体消解**（一个对象跨两个数据源，匹配是声明的） | ✅ | `entity_resolution.py` |
-| **跨源聚合**（「这个客户在 ERP 里的订单总额」） | ✅ | `aggregation.py`：`targetDataSourceId` |
-| **时态与生效期**（属性级版本 + as-of 回溯判定） | ✅ | `temporal.py` |
-| **业务事件**（只追加事件流 + 状态流转统一时间线） | ✅ | `events.py` |
-| **公理**（六类模型级约束，违反阻断发布） | ✅ | `axioms.py` |
-
-### 治理与留痕
-
-| 能力 | 状态 | 实现位置 |
-|---|:--:|---|
-| 语义映射审核（单条与批量） | ✅ | `governance.py` |
-| 本体版本发布、已发布不可改、派生新版本 | ✅ | `governance.py` |
-| 发布门禁 release-readiness（force 写审计） | ✅ | `release_readiness.py`、`governance.py` |
-| 决策留痕四层记录 | ✅ | `decisions.py`、`semantic_kernel.py` |
-| 语义覆盖度报告 | ✅ | `coverage.py` |
-| 实例工作流状态与历史 | ✅ | `workflow_permission.py` |
-| 工作流 `guard_expression` | ✅ | transition 时真实求值，fail-closed |
-| **业务事件**（声明类型、只追加、带载荷与来源时间） | ✅ | `events.py` |
-| **统一时间线**（状态流转自动镜像，实例只有一条时间线） | ✅ | `events.py`、`workflow_permission.py` |
-| **事件计数**（「上个月被驳回多少次」无需读文本） | ✅ | `events.py` |
-| **属性级时态**（版本化、有效时间与事务时间分离） | ✅ | `temporal.py` |
-| **审计报表**（从未触发的规则、覆盖门禁的发布、留痕完整性） | ✅ | `audit_reports.py` |
-| **租户配额**（存于基础库，租户无法自行调高） | ✅ | `quotas.py` |
-| **as-of 判定**（按当时的值与当时生效的规则回溯判定） | ✅ | `temporal.py`、`semantic_kernel.py` |
-| **历史覆盖区间上报**（区间外为「未知」，不是「无变化」） | ✅ | `temporal.py` |
-| **直写库／存储过程写回**（语句声明、值绑定、无 WHERE 拒绝） | ✅ | `db_executors.py` |
-| 工作流与本体版本联动 | ⚠️ | derive 新版本**不复制**工作流配置 |
-| 列表端点分页 | ⚠️ | 基本无分页（audit-log 等少数除外） |
-
-### 认证与安全
-
-| 能力 | 状态 | 实现位置 |
-|---|:--:|---|
-| 令牌认证（PBKDF2-SHA256 加盐，仅存摘要） | ✅ | `auth.py` |
-| 会话可撤销与过期，改密失效旧会话 | ✅ | `auth.py` |
-| 6 能力 × 6 角色 | ✅ | `auth.py` |
-| 集中式路由→能力策略表（未登记默认仅管理员） | ✅ | `access_policy.py` |
-| **插件可注册路由权限策略** | ✅ | `access_policy.py` |
-| 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
-| 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
-| 权限行级过滤 `filter_expression` | ✅ | `check_permission` 传入实例时真实求值 |
-| **检索期权限过滤**（引用不得越过调用者可读的对象） | ✅ | `retrieval.py`：锚定后、排序前，判定失败按拒绝 |
-| 权限策略本体维度 | ✅ | 按 `(role, ontology, object)` 索引，0 表示通配 |
-| 多租户隔离（独立 schema + `tenant_id` 双保险） | ✅ | `tenancy.py` |
-| 租户开通与枚举 | ✅ | `tenancy.py` |
-| 跨租户访问检测（fail-closed） | ✅ | `tenancy.py` |
-| **SSO 单点登录**（JWT 断言校验，组→角色映射） | ✅ | `sso.py` |
-| **SSO 未映射即拒绝**（不给默认角色） | ✅ | `sso.py` |
-| 数据字典、部门／岗位数据权限 | 📋 | — |
-
-### 语义服务
-
-| 能力 | 状态 | 实现位置 |
-|---|:--:|---|
-| 领域中立性（平台代码零内置行业词汇） | ✅ | `vocabulary.py`、`config.py` |
-| 自然语言语义问答（意图路由、实例识别） | ✅ | `natural_language.py` |
-| 智能体角色按已接入领域运行时派生 | ✅ | `agent_roles.py`、`agent.py` |
-| 操作预检与写回执行（HTTP／HTTPS） | ✅ | `automation.py` |
-| **写回执行器可注册**（按 scheme 分发） | ✅ | `automation.py`、`registry.py` |
-| 模型层 OpenAI 兼容协议，自定义 Base URL 与订阅 | ✅ | `model_client.py` |
-| 鉴权方式可选 / 扩展字段可关闭 / 附加请求头 | ✅ | `model_client.py` |
-| 未配置密钥时回退本地启发式 | ✅ | `model_client.py` |
-| 工作台聚合视图（待处理事项按阻断优先） | ✅ | `workbench.py` |
-| 知识图谱预览（含建模缺口诊断） | ✅ | `graph_view.py` |
-| 文档知识库（条款切分 + 可引用定位） | ✅ | `knowledge_documents.py` |
-| 知识条目锚定本体对象／规则 | ✅ | `knowledge_documents.py` |
-| 检索后端 SPI（默认 BM25，零外部依赖） | ✅ | `retrieval.py` |
-| 嵌入模型 SPI（默认哈希 n-gram） | ✅ | `retrieval.py` |
-| 带引用的判定答案（护城河第三段） | ✅ | `natural_language.py` |
-| 向量数据库内置集成（pgvector／Milvus） | 📋 | 未内置，可通过 SPI 注册 |
-| 多轮对话持久化 | ✅ | `conversations.py`，刷新不丢上下文 |
-| 反馈闭环（满意度／纠正／转人工） | ✅ | `conversations.py` |
-| 反馈锚定到决策记录 | ✅ | `conversations.py` |
-| 渠道接入（企微／钉钉／飞书／网页挂件） | 📋 | — |
-| 定时调度器 | 📋 | 无任何 scheduler／cron |
-
-| MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](docs/extending.md) |
-
-## 当前限制
-
-诚实优先。以下每一项都在代码中逐项确认过。
-
-### 字段存在但逻辑未生效
-
-**本节已清空。** 这类最危险，因为接口看起来能用——所以逐项记录它们是如何消失的：
-
-> - `guard_expression`、`filter_expression`、`depends_on` 现已真实生效，
->   `permission_policy` 已带本体维度。四者均为 fail-closed：无法求值时拒绝而非放行。
-> - `derive` 新版本现已复制工作流定义与规则的求值列（`priority`、生效期、`depends_on`）。
->   此前它们被丢弃，而那不只是丢元数据：派生版本会以不同顺序、在不同生效期内求值同一批规则——
->   「新版本给出不同判定」恰恰是 `derive` 最不该静默做的事。
->   实例状态**刻意不复制**：定义属于模型，而某份合同当前在哪个状态属于数据。
-> - 模型配置的四个兼容性字段（`authStyle` 等）现已声明。此前前端一直在发、
->   而 Pydantic 静默丢弃，于是界面报成功而 Azure 与本地 vLLM 配不上。
-
-
-### 结构性表达力约束
-
-设计上的封顶，不是 bug，构成下一阶段的改造对象：
-
-| 约束 | 位置 |
+| | |
 |---|---|
-| **跨源匹配在内存中进行**：逐行读副源后比对，有行数上限；副源匹配列无索引时会慢 | `entity_resolution.py` |
-| **跨源不做传递推导**：A↔B、B↔C 不会自动得出 A↔C——那会引入一条没人声明过的对应关系 | `entity_resolution.py` |
-| **时态只覆盖平台观测到的区间**：原地覆盖值的源系统丢掉的历史无法重建。`coverage` 会明确上报可回答区间 | `temporal.py` |
-| **聚合在 Python 内计算**，不下推 SQL。换来三方言行为一致，代价是行数上限 | `aggregation.py` |
-| **关系分类依赖 schema 声明质量**：不写外键、不写 NOT NULL 的库只能得到最弱分类 | `relations.py` |
-| **CSV 与 REST 不推断外键**：关系语义要求结构是声明的，从命名巧合推出的关系无法解释 | `file_adapter.py`、`rest_adapter.py` |
-| **CSV 每次查询整文件读取**：适合导出规模，不适合仓库规模 | `file_adapter.py` |
-| **类型层级上限 16 层**，派生链上限 5 趟 | `type_hierarchy.py`、`derived_attributes.py` |
-| **不做完整 OWL/DL 推理**，不做开放世界假设 | 刻意，见 [ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) |
-
-> 关系基数、类型层级、跨对象聚合、派生属性、单位量纲、业务事件、时态生效期、
-> 数据源与写回通道扩展均已不在此列，
-> 见[本体与规则](#本体与规则)能力矩阵与
-> [ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)、
-> [ADR-0013](docs/adr/0013-derived-attributes-and-units.md)、
-> [ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)、
-> [ADR-0015](docs/adr/0015-open-data-sources-and-temporal-validity.md)。
-> 扩展点也不在此列：数据源适配器、规则函数、路由策略、写回执行器
-> 现已开放注册，见[扩展指南](docs/extending.md)。
-
-### 工程限制
-
-- **无连接池**；跨多次 `connect()` 的多步写入无统一事务边界。
-- **`platform_db` 签名已全部改为 `PlatformDb`**（上下文／路径／字符串三者皆可）。
-  此前标注写 `Path | str` 而运行时接受 context——**那比不标注更糟：它让类型检查器
-  拒绝本来可用的代码**，于是多租户与嵌入被文档声称支持、却对任何跑 mypy 的下游不可达。
-- HTTP 层共 149 个端点，**已开始拆分 APIRouter**（`routers/`）：
-  工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
-  共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
-- 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
-  平台自身的类型尚不能由 OpenAPI 生成：149 个端点均返回 `dict[str, object]`，
-  响应 schema 是裸 object，生成器只会产出 `unknown`。
-  **但用户本体的类型已可生成**（`aletheia codegen`），且那才是手写做不对的部分。
-  **请求侧的一致性已由测试守住**——
-  该测试发现了一处真实缺陷：前端一直在发送 4 个模型兼容性字段，
-  而 API 请求模型未声明它们，Pydantic 静默丢弃，于是 Azure 与本地 vLLM 配不上而界面报成功。
-- **版本化迁移已具备**（`migrations.py`）：账本记录已应用版本，改列／回填／删表这类
-  非幂等变更现在有处可去。**不采用 Alembic**——它依赖 SQLAlchemy，与内核零依赖冲突；
-  而它真正提供的（版本账本 + 有序应用）只需 150 行，且自动生成在此不可用
-  （DDL 是按方言声明的字符串，无模型元数据可 diff）。
-- **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
-  extras 承载了未来分包的接缝但不冻结边界。
-
-架构层面的前置技术债逐项定位见 [`docs/architecture-debt.md`](docs/architecture-debt.md)。
-路线与阻塞条件见 [`ROADMAP.md`](ROADMAP.md)。
-
-## 设计决策
-
-十一项关键取舍，均有测试覆盖。完整记录（含被否决方案）见 [`docs/adr/`](docs/adr/)。
-
-### 1. 规则引擎 fail-closed
-
-表达式无法求值（字段更名、类型不匹配、语法错误）时**判为「未通过」**，
-而非跳过后视为通过。阻断级→`blocked`，提示级→`review`。
-
-理由：字段改名会让阻断级规则静默失效、预检放行、自动化继续执行——
-而这恰恰是结构漂移检测声称要防的场景。宁可误报，不可漏报。
-
-配套：写入时静态校验表达式。没有这一步，fail-closed 会把一个笔误
-变成该对象所有实例的永久阻断。
-
-证据：`tests/test_rule_engine_safety.py` ·
-[ADR-0002](docs/adr/0002-rule-engine-fail-closed.md)
-
-### 2. 发布强制门禁
-
-`publish` 前评估 release-readiness，存在阻断项则拒绝发布。
-`force` 覆盖会连同未通过门禁数一并写入审计。
-
-理由：自动生成的本体草案不能直接当作生产真值。
-
-### 3. 领域词汇不内置
-
-任何内置行业词表都会让平台退化为单行业产品。业务术语只通过两条途径进入：
-元数据扫描，以及用户可导入的行业蓝图。对象识别／默认对象／实例识别／
-智能体角色／权限策略全部运行时派生。
-
-代价：未导入蓝图时，草案标签就是原始列名（`total_amount` 而非「合同总金额」）。
-难看但正确，好过漂亮但只对两个行业正确。
-
-证据：`tests/test_domain_neutrality.py` 用平台完全未知的领域（宠物诊疗）
-验证建模／识别／角色／权限全链路，并含静态守卫防止回归 ·
-[ADR-0003](docs/adr/0003-no-builtin-domain-vocabulary.md)
-
-### 4. 语义通用性明确封顶：不做完整 OWL/DL 推理
-
-理由：DL reasoner 的结论是全局蕴含的产物，无法解释成「因为第 3.2 条」，
-与本项目的可核验性直接对立。通用性靠「结构表达力 + 逃生舱」实现，
-而非靠推理能力。
-
-另一层：开放世界假设意味着「没查到就是未知」，而业务判定需要封闭世界语义——
-库里没有付款记录就是没付款，不是「未知是否付款」。
-
-证据：[ADR-0005](docs/adr/0005-semantic-generality-ceiling.md) ·
-[Non-Goals](ROADMAP.md#non-goals)
-
-### 5. 关系语义只从声明结构推断，绝不看数据分布
-
-从采样推断出的关系会在数据变化时改变含义，引用它的判定就不可复现。
-每条关系都记录它所依据的结构事实——**没有依据的分类无法被审阅**，
-运维要纠正一条生成的关系，必须先知道它为何被这样分类。
-
-证据：`tests/test_relation_expressiveness.py` ·
-[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
-
-### 6. 聚合是声明的数据，不是规则里的内联查询
-
-「为什么」的答案必须是一份运维能读、能审阅、能随语义资产导出的定义，
-而不是一句没人审过的 join。算不出来的聚合让规则失败，
-而不是拿阈值去和一个伪造的 0 比较。
-
-读行后在 Python 内计算而非下推聚合 SQL——**牺牲下推性能，换三方言行为完全一致**，
-代价是行数上限，且触顶会上报而非静默截断。
-
-证据：`tests/test_cross_object_aggregation.py` ·
-[ADR-0012](docs/adr/0012-cross-object-aggregation-and-relation-semantics.md)
-
-### 7. 单位同量纲换算，跨量纲直接拒绝
-
-没有单位时，万元与元混用会让 `合同金额 500 > 额度 1000000` 得出「未超额」——
-**用正确数据产出的错误判定**。跨量纲（时长比质量）抛错而非原样透传数字，
-因为那通常意味着建模有误，静默透传会让由此得出的判定看起来完全有效。
-
-汇率被刻意排除：汇率是随时间变化的数据，内嵌一个会让判定不可复现。
-
-证据：`tests/test_derived_attributes_and_units.py` ·
-[ADR-0013](docs/adr/0013-derived-attributes-and-units.md)
-
-### 8. 规则覆盖必须显式声明，不靠同名推断
-
-同名有歧义——两个团队可能各自取到同一个 code，而推断会**静默停用其中一个团队的管控**。
-削弱继承来的规则是允许的，因为存在合法业务例外（国资交易对手豁免信用审查）；
-**不可见地**削弱则不允许。
-
-证据：`tests/test_type_hierarchy_and_events.py` ·
-[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
-
-### 9. 事件是记录，绝不是触发器
-
-能触发自动化的事件会让审计轨迹承载副作用，于是回放历史（回补、纠错、迁移）
-会重新执行业务动作。只追加也是同一个理由：记错的事件靠补偿事件纠正，
-删除会留下一个无法解释自己如何形成的状态。
-
-证据：`tests/test_type_hierarchy_and_events.py` ·
-[ADR-0014](docs/adr/0014-type-hierarchy-and-business-events.md)
-
-### 10. 公理约束模型，规则判定实例
-
-两者回答不同问题，混为一谈有具体代价。规则对实例求值（「这份合同超额，阻断」），
-公理断言模型本身（「合同的甲乙方永远不能是同一主体」）。
-
-把公理写成规则，它只能报出一个违规实例，**永远报不出真正的问题**——
-问题是模型允许了一种业务上不存在的形状。而此前一个自相矛盾的模型照样能发布：
-没有任何门禁看过「这些声明能不能同时为真」。
-
-因此公理在建模期校验，违反是**阻断**而非警告：自相矛盾的模型产出的每个判定都可疑。
-声明期与发布期都查——声明期让写公理的人立刻看到矛盾，
-发布期抓的是公理写下时成立、之后模型在它下面变了的情况。
-
-引用不存在对象的公理直接**拒绝**：它恒真，什么都不约束也什么都不报，
-于是建模者相信有一道控制而其实没有。这比没有公理更糟。
-
-证据：`tests/test_axioms.py` ·
-[ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md)
-
-### 11. OWL 是词汇，不是推理机
-
-对标 GB/T 48000.3—2026 采用 OWL/RDF/SHACL 作为**表达词汇**，
-同时继续拒绝完整 DL 推理（ADR-0005）。
-
-此前导出 JSON-LD 与 Turtle 并不构成互操作：语法是标准的，每个术语都是自造的。
-懂 OWL 的消费方知道 `rdfs:domain` 的含义并能据此行动，
-它无法知道 `ont:sourceObject` 是同一件事——于是导出机器**可读**而非机器**可解释**。
-
-明确不导出需要 DL 推理才有意义的构件（`owl:equivalentClass`、属性链）：
-由包含推理得出的结论无法回溯到某个人做过的声明，而可回溯性是本平台的产品本身。
-
-SHACL 形状由声明生成而非手写——手写的一份会与发布门禁漂移，
-而漂移后的形状会声明平台并不执行的约束。
-
-证据：`tests/test_standard_vocabulary.py` ·
-[ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md)
-
-## 配置
-
-可配置项集中在 [`backend/ontology_platform/config.py`](backend/ontology_platform/config.py)，
-全部可由环境变量覆盖。
-
-### 运行与安全
-
-| 变量 | 作用 | 默认 |
-|---|---|---|
-| `ONTOLOGY_ADMIN_USERNAME` | 引导管理员用户名 | `admin` |
-| `ONTOLOGY_ADMIN_PASSWORD` | 引导管理员口令 | 未设则生成随机口令并打印 |
-| `ONTOLOGY_SESSION_TTL_HOURS` | 会话有效期（小时） | `12` |
-| `ONTOLOGY_AUTH_DISABLED` | 设为 `1` 关闭全部认证，**仅限本地开发** | 未设（认证开启） |
-| `ONTOLOGY_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔 | `http://127.0.0.1:3000,http://localhost:3000` |
-
-### SSO（单点登录）
-
-三项全部设置后 SSO 才启用——半配置状态按「SSO 关闭」处理，而非「SSO 开启且接受任意断言」。
-
-| 变量 | 作用 | 默认 |
-|---|---|---|
-| `ONTOLOGY_SSO_ISSUER` | 期望的 `iss`，不匹配即拒绝 | 未设（SSO 关闭） |
-| `ONTOLOGY_SSO_AUDIENCE` | 期望的 `aud`，防止其他服务的令牌在此复用 | 未设（SSO 关闭） |
-| `ONTOLOGY_SSO_SECRET` | 签名校验密钥。放环境变量而非库里——库里的凭据等于每份备份里的凭据 | 未设（SSO 关闭） |
-| `ONTOLOGY_SSO_ALGORITHM` | `HS256`／`HS384`／`HS512`。**算法取自配置，绝不取自令牌头** | `HS256` |
-| `ONTOLOGY_SSO_GROUP_CLAIM` | 承载组的声明名 | `groups` |
-| `ONTOLOGY_SSO_USERNAME_CLAIM` | 承载用户标识的声明名 | `sub` |
-
-**身份由提供方断言，权限由平台决定。** OIDC 令牌可以带任何声明，包括 `role: admin`——
-信它就等于把授权边界搬进了别人的配置里。因此声明绝不直接变成权限：
-由管理员声明「提供方组 → 平台角色」的映射，**未映射到任何角色的身份直接被拒绝**，
-而不是给一个默认角色——默认角色看起来安全，实际会静默地把「读取平台可达的全部业务对象」
-授予目录里的每一名员工。
-
-本地账号并不被取代：提供方不可达时仍需要一条进得去的路，
-而「IdP 挂了所以没人能修 IdP 集成」是真实存在的故障形态。
-
-### 平台库
-
-| 变量 | 作用 | 默认 |
-|---|---|---|
-| `ONTOLOGY_PLATFORM_DB_TYPE` | `sqlite`／`mysql`／`postgresql` | `sqlite` |
-| `ONTOLOGY_PLATFORM_DB_URI` | 平台库连接串 | 本地 SQLite 文件 |
-| `ONTOLOGY_PLATFORM_DB_FILE` | 直接指定 SQLite 平台库**文件**（优先于 `ONTOLOGY_DATA_DIR`） | 未设 |
-| `ONTOLOGY_DATA_DIR` | 平台库所在**目录**，文件名固定为 `platform.sqlite3` | 源码树下为 `data/`，否则 `~/.aletheia` |
-| `ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEOUT_MS` | SQLite busy_timeout | `5000` |
-
-> **`serve` 与其他命令用同一个库。** `aletheia serve --platform-db X` 会把 `X`
-> 传给被服务的进程，并在启动时打印实际使用的路径。
-> 此前它做不到：`uvicorn` 在新进程里导入应用，只能从环境变量解析平台库，
-> 于是 `serve --platform-db X` 服务的是**另一个**库——
-> 而症状是 API 返回空本体列表，读起来像「我的数据没保存」，
-> 于是排查会从重跑 `model`、怀疑写入开始，唯一不像的就是路径不一致。
-
-### 阈值与命名
-
-| 组 | 内容 | 环境变量前缀 |
-|---|---|---|
-| `QUERY_LIMITS` | 分页上限、一致性采样、枚举识别 distinct 上下界 | `ONTOLOGY_DEFAULT_PAGE_SIZE`、`ONTOLOGY_MAX_PAGE_SIZE`、`ONTOLOGY_ENUM_*` |
-| `MAPPING_CONFIDENCE` | 映射候选置信度（蓝图／结构／词表／弱匹配） | `ONTOLOGY_CONFIDENCE_*` |
-| `ANSWER_CONFIDENCE` | 问答置信度 | `ONTOLOGY_ANSWER_CONFIDENCE_*` |
-| `RESOLUTION_CONFIDENCE` | 实例识别置信度与加成 | `ONTOLOGY_RESOLUTION_*` |
-| `SEMANTIC_ASSET_NAMING` | JSON-LD／Turtle 的 IRI 命名空间 | `ONTOLOGY_VOCABULARY_BASE_IRI`、`ONTOLOGY_ASSET_BASE_IRI` |
-| `MODEL_PROVIDER_DEFAULTS` | 模型端点、模型名、超时、service tier | `OPENROUTER_*` |
-
-模型密钥 `OPENROUTER_API_KEY` 未配置时，问答与建模回退本地启发式，功能不中断。
-
-## 平台库三方言
-
-平台自身的存储可以是 SQLite、MySQL 或 PostgreSQL，三者都有集成测试覆盖。
-
-| 方言 | 连接串示例 | 说明 |
-|---|---|---|
-| SQLite | 默认，无需配置 | 启用 WAL 与 busy_timeout |
-| MySQL | `mysql://root:password@127.0.0.1:3306/ontology_platform` | 8.0+ |
-| PostgreSQL | `postgresql://postgres:postgres@127.0.0.1:5432/ontology_platform` | 14+ |
-
-无本地数据库服务时，对应测试**自动跳过**，不会导致 CI 失败。
-
-SQL 差异由 `database.py` 的适配层统一吸收：占位符转换、
-`on conflict` → `on duplicate key update`、TEXT 列表达式默认值、
-`dict_row` 行工厂、自增主键读取，以及提交与回滚语义。
-详见 [ADR-0004](docs/adr/0004-three-platform-dialects.md)。
-
-## 角色与能力
-
-6 种能力 × 6 种角色。集中式路由→能力策略表在 `access_policy.py`，
-**未登记的路由默认仅管理员可访问**。
-
-| 角色 | `platform:read` | `platform:write` | `governance:review` | `governance:publish` | `automation:execute` | `platform:admin` |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|
-| `admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `ontology_engineer` | ✅ | ✅ | | ✅ | | |
-| `business_expert` | ✅ | ✅ | ✅ | | | |
-| `operator` | ✅ | | | | ✅ | |
-| `analyst` | ✅ | | | | | |
-| `ai_agent` | ✅ | | | | | |
-
-新用户默认角色为 `analyst`。令牌认证使用 PBKDF2-SHA256 加盐，**token 仅存摘要**；
-会话可撤销与过期，改密使旧会话全部失效；审计身份取自认证身份。
-
-## 测试
-
-```bash
-.venv/bin/python -m pytest
-```
-
-**1303 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时
-对应用例自动跳过。分布：
-
-| 文件 | 数量 | 覆盖 |
-|---|--:|---|
-| `test_extension_registry.py` | 45 | 扩展点注册表 + 第三方合规样板 |
-| `test_composite_instance_keys.py` | 31 | 复合主键端到端 + 实例键往返 |
-| `test_value_domain_mapping.py` | 13 | 值域映射与向后兼容 |
-| `test_custom_model_endpoints.py` | 21 | 自定义模型端点兼容性 |
-| `test_workbench_and_graph.py` | 14 | 工作台聚合与图谱投影 |
-| `test_document_knowledge.py` | 27 | 条款切分、锚定检索、带引用答案 |
-| `test_inert_fields_activated.py` | 28 | 守卫、行级过滤、规则依赖、策略本体维度 |
-| `test_conversations_and_feedback.py` | 35 | 会话持久化、反馈归因、转人工 |
-| `test_platform_context.py` | 23 | 多实例隔离、线程绑定、向后兼容 |
-| `test_documentation_links.py` | 75 | 文档链接与锚点有效、无空章节、不声称已实现的能力缺失 |
-| `test_platform_db_consistency.py` | 7 | serve 与其他命令用同一个平台库，并在启动时告知路径 |
-| `test_derive_completeness.py` | 7 | 派生新版本复制工作流与规则求值列，但不复制实例状态 |
-| `test_codegen.py` | 16 | 关系类型化为目标对象、仅已发布本体、产物通过真实 tsc --strict |
-| `test_scaffold.py` | 19 | 生成的代码被真实执行：能编译、能注册、能建库、不含平台私有引用 |
-| `test_migrations.py` | 12 | 旧库补齐、新装跳过、重跑无变更、失败即中止后续 |
-| `test_sso.py` | 32 | 签名伪造、alg:none 绕过、未映射即拒绝、禁用本地账号优先 |
-| `test_frontend_type_agreement.py` | 12 | 前后端请求字段一致（漂移会静默丢弃用户输入） |
-| `test_audit_reports.py` | 18 | 从未触发的规则、覆盖门禁的发布、留痕完整性、区间半开 |
-| `test_tenant_quotas.py` | 16 | 配额存于基础库租户改不了、写前拦截、未声明即不限量、跨租户不串用量 |
-| `test_multi_tenancy.py` | 42 | schema 路由、tenant_id 双保险、跨租户拦截 |
-| `test_instance_resolvers.py` | 57 | 四种解析器 + 一致性契约 + 注入防护 |
-| `test_cross_object_aggregation.py` | 46 | 聚合定义校验、fail-closed、行数上限、端到端 |
-| `test_type_hierarchy_and_events.py` | 42 | 继承展开、覆盖声明、环检测、事件只追加与时间线 |
-| `test_derived_attributes_and_units.py` | 42 | 派生多趟求值、量纲换算、跨量纲拒绝 |
-| `test_relation_expressiveness.py` | 22 | 基数与强弱推断、中间表折叠、一对一注入为单行 |
-| `test_cross_source_resolution.py` | 46 | 跨源消解：声明式匹配、一对多拒绝、冲突标记、跨源聚合、加列迁移幂等 |
-| `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤：越权引用被丢弃、判定失败按拒绝、过滤在排序之前 |
-| `test_answer_regression.py` | 28 | 问答回归：结论必带依据、意图路由确定、问答与判定一致、无模型可用 |
-| `test_deployment_preflight.py` | 41 | 部署前自检：免鉴权暴露、CORS 通配、SQLite 多进程、镜像与编排产物 |
-| `test_conformance_suites.py` | 44 | 5 个扩展点的可执行契约，含每条属性的反例（证明契约能抓错） |
-| `test_sql_dialects_and_generic_adapter.py` | 54 | 方言 profile、通用 DB-API 适配器（对真实 PostgreSQL 声明式接入实证） |
-| `test_file_and_rest_sources.py` | 46 | CSV 类型／主键推断、REST 声明式接入、端到端至判定 |
-| `test_database_writeback.py` | 35 | 语句声明、值绑定、无 WHERE 拒绝、影响 0 行按失败、真实写入与回滚 |
-| `test_temporal_validity.py` | 35 | 半开区间、回溯插入、as-of 判定用当时的值、缺席不插值 |
-| `test_cli.py` | 35 | 命令行闭环、发布门禁不可绕过、错误不抛栈 |
-| `test_api_versioning.py` | 21 | `/v1` 与裸路径鉴权一致、公开路径不被版本化破坏、新端点不静默落到管理员兜底 |
-| `test_packaging.py` | 15 | 内核零依赖、单一版本来源、PEP 561、默认路径不依赖工作目录 |
-| `test_standard_vocabulary.py` | 24 | OWL/RDFS 映射、SHACL 形状生成、IRI 稳定性、导出必须能被 RDF 解析器解析 |
-| `test_axioms.py` | 20 | 公理五类校验、声明期拒绝、发布门禁阻断、缺表读作未配置 |
-| `test_module_boundaries.py` | 6 | 无循环依赖、无跨模块私有引用、`__all__` 可解析 |
-| `test_documented_claims.py` | 6 | README 声明的测试数、分布表、端点数、Python 版本、技术债计数与代码一致 |
-| `test_metadata_flow.py` | 34 | 接入、扫描、本体生成、接入准备度 |
-| `test_api_authentication.py` | 28 | 认证、会话、能力策略、actor 可信 |
-| `test_domain_neutrality.py` | 25 | 未知领域全链路 + 静态守卫 |
-| `test_rule_engine_safety.py` | 17 | 沙箱逃逸、fail-closed 语义、发布门禁 |
-| `test_platform_database_dialects.py` | 10 | 三方言作为平台库 |
-| `test_credential_protection.py` | 8 | 连接串与 API Key 脱敏 |
-| `test_data_source_knowledge_base.py` | 11 | 数据源知识库 |
-
-静态检查与前端构建：
-
-```bash
-.venv/bin/python -m ruff check backend tests scripts
-.venv/bin/python -m ruff format --check backend tests scripts
-.venv/bin/python -m mypy
-cd frontend && npm run build
-```
-
-CI 另有一个 `quickstart` job，在干净环境重跑本 README 的快速开始链路，
-并校验此处声明的测试数量与实际收集数一致。
-
-## 规模
-
-75 个后端模块约 32500 行，149 个 API 端点，45 张平台表，前端 React + antd。
-
-## 示例
-
-[`examples/contract-system/`](examples/contract-system/) 是一个模拟遗留系统的
-最小合同管理应用，用于演示完整接入流程。
-**其中公司名、联系人、手机号、邮箱与统一社会信用代码全部为合成占位，
-不对应任何真实主体。**
-
-## 文档
-
-| 文档 | 内容 |
+| 🔍 **Metadata onboarding** | Scan any SQL database, a CSV directory, or a REST/OpenAPI service. Oracle, SQL Server, DamengDB, KingbaseES and openGauss ship as declarations — a new SQL engine needs 4 lines, not an adapter. |
+| 🧩 **Closed metamodel** | Entity types, data properties, object properties, **axioms** and rules — the five components of GB/T 48000.3—2026. Plus subtype hierarchies, cross-object aggregates, derived attributes with units, business events and attribute-level temporal validity. |
+| ⚖️ **Fail-closed rule engine** | AST-whitelisted sandbox. An expression that cannot be evaluated is a **failed** verdict, never a skipped one — a renamed column must not silently disable a blocking control. |
+| 📋 **Governance gates** | Publishing is refused while mappings await review, and `--force` **cannot** skip that. Axiom violations block publication: a self-contradictory model makes every verdict it produces suspect. |
+| 🔗 **Standard vocabulary** | Export OWL/RDFS and SHACL that external tools can *interpret*, not merely parse — an outside SPARQL query can answer "which class may relate to which". |
+| 🔐 **Multi-tenant & SSO** | Separate schema plus a `tenant_id` column, quotas the tenant cannot raise, and JWT SSO where an unmapped identity gets **no** access rather than a default role. |
+| 🛡️ **Deployment preflight** | `aletheia preflight` blocks the silent misconfigurations: a leftover auth switch, a wildcard CORS, SQLite with multiple workers. `serve` refuses to expose an unsafe config. |
+| 🧾 **Audit reports** | Which published rules **never fired** this period, which publications overrode the gate, and how much of the period is re-examinable at all. |
+
+→ **[Full capability matrix](docs/capabilities.md)** · [Current limitations](docs/limitations.md)
+
+## Where to go
+
+| I want to… | Go to |
 |---|---|
-| [ROADMAP](ROADMAP.md) | 三仓库形态、框架化 A–G、通用性 #1–#13、Non-Goals |
-| [docs/adr/](docs/adr/) | 架构决策记录，含被否决方案与后果 |
-| [docs/architecture-debt.md](docs/architecture-debt.md) | 框架化前置技术债 |
-| [docs/extending.md](docs/extending.md) | 扩展点注册与插件打包 |
-| [docs/model-endpoints.md](docs/model-endpoints.md) | 接入自定义模型服务与订阅 |
-| [docs/](docs/) | 设计文档索引（⚠️ 部分内容超前于当前实现） |
-| [CHANGELOG](CHANGELOG.md) | 变更记录 |
+| See what it produces | [Screenshots](docs/screenshots.md) |
+| Install and run it once | [Quick start](docs/quickstart.md) |
+| Know exactly how far it got | [Capability matrix](docs/capabilities.md) · [Limitations](docs/limitations.md) |
+| Understand the model | [Core concepts](docs/concepts.md) · [Architecture](docs/architecture.md) |
+| Plug in a database / rule function / retrieval backend | [Extension guide](docs/extending.md) |
+| Connect Azure OpenAI, vLLM or a gateway | [Model endpoints](docs/model-endpoints.md) |
+| Ship to production | [Self-hosted deployment](docs/deployment.md) |
+| Know why a design is the way it is | [Design decisions](docs/design-decisions.md) · [All ADRs](docs/adr/) |
+| Check GB/T 48000.3—2026 alignment | [ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md) |
+| Contribute | [CONTRIBUTING](CONTRIBUTING.md) · [ROADMAP](ROADMAP.md) |
 
-## 贡献
+## What this is not
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。两条硬要求：
+Stated plainly, because it builds more trust than a feature list.
 
-1. **不允许通过删改测试断言来让测试通过。**
-2. **文档只能描述已实现且有测试覆盖的能力。**
+| Not doing | Why |
+|---|---|
+| Full OWL/DL reasoning, open-world assumption | At odds with verifiability — a conclusion reached by subsumption cannot be traced to a declaration a human made ([ADR-0005](docs/adr/0005-semantic-generality-ceiling.md)) |
+| A general graph database / arbitrary triple store | Cannot guarantee every conclusion has an explainable source |
+| Rewriting your legacy code automatically | Uncontrollable risk, and not a semantic kernel's job |
+| A general-purpose ETL platform | We read metadata; we do not move data |
+| A drag-and-drop workflow engine | Workflow exists to serve ontology instance state transitions |
+| State-of-the-art retrieval precision | The moat is interrogability, not recall |
 
-安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要开公开 issue。
-行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+## Project status
 
-## 许可证
+1348 tests, green on Python 3.11 / 3.12 / 3.13. The kernel has **zero third-party
+dependencies** — verified in CI on a bare install, so the ontology, rule engine and
+decision records can be embedded in someone else's application.
 
-[Apache-2.0](LICENSE)，含专利授权条款。
-## 私有化部署
+Every countable claim in this documentation is asserted by a test: the test count, the
+per-file breakdown, the endpoint count, the supported Python versions, and the fact that
+no link here is broken. A number nobody can verify is worse than no number.
 
-```bash
-cp deploy/.env.example deploy/.env    # 填入真实值，范例里没有任何可用默认值
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
-```
+**Stability:** extension points are experimental before 1.0; the *behaviour* the
+conformance suites require is stable, its Python signatures are not
+([ADR-0007](docs/adr/0007-extension-registry-without-api-stability.md)).
 
-镜像两阶段构建、非 root 运行、不内置任何凭据或预置数据库。
-参考编排用 PostgreSQL 作平台库，数据库端口不映射到宿主。
+## The name
 
-### 部署前自检
+Aletheia (ἀλήθεια) is Ancient Greek for *truth*, and the name of its goddess. Literally it
+means **un-concealment — making the hidden appear**. Business semantics lie buried in table
+names, columns and foreign keys; Aletheia surfaces them as a governable ontology.
 
-```bash
-aletheia preflight --workers 4 --expect-origin https://ontology.example.com
-```
+Its mythological opposite is Pseudologoi, the spirit of falsehood — speech that sounds
+plausible and cannot be verified. That is the problem this project exists to solve.
 
-阻断项存在时退出码为 1，可直接作流水线门禁。
-`aletheia serve` 在监听非本机地址时**强制**跑一次自检并拒绝启动——
-没人会记得单独跑一个命令，而唯一需要它的那次部署，
-恰好就是 `ONTOLOGY_AUTH_DISABLED=1` 忘了删的那次。
+## License
 
-自检拦的都是**静默失败**——平台会正常启动、正常服务、看起来健康：
-
-| 误配置 | 实际发生什么 | 级别 |
-|---|---|:--:|
-| `ONTOLOGY_AUTH_DISABLED=1` 残留 | 整套 API 无需令牌即可访问，**包括对遗留系统的写回** | 阻断 |
-| CORS 为 `*` | 任意站点都能携带用户凭据驱动本 API | 阻断 |
-| 管理员口令为占位值或短于 12 位 | 有人选了它，并会以为之后改过 | 阻断 |
-| SQLite 配多工作进程 | 写入串行化，高并发下表现为**间歇性超时**而非配置错误 | 阻断 |
-| 平台库文件权限含 group/other | 该文件保存全部数据源连接串，等同凭据存储 | 阻断 |
-| CORS 仍是 localhost | 真实前端被拦，随后有人会用 `*` 绕过 | 警告 |
-| 未设管理员口令 | 随机口令只打印一次，容器日志轮转后没人能登录 | 警告 |
-| 连接串内联口令 | 会出现在进程列表、容器 inspect 与崩溃日志里 | 警告 |
-
-单节点 SQLite 评估部署是**合理**形态，因此单工作进程时不阻断——
-拒绝它会让人索性跳过整个检查。
-
-完整取舍见 [ADR-0017](docs/adr/0017-deployment-preflight.md)。
+[Apache-2.0](LICENSE)
