@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider } from 'antd';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
@@ -8,6 +8,17 @@ import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult,
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+
+const ONBOARDING_STEP_LABELS: Record<string, string> = {
+  register_data_source: '登记数据源',
+  test_connection: '测试数据库连接',
+  test_api_gateway: '测试业务 API',
+  scan_metadata: '扫描表结构',
+  import_openapi: '导入业务 API 定义',
+  generate_ontology: '生成知识模型草案',
+  seed_permissions: '初始化默认权限',
+  assess_readiness: '检查接入准备度',
+};
 
 const DataSourceList: React.FC = () => {
   const navigate = useNavigate();
@@ -67,11 +78,8 @@ const DataSourceList: React.FC = () => {
 
   const handleCreate = async (values: DataSourceCreate & { apiHeadersJson?: string }) => {
     try {
-      const { apiHeadersJson, openApiUrl, openApiSpecJson, blueprintId, ...payload } = values as DataSourceCreate & {
+      const { apiHeadersJson, ...payload } = values as DataSourceCreate & {
         apiHeadersJson?: string;
-        openApiUrl?: string;
-        openApiSpecJson?: string;
-        blueprintId?: string;
       };
       await dataSourceApi.create({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson) });
       message.success('数据源创建成功');
@@ -285,7 +293,7 @@ const DataSourceList: React.FC = () => {
       </Card>
 
       <Modal
-        title="新增数据源"
+        title="接入一个业务系统"
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -295,6 +303,13 @@ const DataSourceList: React.FC = () => {
         }}
         onOk={() => form.submit()}
       >
+        <Alert
+          type="info"
+          showIcon
+          message="先填写最少信息即可开始"
+          description="系统只读取元数据来建立业务模型，不会修改你的业务数据库。API 和行业蓝图属于可选的高级配置。"
+          style={{ marginBottom: 16 }}
+        />
         <Form
           form={form}
           layout="vertical"
@@ -320,40 +335,10 @@ const DataSourceList: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="connectionUri"
-            label="连接地址"
+            label="连接地址（必填）"
             rules={[{ required: true, message: '请输入连接地址' }]}
           >
-            <Input placeholder="例如：/path/to/database.sqlite3" />
-          </Form.Item>
-          <Form.Item
-            name="apiBaseUrl"
-            label="业务 API 基址"
-          >
-            <Input placeholder="例如：https://legacy.example/api" />
-          </Form.Item>
-          <Form.Item
-            name="apiHeadersJson"
-            label="业务 API 请求头"
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder={'例如：{"Authorization":"Bearer token","X-Tenant":"demo"}'}
-            />
-          </Form.Item>
-          <Form.Item
-            name="openApiUrl"
-            label="OpenAPI URL"
-          >
-            <Input placeholder="例如：https://legacy.example/openapi.json" />
-          </Form.Item>
-          <Form.Item
-            name="openApiSpecJson"
-            label="OpenAPI JSON"
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder='{"openapi":"3.0.0","paths":{"/contracts/{id}/submit":{"post":{"operationId":"submit_contract"}}}}'
-            />
+            <Input placeholder="例如：/path/to/database.sqlite3 或 postgresql://..." />
           </Form.Item>
           <Form.Item>
             <Button
@@ -377,11 +362,11 @@ const DataSourceList: React.FC = () => {
             name="domain"
             label="业务领域"
           >
-            <Input placeholder="例如：合同管理" />
+            <Input placeholder="例如：合同管理（可留空，后续补充）" />
           </Form.Item>
           <Form.Item
             name="systemCategory"
-            label="系统分类"
+            label="系统里有哪些数据"
             initialValue="database"
           >
             <Select>
@@ -390,18 +375,36 @@ const DataSourceList: React.FC = () => {
               <Option value="database+api">数据库+API</Option>
             </Select>
           </Form.Item>
-          <Form.Item
-            name="blueprintId"
-            label="行业蓝图"
-          >
-            <Select placeholder="自动推断或手动选择" allowClear>
-              {blueprints.map(blueprint => (
-                <Option key={blueprint.id} value={blueprint.id}>
-                  {blueprint.name} ({blueprint.domain})
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+          <Collapse
+            ghost
+            items={[{
+              key: 'advanced',
+              label: '高级配置（API、行业蓝图）',
+              children: <>
+                <Form.Item name="apiBaseUrl" label="业务 API 基址">
+                  <Input placeholder="例如：https://legacy.example/api" />
+                </Form.Item>
+                <Form.Item name="apiHeadersJson" label="业务 API 请求头">
+                  <Input.TextArea rows={3} placeholder={'例如：{"Authorization":"Bearer token","X-Tenant":"demo"}'} />
+                </Form.Item>
+                <Form.Item name="openApiUrl" label="OpenAPI 地址">
+                  <Input placeholder="例如：https://legacy.example/openapi.json" />
+                </Form.Item>
+                <Form.Item name="openApiSpecJson" label="OpenAPI JSON">
+                  <Input.TextArea rows={3} placeholder='已有 OpenAPI 文件时粘贴；与地址二选一即可' />
+                </Form.Item>
+                <Form.Item name="blueprintId" label="行业蓝图">
+                  <Select placeholder="自动推断或手动选择" allowClear>
+                    {blueprints.map(blueprint => (
+                      <Option key={blueprint.id} value={blueprint.id}>
+                        {blueprint.name} ({blueprint.domain})
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </>,
+            }]}
+          />
           <Form.Item>
             <Button
               type="primary"
@@ -418,11 +421,24 @@ const DataSourceList: React.FC = () => {
                 direction="vertical"
                 size="small"
                 items={onboardingResult.steps.map(step => ({
-                  title: step.code,
+                  title: ONBOARDING_STEP_LABELS[step.code] || step.code,
                   description: step.message,
                   status: step.status === 'completed' ? 'finish' : step.status === 'failed' ? 'error' : 'wait',
                 }))}
               />
+              <Space wrap style={{ marginTop: 16 }}>
+                <Button onClick={() => navigate(`/datasource/${onboardingResult.dataSource.id}`)}>
+                  查看接入详情
+                </Button>
+                {onboardingResult.ontology?.ontology?.id && (
+                  <Button onClick={() => navigate(`/ontology/${onboardingResult.ontology?.ontology.id}`)}>
+                    查看知识模型
+                  </Button>
+                )}
+                <Button type="primary" onClick={() => navigate('/chat')}>
+                  去业务研判
+                </Button>
+              </Space>
             </Card>
           )}
         </Form>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Statistic, Table, Tag, Typography, message } from 'antd';
-import { ReloadOutlined, RightOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RocketOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { workbenchApi } from '../../api';
 import type { Workbench, WorkbenchActionItem } from '../../types';
@@ -76,6 +76,39 @@ const WorkbenchPage: React.FC = () => {
         </div>
         <Button icon={<ReloadOutlined />} onClick={() => void load(true)} loading={loading}>刷新</Button>
       </Space>
+
+      <Card
+        title="开始一个任务"
+        style={{ marginBottom: 16 }}
+        extra={<Text type="secondary">按任务进入，复杂配置会在需要时展开</Text>}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={8}>
+            <Button block size="large" icon={<RocketOutlined />} onClick={() => navigate('/demo')}>
+              先体验演示
+            </Button>
+            <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+              自动准备样例数据，快速看到一次完整研判
+            </Text>
+          </Col>
+          <Col xs={24} md={8}>
+            <Button block size="large" icon={<DatabaseOutlined />} onClick={() => navigate('/datasource')}>
+              接入自己的系统
+            </Button>
+            <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+              从连接数据源开始，系统会提示下一步
+            </Text>
+          </Col>
+          <Col xs={24} md={8}>
+            <Button block size="large" icon={<MessageOutlined />} onClick={() => navigate('/chat')}>
+              查看业务研判
+            </Button>
+            <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
+              对已初始化的业务对象提问并查看证据
+            </Text>
+          </Col>
+        </Row>
+      </Card>
 
       {actionItems.length === 0 ? (
         <Alert

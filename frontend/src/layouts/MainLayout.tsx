@@ -30,9 +30,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 const { Header, Sider, Content } = Layout;
 
-// Several routes existed but had no menu entry, so they were only reachable by
-// typing a URL. Listed here in the order an operator actually works through:
-// see what needs doing, connect a source, model it, govern it, then ask.
+// Keep the first screen focused on the single business path. Advanced tools remain
+// reachable under “更多”, so nothing is hidden by role or permission.
 const menuItems = [
   {
     key: '/workbench',
@@ -42,32 +41,12 @@ const menuItems = [
   {
     key: '/datasource',
     icon: <DatabaseOutlined />,
-    label: '数据源管理',
+    label: '数据接入',
   },
   {
     key: '/ontology',
     icon: <DeploymentUnitOutlined />,
-    label: '本体管理',
-  },
-  {
-    key: '/graph',
-    icon: <ShareAltOutlined />,
-    label: '知识图谱',
-  },
-  {
-    key: '/knowledge',
-    icon: <BookOutlined />,
-    label: '文档知识库',
-  },
-  {
-    key: '/mapping',
-    icon: <AuditOutlined />,
-    label: '语义映射',
-  },
-  {
-    key: '/rules',
-    icon: <FileProtectOutlined />,
-    label: '业务规则',
+    label: '知识建模',
   },
   {
     key: '/governance',
@@ -77,27 +56,23 @@ const menuItems = [
   {
     key: '/chat',
     icon: <ThunderboltOutlined />,
-    label: '智能体对话',
+    label: '业务研判',
   },
   {
-    key: '/feedback',
-    icon: <MessageOutlined />,
-    label: '反馈闭环',
-  },
-  {
-    key: '/workflow',
-    icon: <ApartmentOutlined />,
-    label: '工作流管理',
-  },
-  {
-    key: '/permission',
-    icon: <SafetyOutlined />,
-    label: '权限管理',
-  },
-  {
-    key: '/model',
+    key: '/more',
     icon: <SettingOutlined />,
-    label: '模型配置',
+    label: '更多工具',
+    children: [
+      { key: '/graph', icon: <ShareAltOutlined />, label: '知识图谱' },
+      { key: '/knowledge', icon: <BookOutlined />, label: '文档知识库' },
+      { key: '/mapping', icon: <AuditOutlined />, label: '语义映射' },
+      { key: '/rules', icon: <FileProtectOutlined />, label: '业务规则' },
+      { key: '/feedback', icon: <MessageOutlined />, label: '反馈闭环' },
+      { key: '/workflow', icon: <ApartmentOutlined />, label: '工作流管理' },
+      { key: '/permission', icon: <SafetyOutlined />, label: '权限管理' },
+      { key: '/backup', icon: <DatabaseOutlined />, label: '数据备份' },
+      { key: '/model', icon: <SettingOutlined />, label: '模型配置' },
+    ],
   },
 ];
 
@@ -114,8 +89,15 @@ const MainLayout: React.FC = () => {
     const path = location.pathname;
     if (path === '/') return '/workbench';
     const firstSegment = '/' + path.split('/')[1];
-    return menuItems.find(item => item.key === firstSegment)?.key || '/';
+    const navigableItems = menuItems.flatMap(item => 'children' in item ? item.children : [item]);
+    return navigableItems.find(item => item?.key === firstSegment)?.key || '/';
   };
+
+  const openKeys = location.pathname.startsWith('/graph') || location.pathname.startsWith('/knowledge')
+    || location.pathname.startsWith('/mapping') || location.pathname.startsWith('/rules')
+    || location.pathname.startsWith('/feedback') || location.pathname.startsWith('/workflow')
+    || location.pathname.startsWith('/permission') || location.pathname.startsWith('/backup')
+    || location.pathname.startsWith('/model') ? ['/more'] : [];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -141,6 +123,7 @@ const MainLayout: React.FC = () => {
         <Menu
           theme="dark"
           selectedKeys={[getSelectedKey()]}
+          defaultOpenKeys={openKeys}
           mode="inline"
           items={menuItems}
           onClick={({ key }) => navigate(key)}

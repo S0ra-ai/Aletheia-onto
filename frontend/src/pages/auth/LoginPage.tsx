@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/chat';
+  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/workbench';
 
   const handleSubmit = async (values: LoginFormValues) => {
     setSubmitting(true);
