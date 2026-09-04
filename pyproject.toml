@@ -53,13 +53,13 @@ web = [
     # request time, not an install-time error.
     "python-multipart==0.0.32",
 ]
-postgresql = ["psycopg[binary]==3.3.4"]
+postgresql = ["psycopg[binary]==3.3.5"]
 mysql = ["PyMySQL==1.2.0"]
 # Document ingestion for the knowledge layer.
 documents = ["python-docx==1.2.0"]
 dev = [
     "pytest==9.1.1",
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "mypy==2.3.1",
     # Only `fastapi.testclient` needs an HTTP client; the platform's own outbound calls
     # (REST data sources, model endpoints) use `urllib` so the kernel stays dependency
