@@ -691,6 +691,7 @@ export interface ModelStatus {
 // 模型配置
 export interface ModelConfig {
   configured: boolean;
+  provider: string;
   apiKey: string;
   hasApiKey: boolean;
   model: string;
@@ -712,6 +713,7 @@ export interface ModelConfig {
 
 // 模型配置更新
 export interface ModelConfigUpdate {
+  provider?: string;
   apiKey?: string;
   model?: string;
   baseUrl?: string;

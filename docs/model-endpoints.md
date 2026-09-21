@@ -30,6 +30,7 @@
 | Azure OpenAI | `https://<资源>.openai.azure.com/openai/deployments/<部署>/chat/completions?api-version=2024-02-01` | api-key | 关 |
 | 自建 vLLM / Ollama | `http://127.0.0.1:8000/v1` | none | 关 |
 | 阿里云百炼 / 通义 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | bearer | 关 |
+| DeepSeek 官方 API | `https://api.deepseek.com` | bearer | 关 |
 
 套用预设后需自行补齐密钥与模型名。
 
@@ -80,6 +81,11 @@ JSON 对象，例如 `{"X-Tenant-Id": "acme"}`。
 | `ONTOLOGY_MODEL_AUTH_HEADER` | 自定义鉴权头名称 |
 | `ONTOLOGY_MODEL_EXTRA_HEADERS` | 附加请求头（JSON 字符串） |
 | `ONTOLOGY_MODEL_SEND_EXTRAS` | 设为 `0` 关闭扩展字段 |
+
+如果未设置 `OPENROUTER_API_KEY`，也可以使用 DeepSeek 官方 API：设置
+`DEEPSEEK_API_KEY`，可选设置 `DEEPSEEK_MODEL`（默认 `deepseek-flash`）和
+`DEEPSEEK_BASE_URL`（默认 `https://api.deepseek.com`）。平台会自动使用 Bearer
+鉴权并关闭 OpenRouter 专属扩展字段；数据库中已保存的模型配置优先于环境变量。
 
 ## 排错
 

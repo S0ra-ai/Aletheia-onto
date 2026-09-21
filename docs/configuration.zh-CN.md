@@ -65,6 +65,9 @@
 | `ANSWER_CONFIDENCE` | 问答置信度 | `ONTOLOGY_ANSWER_CONFIDENCE_*` |
 | `RESOLUTION_CONFIDENCE` | 实例识别置信度与加成 | `ONTOLOGY_RESOLUTION_*` |
 | `SEMANTIC_ASSET_NAMING` | JSON-LD／Turtle 的 IRI 命名空间 | `ONTOLOGY_VOCABULARY_BASE_IRI`、`ONTOLOGY_ASSET_BASE_IRI` |
-| `MODEL_PROVIDER_DEFAULTS` | 模型端点、模型名、超时、service tier | `OPENROUTER_*` |
+| `MODEL_PROVIDER_DEFAULTS` | 模型端点、模型名、超时、service tier | `OPENROUTER_*`；未设置 OpenRouter Key 时也可用 `DEEPSEEK_*` |
 
 模型密钥 `OPENROUTER_API_KEY` 未配置时，问答与建模回退本地启发式，功能不中断。
+如果未设置 `OPENROUTER_API_KEY` 而设置了 `DEEPSEEK_API_KEY`，平台会自动使用 DeepSeek 官方
+OpenAI 兼容接口；默认模型为 `deepseek-flash`，默认地址为 `https://api.deepseek.com`，并关闭
+OpenRouter 专属扩展字段。也可以在前端“模型配置”中选择“DeepSeek 官方 API”预设后保存。

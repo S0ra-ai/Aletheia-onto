@@ -148,6 +148,45 @@ def test_provider_extras_can_be_suppressed_for_strict_servers() -> None:
     assert payload["messages"][0]["content"] == "ping"
 
 
+def test_deepseek_direct_endpoint_uses_openai_compatible_shape() -> None:
+    config = _config(
+        api_key="ds-test-key",
+        model="deepseek-flash",
+        base_url="https://api.deepseek.com",
+        send_provider_extras=False,
+    )
+    call = _capture(config, session_id="deepseek-session")
+
+    assert call["url"] == "https://api.deepseek.com/chat/completions"
+    assert call["headers"]["Authorization"] == "Bearer ds-test-key"
+    assert "service_tier" not in call["payload"]
+    assert "session_id" not in call["payload"]
+    assert call["payload"]["model"] == "deepseek-flash"
+
+
+def test_deepseek_environment_configuration_is_used_when_openrouter_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-env-key")
+    monkeypatch.delenv("DEEPSEEK_BASE_URL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+
+    config = OpenRouterConfig.from_env()
+
+    assert config.provider == "deepseek"
+    assert config.api_key == "ds-env-key"
+    assert config.model == "deepseek-flash"
+    assert config.base_url == "https://api.deepseek.com"
+    assert config.send_provider_extras is False
+
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    resolved = OpenRouterConfig.from_db_or_env(platform_db)
+    assert resolved.provider == "deepseek"
+    assert resolved.model == "deepseek-flash"
+
+
 # -- Persistence --
 
 

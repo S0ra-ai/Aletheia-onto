@@ -73,10 +73,14 @@ a real outage shape, so the bootstrap admin keeps its password.
 | `ANSWER_CONFIDENCE` | Answer confidence | `ONTOLOGY_ANSWER_CONFIDENCE_*` |
 | `RESOLUTION_CONFIDENCE` | Instance-resolution confidence and boosts | `ONTOLOGY_RESOLUTION_*` |
 | `SEMANTIC_ASSET_NAMING` | IRI namespaces for JSON-LD / Turtle / OWL | `ONTOLOGY_VOCABULARY_BASE_IRI`, `ONTOLOGY_ASSET_BASE_IRI` |
-| `MODEL_PROVIDER_DEFAULTS` | Model endpoint, model name, timeout, service tier | `OPENROUTER_*` |
+| `MODEL_PROVIDER_DEFAULTS` | Model endpoint, model name, timeout, service tier | `OPENROUTER_*`; `DEEPSEEK_*` when OpenRouter is unset |
 
 With no `OPENROUTER_API_KEY` configured, question answering and draft generation fall back
 to a local heuristic — the platform keeps working rather than failing.
+If `OPENROUTER_API_KEY` is unset and `DEEPSEEK_API_KEY` is present, the platform automatically
+uses DeepSeek's OpenAI-compatible endpoint, defaults to `deepseek-flash`, and disables
+OpenRouter-only body extensions. The web model settings page also provides a “DeepSeek official
+API” preset.
 
 ## Related
 

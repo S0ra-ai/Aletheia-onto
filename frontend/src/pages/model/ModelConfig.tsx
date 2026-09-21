@@ -23,6 +23,7 @@ const { Title, Paragraph, Text } = Typography;
 
 interface Preset {
   label: string;
+  provider: string;
   baseUrl: string;
   model: string;
   authStyle: string;
@@ -35,6 +36,7 @@ interface Preset {
 const PRESETS: Record<string, Preset> = {
   openrouter: {
     label: 'OpenRouter',
+    provider: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini',
     authStyle: 'bearer',
@@ -43,6 +45,7 @@ const PRESETS: Record<string, Preset> = {
   },
   openai: {
     label: 'OpenAI 官方',
+    provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
     authStyle: 'bearer',
@@ -51,6 +54,7 @@ const PRESETS: Record<string, Preset> = {
   },
   relay: {
     label: '中转站 / 自定义订阅',
+    provider: 'custom',
     baseUrl: 'https://your-relay.example.com/v1',
     model: 'gpt-4o-mini',
     authStyle: 'bearer',
@@ -59,6 +63,7 @@ const PRESETS: Record<string, Preset> = {
   },
   azure: {
     label: 'Azure OpenAI',
+    provider: 'azure',
     baseUrl: 'https://<资源名>.openai.azure.com/openai/deployments/<部署名>/chat/completions?api-version=2024-02-01',
     model: '<部署名>',
     authStyle: 'api-key',
@@ -67,6 +72,7 @@ const PRESETS: Record<string, Preset> = {
   },
   vllm: {
     label: '自建 vLLM / Ollama',
+    provider: 'local',
     baseUrl: 'http://127.0.0.1:8000/v1',
     model: 'qwen2.5-7b-instruct',
     authStyle: 'none',
@@ -75,11 +81,21 @@ const PRESETS: Record<string, Preset> = {
   },
   dashscope: {
     label: '阿里云百炼 / 通义',
+    provider: 'dashscope',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-max',
     authStyle: 'bearer',
     sendProviderExtras: false,
     note: '使用 OpenAI 兼容模式端点。',
+  },
+  deepseek: {
+    label: 'DeepSeek 官方 API',
+    provider: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-flash',
+    authStyle: 'bearer',
+    sendProviderExtras: false,
+    note: '使用 DeepSeek 官方 OpenAI 兼容接口；填写 DeepSeek API Key。',
   },
 };
 
@@ -106,6 +122,7 @@ const ModelConfigPage: React.FC = () => {
       setAuthStyle(data.authStyle || 'bearer');
       form.setFieldsValue({
         apiKey: '', // 从不回显完整 Key
+        provider: data.provider || 'openrouter',
         model: data.model,
         baseUrl: data.baseUrl,
         httpReferer: data.httpReferer,
@@ -134,6 +151,7 @@ const ModelConfigPage: React.FC = () => {
     const preset = PRESETS[key];
     if (!preset) return;
     form.setFieldsValue({
+      provider: preset.provider,
       baseUrl: preset.baseUrl,
       model: preset.model,
       authStyle: preset.authStyle,
@@ -223,7 +241,7 @@ const ModelConfigPage: React.FC = () => {
         官方 API、中转站与自定义订阅、自建 vLLM / Ollama、Azure OpenAI、国内厂商兼容端点。
         <br />
         <Text type="secondary" style={{ fontSize: 12 }}>
-          未配置密钥时，问答与建模会回退到本地启发式，功能不中断。
+          未配置密钥时，问答与建模会回退到本地启发式，功能不中断。DeepSeek 官方 API 可通过下方预设直接接入。
         </Text>
       </Paragraph>
 
@@ -262,6 +280,9 @@ const ModelConfigPage: React.FC = () => {
         }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
+          <Form.Item name="provider" label="服务商标识" hidden>
+            <Input />
+          </Form.Item>
           <Form.Item
             name="baseUrl"
             label="API Base URL"
@@ -277,7 +298,7 @@ const ModelConfigPage: React.FC = () => {
             rules={[{ required: true, message: '请输入模型名称' }]}
             extra="填写你的服务商所使用的模型标识；Azure 填部署名。"
           >
-            <Input placeholder="gpt-4o-mini / qwen-max / deepseek-chat" />
+            <Input placeholder="gpt-4o-mini / qwen-max / deepseek-flash" />
           </Form.Item>
 
           <Form.Item

@@ -74,6 +74,10 @@ class OpenRouterConfig:
     auth_header: str = ""
     extra_headers: dict[str, str] = field(default_factory=dict)
     send_provider_extras: bool = True
+    # The transport remains OpenAI-compatible, but keeping the selected vendor
+    # lets status pages and invocation ledgers tell DeepSeek direct from OpenRouter.
+    # It is last so existing positional construction remains source-compatible.
+    provider: str = "openrouter"
 
     @property
     def chat_completions_url(self) -> str:
@@ -114,19 +118,26 @@ class OpenRouterConfig:
 
     @classmethod
     def from_env(cls) -> "OpenRouterConfig":
+        openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
+        use_deepseek = bool(deepseek_key and not openrouter_key)
         return cls(
-            api_key=os.getenv("OPENROUTER_API_KEY", ""),
-            model=MODEL_PROVIDER_DEFAULTS.model,
-            base_url=MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
+            api_key=deepseek_key if use_deepseek else openrouter_key,
+            model=(os.getenv("DEEPSEEK_MODEL", "").strip() or "deepseek-flash") if use_deepseek else MODEL_PROVIDER_DEFAULTS.model,
+            base_url=(os.getenv("DEEPSEEK_BASE_URL", "").strip() or "https://api.deepseek.com") if use_deepseek else MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
             http_referer=os.getenv("OPENROUTER_HTTP_REFERER", ""),
             app_title=MODEL_PROVIDER_DEFAULTS.app_title,
-            service_tier=MODEL_PROVIDER_DEFAULTS.service_tier,
+            service_tier="" if use_deepseek else MODEL_PROVIDER_DEFAULTS.service_tier,
             timeout_seconds=MODEL_PROVIDER_DEFAULTS.timeout_seconds,
             auth_style=os.getenv("ONTOLOGY_MODEL_AUTH_STYLE", "bearer"),
             auth_header=os.getenv("ONTOLOGY_MODEL_AUTH_HEADER", ""),
             extra_headers=_parse_header_json(os.getenv("ONTOLOGY_MODEL_EXTRA_HEADERS", "")),
-            send_provider_extras=os.getenv("ONTOLOGY_MODEL_SEND_EXTRAS", "").strip().lower()
-            not in {"0", "false", "no"},
+            send_provider_extras=(
+                os.getenv("ONTOLOGY_MODEL_SEND_EXTRAS", "").strip().lower() not in {"0", "false", "no"}
+                if not use_deepseek
+                else False
+            ),
+            provider="deepseek" if use_deepseek else "openrouter",
         )
 
     @classmethod
@@ -135,6 +146,12 @@ class OpenRouterConfig:
         with connect(platform_db) as conn:
             row = conn.execute("select * from model_config where id = 1").fetchone()
             if row is None:
+                return env_config
+            # `initialize_platform_db` creates a default row so the settings page can
+            # read immediately. An empty default row must not mask a provider key that
+            # was intentionally supplied through the environment (notably
+            # DEEPSEEK_API_KEY in container deployments).
+            if not _row_get(row, "api_key") and env_config.provider != "openrouter":
                 return env_config
             return cls(
                 api_key=row["api_key"] or env_config.api_key,
@@ -151,6 +168,7 @@ class OpenRouterConfig:
                 auth_header=_row_get(row, "auth_header") or env_config.auth_header,
                 extra_headers=_parse_header_json(_row_get(row, "extra_headers")) or env_config.extra_headers,
                 send_provider_extras=_row_flag(row, "send_provider_extras", default=True),
+                provider=_row_get(row, "provider") or env_config.provider,
             )
 
 
@@ -165,7 +183,9 @@ class ModelResult:
 
 
 class OpenRouterClient:
-    provider = "openrouter"
+    @property
+    def provider(self) -> str:
+        return self.config.provider
 
     def __init__(self, config: OpenRouterConfig | None = None, transport: Transport | None = None) -> None:
         self.config = config or OpenRouterConfig.from_env()
@@ -176,6 +196,10 @@ class OpenRouterClient:
         return bool(self.config.api_key)
 
     def status(self) -> dict[str, Any]:
+        key_source = {
+            "deepseek": "DEEPSEEK_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+        }.get(self.provider, "model_config.api_key")
         return {
             "provider": self.provider,
             "configured": self.configured,
@@ -183,7 +207,7 @@ class OpenRouterClient:
             "baseUrl": self.config.base_url,
             "serviceTier": self.config.service_tier,
             "usesSubscriptionOrCreditKey": self.configured,
-            "apiKeySource": "OPENROUTER_API_KEY" if self.configured else "missing",
+            "apiKeySource": key_source if self.configured else "missing",
         }
 
     def chat(
@@ -385,7 +409,7 @@ def get_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     source = _model_config_source(platform_db)
     return {
         "configured": bool(config.api_key),
-        "provider": "openrouter",
+        "provider": config.provider,
         "apiKey": _mask_api_key(config.api_key),
         "hasApiKey": bool(config.api_key),
         "model": config.model,
@@ -434,6 +458,9 @@ def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dic
         extra_headers = current.extra_headers
     send_extras = payload.get("sendProviderExtras")
     send_provider_extras = current.send_provider_extras if send_extras is None else bool(send_extras)
+    provider = str(payload.get("provider") or current.provider or "openrouter").strip().lower()
+    if not provider:
+        provider = "openrouter"
 
     with connect(platform_db) as conn:
         conn.execute(
@@ -443,9 +470,10 @@ def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dic
                 app_title, service_tier, timeout_seconds,
                 auth_style, auth_header, extra_headers, send_provider_extras, updated_at
             )
-            values (1, 'openrouter', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
+            values (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)
             on conflict(id) do update set
                 api_key = excluded.api_key,
+                provider = excluded.provider,
                 model = excluded.model,
                 base_url = excluded.base_url,
                 http_referer = excluded.http_referer,
@@ -459,6 +487,7 @@ def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dic
                 updated_at = current_timestamp
             """,
             (
+                provider,
                 api_key,
                 model,
                 base_url,
@@ -499,7 +528,7 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     client = OpenRouterClient(OpenRouterConfig.from_db_or_env(platform_db))
     status = client.status()
     if not client.configured:
-        return {"success": False, "message": "未配置 OpenRouter API Key。", "status": status}
+        return {"success": False, "message": f"未配置 {client.provider} API Key。", "status": status}
     try:
         result = client.chat(
             [{"role": "user", "content": "Return a short ok response for connectivity test."}],
@@ -507,7 +536,7 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
             session_id="model-config-test",
         )
         _record_model_invocation(platform_db, result, "model_config_test", "success")
-        return {"success": True, "message": "OpenRouter 连接测试成功。", "model": result.model, "status": status}
+        return {"success": True, "message": f"{client.provider} 连接测试成功。", "model": result.model, "status": status}
     except Exception as error:
         _record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
         return {"success": False, "message": str(error), "status": status}

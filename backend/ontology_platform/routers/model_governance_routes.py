@@ -46,6 +46,7 @@ router = APIRouter()
 
 
 class ModelConfigUpdate(BaseModel):
+    provider: Optional[str] = None
     apiKey: Optional[str] = None
     model: Optional[str] = None
     baseUrl: Optional[str] = None
