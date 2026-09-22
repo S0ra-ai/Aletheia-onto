@@ -46,6 +46,7 @@ dependencies = []
 # upgrade can change a verdict, and a verdict is what this platform is accountable for.
 web = [
     "fastapi==0.141.1",
+    "prometheus-client==0.20.0",
     "uvicorn[standard]==0.52.4",
     # Declared rather than inherited: `api.py` uses File()/Form(), and FastAPI moved
     # the multipart parser out of its base install into `fastapi[standard]`. Relying on

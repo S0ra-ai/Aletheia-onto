@@ -6,11 +6,12 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 
 ## Stored but inert
 
-Most dangerous category, because the API looks functional. Nearly emptied out:
-`guard_expression`, `filter_expression`, `depends_on` and the policy's ontology
-dimension are all live now, and Event / State from `docs/02` are implemented.
+**This section has been emptied out.** It was the most dangerous category, because an
+interface can look functional while silently ignoring stored logic. In particular,
+`guard_expression`, `filter_expression`, `depends_on` and the ontology dimension of
+permission policy are live and fail closed. Derived versions now carry the workflow and
+rule-evaluation metadata needed to reproduce a verdict.
 
-- Deriving a new ontology version does not copy workflow configuration.
 - List endpoints are mostly unpaginated.
 
 ## Structural expressiveness ceiling
@@ -36,15 +37,16 @@ By design, not bugs. These are the next phase's work.
 ## Engineering limitations
 
 - No connection pooling; no unified transaction boundary across `connect()` calls.
-- 172 `platform_db: Path | str` signatures are **not yet migrated to the context
-  object** -- they accept one, but the per-module migration is outstanding
-  ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
-- `api.py` holds 133 endpoints in one file, **not yet split into APIRouters**
-  (the `/v1` prefix is in place).
+- `platform_db` signatures are **all widened to `PlatformDb`** (context, path or string).
+  The former `Path | str` annotation rejected contexts in type checkers even though
+  runtime accepted it ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
+- The HTTP layer has 153 endpoints and **APIRouter extraction has started**
+  (`routers/`); `api.py` still owns 40 of them.
 - `frontend/src/types/index.ts` hand-mirrors backend models in 1143 lines; the backend
   emits both camelCase and snake_case.
-- DDL dispatch is unified in `schema.py`, but **not yet migrated to Alembic** -- a
-  migration has to belong to a distribution, so this is blocked on the package split.
+- **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
+  it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
+  properties here—a version ledger and ordered application—are provided directly.
 - **Not yet split into multiple PyPI distributions.** One package plus optional extras;
   the extras carry the eventual seams without freezing them.
 

@@ -225,6 +225,24 @@ def hash_password(password: str, salt: str | None = None, iterations: int = PBKD
     return digest.hex(), resolved_salt, iterations
 
 
+def validate_password_strength(password: str) -> tuple[bool, list[str]]:
+    """Validate password meets security requirements."""
+    errors = []
+
+    if len(password) < 12:
+        errors.append("密码长度至少12位")
+    if not any(c.isupper() for c in password):
+        errors.append("密码必须包含大写字母")
+    if not any(c.islower() for c in password):
+        errors.append("密码必须包含小写字母")
+    if not any(c.isdigit() for c in password):
+        errors.append("密码必须包含数字")
+    if not any(c in "!@#$%^&*()_+-=[]{}|;:',.<>?/" for c in password):
+        errors.append("密码必须包含特殊字符")
+
+    return len(errors) == 0, errors
+
+
 def verify_password(password: str, password_hash: str, salt: str, iterations: int = PBKDF2_ITERATIONS) -> bool:
     if not password or not password_hash or not salt:
         return False

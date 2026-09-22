@@ -47,6 +47,9 @@ services:
       # 逐个列出真实前端来源。`*` 会被 preflight 拦下。
       ONTOLOGY_ALLOWED_ORIGINS: ${ONTOLOGY_ALLOWED_ORIGINS:?必须设置 ONTOLOGY_ALLOWED_ORIGINS}
       ONTOLOGY_SESSION_TTL_HOURS: ${ONTOLOGY_SESSION_TTL_HOURS:-12}
+      # SQLite 备份不用于这份 PostgreSQL 编排，但上传状态和未来的本地运维文件
+      # 需要固定在已声明的可写目录。
+      ONTOLOGY_BACKUP_DIR: /var/lib/aletheia/backups
     volumes:
       # 平台库在 PostgreSQL 里，这个卷用于文档上传等本地状态。
       - platform-state:/var/lib/aletheia
@@ -68,6 +71,36 @@ services:
       ONTOLOGY_ALLOWED_ORIGINS: ${ONTOLOGY_ALLOWED_ORIGINS}
     command: ["preflight", "--environment", "production", "--workers", "1"]
 
+  # Prometheus metrics scraper. Monitoring is opt-in and does not widen the platform
+  # service or expose ports unless this profile is selected.
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - platform
+
+  # Grafana is opt-in too; its administrator password has no usable default.
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?必须设置 GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   db-data:
   platform-state:
+  prometheus-data:
+  grafana-data:

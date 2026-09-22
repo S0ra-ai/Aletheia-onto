@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - 'alert_rules.yml'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - 'alertmanager:9093'
+
+scrape_configs:
+  - job_name: 'aletheia-platform'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['platform:8000']
+        labels:
+          service: 'aletheia-platform'
+          environment: 'production'

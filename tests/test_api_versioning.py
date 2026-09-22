@@ -195,6 +195,9 @@ EXPECTED_ADMIN_ONLY = {
     "POST /permissions/policies",
     "POST /tools",
     "POST /tools/authorize",
+    # 备份包含凭据与业务连接串；恢复会替换平台库，因此两者显式保持管理员操作。
+    "POST /admin/backup/create",
+    "POST /admin/backup/restore/1",
 }
 
 

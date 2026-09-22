@@ -52,11 +52,11 @@
 - **`platform_db` 签名已全部改为 `PlatformDb`**（上下文／路径／字符串三者皆可）。
   此前标注写 `Path | str` 而运行时接受 context——**那比不标注更糟：它让类型检查器
   拒绝本来可用的代码**，于是多租户与嵌入被文档声称支持、却对任何跑 mypy 的下游不可达。
-- HTTP 层共 149 个端点，**已开始拆分 APIRouter**（`routers/`）：
-  工作流／权限／工具已外移，`api.py` 内仍留 113 个，按关注点继续外移是后续工作。
+- HTTP 层共 156 个端点，**已开始拆分 APIRouter**（`routers/`）：
+  工作流／权限／工具等已外移，`api.py` 内仍留 40 个，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
 - 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
-  平台自身的类型尚不能由 OpenAPI 生成：149 个端点均返回 `dict[str, object]`，
+  平台自身的类型尚不能由 OpenAPI 生成：156 个端点均返回 `dict[str, object]`，
   响应 schema 是裸 object，生成器只会产出 `unknown`。
   **但用户本体的类型已可生成**（`aletheia codegen`），且那才是手写做不对的部分。
   **请求侧的一致性已由测试守住**——

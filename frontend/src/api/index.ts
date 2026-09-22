@@ -19,6 +19,8 @@ import type {
   DemoBootstrapResult,
   InstanceExplainResult,
   InstanceAssessResult,
+  SemanticObjectInstancesResult,
+  SemanticObjectInstanceResult,
   DecisionConsistencyResult,
   OperationPreflightResult,
   OperationExecuteResult,
@@ -414,6 +416,30 @@ export const semanticApi = {
     const params = ontologyId ? { ontologyId } : {};
     const { data } = await api.get(`/semantic/objects/${objectCode}/instances/${instanceId}/explain`, { params });
     return data as InstanceExplainResult;
+  },
+
+  listInstances: async (
+    objectCode: string,
+    ontologyId: number,
+    limit?: number,
+    offset?: number,
+  ): Promise<SemanticObjectInstancesResult> => {
+    const { data } = await api.get(`/semantic/objects/${encodeURIComponent(objectCode)}/instances`, {
+      params: { ontologyId, limit, offset },
+    });
+    return data as SemanticObjectInstancesResult;
+  },
+
+  getInstance: async (
+    objectCode: string,
+    instanceId: string,
+    ontologyId: number,
+  ): Promise<SemanticObjectInstanceResult> => {
+    const { data } = await api.get(
+      `/semantic/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}`,
+      { params: { ontologyId } },
+    );
+    return data as SemanticObjectInstanceResult;
   },
 
   assess: async (objectCode: string, instanceId: string, ontologyId?: number): Promise<InstanceAssessResult> => {
@@ -832,6 +858,38 @@ export const feedbackApi = {
   resolve: async (feedbackId: number, resolution = 'resolved') => {
     const { data } = await api.post(`/feedback/${feedbackId}/resolve`, { resolution });
     return data;
+  },
+};
+
+// 平台备份 API
+export interface BackupItem {
+  name: string;
+  path: string;
+  size: number;
+  created_at: string;
+}
+
+export const backupApi = {
+  list: async (): Promise<BackupItem[]> => {
+    const { data } = await api.get('/admin/backup/list');
+    return ((data as { backups?: unknown[] }).backups || []) as BackupItem[];
+  },
+
+  create: async (): Promise<BackupItem> => {
+    const { data } = await api.post('/admin/backup/create');
+    return data as BackupItem;
+  },
+
+  download: async (name: string): Promise<Blob> => {
+    const { data } = await api.get(`/admin/backup/download/${encodeURIComponent(name)}`, {
+      responseType: 'blob',
+    });
+    return data as Blob;
+  },
+
+  restore: async (name: string): Promise<{ name: string; restoredAt: string }> => {
+    const { data } = await api.post(`/admin/backup/restore/${encodeURIComponent(name)}`);
+    return data as { name: string; restoredAt: string };
   },
 };
 

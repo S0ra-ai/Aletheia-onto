@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1375 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1379 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -86,6 +86,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
 | `test_documented_claims.py` | 6 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
+| `test_object_service.py` | 4 | 通用业务对象浏览、元数据与行级权限过滤 |
 
 ## 静态检查与前端构建
 
@@ -98,7 +99,7 @@ cd frontend && npm run build
 
 ## 规模
 
-86 个后端模块约 33900 行，154 个 API 端点，45 张平台表，前端 React + antd。
+87 个后端模块约 34100 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。

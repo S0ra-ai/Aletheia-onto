@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
@@ -29,10 +29,12 @@ from .auth import (
     resolve_principal,
 )
 from .automation import execute_operation, preflight_operation
+from .backup import backup_archive_path, create_backup, list_backups, restore_backup
 from .bootstrap import prepare_database
 from .contract_documents import parse_rule_docx_bytes
 from .credentials import redact_connection_uri
 from .database import DEFAULT_PLATFORM_DB, configure_platform_db, connect, get_platform_config, initialize_platform_db
+from .frontend_runtime import frontend_assets, frontend_index
 from .governance import (
     bulk_review_semantic_mappings,
     delete_business_rule,
@@ -54,7 +56,9 @@ from .metadata import (
     register_source_api,
     scan_data_source,
 )
+from .metrics import expose_metrics, init_metrics
 from .natural_language import query_natural_language
+from .object_service import ObjectAccessError, get_object_instance, list_object_instances
 from .ontology import (
     explain_instance,
     export_ontology_asset,
@@ -116,6 +120,7 @@ async def lifespan(app: FastAPI):
             if entry["status"] == "applied":
                 logger.info("已应用迁移 %s: %s", entry["version"], entry.get("description", ""))
     seed_default_tools(DEFAULT_PLATFORM_DB)
+    init_metrics()
     seed_default_roles_and_policies(DEFAULT_PLATFORM_DB)
     if AUTH_ENABLED:
         ensure_bootstrap_admin(DEFAULT_PLATFORM_DB)
@@ -179,6 +184,9 @@ def include_router_twice(application: FastAPI, router: APIRouter) -> None:
     """
     application.include_router(router)
     application.include_router(router, prefix=VERSION_PREFIX, include_in_schema=False)
+    # Production serves the compiled admin UI from the same origin. `/api` is a
+    # transport alias, not a new API version, so it stays out of OpenAPI.
+    application.include_router(router, prefix="/api", include_in_schema=False)
 
 
 # Routes still declared in this module. They go on a router rather than on `app`
@@ -327,6 +335,36 @@ class BusinessRuleCreate(BaseModel):
     effectiveStart: Optional[str] = None
     effectiveEnd: Optional[str] = None
     dependsOn: Optional[str] = None
+
+
+@core_router.post("/admin/backup/create")
+def create_platform_backup() -> dict[str, object]:
+    """Create a backup of the platform database."""
+    return create_backup(str(DEFAULT_PLATFORM_DB))
+
+
+@core_router.get("/admin/backup/list")
+def list_platform_backups() -> dict[str, object]:
+    """List all available backups."""
+    return {"backups": list_backups()}
+
+
+@core_router.get("/admin/backup/download/{backup_name}")
+def download_platform_backup(backup_name: str) -> FileResponse:
+    """Stream one backup archive; archives contain credentials, so stay admin-only."""
+    try:
+        archive = backup_archive_path(backup_name)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return FileResponse(archive, media_type="application/gzip", filename=archive.name)
+
+
+@core_router.post("/admin/backup/restore/{backup_name}")
+def restore_platform_backup(backup_name: str) -> dict[str, object]:
+    """Restore from a backup."""
+    return restore_backup(backup_name, str(DEFAULT_PLATFORM_DB))
 
 
 @core_router.get("/health")
@@ -701,6 +739,54 @@ def explain_object_instance(object_code: str, instance_id: str, ontologyId: Opti
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
+@core_router.get("/semantic/objects/{object_code}/instances")
+def list_semantic_object_instances(
+    object_code: str,
+    ontologyId: Optional[int] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Browse a business object through its configured instance resolver."""
+    try:
+        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        return list_object_instances(
+            DEFAULT_PLATFORM_DB,
+            resolved,
+            object_code,
+            role_code=principal.role_code,
+            limit=limit,
+            offset=offset,
+        )
+    except ObjectAccessError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@core_router.get("/semantic/objects/{object_code}/instances/{instance_id}")
+def get_semantic_object_instance(
+    object_code: str,
+    instance_id: str,
+    ontologyId: Optional[int] = None,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    """Fetch one business-object instance through the same permission boundary."""
+    try:
+        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        return get_object_instance(
+            DEFAULT_PLATFORM_DB,
+            resolved,
+            object_code,
+            instance_id,
+            role_code=principal.role_code,
+        )
+    except ObjectAccessError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @core_router.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
 def assess_object_instance(
     object_code: str,
@@ -898,6 +984,12 @@ def files() -> dict[str, str]:
     }
 
 
+@core_router.get("/metrics")
+def metrics_endpoint() -> Response:
+    """Prometheus metrics endpoint."""
+    return Response(content=expose_metrics(), media_type="text/plain")
+
+
 # Every router the app serves. Declared as data because it is what the version mounting
 # below iterates *and* what the tests enumerate: FastAPI 0.141 expands `include_router`
 # lazily, so `app.routes` holds placeholders rather than routes, and there is no
@@ -929,3 +1021,35 @@ def declared_routes() -> list[APIRoute]:
 # served at all, which fails on the first request rather than only for versioned callers.
 for _router in ROUTERS:
     include_router_twice(app, _router)
+
+
+_frontend_assets = frontend_assets()
+if _frontend_assets is not None:
+    app.mount("/assets", _frontend_assets, name="frontend-assets")
+
+
+@app.get("/", include_in_schema=False)
+def frontend_root() -> RedirectResponse:
+    """The one URL an operator needs to remember after deployment."""
+    return RedirectResponse(url="/admin/", status_code=307)
+
+
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/", include_in_schema=False)
+@app.get("/admin/{frontend_path:path}", include_in_schema=False)
+def frontend_shell(frontend_path: str = "") -> FileResponse:
+    """Serve the SPA entry for browser navigation routes.
+
+    API routes are registered before this catch-all, so they keep their normal response
+    and authorization semantics. A wheel-only install has no `frontend/dist`; returning
+    a clear 404 is preferable to pretending the admin UI shipped with the kernel.
+    """
+    # A mistyped API URL must stay an API 404 rather than returning HTML to a client
+    # expecting JSON. Registered API routes win before this handler; this guards only
+    # the unmatched remainder of their namespaces.
+    if frontend_path == "api" or frontend_path.startswith("api/") or frontend_path == "v1" or frontend_path.startswith("v1/"):
+        raise HTTPException(status_code=404, detail="API 路径不存在")
+    entry = frontend_index()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="前端构建产物不存在，请先构建 frontend/dist")
+    return entry

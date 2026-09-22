@@ -1,9 +1,11 @@
 import React from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 /**
- * Renders an agent answer as Markdown.
+ * Renders an agent answer as Markdown with syntax-highlighted code blocks.
  *
  * Answers arrive with real structure -- rule verdicts as lists, evidence as
  * tables, rule codes and field names as inline code. Rendering them as
@@ -34,9 +36,9 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   inverted = false,
   variant = 'bubble',
 }) => {
-  const codeBg = inverted ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.06)';
-  const borderColor = inverted ? 'rgba(255,255,255,0.35)' : '#d0d7e2';
-  const mutedColor = inverted ? 'rgba(255,255,255,0.85)' : '#5b6b7f';
+  const codeBg = inverted ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.04)';
+  const borderColor = inverted ? 'rgba(255,255,255,0.25)' : '#d0d7e2';
+  const mutedColor = inverted ? 'rgba(255,255,255,0.75)' : '#5b6b7f';
   const isDocument = variant === 'document';
   const headingSizes = isDocument ? [19, 17, 15] : [15, 15, 14];
 
@@ -72,34 +74,54 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             </a>
           ),
 
-          code: ({ className, children }) => {
+          code: ({ className, children, ...props }) => {
             const isBlock = Boolean(className?.startsWith('language-'));
             if (isBlock) {
+              // Extract the language from the class name (e.g. "language-python")
+              const language = (className ?? '').replace('language-', '') || 'text';
               return (
-                <pre
-                  style={{
-                    background: codeBg,
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    overflowX: 'auto',
-                    margin: '6px 0 8px',
-                    fontSize: 12.5,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  <code>{children}</code>
-                </pre>
+                <div style={{ margin: '6px 0 8px' }}>
+                  {language !== 'text' && (
+                    <div style={{
+                      fontSize: 11,
+                      color: mutedColor,
+                      padding: '2px 8px',
+                      background: codeBg,
+                      borderRadius: '4px 4px 0 0',
+                      fontFamily: 'monospace',
+                    }}>
+                      {language}
+                    </div>
+                  )}
+                  <SyntaxHighlighter
+                    language={language === 'txt' || language === 'text' ? 'text' : language}
+                    style={oneLight}
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: language === 'text' ? 6 : '0 0 6px 6px',
+                      padding: '10px 12px',
+                      fontSize: 12.5,
+                      lineHeight: 1.6,
+                      background: inverted ? 'rgba(0,0,0,0.3)' : '#f6f8fa',
+                    }}
+                    codeTagProps={{}}
+                  >
+                    {String(children).replace(/\n$/, '')}
+                  </SyntaxHighlighter>
+                </div>
               );
             }
             // Inline code carries rule codes and column names, so keep it
             // visually distinct but not boxed in like a block.
             return (
               <code
+                {...props}
                 style={{
                   background: codeBg,
                   padding: '1px 5px',
                   borderRadius: 4,
                   fontSize: '0.92em',
+                  fontFamily: 'monospace',
                 }}
               >
                 {children}

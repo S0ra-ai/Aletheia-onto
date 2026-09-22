@@ -42,3 +42,40 @@ code {
 .ant-menu-item {
   margin: 4px 0;
 }
+
+/* Production improvements */
+.markdown-message pre {
+  background: #f6f8fa !important;
+  border-radius: 6px;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better focus states */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+/* Loading skeleton animation */
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Improve table responsive behavior */
+.ant-table-wrapper {
+  overflow-x: auto;
+}

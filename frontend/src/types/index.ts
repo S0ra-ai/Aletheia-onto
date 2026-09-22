@@ -441,6 +441,51 @@ export interface InstanceExplainResult {
   explanation: string;
 }
 
+export interface SemanticObjectAttribute {
+  code: string;
+  name: string;
+  dataType: string;
+  required: boolean;
+  sourceColumn: string;
+}
+
+export interface SemanticObjectInstanceItem {
+  instanceId: string;
+  record: Record<string, unknown>;
+  tables: string[];
+}
+
+export interface SemanticObjectInstancesResult {
+  ontology: {
+    id: number;
+    name: string;
+    domain?: string;
+    version: string;
+    status: string;
+  };
+  object: {
+    id?: number;
+    code: string;
+    name: string;
+    description?: string;
+    sourceTable: string;
+    sourceType?: string;
+    dataSourceId?: number;
+    resolver?: Record<string, unknown>;
+  };
+  attributes: SemanticObjectAttribute[];
+  items: SemanticObjectInstanceItem[];
+  pagination: { limit: number; offset: number; total: number; hasMore: boolean };
+}
+
+export interface SemanticObjectInstanceResult {
+  ontology: SemanticObjectInstancesResult['ontology'];
+  object: SemanticObjectInstancesResult['object'];
+  instanceId: string;
+  record: Record<string, unknown>;
+  tables: string[];
+}
+
 export interface InstanceAssessResult {
   objectCode: string;
   instanceId: string;

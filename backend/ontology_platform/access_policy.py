@@ -54,6 +54,7 @@ def _rule(methods: Iterable[str], path_regex: str, capability: str, description:
 # Endpoints reachable without a token.
 PUBLIC_PATHS: frozenset[str] = frozenset(
     {
+        "/",
         "/health",
         "/auth/login",
         # How an SSO session is obtained, so it cannot require one. Safe because the
@@ -65,6 +66,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
         "/redoc",
         "/openapi.json",
         "/docs/oauth2-redirect",
+        "/metrics",
     }
 )
 
@@ -73,6 +75,7 @@ ANY_METHOD = ("GET", "POST", "PUT", "PATCH", "DELETE")
 # Version prefixes recognised on incoming paths. Adding `/v2` later means adding it
 # here, not re-writing the rule table.
 VERSION_PREFIXES: tuple[str, ...] = ("/v1",)
+API_PREFIXES: tuple[str, ...] = ("/api",)
 
 
 def strip_version_prefix(path: str) -> str:
@@ -81,7 +84,7 @@ def strip_version_prefix(path: str) -> str:
     `/v1` alone maps to `/`, not to the empty string, so a bare version root still
     looks like a path and cannot accidentally match a rule anchored at `^$`.
     """
-    for prefix in VERSION_PREFIXES:
+    for prefix in (*VERSION_PREFIXES, *API_PREFIXES):
         if path == prefix:
             return "/"
         if path.startswith(prefix + "/"):
@@ -119,6 +122,12 @@ RULES: tuple[Rule, ...] = (
     _rule(("POST",), r"/tools", CAP_ADMIN, "注册智能体工具"),
     _rule(("POST",), r"/tools/authorize", CAP_ADMIN, "授权智能体工具"),
     _rule(("POST",), r"/demo/bootstrap.*", CAP_ADMIN, "初始化演示数据"),
+    # 备份包含凭据与业务连接串；列出、下载、创建和恢复都是平台管理动作。
+    # 必须放在最后的「GET 即读取」规则之前，否则任何登录用户都能下载备份。
+    _rule(("GET",), r"/admin/backup/list", CAP_ADMIN, "查看平台备份"),
+    _rule(("GET",), r"/admin/backup/download/[^/]+", CAP_ADMIN, "下载平台备份"),
+    _rule(("POST",), r"/admin/backup/create", CAP_ADMIN, "创建平台备份"),
+    _rule(("POST",), r"/admin/backup/restore/[^/]+", CAP_ADMIN, "恢复平台备份"),
     # -- Read-only assessment endpoints that use POST --
     _rule(("POST",), r"/semantic/objects/[^/]+/instances/[^/]+/assess", CAP_READ, "实例语义研判"),
     _rule(("POST",), r"/semantic/objects/[^/]+/consistency", CAP_READ, "批量一致性评估"),
@@ -274,7 +283,21 @@ def is_public(path: str) -> bool:
     obtain a token.
     """
     normalized = strip_version_prefix(path).rstrip("/") or "/"
-    return normalized in PUBLIC_PATHS or normalized.startswith("/docs")
+    if normalized in PUBLIC_PATHS or normalized.startswith("/docs"):
+        return True
+    # Transport prefixes are API aliases, never browser navigation. In particular,
+    # `/api/workbench` must remain protected even though `/workbench` is a public SPA
+    # route that serves the login-capable shell.
+    if any(path == prefix or path.startswith(prefix + "/") for prefix in (*VERSION_PREFIXES, *API_PREFIXES)):
+        return False
+    # `/admin/backup/*` is an existing protected API namespace. Keep it ahead of the
+    # browser shell namespace so adding same-origin UI hosting cannot expose archives.
+    if path == "/admin/backup" or path.startswith("/admin/backup/"):
+        return False
+    # The browser needs the SPA shell and hashed assets before it has a token. The UI is
+    # namespaced under /admin specifically to avoid colliding with bare API routes such
+    # as /workbench; all business data still comes from the protected /api tree.
+    return path == "/" or path == "/admin" or path.startswith("/admin/") or path.startswith("/assets/")
 
 
 def describe_policy() -> list[dict[str, str]]:

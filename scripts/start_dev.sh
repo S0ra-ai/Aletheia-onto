@@ -95,6 +95,7 @@ start_if_unavailable \
 echo ""
 echo "开发环境已就绪："
 echo "  平台: http://127.0.0.1:3000"
+echo "  生产同源管理端: http://127.0.0.1:8000/admin/（开发前端仍使用 3000）"
 echo "  后端: http://127.0.0.1:8000"
 echo "  网关: http://127.0.0.1:8001"
 if [[ -n "$EXTERNAL_SYSTEM_ROOT" ]]; then

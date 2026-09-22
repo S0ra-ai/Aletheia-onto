@@ -119,6 +119,7 @@ ONTOLOGY_ADMIN_PASSWORD=change-me-please .venv/bin/python -m uvicorn \
 
 - 健康检查 `http://127.0.0.1:8000/health` → `{"status":"ok"}`
 - API 文档 `http://127.0.0.1:8000/docs`
+- 同源管理端 `http://127.0.0.1:8000/admin/`（生产镜像或已构建 `frontend/dist` 时）
 
 每个端点同时以裸路径与 `/v1` 前缀提供（`/ontologies/1` 与 `/v1/ontologies/1`），
 两条路径经过同一套鉴权中间件与同一份权限策略。新接入方请固定 `/v1`。
