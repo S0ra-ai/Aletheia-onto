@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1369 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1375 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -52,7 +52,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 41 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 35 | The `aletheia` command line |
+| `test_cli.py` | 37 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 35 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
@@ -68,7 +68,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
 | `test_rate_limiter.py` | 3 | Fixed-window request rate limiting |
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
-| `test_api_versioning.py` | 22 | The `/v1` prefix: every route served twice, with identical protection |
+| `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 23 | Custom model endpoint compatibility |
 | `test_backup.py` | 6 | Safe SQLite backup inventory and atomic restore |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
@@ -81,6 +81,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_workbench_and_graph.py` | 14 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
 | `test_frontend_type_agreement.py` | 12 | The frontend's hand-written types must agree with the API they mirror |
+| `test_frontend_serving.py` | 3 | Same-origin production admin shell and API transport prefix |
 | `test_metrics.py` | 5 | Prometheus-compatible runtime metrics and safe re-initialisation |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
@@ -103,7 +104,7 @@ cd frontend && npm run build
 
 ## Scale
 
-85 backend modules, roughly 33,700 lines, 154 API endpoints, 45 platform tables, React +
+86 backend modules, roughly 33,900 lines, 154 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `quickstart` job that replays the README quick start in a clean environment and

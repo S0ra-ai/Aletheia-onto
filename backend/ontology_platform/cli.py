@@ -399,6 +399,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # instruction rather than a traceback.
         return _fail("HTTP 层需要 web extra，请先安装：pip install 'aletheia-onto[web]'")
 
+    workers = max(1, int(args.workers))
+    if args.reload and workers != 1:
+        return _fail("--reload 不能与多个 worker 同时使用，请将 --workers 设为 1")
+
     # Binding to anything other than loopback means the service is reachable from the
     # network, so the preflight blockers become exploitable rather than theoretical. Run it
     # by default and refuse -- nobody remembers to run a separate command, and the one time
@@ -407,7 +411,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if exposed and not args.skip_preflight:
         from .deployment import check_deployment
 
-        report = check_deployment(platform_db=_platform_db(args), worker_count=1)
+        report = check_deployment(platform_db=_platform_db(args), worker_count=workers)
         if not report.ready:
             print(report.summary(), file=sys.stderr)
             return _fail(
@@ -416,7 +420,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
             )
 
     if not args.platform_db:
-        uvicorn.run("ontology_platform.api:app", host=args.host, port=args.port, reload=args.reload)
+        uvicorn.run(
+            "ontology_platform.api:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            workers=workers,
+            log_level=args.log_level,
+        )
         return 0
 
     # With `--platform-db`, the server has to run in a **child process**.
@@ -455,6 +466,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
         args.host,
         "--port",
         str(args.port),
+        "--workers",
+        str(workers),
+        "--log-level",
+        args.log_level,
     ]
     if args.reload:
         command.append("--reload")
@@ -714,6 +729,13 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="启动 HTTP 服务")
     serve.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--workers", type=int, default=1, help="工作进程数；SQLite 生产部署应保持 1")
+    serve.add_argument(
+        "--log-level",
+        default="info",
+        choices=("trace", "debug", "info", "warning", "error", "critical"),
+        help="Uvicorn 日志级别",
+    )
     serve.add_argument("--reload", action="store_true", help="开发模式自动重载")
     serve.add_argument(
         "--skip-preflight",

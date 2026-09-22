@@ -476,3 +476,47 @@ def test_serve_on_loopback_does_not_run_preflight(capsys, monkeypatch, tmp_path)
     command = started.get("command")
     assert command is not None, "preflight 拦下了本机监听，本地开发会因此产生摩擦"
     assert "127.0.0.1" in command
+
+
+def test_serve_forwards_workers_and_log_level_to_uvicorn(capsys, monkeypatch, tmp_path) -> None:
+    """The production wrapper and the CLI must configure the same process shape."""
+    from ontology_platform import cli
+
+    started: dict[str, object] = {}
+    monkeypatch.setitem(sys.modules, "uvicorn", object())
+
+    def _fake_call(command, env=None, **kwargs):
+        started["command"] = list(command)
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", _fake_call)
+    code, _, _ = _run(
+        capsys,
+        "--platform-db",
+        str(tmp_path / "p.sqlite3"),
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--workers",
+        "3",
+        "--log-level",
+        "warning",
+    )
+    assert code == 0
+    command = started["command"]
+    assert command[command.index("--workers") + 1] == "3"
+    assert command[command.index("--log-level") + 1] == "warning"
+
+
+def test_reload_rejects_multiple_workers(capsys, tmp_path) -> None:
+    code, _, error = _run(
+        capsys,
+        "--platform-db",
+        str(tmp_path / "p.sqlite3"),
+        "serve",
+        "--reload",
+        "--workers",
+        "2",
+    )
+    assert code == 1
+    assert "不能与多个 worker" in error

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1369 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1375 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -46,7 +46,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 41 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 35 | The `aletheia` command line |
+| `test_cli.py` | 37 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 35 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
@@ -62,7 +62,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
 | `test_rate_limiter.py` | 3 | 固定窗口请求限流 |
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
-| `test_api_versioning.py` | 22 | The `/v1` prefix: every route served twice, with identical protection |
+| `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 23 | Custom model endpoint compatibility |
 | `test_backup.py` | 6 | SQLite 平台安全备份、列表与原子恢复 |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
@@ -75,6 +75,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_workbench_and_graph.py` | 14 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
 | `test_frontend_type_agreement.py` | 12 | The frontend's hand-written types must agree with the API they mirror |
+| `test_frontend_serving.py` | 3 | 同源生产管理端与 API 传输前缀 |
 | `test_metrics.py` | 5 | Prometheus 兼容运行指标与安全重复初始化 |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
@@ -97,7 +98,7 @@ cd frontend && npm run build
 
 ## 规模
 
-85 个后端模块约 33700 行，154 个 API 端点，45 张平台表，前端 React + antd。
+86 个后端模块约 33900 行，154 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。
