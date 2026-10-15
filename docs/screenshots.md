@@ -96,6 +96,19 @@ average does not tell you which answer to fix; and there is no one-click "apply
 correction", because a correction is one user's claim rather than a new rule, and
 promoting it goes through governance (ADR-0002).
 
+## Business objects and their governed instances
+
+![Business object browser](images/11-object-browser.png)
+
+The one screen that shows a business object *as an object*: instances read through the
+instance resolver, with the object's declared attributes as columns, and the caller's
+row-level filter applied. Browsing the raw source table is a different thing -- it skips the
+resolver, skips the filter, and shows columns rather than the modelled contract.
+
+An empty table says which of the two reasons applies. "Nothing is visible to your role" and
+"your filter expression could not be evaluated" both leave no rows, and only the second is a
+misconfiguration someone can fix, so it is stated rather than left to inference.
+
 ## Model configuration for custom endpoints
 
 ![Model configuration](images/08-model-config.png)
@@ -113,3 +126,4 @@ tolerate:
 
 Presets ship for OpenRouter, OpenAI, relay gateways, Azure, self-hosted vLLM and
 DashScope, and the screen shows the full URL that will actually be called.
+

@@ -478,6 +478,9 @@ export interface SemanticObjectInstancesResult {
   // Whether the policy carried a row filter. Distinguishes "every row was judged against
   // it" from "this was a capability check only" without re-reading the policy table.
   rowFilterApplied?: boolean;
+  // Set only when an empty page is the answer to "the filter could not be evaluated",
+  // which is a misconfiguration rather than an absence of data.
+  rowFilterError?: string;
   pagination: { limit: number; offset: number; total: number; hasMore: boolean };
 }
 

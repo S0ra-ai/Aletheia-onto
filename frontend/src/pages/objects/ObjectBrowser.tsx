@@ -1,0 +1,223 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Card, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
+import type { BusinessAttribute, BusinessObject, Ontology } from '../../types';
+
+const { Title, Paragraph, Text } = Typography;
+
+type InstanceRow = { instanceId: string; record: Record<string, unknown> };
+type Pagination = { limit: number; offset: number; total: number; hasMore: boolean };
+
+/**
+ * Business objects and their governed instances.
+ *
+ * The platform's distinguishing claim is that a business object is consumed through one
+ * stable API without the caller knowing which table or resolver backs it -- and until now
+ * that view had no screen. The datasource page browses *raw table rows*, which is a
+ * different thing: it does not go through the instance resolver, does not apply the
+ * caller's row-level filter, and shows columns rather than declared attributes. The
+ * endpoint, the client method and the response type all existed; nothing called them.
+ */
+const ObjectBrowser: React.FC = () => {
+  const [ontologies, setOntologies] = useState<Ontology[]>([]);
+  const [ontologyId, setOntologyId] = useState<number | undefined>();
+  const [objects, setObjects] = useState<BusinessObject[]>([]);
+  const [attributes, setAttributes] = useState<BusinessAttribute[]>([]);
+  const [objectCode, setObjectCode] = useState<string | undefined>();
+  const [rows, setRows] = useState<InstanceRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [listError, setListError] = useState('');
+  // Two instructions that must not be confused: `rowFilterApplied` says the result is
+  // narrowed by what this role may see, `rowFilterError` says the narrowing could not
+  // happen at all -- so an empty table means "nothing is visible" in one case and "your
+  // policy is broken" in the other.
+  const [rowFilterApplied, setRowFilterApplied] = useState(false);
+  const [rowFilterError, setRowFilterError] = useState('');
+  const [sourceType, setSourceType] = useState('');
+  const [resolver, setResolver] = useState<Record<string, unknown> | null>(null);
+
+  const loadOntologies = useCallback(async () => {
+    try {
+      const items = await ontologyApi.list();
+      const list = Array.isArray(items) ? items : [];
+      setOntologies(list);
+      setOntologyId((current) => current ?? list[0]?.id);
+    } catch (error) {
+      setListError(requestErrorMessage(error, '获取本体列表失败'));
+    }
+  }, []);
+
+  const loadObjects = useCallback(async (id: number) => {
+    try {
+      const detail = await ontologyApi.get(id);
+      setObjects(detail.objects ?? []);
+      setAttributes(detail.attributes ?? []);
+      setObjectCode((current) =>
+        detail.objects?.some((item) => item.code === current) ? current : detail.objects?.[0]?.code,
+      );
+    } catch (error) {
+      setListError(requestErrorMessage(error, '读取本体详情失败'));
+    }
+  }, []);
+
+  const loadInstances = useCallback(
+    async (code: string, id: number, nextOffset: number) => {
+      setLoading(true);
+      setListError('');
+      try {
+        const result = await semanticApi.listInstances(code, id, 20, nextOffset);
+        setRows((result.items ?? []) as InstanceRow[]);
+        setPagination(result.pagination ?? null);
+        setRowFilterApplied(Boolean(result.rowFilterApplied));
+        setRowFilterError((result.rowFilterError ?? '') as string);
+        setSourceType(result.object?.sourceType ?? '');
+        setResolver(result.object?.resolver ?? null);
+      } catch (error) {
+        setRows([]);
+        setPagination(null);
+        setListError(requestErrorMessage(error, '读取业务对象实例失败'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadOntologies();
+  }, [loadOntologies]);
+
+  useEffect(() => {
+    if (ontologyId) void loadObjects(ontologyId);
+  }, [ontologyId, loadObjects]);
+
+  useEffect(() => {
+    if (objectCode && ontologyId) void loadInstances(objectCode, ontologyId, offset);
+  }, [objectCode, ontologyId, offset, loadInstances]);
+
+  // One column per declared attribute of the selected object: the object's contract, not
+  // whatever columns today's query happened to return.
+  // An object has twenty-odd attributes, and antd divides the available width among
+  // columns that declare none -- so every header rendered as a single character with an
+  // ellipsis ("标…", "合…") and no value was readable. A declared width plus horizontal
+  // scrolling keeps each value legible and the whole contract reachable.
+  const ATTRIBUTE_WIDTH = 150;
+  const columns = [
+    { title: '实例', dataIndex: 'instanceId', key: 'instanceId', width: 100, fixed: 'left' as const },
+    ...attributes.map((attribute) => ({
+      title: attribute.name || attribute.code,
+      key: attribute.code,
+      width: ATTRIBUTE_WIDTH,
+      ellipsis: true,
+      render: (_: unknown, row: InstanceRow) => {
+        const value = row.record?.[attribute.code];
+        if (value === null || value === undefined || value === '') return <Text type="secondary">—</Text>;
+        return String(value);
+      },
+    })),
+  ];
+
+  return (
+    <div>
+      <Title level={3}>业务对象浏览</Title>
+      <Paragraph type="secondary">
+        按本体中声明的业务对象查看实例。数据经实例解析器读取，并按你的角色做行级过滤，
+        与直接浏览来源表不是同一件事。
+      </Paragraph>
+
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <Select
+            style={{ width: 260 }}
+            placeholder="选择本体"
+            value={ontologyId}
+            onChange={(value) => {
+              setOntologyId(value);
+              setOffset(0);
+            }}
+            options={ontologies.map((item) => ({ value: item.id, label: `${item.name} v${item.version}` }))}
+          />
+          <Select
+            style={{ width: 220 }}
+            placeholder="选择业务对象"
+            value={objectCode}
+            onChange={(value) => {
+              setObjectCode(value);
+              setOffset(0);
+            }}
+            options={objects.map((item) => ({ value: item.code, label: `${item.name}（${item.code}）` }))}
+          />
+          {sourceType && <Tag color="blue">{sourceType}</Tag>}
+          {resolver && typeof resolver.tables !== 'undefined' ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              来源：{String((resolver.tables as string[])?.join('、') || resolver.primaryKey || '')}
+            </Text>
+          ) : null}
+        </Space>
+      </Card>
+
+      {rowFilterApplied && !rowFilterError && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="结果已按你的角色做行级过滤"
+          description="没有看到某条实例，可能是它不在你的可见范围内，而不是它不存在。"
+        />
+      )}
+
+      {rowFilterError && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="行级过滤表达式无法求值，因此没有返回任何实例"
+          description={
+            <>
+              {rowFilterError}
+              <br />
+              这不是「没有数据」：平台为避免越权披露，在过滤条件无法判断时按不可见处理。
+              请修正该角色在本对象上的过滤表达式后重试。
+            </>
+          }
+        />
+      )}
+
+      {listError && (
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="读取失败" description={listError} />
+      )}
+
+      <Card>
+        {!ontologyId || !objectCode ? (
+          <Empty description="请选择本体与业务对象" />
+        ) : !rowFilterError && rows.length === 0 && !loading ? (
+          <Empty description={rowFilterApplied ? '按当前角色的可见范围内没有实例' : '该对象没有实例'} />
+        ) : (
+          <Table
+            size="small"
+            columns={columns}
+            dataSource={rows}
+            rowKey="instanceId"
+            loading={loading}
+            scroll={{ x: 'max-content' }}
+            pagination={
+              pagination
+                ? {
+                    current: Math.floor(pagination.offset / Math.max(1, pagination.limit)) + 1,
+                    pageSize: pagination.limit,
+                    total: pagination.total,
+                    showSizeChanger: false,
+                    onChange: (page) => setOffset((page - 1) * pagination.limit),
+                  }
+                : false
+            }
+          />
+        )}
+      </Card>
+    </div>
+  );
+};
+
+export default ObjectBrowser;

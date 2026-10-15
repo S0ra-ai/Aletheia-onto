@@ -22,6 +22,7 @@ const OntologyDetailPage = lazy(() => import('./pages/ontology/OntologyDetail'))
 const MappingList = lazy(() => import('./pages/mapping/MappingList'));
 const RuleList = lazy(() => import('./pages/rules/RuleList'));
 const SemanticService = lazy(() => import('./pages/semantic'));
+const ObjectBrowser = lazy(() => import('./pages/objects/ObjectBrowser'));
 const Governance = lazy(() => import('./pages/governance'));
 const DemoCenter = lazy(() => import('./pages/demo/DemoCenter'));
 const ModelConfigPage = lazy(() => import('./pages/model/ModelConfig'));
@@ -234,6 +235,16 @@ const App: React.FC = () => {
                     <ErrorBoundary fullPage>
                       <Suspense fallback={<PageLoader />}>
                         <BackupManager />
+                      </Suspense>
+                    </ErrorBoundary>
+                  }
+                />
+                <Route
+                  path="objects"
+                  element={
+                    <ErrorBoundary fullPage>
+                      <Suspense fallback={<PageLoader />}>
+                        <ObjectBrowser />
                       </Suspense>
                     </ErrorBoundary>
                   }

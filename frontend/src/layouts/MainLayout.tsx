@@ -9,6 +9,7 @@ import {
   LogoutOutlined,
   UserOutlined,
   DashboardOutlined,
+  ProfileOutlined,
   DeploymentUnitOutlined,
   ShareAltOutlined,
   FileProtectOutlined,
@@ -57,6 +58,11 @@ const menuItems = [
     key: '/chat',
     icon: <ThunderboltOutlined />,
     label: '业务研判',
+  },
+  {
+    key: '/objects',
+    icon: <ProfileOutlined />,
+    label: '对象浏览',
   },
   {
     key: '/more',
