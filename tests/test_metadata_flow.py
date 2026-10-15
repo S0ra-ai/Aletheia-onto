@@ -1362,7 +1362,18 @@ def test_postgresql_scan_reports_missing_driver_as_actionable_error(tmp_path: Pa
     try:
         scan_data_source(platform_db, source.id)
     except ValueError as error:
-        assert "PostgreSQL 接入需要安装 psycopg" in str(error) or "connection" in str(error).lower()
+        message = str(error)
+        # Either the driver is missing and the message names it, or the server answered and
+        # the message names what to check. The `or "connection"` this replaces matched the
+        # driver's own English wording -- which is exactly what the message layer stopped
+        # showing, so it failed on the one machine where psycopg *is* installed (CI) while
+        # passing everywhere it is not.
+        assert "psycopg" in message or any(
+            hint in message for hint in ("认证失败", "无法连接", "数据库不存在", "没有读取权限")
+        ), message
+        # And it is a message, not a driver exception that leaked through.
+        assert "Traceback" not in message
+        assert "psycopg." not in message and "OperationalError" not in message
     else:
         raise AssertionError("测试环境没有真实 PostgreSQL 服务时不应扫描成功")
 
