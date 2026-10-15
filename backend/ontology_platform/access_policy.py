@@ -281,6 +281,13 @@ def is_public(path: str) -> bool:
     The version prefix is stripped first, so `/v1/health` is public exactly as
     `/health` is. Without this the versioned login endpoint would demand a token to
     obtain a token.
+
+    `path` is the **decoded** request path, as ASGI servers present it: uvicorn resolves
+    `%2f` into a separator before the application runs, so this function is never handed a
+    percent-encoded form. It deliberately does not decode one either -- decoding what the
+    layer below already decoded would turn `%252f` into a separator, which is a worse bug
+    than the one it would guard against. Encoded spellings are covered end to end, against
+    a running application, in `tests/test_api_authentication.py`.
     """
     normalized = strip_version_prefix(path).rstrip("/") or "/"
     if normalized in PUBLIC_PATHS or normalized.startswith("/docs"):

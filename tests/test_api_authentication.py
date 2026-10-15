@@ -488,3 +488,68 @@ class TestPasswordRecovery:
 
         assert row is not None, "重置口令未写入审计"
         assert (row["actor"], row["target_id"]) == ("cli", "operator")
+
+
+# -- Path tricks against the policy table --
+
+# SECURITY.md names this threat directly: "whether path matching can be bypassed (case,
+# encoding, trailing slash, path traversal) so that a low-privilege role reaches a
+# high-privilege endpoint". Every form below has to land on the protected side -- or, where
+# it does not, has to resolve to something harmless rather than to the API route it
+# imitates.
+#
+# Percent-encoded forms are deliberately *not* listed here: ASGI servers decode `scope["path"]`
+# before the application sees it, so `is_public` is never handed `%2f` in production and
+# teaching it to decode would introduce a second decode -- the shape that turns `%252f`
+# into a path separator. The encoded spellings are covered by the server-level test below,
+# which is where they can actually occur.
+PATH_TRICKS = (
+    ("/API/ONTOLOGIES", False),
+    ("/api/ontologies/", False),
+    ("/api//ontologies", False),
+    ("/api/./ontologies", False),
+    ("/api/foo/../ontologies", False),
+    ("/%61pi/ontologies", False),
+    ("/api/../admin/backup/list", False),
+    ("/admin/../api/ontologies", True),  # public, but it must not *be* the API route
+    ("/admin/backup/list", False),
+    ("/admin/backup/../backup/list", False),
+)
+
+
+@pytest.mark.parametrize(("path", "expected_public"), PATH_TRICKS)
+def test_path_spelling_does_not_get_past_the_policy(path: str, expected_public: bool) -> None:
+    from ontology_platform.access_policy import is_public
+
+    assert is_public(path) is expected_public, f"{path} 的公开判定与预期不符"
+
+
+@pytest.mark.parametrize(("path", "_expected"), PATH_TRICKS)
+def test_no_path_spelling_reaches_a_protected_endpoint_without_a_token(
+    client: TestClient, path: str, _expected: bool
+) -> None:
+    """The policy decides on the path as sent, so this asks the server, not the table.
+
+    A form that the policy calls public is only safe if it also fails to resolve to the API
+    route it imitates. `/admin/../api/ontologies` is the case that matters: it is public as a
+    browser path, and the answer has to be the SPA shell rather than the ontology list.
+    """
+    response = client.get(path)
+    if response.status_code == 200:
+        body = response.text.lstrip()
+        assert body.startswith("<!doctype html") or body.startswith("<html"), (
+            f"{path} 在没有令牌时返回了 200，且内容不像 SPA 外壳：{body[:80]!r}"
+        )
+    else:
+        assert response.status_code in (401, 403, 404), f"{path} -> {response.status_code}"
+
+
+def test_the_backup_namespace_stays_protected_under_every_spelling(client: TestClient) -> None:
+    """`/admin/backup/*` holds credentials and is excluded from the browser shell.
+
+    Kept apart from the table above because a regression here is the one that leaks an
+    archive rather than the one that merely mislabels a page.
+    """
+    for path in ("/admin/backup/list", "/admin/backup%2flist", "/admin/backup/./list", "/ADMIN/BACKUP/LIST"):
+        response = client.get(path)
+        assert response.status_code in (401, 403), f"{path} -> {response.status_code} {response.text[:80]}"

@@ -238,3 +238,44 @@ def test_publish_succeeds_and_reports_readiness_when_gates_pass(tmp_path: Path) 
     assert published["releaseReadiness"]["blockers"] == 0
     assert published["releaseReadiness"]["forced"] is False
     assert published["releaseReadiness"]["passedGates"] > 0
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        # Comprehensions and lambdas are not call syntax, so a check that only inspects
+        # `ast.Call` would miss them: they are the shape a sandbox escape takes when the
+        # author cannot call anything.
+        "[x for x in amount.__class__.__mro__]",
+        "{x: 1 for x in amount.__class__.__mro__}",
+        "(x for x in amount.__class__.__mro__)",
+        "lambda: amount.__class__",
+        "(lambda: 0)()",
+        # Introspection builtins, which would hand back the module or the frame.
+        "globals()",
+        "locals()",
+        "vars()",
+        "dir()",
+        "getattr(amount, '__class__')",
+        "compile('1', '', 'eval')",
+        "__import__('os')",
+        # Names that look like free functions but reach an object's own machinery.
+        "iter(amount)",
+        "next(iter([1]))",
+        "memoryview(b'')",
+        "type(amount)",
+        "print(amount)",
+    ],
+)
+def test_the_sandbox_refuses_more_than_call_syntax(expression: str) -> None:
+    """The escape surface is wider than "a function we did not allow".
+
+    The allowlist is checked on every node, not only on `Call`, but the tests only exercised
+    attribute access and disallowed calls -- the two shapes an author reaches for first. These
+    are the rest: wrappers that contain an expression without being a call, the introspection
+    builtins, and names that resolve to an object's own machinery.
+    """
+    assert validate_rule_expression(expression)["valid"] is False, expression
+    passed, error = evaluate_rule_expression(expression, {"amount": 10, "status": "active"})
+    assert passed is False, f"{expression} 竟然求值成功"
+    assert error, f"{expression} 被拒绝但没有给出原因"

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1575 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1613 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -55,7 +55,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
-| `test_api_authentication.py` | 34 | End-to-end authentication and authorization tests |
+| `test_api_authentication.py` | 55 | End-to-end authentication and authorization tests |
 | `test_inert_fields_activated.py` | 28 | Three fields that were stored but never evaluated |
 | `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |
@@ -70,7 +70,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |
-| `test_rule_engine_safety.py` | 17 | Rule engine safety and release gate tests |
+| `test_rule_engine_safety.py` | 34 | Rule engine safety and release gate tests |
 | `test_codegen.py` | 16 | Code generation from a published ontology |
 | `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
 | `test_packaging.py` | 15 | Packaging: the project is installable, and the install is usable |
