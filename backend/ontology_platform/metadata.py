@@ -294,7 +294,14 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
         ).fetchall()
         mapping_counts = conn.execute(
             """
-            select sm.status, count(*) as total
+            -- `count(distinct sm.id)`, not `count(*)`: this joins to `business_object` on
+            -- `ontology_id`, so a mapping is matched once per object in its ontology. With
+            -- four objects the count came back four times too large -- 128 pending where
+            -- there were 32 -- and that figure is shown to the user ("已确认 N 条映射，
+            -- 待审核 M 条。") and in the summary's `pendingMappings`. `coverage.py` counts the
+            -- same thing per object and sums, which is why two screens disagreed about how
+            -- much was waiting for review.
+            select sm.status, count(distinct sm.id) as total
             from semantic_mapping sm
             join business_object bo on bo.ontology_id = sm.ontology_id
             join source_table st on st.id = bo.source_table_id

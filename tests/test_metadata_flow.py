@@ -2098,3 +2098,47 @@ def test_a_file_named_docx_that_is_not_one_is_refused_with_a_reason() -> None:
     assert "Word" in message
     assert "PackageNotFound" not in message
     assert type(refused.value).__name__ == "ValueError"
+
+
+def test_readiness_counts_mappings_once_per_mapping_not_once_per_object(tmp_path: Path) -> None:
+    """A count over a join that fans out must count the mapping, not the join.
+
+    The readiness summary joined `semantic_mapping` to `business_object` on `ontology_id`,
+    so every mapping was matched once per object in its ontology. With four objects, a
+    source with 32 pending mappings reported 128 -- and that figure is not merely displayed
+    ("已确认 N 条映射，待审核 M 条"), it is the number the readiness panel shows. Coverage
+    counts the same thing per object and sums, so two screens disagreed about how much was
+    waiting for review. The count must be independent of how many objects the ontology has.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id)
+    ontology_id = int(ontology["ontology"]["id"])
+
+    with connect(platform_db) as conn:
+        object_count = conn.execute(
+            "select count(*) as n from business_object where ontology_id = ?", (ontology_id,)
+        ).fetchone()["n"]
+        pending = conn.execute(
+            "select count(*) as n from semantic_mapping where ontology_id = ? and status = 'pending'",
+            (ontology_id,),
+        ).fetchone()["n"]
+
+    assert object_count > 1, "这个用例的前提是本体里有多个对象，否则 JOIN 不会放大"
+    assert pending > 0
+
+    readiness = assess_data_source_readiness(platform_db, source.id)
+    coverage = build_semantic_coverage(platform_db, source.id)
+
+    assert readiness["summary"]["pendingMappings"] == pending
+    # And the two surfaces that answer the same question agree with each other.
+    assert readiness["summary"]["pendingMappings"] == coverage["summary"]["pendingMappings"]
+
+    # The growth is by object count, so the assertion above is only meaningful if the two
+    # numbers would differ under the old query -- which they would by exactly this factor.
+    assert readiness["summary"]["pendingMappings"] != pending * object_count
