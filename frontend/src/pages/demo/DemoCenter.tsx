@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Card, Button, Typography, Alert, Result, Divider } from 'antd';
+import { Alert, Button, Card, Divider, message, Result, Typography } from 'antd';
 import { RocketOutlined, FileTextOutlined, SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { demoApi } from '../../api';
+import { demoApi, requestErrorMessage } from '../../api';
 import type { DemoBootstrapResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
@@ -12,25 +12,18 @@ const DemoCenter: React.FC = () => {
   const [loading, setLoading] = useState<'contract' | 'equipment' | null>(null);
   const [result, setResult] = useState<DemoBootstrapResult | null>(null);
 
-  const handleBootstrapContract = async () => {
-    setLoading('contract');
+  // One handler for both demonstrations: they differ only in which endpoint they call, and
+  // two copies is how the failure handling drifted apart in the first place.
+  const bootstrap = async (kind: 'contract' | 'equipment') => {
+    setLoading(kind);
     try {
-      const data = await demoApi.bootstrapContract();
+      const data = kind === 'contract' ? await demoApi.bootstrapContract() : await demoApi.bootstrapEquipment();
       setResult(data);
     } catch (error) {
-      console.error('Failed to bootstrap contract demo:', error);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleBootstrapEquipment = async () => {
-    setLoading('equipment');
-    try {
-      const data = await demoApi.bootstrapEquipment();
-      setResult(data);
-    } catch (error) {
-      console.error('Failed to bootstrap equipment demo:', error);
+      // This is the first button a new user presses. It used to `console.error` and stop,
+      // so on any environment where the bootstrap fails the spinner vanished and nothing
+      // else happened -- no message, no state change, nothing to report.
+      message.error(requestErrorMessage(error, '加载演示数据失败'));
     } finally {
       setLoading(null);
     }
@@ -69,7 +62,7 @@ const DemoCenter: React.FC = () => {
             type="primary"
             icon={<RocketOutlined />}
             loading={loading === 'contract'}
-            onClick={handleBootstrapContract}
+            onClick={() => bootstrap('contract')}
             block
           >
             启动合同管理演示
@@ -93,7 +86,7 @@ const DemoCenter: React.FC = () => {
             type="primary"
             icon={<RocketOutlined />}
             loading={loading === 'equipment'}
-            onClick={handleBootstrapEquipment}
+            onClick={() => bootstrap('equipment')}
             block
             style={{ background: '#52c41a', borderColor: '#52c41a' }}
           >

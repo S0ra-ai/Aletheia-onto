@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { label, MAPPING_STATUS } from '../../i18n/labels';
-import { Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
+import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, SemanticMapping } from '../../types';
@@ -13,6 +13,8 @@ const MappingList: React.FC = () => {
   const [mappings, setMappings] = useState<SemanticMapping[]>([]);
   const [selectedOntology, setSelectedOntology] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // Kept apart from an empty list: both leave `mappings` empty.
+  const [loadError, setLoadError] = useState('');
 
   const fetchOntologies = async () => {
     try {
@@ -25,11 +27,16 @@ const MappingList: React.FC = () => {
 
   const fetchMappings = async (ontologyId: number) => {
     setLoading(true);
+    setLoadError('');
     try {
       setMappings(await ontologyApi.getMappings(ontologyId) as SemanticMapping[]);
     } catch (error) {
-      console.error('Failed to fetch mappings:', error);
+      // This used to `console.error` and then set the list to empty, so a failed request
+      // rendered the same "请选择本体查看映射关系" as an ontology that genuinely has none.
+      // On the mapping review queue -- the governance surface -- reporting a fetch failure
+      // as "nothing to review" is a false statement about what has been reviewed.
       setMappings([]);
+      setLoadError(requestErrorMessage(error, '获取语义映射失败'));
     } finally {
       setLoading(false);
     }
@@ -143,7 +150,15 @@ const MappingList: React.FC = () => {
       </Card>
 
       <Card>
-        {mappings.length === 0 && !loading ? (
+        {loadError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="获取语义映射失败"
+            description={loadError}
+            action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>重试</Button>}
+          />
+        ) : mappings.length === 0 && !loading ? (
           <Empty description="请选择本体查看映射关系" />
         ) : (
           <Table
