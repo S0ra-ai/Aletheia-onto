@@ -2398,3 +2398,32 @@ def test_an_explanation_includes_the_aggregates_rules_read_by_name(tmp_path: Pat
     assert "sum" in entry["definition"]
     assert entry["rowCount"] >= 0
     assert any("聚合" in part for part in explanation["explanation"].split("。"))
+
+
+def test_the_mapping_review_payload_decodes_what_the_review_page_shows(tmp_path: Path) -> None:
+    """The review queue is the blocking gate before publishing, and it rendered blanks.
+
+    `/ontologies/{id}/mappings` returned `dict(row)` -- the wire columns `source_ref` and
+    `target_ref` -- while the review table reads `sourceTable`, `sourceColumn`,
+    `targetObjectCode` and `targetAttributeCode`. Five of its seven columns were empty for
+    every row. A serializer producing exactly those fields already existed in `ontology.py`;
+    the endpoint simply did not call it.
+    """
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+
+    items = list_semantic_mappings(platform_db, ontology_id)["items"]
+    assert items, "前提：草案应当生成映射候选"
+
+    column_mapping = next(item for item in items if item["mappingType"] == "column_to_attribute")
+    assert column_mapping["sourceTable"] == "contract"
+    assert column_mapping["sourceColumn"], column_mapping
+    # Codes, not the ids inside `target_ref`. An id under a name that promises a code is a
+    # lie the type system cannot catch, because both are strings.
+    assert column_mapping["targetObjectCode"] == "contract", column_mapping
+    assert column_mapping["targetAttributeCode"] == column_mapping["sourceColumn"]
+
+    object_mapping = next(item for item in items if item["mappingType"] == "table_to_object")
+    # Object ids and attribute ids are separate sequences that both start at 1. Resolving
+    # them through one map labelled this row with the code of attribute 1.
+    assert object_mapping["targetObjectCode"] == "contract", object_mapping
+    assert object_mapping["targetAttributeCode"] is None

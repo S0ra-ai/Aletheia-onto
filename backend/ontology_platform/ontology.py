@@ -455,7 +455,7 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
         "objects": [_business_object_row(row) for row in objects],
         "attributes": [_business_attribute_row(row) for row in attributes],
         "relations": [_business_relation_row(row) for row in relations],
-        "mappings": [_semantic_mapping_row(row) for row in mappings],
+        "mappings": [semantic_mapping_row(row, mapping_target_codes(conn, ontology_id)) for row in mappings],
         "rules": [_business_rule_row(row) for row in rules],
     }
 
@@ -1342,9 +1342,53 @@ def _business_relation_row(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def _semantic_mapping_row(row: sqlite3.Row) -> dict[str, Any]:
+def mapping_target_codes(conn: sqlite3.Connection, ontology_id: int) -> tuple[dict[int, str], dict[int, str]]:
+    """`({object.id: code}, {attribute.id: code})` for one ontology.
+
+    `target_ref` carries ids (`business_object:1.attribute:3`), and the field the UI reads is
+    named `targetObjectCode`. Resolving them is the difference between a review table that
+    says "contract / amount" and one that says "1 / 3" -- and an id under a name that
+    promises a code is a lie the type system cannot catch, because both are strings.
+
+    Two maps, not one: object ids and attribute ids are separate sequences that both start
+    at 1, so a single dict resolves `business_object:1` to whichever attribute happened to
+    be inserted second. Merging them was my first version, and it labelled every
+    table-to-object mapping with the code of attribute 1.
+    """
+    objects: dict[int, str] = {}
+    for row in conn.execute("select id, code from business_object where ontology_id = ?", (ontology_id,)).fetchall():
+        objects[int(row["id"])] = row["code"]
+    attributes: dict[int, str] = {}
+    for row in conn.execute(
+        """
+        select ba.id, ba.code from business_attribute ba
+        join business_object bo on bo.id = ba.object_id
+        where bo.ontology_id = ?
+        """,
+        (ontology_id,),
+    ).fetchall():
+        attributes[int(row["id"])] = row["code"]
+    return objects, attributes
+
+
+def semantic_mapping_row(
+    row: sqlite3.Row, codes: tuple[dict[int, str], dict[int, str]] | None = None
+) -> dict[str, Any]:
+    """One mapping row, decoded for a reader.
+
+    Public because the mapping review endpoint needs exactly this shape and was
+    returning raw `dict(row)` instead -- so the review page, whose whole job is
+    confirming the 32 mappings that block publication, rendered five blank columns
+    out of seven. The serializer existed the whole time, four hundred lines away in
+    this module; the endpoint simply did not call it.
+
+    `codes` maps the object and attribute ids inside `target_ref` to their codes. Without
+    it the id is returned under `targetObjectId` and `targetObjectCode` stays empty: an
+    empty cell is a gap the reader can see, an id under a code's name is not.
+    """
     source_table, source_column = _parse_source_ref(row["source_ref"])
     target_object, target_attribute = _parse_target_ref(row["target_ref"])
+    object_codes, attribute_codes = codes or ({}, {})
     return {
         "id": row["id"],
         "ontologyId": row["ontology_id"],
@@ -1357,8 +1401,10 @@ def _semantic_mapping_row(row: sqlite3.Row) -> dict[str, Any]:
         "target_ref": row["target_ref"],
         "sourceTable": source_table,
         "sourceColumn": source_column,
-        "targetObjectCode": target_object,
-        "targetAttributeCode": target_attribute,
+        "targetObjectId": _as_id(target_object),
+        "targetAttributeId": _as_id(target_attribute),
+        "targetObjectCode": object_codes.get(_as_id(target_object), "") or target_object,
+        "targetAttributeCode": attribute_codes.get(_as_id(target_attribute)) if _as_id(target_attribute) else None,
         "confidence": row["confidence"],
         "status": row["status"],
         "evidence": row["evidence"],
@@ -1397,6 +1443,14 @@ def _parse_source_ref(source_ref: str) -> tuple[str, str | None]:
         table, column = value.split(".column:", 1)
         return table, column
     return value, None
+
+
+def _as_id(value: str | None) -> int:
+    """The id inside a decoded ref, or 0 when the ref held something else."""
+    try:
+        return int(value) if value else 0
+    except ValueError:
+        return 0
 
 
 def _parse_target_ref(target_ref: str) -> tuple[str, str | None]:

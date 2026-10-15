@@ -18,8 +18,14 @@ const MappingList: React.FC = () => {
 
   const fetchOntologies = async () => {
     try {
-      const items = await ontologyApi.list();
-      setOntologies(items as Ontology[]);
+      const items = (await ontologyApi.list()) as Ontology[];
+      setOntologies(items);
+      // Selected rather than left for the reader to choose. Reviewing mappings is the
+      // blocking gate before publishing, and a page that opens by asking "which ontology"
+      // -- on a deployment that usually has one -- puts the work behind a guess. It also
+      // meant the screen rendered no table at all until somebody clicked, so the smoke
+      // check that reports empty columns had nothing to look at.
+      setSelectedOntology((current) => current ?? items[0]?.id ?? null);
     } catch (error) {
       message.error(requestErrorMessage(error, '获取本体列表失败'));
     }
@@ -131,6 +137,7 @@ const MappingList: React.FC = () => {
           <Select
             style={{ width: 300 }}
             placeholder="请选择本体"
+            value={selectedOntology ?? undefined}
             onChange={setSelectedOntology}
             allowClear
           >
@@ -158,8 +165,10 @@ const MappingList: React.FC = () => {
             description={loadError}
             action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>重试</Button>}
           />
+        ) : !selectedOntology ? (
+          <Empty description="没有可审核的本体" />
         ) : mappings.length === 0 && !loading ? (
-          <Empty description="请选择本体查看映射关系" />
+          <Empty description="该本体没有语义映射" />
         ) : (
           <Table
             columns={columns}

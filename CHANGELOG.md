@@ -237,6 +237,22 @@
 
 ### Fixed
 
+- **语义映射审核页七列里有五列每一行都是空的**（`governance.py`、`ontology.py`、`MappingList.tsx`）。
+  `/ontologies/{id}/mappings` 返回的是 `dict(row)`——只有 `source_ref`／`target_ref` 这样的线上列；
+  而审核表读的是 `sourceTable`、`sourceColumn`、`targetObjectCode`、`targetAttributeCode`，
+  于是一行七个格子里五个是空的。**这张表存在的唯一意义是审核那 32 条阻塞发布的映射**，
+  而它把「哪张表的哪个字段映射到哪个对象的哪个属性」整段丢掉了。
+  更刺眼的是：**产出这些字段的序列化函数一直就在同一个仓库里**（`ontology.py` 的
+  `semantic_mapping_row`，本体详情页在用），只是这个端点没调它。
+  顺带修好第二处：`target_ref` 里存的是**数字 id**，而字段名叫 `...Code`——
+  现在按 id 解析成编码。**对象 id 与属性 id 是两条各自从 1 开始的序列**，
+  我第一版用了一个 dict，于是每条 table_to_object 映射都被贴上了「属性 1」的编码；
+  输出看过一遍才发现，两个 dict 才对。
+- **语义映射页打开时什么都不显示**（`MappingList.tsx`）。
+  它要求先在下拉框里选一个本体——**在一个通常只有一个本体的部署上，把阻塞发布的工作藏在一次猜测后面**。
+  现在自动选中第一个。这同时解释了为什么 `scripts/ui_smoke.py` 从没发现上面那五列：
+  页面在有人点击之前根本不渲染表格，检查工具无从看起。
+
 - **实例解释给的是原始单元格，不是规则当初看到的那份值**（`ontology.py`、`api.py`）。
   平台在产出判定前会把记录改写成一份运行上下文：合并跨源字段、按 `asOf` 用历史取值覆盖当前行、
   包上声明单位、使值域映射生效、算出派生属性。而 `explain_instance` 自己重新查了一遍表，

@@ -5,6 +5,7 @@ from typing import Any
 
 from .context import PlatformDb
 from .database import connect, last_insert_id
+from .ontology import mapping_target_codes, semantic_mapping_row
 from .release_readiness import assess_ontology_release_readiness
 from .schema import table_exists
 from .semantic_kernel import validate_rule_expression
@@ -40,9 +41,12 @@ def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: st
         if status:
             status_filter = " and status = ?"
             params.append(status)
+        # Built once rather than per row: the ids inside `target_ref` are the same two
+        # tables for every mapping of this ontology.
+        codes = mapping_target_codes(conn, ontology_id)
         rows = conn.execute(
             f"""
-            select id, mapping_type, source_ref, target_ref, confidence, status,
+            select id, ontology_id, mapping_type, source_ref, target_ref, confidence, status,
                    evidence, reviewer, reviewed_at, created_at
             from semantic_mapping
             where ontology_id = ?
@@ -53,7 +57,11 @@ def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: st
         ).fetchall()
         return {
             "ontologyId": ontology_id,
-            "items": [dict(row) for row in rows],
+            # Through the same serializer the ontology summary uses, so the review page and
+            # the model page describe one mapping the same way. Returning `dict(row)` sent
+            # only the snake_case wire columns, and the review table asks for the decoded
+            # ones -- five of its seven columns were blank for every row.
+            "items": [semantic_mapping_row(row, codes) for row in rows],
         }
 
 
