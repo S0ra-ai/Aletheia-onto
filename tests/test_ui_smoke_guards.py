@@ -231,3 +231,26 @@ def test_a_route_carrying_its_own_query_survives_the_seed_page() -> None:
     route = "/admin/semantic?tab=explain&object=contract&instance=1&ontology=1"
     query = dict(urllib.parse.parse_qsl(module.seeded_url("http://host/assets/seed.html", route).split("?", 1)[1]))
     assert query["to"] == route
+
+
+def test_a_description_list_is_not_counted_as_a_table() -> None:
+    """antd renders `Descriptions` as a `<table>`, and only the wrapper says which it is.
+
+    Counting description lists inflated the per-route table count -- and let a page of labels
+    and values pass as one that renders a table, which is precisely the claim
+    `NO_TABLE_ROUTES` is checked against. The instance drawer is where this showed up: its
+    "本体 / 业务对象 / 来源表 / 主键" block is a description list, and the report called it a
+    table with no rows.
+    """
+    module = _load_script()
+    description = (
+        '<div class="ant-descriptions-view"><table><tbody>'
+        '<tr class="ant-descriptions-row"><th>本体</th><td>合同管理本体</td></tr>'
+        "</tbody></table></div>"
+    )
+    data = (
+        '<div class="ant-table-content"><table><thead><tr><th>备份名称</th></tr></thead>'
+        '<tbody><tr class="ant-table-row"><td>smoke</td></tr></tbody></table></div>'
+    )
+    assert module.tables(description) == []
+    assert len(module.tables(data)) == 1

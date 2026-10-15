@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Card, Empty, Select, Space, Table, Tag, Typography } from 'antd';
+import { useSearchParams } from 'react-router-dom';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
 import type { BusinessAttribute, BusinessObject, Ontology } from '../../types';
 import InstanceDrawer from './InstanceDrawer';
@@ -20,11 +21,25 @@ type Pagination = { limit: number; offset: number; total: number; hasMore: boole
  * endpoint, the client method and the response type all existed; nothing called them.
  */
 const ObjectBrowser: React.FC = () => {
+  /**
+   * Which instance is open is part of the address, like every other selection in this
+   * application.
+   *
+   * `/admin/objects?ontology=1&object=contract&instance=1` opens that instance's drawer --
+   * the attributes with the column each value was read from, the events and the value
+   * history. It is the screen where a verdict is actually read, so it is the one worth
+   * sending to somebody; and it is four tables that no check could see, because they
+   * appear only after a click and the render check reads the DOM rather than clicking.
+   */
+  const [params, setParams] = useSearchParams();
+  const requestedOntology = Number(params.get('ontology'));
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
-  const [ontologyId, setOntologyId] = useState<number | undefined>();
+  const [ontologyId, setOntologyId] = useState<number | undefined>(
+    Number.isInteger(requestedOntology) && requestedOntology > 0 ? requestedOntology : undefined,
+  );
   const [objects, setObjects] = useState<BusinessObject[]>([]);
   const [attributes, setAttributes] = useState<BusinessAttribute[]>([]);
-  const [objectCode, setObjectCode] = useState<string | undefined>();
+  const [objectCode, setObjectCode] = useState<string | undefined>(params.get('object') ?? undefined);
   const [rows, setRows] = useState<InstanceRow[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [offset, setOffset] = useState(0);
@@ -38,7 +53,24 @@ const ObjectBrowser: React.FC = () => {
   const [rowFilterError, setRowFilterError] = useState('');
   const [sourceType, setSourceType] = useState('');
   const [resolver, setResolver] = useState<Record<string, unknown> | null>(null);
-  const [openedInstance, setOpenedInstance] = useState<string | undefined>();
+  const [openedInstance, setOpenedInstance] = useState<string | undefined>(params.get('instance') ?? undefined);
+
+  /** Keep the address in step with what is open, so the two never disagree. */
+  const showInstance = useCallback(
+    (instanceId: string | undefined) => {
+      setOpenedInstance(instanceId);
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (instanceId) next.set('instance', instanceId);
+          else next.delete('instance');
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
 
   const loadOntologies = useCallback(async () => {
     try {
@@ -128,7 +160,7 @@ const ObjectBrowser: React.FC = () => {
         // A row that does nothing when clicked is a dead end: the reader can see the values
         // and cannot ask where any of them came from, which is the question this platform
         // exists to answer.
-        <Typography.Link onClick={() => setOpenedInstance(row.instanceId)}>解释</Typography.Link>
+        <Typography.Link onClick={() => showInstance(row.instanceId)}>解释</Typography.Link>
       ),
     },
   ];
@@ -240,7 +272,7 @@ const ObjectBrowser: React.FC = () => {
           ontologyId={ontologyId}
           objectCode={objectCode}
           instanceId={openedInstance}
-          onClose={() => setOpenedInstance(undefined)}
+          onClose={() => showInstance(undefined)}
         />
       )}
     </div>

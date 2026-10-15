@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1697 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1698 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -90,7 +90,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 11 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 12 | The render check's own guards, exercised without a browser |
 | `test_ci_workflow.py` | 3 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_smoke_seeding.py` | 4 | 渲染检查的种子数据真的给每个页面填了行，且只报告它做过的事 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
@@ -143,7 +143,8 @@ linter 看到的是一个合法字符串，mypy 看到的是合法 `string`。
 没有这一步，**渲染时抛错的页面与本来就没有表格的页面印出的是同一行**——而后者正躺在那张豁免清单上。
 
 **要答一次表单、或要先挑一条记录的页面，通过把要显示的内容写进 URL 来扫**
-（`/admin/semantic?tab=explain&object=contract&instance=1&ontology=1`、`/admin/knowledge?ontology=1`）：
+（`/admin/semantic?tab=explain&object=contract&instance=1&ontology=1`、`/admin/knowledge?ontology=1`、
+`/admin/objects?ontology=1&object=contract&instance=1`）：
 每个页面都从 URL 读查询，理由和标签页写进 URL 一样——顺带让「某实例的解释」成为一条可以贴进工单的链接。
 对象编码与实例 ID 都从实例里读出来，因此扫的是**真实存在的那一行**：
 为一个不存在的实例渲染的解释表，和「字段名对不上」渲染出来的空表长得一模一样，

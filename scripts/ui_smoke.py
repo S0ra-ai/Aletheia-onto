@@ -117,6 +117,10 @@ ID_ROUTES = (
     # Same reason, one screen further: the knowledge base names the ontology it is showing,
     # so a link opens the documents of the system it was sent about.
     "/admin/knowledge?ontology={ontology}",
+    # The instance drawer: attributes with the column each value was read from, the events,
+    # the value history. It is where a verdict is actually read, and it used to appear only
+    # after a click.
+    "/admin/objects?ontology={ontology}&object={object}&instance={instance}",
 )
 
 # Where the seed page is written: the build the running instance serves, unless it was
@@ -292,9 +296,19 @@ def _cell_text(cell: str) -> str:
     return re.sub(r"<[^>]+>", "", cell).strip()
 
 
+# A data table and a description list are both `<table>` in the DOM, and only the wrapper
+# says which. Counting the description lists inflated the per-route table count -- and, worse,
+# let a page that shows only labels and values pass as one that renders a table, which is the
+# claim `NO_TABLE_ROUTES` is checked against.
+_TABLE_WRAPPER = ("ant-table-content", "ant-table-body")
+
+
 def tables(html: str) -> list[tuple[list[str], list[list[str]]]]:
     found = []
-    for block in re.findall(r"<table[^>]*>(.*?)</table>", html, re.DOTALL):
+    for match in re.finditer(r"<table[^>]*>(.*?)</table>", html, re.DOTALL):
+        if not any(wrapper in html[max(0, match.start() - 300) : match.start()] for wrapper in _TABLE_WRAPPER):
+            continue
+        block = match.group(1)
         headers = [
             re.sub(r"<[^>]+>", "", cell).strip() for cell in re.findall(r"<th[^>]*>(.*?)</th>", block, re.DOTALL)
         ]

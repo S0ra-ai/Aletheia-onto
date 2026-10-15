@@ -424,6 +424,15 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **实例抽屉此前只能靠点击打开，因此它那几张表从来没被看过**（`ObjectBrowser.tsx`、`scripts/ui_smoke.py`）。
+  「解释」是这套系统里真正被读的地方——每个值读自哪一列、有哪些事件、取值沿革是什么——
+  而它只在点开后才渲染，渲染检查读 DOM 不点按钮。现在实例是地址的一部分
+  （`/admin/objects?ontology=1&object=contract&instance=1`）：既能贴给别人，也进了扫描范围
+  （在带事件与取值沿革的实例上，这条路由渲染 4 张表、全部列都有值）。点击行与关闭抽屉都会把地址同步更新，**两者不会各说各话**。
+- **把 `Descriptions` 当成了表格**（`scripts/ui_smoke.py`）。antd 的描述列表在 DOM 里也是 `<table>`，
+  只有外层容器类名能分辨（`ant-descriptions-view` 与 `ant-table-content`）。于是实例抽屉里
+  「本体／业务对象／来源表／主键」那一段被记成了一张 0 行的表——**既让「N 张表」这个数字虚高，
+  又让一页只有标签和值的界面有可能冒充「渲染了表格」，而那正是 `NO_TABLE_ROUTES` 要判定的东西**。
 - **CI 又红了两次，而两次报的都是同一句与原因无关的话**（`.github/workflows/ci.yml`、`scripts/ui_smoke.py`）。
   渲染 job 里那句 `--token "$TOKEN"`：平台约 **1/64 的令牌以 `-` 开头**（`token_urlsafe` 的字母表含 `-`），
   而 argparse 看到值以 `-` 开头就当成另一个选项，于是报
