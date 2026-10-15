@@ -165,7 +165,13 @@ def explain_instance(
     `as_of` explains a verdict about a past instant rather than the present one.
     """
     if _runtime_builder is None:  # pragma: no cover - the kernel binds on import
-        raise RuntimeError("语义运行时尚未绑定，无法解释实例。")
+        # Reachable only when a caller imports this module without the kernel. The message
+        # names the import that fixes it: "not bound" alone leaves the reader with nothing
+        # to act on, which is the failure this codebase keeps removing elsewhere.
+        raise RuntimeError(
+            "语义运行时尚未绑定，无法解释实例：解释需要内核改写的运行上下文。"
+            "请先 `import ontology_platform.semantic_kernel`（应用经由 api 启动时已自动绑定）。"
+        )
 
     with connect(platform_db) as platform:
         runtime = _runtime_builder(platform, ontology_id, object_code, instance_id, as_of=as_of)
@@ -180,6 +186,23 @@ def explain_instance(
             (runtime_business_object_id(platform, ontology_id, object_code),),
         ).fetchall()
         values = [_explained_attribute(attribute, runtime) for attribute in attributes]
+        # Cross-object aggregates are values a rule reads by name, and they belong to no
+        # attribute row -- so unlike a derived attribute they have nowhere else to appear.
+        # A verdict citing `invoice_total` used to cite a name the explanation did not
+        # mention at all, which is the one thing an explanation cannot do. Kept apart from
+        # `attributes` because an aggregate is a query over other rows, not a value of this
+        # one, and its row count and truncation flag have no attribute to hang on.
+        aggregates = [
+            {
+                "name": name,
+                "definition": result.get("definition", ""),
+                "value": result.get("value"),
+                "rowCount": result.get("rowCount", 0),
+                "truncated": bool(result.get("truncated")),
+                "error": result.get("error", ""),
+            }
+            for name, result in sorted(runtime.aggregates.items())
+        ]
         # The event history is what turns "what is true" into "how it got that way".
         # Read on the caller's connection and capped, since an explanation must not
         # scale with total event volume.
@@ -202,9 +225,10 @@ def explain_instance(
             },
             "asOf": runtime.as_of,
             "attributes": values,
+            "aggregates": aggregates,
             "ancestors": ancestors,
             "timeline": timeline,
-            "explanation": _explanation_sentence(runtime, values),
+            "explanation": _explanation_sentence(runtime, values, aggregates),
         }
 
 
@@ -275,7 +299,7 @@ def _unit_name(code: str) -> str:
         return code
 
 
-def _explanation_sentence(runtime: Any, values: list[dict[str, Any]]) -> str:
+def _explanation_sentence(runtime: Any, values: list[dict[str, Any]], aggregates: list[dict[str, Any]]) -> str:
     parts = [f"{runtime.object_name}实例 {runtime.instance_id} 已映射到传统表 {runtime.source_table}。"]
     if runtime.as_of:
         parts.append(f"本次解释针对 {runtime.as_of} 这一刻，历史覆盖的字段以当时取值为准。")
@@ -285,6 +309,13 @@ def _explanation_sentence(runtime: Any, values: list[dict[str, Any]]) -> str:
     united = [item["attributeCode"] for item in values if item["unit"] and not item["derived"]]
     if united:
         parts.append(f"{len(united)} 个属性带声明单位，比较时会先换算。")
+    if aggregates:
+        named = "、".join(item["name"] for item in aggregates)
+        parts.append(f"另有 {len(aggregates)} 个跨对象聚合值可供规则引用：{named}。")
+        # A truncated aggregate is a partial answer, and a rule that compared it reached a
+        # verdict on partial data. That has to be said here rather than left in a field.
+        if any(item["truncated"] for item in aggregates):
+            parts.append("其中部分聚合已达到取数上限，结果为部分数据。")
     return "".join(parts)
 
 

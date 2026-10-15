@@ -7,6 +7,7 @@ import type {
   EventTypeDeclaration,
   InstanceAttributeVersion,
   InstanceEvent,
+  InstanceExplainAggregate,
   InstanceExplainAttribute,
   InstanceExplainResult,
   InstanceVersionsResult,
@@ -320,6 +321,50 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
             loading={loading}
             style={{ marginBottom: 24 }}
           />
+
+          {explain.aggregates.length > 0 && (
+            <>
+              <Text strong>聚合值</Text>
+              <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+                规则可以直接按名称引用这些值。它们不属于本行的任何属性，而是对其他行的一次查询，
+                所以单独列出——<Text strong>判定引用了某个聚合值，这里就必须看得到它</Text>。
+              </Paragraph>
+              <Table<InstanceExplainAggregate>
+                size="small"
+                rowKey="name"
+                dataSource={explain.aggregates}
+                pagination={false}
+                style={{ marginBottom: 24 }}
+                columns={[
+                  {
+                    title: '名称',
+                    dataIndex: 'name',
+                    key: 'name',
+                    width: 180,
+                    render: (name: string) => <Text code>{name}</Text>,
+                  },
+                  { title: '定义', dataIndex: 'definition', key: 'definition', ellipsis: true },
+                  {
+                    title: '值',
+                    key: 'value',
+                    width: 160,
+                    render: (_: unknown, row: InstanceExplainAggregate) =>
+                      row.error ? (
+                        <Text type="danger">无法计算：{row.error}</Text>
+                      ) : (
+                        <Space size={4}>
+                          <Text>{row.value === null || row.value === undefined ? '空值' : String(row.value)}</Text>
+                          {/* A truncated aggregate is a partial answer; a verdict resting on
+                              it was reached on partial data, and the reader has to know. */}
+                          {row.truncated && <Tag color="orange">已达取数上限</Tag>}
+                        </Space>
+                      ),
+                  },
+                  { title: '行数', dataIndex: 'rowCount', key: 'rowCount', width: 90 },
+                ]}
+              />
+            </>
+          )}
         </>
       )}
 

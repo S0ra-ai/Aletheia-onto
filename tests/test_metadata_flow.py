@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import ontology_platform.automation as automation_module
 from ontology_platform.adapters import get_adapter
+from ontology_platform.aggregation import AggregateSpec, define_aggregate, init_aggregate_schema
 from ontology_platform.automation import execute_operation, preflight_operation
 from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.coverage import build_semantic_coverage
@@ -2359,3 +2360,41 @@ def _explained_attribute(platform_db: Path, ontology_id: int, attribute_code: st
     matches = [item for item in explanation["attributes"] if item["attributeCode"] == attribute_code]
     assert matches, f"{attribute_code} 不在解释里: {[a['attributeCode'] for a in explanation['attributes']]}"
     return matches[0]
+
+
+def test_an_explanation_includes_the_aggregates_rules_read_by_name(tmp_path: Path) -> None:
+    """An aggregate has no attribute row, so the explanation is the only place it can appear.
+
+    A rule referencing `invoice_total` was evaluated against it and the verdict depended on
+    it, while the explanation did not mention the name at all -- a reader checking the
+    verdict against the explanation found a term that was not there.
+    """
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    # Aggregates live in an optional feature bundle, like events and temporal history.
+    with connect(platform_db) as conn:
+        init_aggregate_schema(conn)
+    define_aggregate(
+        platform_db,
+        ontology_id,
+        "contract",
+        AggregateSpec(
+            name="invoice_total",
+            function="sum",
+            target_table="invoice",
+            target_column="contract_id",
+            group_column="id",
+            value_column="amount",
+        ),
+        actor="test",
+    )
+
+    explanation = explain_instance(platform_db, ontology_id, "contract", "1")
+    names = [item["name"] for item in explanation["aggregates"]]
+    assert "invoice_total" in names, names
+
+    entry = next(item for item in explanation["aggregates"] if item["name"] == "invoice_total")
+    # The definition travels with the value: a number a rule compared is only checkable if
+    # the reader can see what it was a sum over.
+    assert "sum" in entry["definition"]
+    assert entry["rowCount"] >= 0
+    assert any("聚合" in part for part in explanation["explanation"].split("。"))

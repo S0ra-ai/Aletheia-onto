@@ -495,6 +495,23 @@ export interface InstanceTimelineEntry {
 }
 
 /**
+ * One cross-object aggregate, as the explanation carries it.
+ *
+ * `truncated` means the aggregate hit its row cap, so the value is a partial answer and any
+ * rule that compared it reached a verdict on partial data. That is worth surfacing rather
+ * than leaving in a field nobody reads.
+ */
+export interface InstanceExplainAggregate {
+  name: string;
+  definition: string;
+  value: unknown;
+  rowCount: number;
+  truncated: boolean;
+  /** Why the aggregate could not be computed. Empty when it could. */
+  error: string;
+}
+
+/**
  * `GET /semantic/objects/{code}/instances/{id}/explain`.
  *
  * Every field here was read off a live response. It previously declared
@@ -513,6 +530,16 @@ export interface InstanceExplainResult {
   /** The instant this explanation is about. Empty for the present. */
   asOf: string;
   attributes: InstanceExplainAttribute[];
+  /**
+   * Cross-object aggregates a rule can read by name.
+   *
+   * Separate from `attributes` because an aggregate is a query over other rows, not a value
+   * of this one: it has a row count and a truncation flag, and no declared attribute to hang
+   * them on. It has nowhere else to appear at all -- unlike a derived attribute, there is no
+   * row in the model's attribute list for it, so a verdict citing one used to cite a name
+   * the explanation never mentioned.
+   */
+  aggregates: InstanceExplainAggregate[];
   /** Declared ancestors, nearest first, so an explanation can say which type's rules apply. */
   ancestors: string[];
   timeline: InstanceTimelineEntry[];
