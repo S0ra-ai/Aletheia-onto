@@ -3,8 +3,16 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-DEFAULT_SAMPLE_DB = Path("data") / "legacy_contracts.sqlite3"
-DEFAULT_EQUIPMENT_SAMPLE_DB = Path("data") / "legacy_equipment.sqlite3"
+from .database import DEFAULT_DATA_DIR
+
+# Absolute, from the data directory the platform itself uses -- not `Path("data") / ...`,
+# which resolves against the *process's* working directory. A relative path here is right in a
+# checkout and wrong everywhere else: `aletheia serve` started from `/` tries to create
+# `/data`, and the data source the demo registers stores a path that another process, with a
+# different working directory, cannot open -- which reads as "the source is gone". The
+# platform database had this bug and this fix; the sample databases kept the old form.
+DEFAULT_SAMPLE_DB = DEFAULT_DATA_DIR / "legacy_contracts.sqlite3"
+DEFAULT_EQUIPMENT_SAMPLE_DB = DEFAULT_DATA_DIR / "legacy_equipment.sqlite3"
 
 
 def create_contract_sample_db(db_path: Path | str = DEFAULT_SAMPLE_DB) -> Path:

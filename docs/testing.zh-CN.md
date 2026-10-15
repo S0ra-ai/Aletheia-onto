@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1698 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1699 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -77,7 +77,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_rule_engine_safety.py` | 34 | Rule engine safety and release gate tests |
 | `test_codegen.py` | 16 | Code generation from a published ontology |
 | `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
-| `test_packaging.py` | 15 | Packaging: the project is installable, and the install is usable |
+| `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
 | `test_frontend_type_agreement.py` | 90 | The frontend's hand-written types must agree with the API they mirror, on both sides |

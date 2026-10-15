@@ -75,7 +75,7 @@
 | `ONTOLOGY_PLATFORM_DB_TYPE` | `sqlite`／`mysql`／`postgresql` | `sqlite` |
 | `ONTOLOGY_PLATFORM_DB_URI` | 平台库连接串 | 本地 SQLite 文件 |
 | `ONTOLOGY_PLATFORM_DB_FILE` | 直接指定 SQLite 平台库**文件**（优先于 `ONTOLOGY_DATA_DIR`） | 未设 |
-| `ONTOLOGY_DATA_DIR` | 平台库所在**目录**，文件名固定为 `platform.sqlite3` | 源码树下为 `data/`，否则 `~/.aletheia` |
+| `ONTOLOGY_DATA_DIR` | 平台库与**演示样例库**所在目录（平台库文件名固定为 `platform.sqlite3`，样例库为 `legacy_contracts.sqlite3`／`legacy_equipment.sqlite3`） | 源码树下为 `data/`，否则 `~/.aletheia` |
 | `ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEOUT_MS` | SQLite busy_timeout | `5000` |
 
 > **`serve` 与其他命令用同一个库。** `aletheia serve --platform-db X` 会把 `X`

@@ -85,7 +85,7 @@ a real outage shape, so the bootstrap admin keeps its password.
 | `ONTOLOGY_PLATFORM_DB_TYPE` | `sqlite` / `mysql` / `postgresql` | `sqlite` |
 | `ONTOLOGY_PLATFORM_DB_URI` | Platform database connection string | Local SQLite file |
 | `ONTOLOGY_PLATFORM_DB_FILE` | The SQLite platform database **file** (wins over `ONTOLOGY_DATA_DIR`) | Unset |
-| `ONTOLOGY_DATA_DIR` | The **directory** holding `platform.sqlite3` | `data/` in a checkout, `~/.aletheia` otherwise |
+| `ONTOLOGY_DATA_DIR` | The **directory** holding `platform.sqlite3` and the demo sample databases (`legacy_contracts.sqlite3`, `legacy_equipment.sqlite3`) | `data/` in a checkout, `~/.aletheia` otherwise |
 | `ONTOLOGY_PLATFORM_SQLITE_BUSY_TIMEOUT_MS` | SQLite `busy_timeout` | `5000` |
 
 > **`serve` uses the same database as every other command.**

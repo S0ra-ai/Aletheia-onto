@@ -215,3 +215,29 @@ def test_ci_builds_the_wheel_and_installs_it_into_an_empty_environment() -> None
     assert "pip install dist/*.whl" in workflow, "CI 不再在干净环境安装 wheel"
     # A build that is never run is a build that has already broken.
     assert re.search(r"/tmp/clean/bin/aletheia\s", workflow), "CI 不再运行裸装后的 CLI"
+
+
+def test_the_sample_databases_do_not_depend_on_the_working_directory(tmp_path: Path, monkeypatch) -> None:
+    """The same invariant as the platform database, for the databases the demo creates.
+
+    `DEFAULT_SAMPLE_DB` was `Path("data") / "legacy_contracts.sqlite3"`, resolved against
+    whatever directory the process happened to be in. Started from `/`, the demo button tries
+    to create `/data`; started from somewhere else, it writes a *different* file -- and the
+    data source it registers stores that relative path, so any other process opens nothing and
+    reports a missing source. The platform database was fixed for exactly this reason years
+    (and two ADRs) earlier; the sample databases kept the old form.
+    """
+    from ontology_platform.sample_data import (
+        DEFAULT_EQUIPMENT_SAMPLE_DB,
+        DEFAULT_SAMPLE_DB,
+        create_contract_sample_db,
+    )
+
+    assert Path(DEFAULT_SAMPLE_DB).is_absolute(), DEFAULT_SAMPLE_DB
+    assert Path(DEFAULT_EQUIPMENT_SAMPLE_DB).is_absolute(), DEFAULT_EQUIPMENT_SAMPLE_DB
+
+    monkeypatch.chdir(tmp_path)
+    created = create_contract_sample_db()
+    assert Path(created).is_absolute(), created
+    assert Path(created).exists()
+    assert not (tmp_path / "data").exists(), "样例库被写进了当前工作目录"
