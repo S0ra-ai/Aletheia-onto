@@ -1,3 +1,4 @@
+import { label, RELATION_KIND } from '../../i18n/labels';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { graphApi, ontologyApi } from '../../api';
@@ -261,7 +262,10 @@ const OntologyGraphPage: React.FC = () => {
                           fill="#1677ff"
                           textAnchor="middle"
                         >
-                          {edge.foreignKey}
+                          {/* The kind, then the key it came from: the kind is what says
+                              whether the relation is identity-dependent, mandatory or
+                              optional, and the key is the evidence for it. */}
+                          {`${label(RELATION_KIND, edge.relationType)} · ${edge.foreignKey}`}
                         </text>
                       )}
                     </g>

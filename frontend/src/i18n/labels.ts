@@ -88,3 +88,10 @@ export const label = (map: Record<string, string>, value: unknown): string => {
   const key = String(value ?? '');
   return map[key] ?? key;
 };
+
+/** The relation kinds `relations.RELATION_KINDS` infers, in the same words it uses. */
+export const RELATION_KIND: Record<string, string> = {
+  composition: '组成',
+  aggregation: '聚合',
+  association: '关联',
+};

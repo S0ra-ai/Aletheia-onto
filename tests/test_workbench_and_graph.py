@@ -167,9 +167,33 @@ def test_isolated_objects_are_reported(modelled) -> None:
 
 
 def test_graph_states_the_relation_expressiveness_limitation(modelled) -> None:
-    """The view must not imply richer semantics than the model supports."""
+    """The view must not imply richer semantics than the model supports.
+
+    The previous assertion pinned the wording of a limitation the platform had since
+    removed -- it required the note to say relations were "always references, no
+    cardinality", which stopped being true when ADR-0012 inferred kind and cardinality from
+    the key. So the test was demanding that the product understate itself. What matters is
+    the property: the note says where inference stops being reliable, instead of letting an
+    inferred kind read as a declared fact.
+    """
     graph = build_ontology_graph(modelled["platform_db"], modelled["ontology_id"])
-    assert "references" in graph["notes"]["limitation"]
+    limitation = graph["notes"]["limitation"]
+    assert "模式质量" in limitation
+    assert "外键" in limitation
+
+
+def test_graph_exposes_the_relation_kind_it_infers(modelled) -> None:
+    """The other direction: the graph must not understate what it does provide.
+
+    A note claiming a limit is only honest if the data backs it, and relation kind is the
+    thing the previous note wrongly said was absent.
+    """
+    graph = build_ontology_graph(modelled["platform_db"], modelled["ontology_id"])
+    kinds = {edge["relationType"] for edge in graph["edges"]}
+    assert kinds, "图中没有边，无法验证关系类型"
+    assert kinds <= {"composition", "aggregation", "association"}, kinds
+    # And the note's own vocabulary covers what the edges carry.
+    assert graph["notes"]["relationTypes"] == sorted(kinds)
 
 
 def test_unknown_ontology_raises(modelled) -> None:

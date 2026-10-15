@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1520 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1521 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -74,7 +74,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_codegen.py` | 16 | Code generation from a published ontology |
 | `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
 | `test_packaging.py` | 15 | Packaging: the project is installable, and the install is usable |
-| `test_workbench_and_graph.py` | 14 | Workbench aggregation and knowledge graph projection |
+| `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
 | `test_frontend_type_agreement.py` | 12 | The frontend's hand-written types must agree with the API they mirror |
 | `test_frontend_serving.py` | 3 | 同源生产管理端与 API 传输前缀 |
