@@ -2226,12 +2226,15 @@ def test_a_scan_still_refuses_to_forget_a_column_a_model_maps_to(tmp_path: Path)
     assert "业务属性" in message, message
 
 
-def test_rescanning_discards_a_draft_and_what_later_modules_attached_to_it(tmp_path: Path) -> None:
-    """The derived draft is regenerated, so everything hanging off it goes with it.
+def test_rescanning_keeps_a_draft_and_what_later_modules_attached_to_it(tmp_path: Path) -> None:
+    """A scan refreshes source metadata. It does not clear the model built on top of it.
 
-    Re-scanning a draft that had an event type attached failed with
-    `FOREIGN KEY constraint failed`: the cleanup knew about rules, mappings, relations,
-    attributes and objects, and nothing about the tables later feature modules added.
+    It used to: the draft derived from that source was discarded on every scan, and with it
+    every rule, mapping, relation, workflow, event type, event and attribute version that
+    referenced it. Two buttons reach that path -- 扫描 and 初始化知识库 -- so somebody who had
+    modelled a source lost that work by refreshing its metadata, and the toast said
+    「扫描完成」. Discarding a draft is `generate_ontology_draft`'s job, and it is asked for
+    there.
     """
     platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
     # The event and temporal schemas are optional feature bundles: a deployment that never
@@ -2255,7 +2258,7 @@ def test_rescanning_discards_a_draft_and_what_later_modules_attached_to_it(tmp_p
     with connect(platform_db) as conn:
         for table in ("ontology", "business_object", "business_event_type", "business_event", "attribute_version"):
             remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
-            assert remaining == 0, f"{table} 在重新扫描后仍留有 {remaining} 行"
+            assert remaining > 0, f"{table} 被重新扫描清掉了"
 
 
 def test_rescanning_a_draft_from_an_unrelated_source_leaves_it_alone(tmp_path: Path) -> None:
@@ -2429,15 +2432,15 @@ def test_the_mapping_review_payload_decodes_what_the_review_page_shows(tmp_path:
     assert object_mapping["targetAttributeCode"] is None
 
 
-def test_rescanning_discards_a_draft_whose_children_have_children(tmp_path: Path) -> None:
-    """Depth, not one level.
+def test_initializing_a_knowledge_base_keeps_a_draft_whose_children_have_children(tmp_path: Path) -> None:
+    """Depth, not one level -- which is the shape of the work a scan used to destroy.
 
-    The cleanup asked the catalog which tables reference the ontology and deleted their rows,
-    which is right until a child has children of its own: `workflow_definition` references the
-    ontology and `workflow_state`, `workflow_transition` and `instance_workflow` reference the
-    workflow; a knowledge document has entries; a rule has inference results. Deleting the
-    parent while a grandchild still points at it is the same failure one level down, and it
-    reached a user as a 500 from `/data-sources/{id}/initialize`.
+    `initialize_knowledge_base` re-scans the source first, so it used to discard the draft and
+    everything under it: a workflow's states, transitions and instances, a document's entries,
+    a rule's inference results. Anything that stops one level short deletes a parent while a
+    grandchild still points at it, and that is a `FOREIGN KEY constraint failed` in the middle
+    of the delete. Nothing is discarded here now, so there is no order to get wrong -- the
+    depth requirement lives where discarding still happens, in regeneration.
     """
     from ontology_platform.knowledge_base import initialize_knowledge_base
     from ontology_platform.workflow_permission import (
@@ -2453,22 +2456,21 @@ def test_rescanning_discards_a_draft_whose_children_have_children(tmp_path: Path
     workflow = create_workflow(platform_db, ontology_id, "contract", "审批流", initial_state="draft")
     enter_workflow(platform_db, workflow["id"], "contract", "1")
 
-    # The production path: initialise a knowledge base, which re-scans the source first and
-    # therefore discards the draft -- with its workflow, its states and its instance in tow.
+    # The production path, and the one that reached users: the 初始化知识库 button.
     initialize_knowledge_base(platform_db, source_id)
 
     with connect(platform_db) as conn:
         for table in ("workflow_definition", "workflow_state", "workflow_transition", "instance_workflow"):
             remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
-            assert remaining == 0, f"{table} 在重新扫描后仍留有 {remaining} 行"
+            assert remaining > 0, f"{table} 被初始化知识库清掉了"
 
 
-def test_a_transition_is_discarded_with_the_draft_that_owns_it(tmp_path: Path) -> None:
+def test_a_transition_is_discarded_when_the_draft_is_regenerated(tmp_path: Path) -> None:
     """The delete order, stated as an outcome rather than as an implementation.
 
     A workflow that has been moved through -- not merely created -- is the case that failed:
-    the instance row and the history rows exist, and the draft's cleanup has to take them
-    before it takes the definition they point at.
+    the instance row and the history rows exist, and the cleanup has to take them before it
+    takes the definition they point at.
     """
     from ontology_platform.workflow_permission import (
         create_workflow,
@@ -2487,7 +2489,12 @@ def test_a_transition_is_discarded_with_the_draft_that_owns_it(tmp_path: Path) -
     actions = get_available_actions(platform_db, workflow["id"], "1")
     transition_instance(platform_db, workflow["id"], "1", actions[0]["action_code"], actor="test")
 
-    scan_data_source(platform_db, source_id)
+    generate_ontology_draft(platform_db, source_id)
+
+    with connect(platform_db) as conn:
+        for table in ("workflow_definition", "workflow_state", "workflow_transition", "instance_workflow"):
+            remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
+            assert remaining == 0, f"{table} 在重新生成草案后仍留有 {remaining} 行"
 
 
 def test_regenerating_a_draft_clears_what_later_modules_attached_to_it(tmp_path: Path) -> None:

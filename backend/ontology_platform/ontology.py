@@ -709,12 +709,13 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         if existing["status"] == "published":
             raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
         ontology_id = int(existing["id"])
-        # Through the catalog, to any depth -- the same cleanup `_delete_derived_drafts`
-        # uses. A hand-written list of tables was correct when it was written and stopped
-        # being correct the first time a feature module added one: regenerating a draft on a
-        # source that had a workflow, an event or a knowledge document failed with
-        # `FOREIGN KEY constraint failed`, which reached a user as a 500 from
-        # `POST /ontologies/draft`.
+        # Through the catalog, to any depth. A hand-written list of tables was correct when it
+        # was written and stopped being correct the first time a feature module added one:
+        # regenerating a draft on a source that had a workflow, an event or a knowledge
+        # document failed with `FOREIGN KEY constraint failed`, which reached a user as a 500
+        # from `POST /ontologies/draft`.
+        # This is the only path that discards a draft. A scan deliberately does not: it
+        # refreshes source metadata, and clearing the model is what *this* does, when asked.
         delete_referencing_rows(conn, "business_object", _object_ids(conn, ontology_id))
         conn.execute("delete from business_object where ontology_id = ?", (ontology_id,))
         delete_referencing_rows(conn, "ontology", [ontology_id])

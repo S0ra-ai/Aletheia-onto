@@ -521,7 +521,15 @@ def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, 
         except Exception as error:
             raise ValueError(f"数据源扫描失败: {describe_data_source_failure(error)}") from error
 
-        _delete_derived_drafts(platform, data_source_id)
+        # Nothing about the model is discarded here. A scan refreshes *source metadata*, and
+        # that is what the button says; discarding the draft that was derived from it --
+        # together with every rule, mapping, relation, workflow and document attached to it --
+        # is what `generate_ontology_draft` does, when somebody asks it to. Doing it here made
+        # 扫描 and 初始化知识库 delete the modelling their owner had already done: the demo's
+        # own workflow disappeared between `aletheia demo` and the first knowledge-base
+        # initialisation, which is how this was found. The one case that genuinely cannot
+        # proceed -- a table or column the model maps to has disappeared from the source --
+        # is refused by name in `_sync_source_metadata` below.
         # Metadata is updated in place rather than dropped and rebuilt. The rows have
         # identities: `business_object.source_table_id` and
         # `business_attribute.source_column_id` are foreign keys, so deleting a table row
@@ -1026,66 +1034,15 @@ def _row_to_source_api(row: sqlite3.Row) -> SourceApi:
     )
 
 
-def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) -> None:
-    # Drafts only, which is what the name says and previously was not what the code did:
-    # the query collected every ontology with an object on this source and deleted its
-    # contents, while the final statement deleted the ontology row only when it was still a
-    # draft. A published ontology was emptied and left standing.
-    ontology_rows = platform.execute(
-        """
-        select distinct bo.ontology_id
-        from business_object bo
-        join source_table st on st.id = bo.source_table_id
-        join ontology o on o.id = bo.ontology_id
-        where st.data_source_id = ? and o.status = 'draft'
-        """,
-        (data_source_id,),
-    ).fetchall()
-    ontology_ids = [row["ontology_id"] for row in ontology_rows]
-    for ontology_id in ontology_ids:
-        rule_ids = [
-            row["id"]
-            for row in platform.execute("select id from business_rule where ontology_id = ?", (ontology_id,)).fetchall()
-        ]
-        for rule_id in rule_ids:
-            platform.execute(
-                "delete from explanation_trace where inference_result_id in (select id from inference_result where rule_id = ?)",
-                (rule_id,),
-            )
-            platform.execute("delete from inference_result where rule_id = ?", (rule_id,))
-        platform.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
-        platform.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))
-        platform.execute("delete from business_relation where ontology_id = ?", (ontology_id,))
-        object_ids = [
-            row["id"]
-            for row in platform.execute(
-                "select id from business_object where ontology_id = ?", (ontology_id,)
-            ).fetchall()
-        ]
-        # Children of the objects first, via the catalog: an attribute version, an event
-        # type or an instance event all point at the object being removed, and pointing at
-        # the ontology too does not make them safe to leave behind.
-        removed_children = delete_referencing_rows(platform, "business_object", object_ids)
-        platform.execute(
-            "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
-            (ontology_id,),
-        )
-        platform.execute("delete from business_object where ontology_id = ?", (ontology_id,))
-        removed_children += delete_referencing_rows(platform, "ontology", [ontology_id])
-        if removed_children:
-            logger.debug("丢弃派生草案 %s 时一并清除了: %s", ontology_id, "、".join(removed_children))
-        platform.execute("delete from ontology where id = ? and status = 'draft'", (ontology_id,))
-
-
 def delete_referencing_rows(platform: Any, parent: str, ids: Sequence[int]) -> list[str]:
     """Delete everything that hangs off `parent`, to any depth, asking the catalog what does.
 
-    The explicit deletes in `_delete_derived_drafts` cover what that function knows about.
-    This covers what it does not: every table a later feature module added with a foreign key
-    to the ontology or its objects. Event types, instance events and attribute versions were
-    all added after the list was written, and none of them was in it -- so re-scanning a
-    source whose draft had any of them failed with `FOREIGN KEY constraint failed`, a message
-    that names neither the table that blocked the delete nor the feature that owns it.
+    Called when a draft is regenerated: `_create_ontology` clears the ontology it is about to
+    rebuild, and the tables a draft carries are not a fixed list. A hand-written one was
+    correct when it was written and wrong the first time a feature module added a table --
+    event types, instance events and attribute versions all arrived after it, and none was in
+    it, so regenerating failed with `FOREIGN KEY constraint failed`, a message that names
+    neither the table that blocked the delete nor the feature that owns it.
 
     **Depth first, because a child has children too.** The first version deleted one level and
     failed the moment a draft had a workflow: `workflow_definition` references the ontology,

@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from ontology_platform.database import initialize_platform_db
+from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.governance import upsert_business_rule
 from ontology_platform.knowledge_base import (
     browse_source_table,
@@ -265,3 +265,75 @@ def test_answers_never_contain_raw_html(tmp_path: Path) -> None:
         answer = query_natural_language(platform_db, question, ontology["id"], source.id, use_model=False)["answer"]
         for marker in ("<script", "<img", "<iframe", "<div", "<span", "<a href", "javascript:"):
             assert marker not in answer.lower(), f"{question} -> {answer}"
+
+
+def test_initializing_a_knowledge_base_keeps_the_model_that_is_already_there(tmp_path: Path) -> None:
+    """The button says 「初始化知识库」. It used to also discard the ontology draft.
+
+    `initialize_knowledge_base` re-scanned the source first, and a scan discarded the draft
+    derived from it -- taking every rule, mapping, relation, workflow and document attached
+    to it, and the ontology row itself. So on a source somebody had already modelled,
+    clicking 初始化知识库 deleted that modelling and reported success. Found by seeding the
+    render check: the demo's workflow vanished between `aletheia demo` and the sweep, and the
+    workflow screen came up empty.
+
+    The draft here is one a person built: a hand-written rule and a workflow. Both must
+    survive, and no second ontology may appear.
+    """
+    from ontology_platform.workflow_permission import create_workflow, init_workflow_and_permission_schema
+
+    platform_db, source, ontology = _initialized_source(tmp_path)
+    # The workflow tables belong to an optional bundle, so a platform database that was only
+    # initialized does not have them -- the same thing `aletheia demo` does before it makes a
+    # workflow.
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    upsert_business_rule(
+        platform_db,
+        ontology["id"],
+        "hand_written_rule",
+        "人工规则",
+        "validation",
+        "contract",
+        "amount > 0",
+        "warning",
+        "金额必须大于零。",
+        actor="tester",
+    )
+    workflow = create_workflow(platform_db, ontology["id"], "contract", "人工审批流")
+
+    result = initialize_knowledge_base(platform_db, source.id)
+
+    assert result["status"] == "initialized"
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from ontology").fetchone()[0] == 1, "初始化又建了一个本体"
+        assert conn.execute("select count(*) from business_rule where code = 'hand_written_rule'").fetchone()[0] == 1, (
+            "初始化知识库把人工规则删掉了"
+        )
+        assert (
+            conn.execute("select count(*) from workflow_definition where id = ?", (workflow["id"],)).fetchone()[0] == 1
+        ), "初始化知识库把工作流删掉了"
+    # The reasoning chain is what the button is for, and it still has to be built.
+    assert result["reasoningChain"]["objects"], "初始化后推理链是空的"
+
+
+def test_initializing_still_creates_a_draft_when_the_source_has_none(tmp_path: Path) -> None:
+    """The other direction: a source nobody has modelled yet must still get an ontology.
+
+    Otherwise the fix above would be "initialize does nothing", and the reasoning chain --
+    the reason the button exists -- would come back empty on a fresh source.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    source_db = tmp_path / "business.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(source_db)
+    source = register_data_source(platform_db, "未建模系统", "sqlite", str(source_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+
+    result = initialize_knowledge_base(platform_db, source.id)
+
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from ontology").fetchone()[0] == 1
+        assert conn.execute("select count(*) from business_object").fetchone()[0] > 0
+    assert result["ontology"]["id"]
+    assert result["reasoningChain"]["objects"], "新数据源的推理链是空的"

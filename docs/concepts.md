@@ -114,6 +114,13 @@ model. A re-scan therefore keeps working on a source with a published ontology, 
 only at the point of real damage — a column that disappeared while a business attribute
 still maps to it, which it names.
 
+**A scan discards nothing.** It refreshes source metadata, which is what the button says.
+Discarding the draft derived from it — and the rules, mappings, relations, workflows and
+documents attached to that draft — is what **regenerating the ontology draft** does, and
+only when asked. The two used to be one operation: the scan cleared the draft first, so the
+button labelled 「初始化知识库」 deleted the modelling its owner had already done and then
+reported success, which is how `aletheia demo`'s sample workflow disappeared.
+
 ## Assessment and provenance
 
 **BusinessRule** — an explainable condition evaluated in an AST-allowlist sandbox.
