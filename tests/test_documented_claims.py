@@ -473,3 +473,54 @@ def test_every_module_is_named_somewhere_in_the_suite() -> None:
         "以下模块没有任何测试文件提到过——要么给它一个测试，"
         f"要么在 COVERED_TRANSITIVELY 里写明它经由谁被覆盖：{unexpected}"
     )
+
+
+def test_every_documented_cli_flag_exists() -> None:
+    """Documentation names commands and flags; renaming one leaves the other behind.
+
+    A flag in a copied command is worse than a wrong number: the reader pastes it, gets
+    `unrecognized arguments`, and now doubts the document rather than the flag. The
+    per-file table in `docs/testing.md` cannot see this -- it counts tests, not commands.
+
+    Scan rather than list, so a command added to a guide is checked the moment it is
+    written. `docs/` and both READMEs, in `bash` blocks, for invocations of the CLI.
+    """
+    import re as regex
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.cli import build_parser
+
+    parser = build_parser()
+    subcommands = next(action for action in parser._actions if getattr(action, "choices", None))
+    flags = {
+        name: {option for action in command._actions for option in action.option_strings}
+        for name, command in subcommands.choices.items()
+    }
+
+    documents = list((ROOT / "docs").glob("*.md"))
+    documents += [ROOT / "README.md", ROOT / "README.zh-CN.md"]
+
+    # `python -m ontology_platform.cli` and the installed `aletheia` are the same program.
+    invocation = regex.compile(
+        r"(?:\.venv/bin/python -m ontology_platform\.cli|python -m ontology_platform\.cli|aletheia)\s+([a-z-]+)(.*)"
+    )
+
+    checked = 0
+    unknown: list[str] = []
+    for document in documents:
+        text = document.read_text(encoding="utf-8")
+        for block in regex.findall(r"```(?:bash|shell|sh)\n(.*?)```", text, regex.DOTALL):
+            for line in block.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                match = invocation.match(line)
+                if match is None or match.group(1) not in flags:
+                    continue
+                checked += 1
+                used = set(regex.findall(r"(?<!\w)(--[a-z][a-z-]*)", match.group(2)))
+                for flag in sorted(used - flags[match.group(1)]):
+                    unknown.append(f"{document.name}: aletheia {match.group(1)} {flag}")
+
+    assert checked > 20, f"只在文档里找到 {checked} 条命令示例，扫描方式或已失效"
+    assert not unknown, "文档里的命令用了不存在的选项：\n  " + "\n  ".join(unknown)
