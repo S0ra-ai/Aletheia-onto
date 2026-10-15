@@ -138,7 +138,11 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       key: 'attribute',
       render: (_: unknown, row: InstanceExplainAttribute) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{row.attributeName || row.attributeCode}</Text>
+          <Space size={4}>
+            <Text strong>{row.attributeName || row.attributeCode}</Text>
+            {row.derived && <Tag color="purple">计算</Tag>}
+            {row.fromHistory && <Tag color="blue">历史</Tag>}
+          </Space>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {row.attributeCode}
           </Text>
@@ -146,25 +150,57 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       ),
     },
     {
-      title: '来源列',
-      dataIndex: 'sourceColumn',
-      key: 'sourceColumn',
-      width: 200,
-      // Named per attribute rather than per object: the whole claim is that a value can be
-      // traced to where it was read, and "the object maps to table contract" does not
-      // answer which column a number came from.
-      render: (column: string) => (column ? <Text code>{column}</Text> : <Text type="secondary">—</Text>),
+      title: '来源',
+      key: 'source',
+      width: 230,
+      // A derived attribute has no column, and saying so is the explanation: the value was
+      // computed from an expression, not read from anywhere. It used to be dropped from
+      // this table entirely, because the query inner-joined the source column.
+      render: (_: unknown, row: InstanceExplainAttribute) =>
+        row.derived ? (
+          <Space direction="vertical" size={0}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              由表达式计算
+            </Text>
+            <Text code style={{ fontSize: 12 }}>
+              {row.derivedExpression}
+            </Text>
+          </Space>
+        ) : row.sourceColumn ? (
+          <Text code>{row.sourceColumn}</Text>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
     },
     {
-      title: '当前值',
-      dataIndex: 'value',
+      title: '值',
       key: 'value',
-      render: (value: unknown) =>
-        value === null || value === undefined || value === '' ? (
-          <Text type="secondary">空值</Text>
-        ) : (
-          String(value)
-        ),
+      render: (_: unknown, row: InstanceExplainAttribute) => {
+        if (row.error) {
+          // A derived attribute that could not be computed makes rules referencing it fail
+          // closed. Showing an empty cell here would hide that behind a blank.
+          return <Text type="danger">无法计算：{row.error}</Text>;
+        }
+        if (row.value === null || row.value === undefined || row.value === '') {
+          return <Text type="secondary">空值</Text>;
+        }
+        return (
+          <Space size={4}>
+            <Text>{String(row.value)}</Text>
+            {row.stateName && <Tag color="green">{row.stateName}</Tag>}
+          </Space>
+        );
+      },
+    },
+    {
+      title: '单位',
+      key: 'unit',
+      width: 90,
+      // A magnitude without its unit is not a value: 1200000 万元 and 1200000 元 differ by a
+      // factor of ten thousand, and the explanation is where a reader decides which they are
+      // looking at.
+      render: (_: unknown, row: InstanceExplainAttribute) =>
+        row.unitName ? <Tag>{row.unitName}</Tag> : <Text type="secondary">—</Text>,
     },
   ];
 

@@ -138,6 +138,13 @@ attributes, applies units, and evaluates every applicable rule.
 ancestor types, recent event timeline. It answers "what is it, and how did it get
 this way".
 
+The values it shows are **the ones the rules saw**, not the raw cells: cross-source
+fields are merged in, an as-of explanation lets recorded history override the live row,
+declared units wrap magnitudes, value mappings are in effect, and derived attributes are
+computed. An explanation assembled from the stored row would show numbers no rule ever
+compared, and a reader checking it against a verdict would find a discrepancy that is not
+there. With `asOf` it explains a past instant, so an old verdict stays checkable.
+
 **ReleaseGate** — release-readiness is assessed before publishing; a blocking finding
 refuses the release. A `force` override is audited together with the number of gates
 it bypassed.

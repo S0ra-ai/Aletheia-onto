@@ -23,7 +23,7 @@ from .derived_attributes import (
 from .entity_resolution import resolve_all
 from .instance_key import parse_key_columns
 from .instance_resolver import ResolverSpec, build_resolver
-from .ontology import explain_instance
+from .ontology import bind_runtime_builder, explain_instance
 from .relations import MANY_TO_MANY
 
 # The sandbox lives in its own module so it is one reviewable security boundary, and so
@@ -670,6 +670,13 @@ def build_runtime(
         temporal_values=temporal_values,
         cross_source=cross_source_results,
     )
+
+
+# Bound at import time: `ontology.explain_instance` needs the runtime this module builds,
+# and this module needs `explain_instance`. Injection rather than a local import keeps the
+# dependency one-directional -- a function-local import would hide the cycle from anyone
+# reading either file.
+bind_runtime_builder(build_runtime)
 
 
 def _inherited_derived_specs(platform: sqlite3.Connection, ontology_id: int, object_code: str) -> list[Any]:

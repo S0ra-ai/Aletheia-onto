@@ -20,6 +20,7 @@ from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.decisions import list_decisions
+from ontology_platform.derived_attributes import DerivedSpec, define_derived_attribute, set_attribute_unit
 from ontology_platform.events import EventType, declare_event_type, init_event_schema, record_event
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,
@@ -2286,3 +2287,75 @@ def test_rescanning_a_draft_from_an_unrelated_source_leaves_it_alone(tmp_path: P
             0
         ]
     assert kept > 0, "扫描另一个数据源不得动到这个本体"
+
+
+# -- An explanation shows the values the rules saw --
+
+
+def test_an_explanation_carries_the_unit_a_value_is_measured_in(tmp_path: Path) -> None:
+    """A magnitude without its unit is not a value.
+
+    1200000 万元 and 1200000 元 differ by a factor of ten thousand, and the explanation is
+    where a reader decides which one they are looking at. The unit was declared, applied
+    during assessment and exported -- and absent from the explanation, which selected only
+    the code, the name and the source column.
+    """
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    set_attribute_unit(platform_db, ontology_id, "contract", "amount", "wan_yuan", actor="test")
+
+    amount = _explained_attribute(platform_db, ontology_id, "amount")
+    assert amount["unit"] == "wan_yuan"
+    assert amount["unitName"] == "万元"
+
+
+def test_an_explanation_includes_derived_attributes(tmp_path: Path) -> None:
+    """`define_derived_attribute` promises every existing consumer sees the attribute.
+
+    It stored the row as an ordinary `business_attribute`, so explanations, the graph view,
+    exports and the frontend would all pick it up "without changes" -- except the
+    explanation, which inner-joined `source_column`, and a derived attribute has no source
+    column. It was missing from its own explanation.
+    """
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    define_derived_attribute(
+        platform_db,
+        ontology_id,
+        "contract",
+        DerivedSpec(code="amount_with_tax", name="含税金额", expression="amount * 1.13"),
+        actor="test",
+    )
+
+    derived = _explained_attribute(platform_db, ontology_id, "amount_with_tax")
+    assert derived["derived"] is True
+    assert derived["derivedExpression"] == "amount * 1.13"
+    # No column behind a computed value, and saying so is the explanation.
+    assert derived["sourceColumn"] == ""
+    assert derived["value"] == pytest.approx(1200000 * 1.13)
+
+
+def test_an_explanation_explains_a_past_instant_when_asked(tmp_path: Path) -> None:
+    """A verdict can be produced as of a past moment, so an explanation must reach it.
+
+    Explaining only the present leaves the reader of an old verdict unable to check it,
+    which is the one question an explanation exists to answer.
+    """
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_temporal_schema(conn)
+    record_attribute_version(
+        platform_db, ontology_id, "contract", "1", "amount", 500, valid_from="2026-01-01", actor="test"
+    )
+
+    then = _explained_attribute(platform_db, ontology_id, "amount", as_of="2026-02-01")
+    now = _explained_attribute(platform_db, ontology_id, "amount")
+
+    assert then["value"] == 500, "as-of 解释应当给出当时的取值"
+    assert then["fromHistory"] is True
+    assert now["value"] == 1200000, "不带 as-of 时仍是当前值"
+
+
+def _explained_attribute(platform_db: Path, ontology_id: int, attribute_code: str, *, as_of: str | None = None) -> dict:
+    explanation = explain_instance(platform_db, ontology_id, "contract", "1", as_of=as_of)
+    matches = [item for item in explanation["attributes"] if item["attributeCode"] == attribute_code]
+    assert matches, f"{attribute_code} 不在解释里: {[a['attributeCode'] for a in explanation['attributes']]}"
+    return matches[0]

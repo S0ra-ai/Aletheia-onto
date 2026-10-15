@@ -453,12 +453,30 @@ export interface BusinessRule {
 
 // 语义服务相关类型
 
-/** One declared attribute of an instance, with the column it was read from. */
+/**
+ * One declared attribute of an instance, with the value a rule would see.
+ *
+ * `value` is not the raw stored cell: units wrap it, a value mapping lets it compare equal
+ * to its business state name, and for an as-of explanation recorded history replaces it.
+ * `derived` attributes have no `sourceColumn` at all -- they are computed from an
+ * expression, and the expression is the explanation.
+ */
 export interface InstanceExplainAttribute {
   attributeCode: string;
   attributeName: string;
+  /** Empty for a derived attribute: there is no column behind a computed value. */
   sourceColumn: string;
+  unit: string;
+  unitName: string;
+  derived: boolean;
+  derivedExpression: string;
   value: unknown;
+  /** Why a derived attribute could not be computed. Empty when it could. */
+  error?: string;
+  /** The business state a mapped legacy code corresponds to, when a mapping applies. */
+  stateName?: string;
+  /** True when recorded history supplied this value rather than the live row. */
+  fromHistory?: boolean;
 }
 
 /**
@@ -492,6 +510,8 @@ export interface InstanceExplainResult {
   objectCode: string;
   instanceId: string;
   source: { table: string; primaryKey: string; instanceId: string };
+  /** The instant this explanation is about. Empty for the present. */
+  asOf: string;
   attributes: InstanceExplainAttribute[];
   /** Declared ancestors, nearest first, so an explanation can say which type's rules apply. */
   ancestors: string[];

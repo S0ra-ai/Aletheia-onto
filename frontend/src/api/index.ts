@@ -480,8 +480,16 @@ export const semanticApi = {
     return data as NaturalLanguageQueryResult;
   },
 
-  explain: async (objectCode: string, instanceId: string, ontologyId?: number): Promise<InstanceExplainResult> => {
-    const params = ontologyId ? { ontologyId } : {};
+  /** `asOf` explains the instance as of a past instant, for checking an older verdict. */
+  explain: async (
+    objectCode: string,
+    instanceId: string,
+    ontologyId?: number,
+    asOf?: string,
+  ): Promise<InstanceExplainResult> => {
+    const params: Record<string, string | number> = {};
+    if (ontologyId) params.ontologyId = ontologyId;
+    if (asOf) params.asOf = asOf;
     const { data } = await api.get(`/semantic/objects/${objectCode}/instances/${instanceId}/explain`, { params });
     return data as InstanceExplainResult;
   },

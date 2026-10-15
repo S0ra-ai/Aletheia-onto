@@ -5,14 +5,13 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Callable, Optional, Sequence
 from urllib.parse import quote
 
-from .adapters import get_adapter
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .context import PlatformDb
 from .database import connect, last_insert_id
-from .derived_attributes import UnitError, get_unit
+from .derived_attributes import Quantity, UnitError, get_unit
 from .events import EVENT_CATEGORY_LABELS, EVENT_TABLE, EVENT_TYPE_TABLE, event_tables_exist
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 from .relations import (
@@ -27,7 +26,7 @@ from .relations import (
     junction_semantics,
     shapes_for_table,
 )
-from .rule_sandbox import validate_rule_expression
+from .rule_sandbox import MappedValue, validate_rule_expression
 from .type_hierarchy import ancestors_of
 from .vocabulary import blueprint_attribute_labels, blueprint_object_labels
 
@@ -120,51 +119,67 @@ def resolve_ontology_for_object(platform_db: PlatformDb, object_code: str) -> in
         return int(row["id"])
 
 
-def explain_instance(platform_db: PlatformDb, ontology_id: int, object_code: str, instance_id: str) -> dict[str, Any]:
-    with connect(platform_db) as platform:
-        ontology = platform.execute("select * from ontology where id = ?", (ontology_id,)).fetchone()
-        if ontology is None:
-            raise ValueError(f"本体不存在: {ontology_id}")
-        business_object = platform.execute(
-            "select * from business_object where ontology_id = ? and code = ?",
-            (ontology_id, object_code),
-        ).fetchone()
-        if business_object is None:
-            raise ValueError(f"业务对象不存在: {object_code}")
-        source_table = platform.execute(
-            "select * from source_table where id = ?", (business_object["source_table_id"],)
-        ).fetchone()
-        data_source = platform.execute(
-            "select ds.* from data_source ds join source_table st on st.data_source_id = ds.id where st.id = ?",
-            (source_table["id"],),
-        ).fetchone()
-        primary_key = source_table["primary_key"] or "id"
-        adapter = get_adapter(data_source["source_type"])
-        with adapter.runtime(data_source["connection_uri"]) as runtime:
-            record = runtime.fetch_one(source_table["table_name"], primary_key, instance_id)
-            if record is None:
-                raise ValueError(f"实例不存在: {object_code}/{instance_id}")
+# The semantic runtime -- cross-source resolution, temporal override, aggregates, units,
+# value mappings and derived attributes -- is built by `semantic_kernel`, which imports
+# this module. Binding it rather than importing it keeps the dependency one-directional,
+# the same arrangement `derived_attributes.bind_sandbox` uses and for the same reason.
+#
+# It is not a plugin point. An explanation built by a different runtime would show values
+# other than the ones the rules saw, which is exactly the divergence this arrangement
+# exists to prevent.
+_runtime_builder: Optional[Callable[..., Any]] = None
 
+
+def bind_runtime_builder(build: Callable[..., Any]) -> None:
+    """Wire in the runtime builder. Called once by the kernel at import time."""
+    global _runtime_builder
+    _runtime_builder = build
+
+
+def explain_instance(
+    platform_db: PlatformDb,
+    ontology_id: int,
+    object_code: str,
+    instance_id: str,
+    *,
+    as_of: Any = None,
+) -> dict[str, Any]:
+    """What this instance is, where each value came from, and how it got that way.
+
+    The values shown are the ones a rule would evaluate against, not the raw stored
+    cells. That distinction is the whole point of an explanation: the platform
+    transforms the record before any verdict is produced -- cross-source fields are
+    merged in, recorded history overrides live values for an as-of assessment,
+    declared units wrap magnitudes, value mappings let `status == '生效中'` mean the
+    same as `status == 'A'`, and derived attributes are computed from all of it. An
+    explanation built from the stored row would show numbers the rules never saw, and
+    a reader comparing it against a verdict would find a discrepancy that is not there.
+
+    This function used to do exactly that, and along the way it dropped two things
+    outright: the inner join to `source_column` silently excluded every derived
+    attribute (their rows have no source column), and neither `unit` nor
+    `derived_expression` was selected at all. A contract measured in 万元 was explained
+    as the bare number 1200000, and a derived attribute declared for the object was
+    simply absent from its own explanation.
+
+    `as_of` explains a verdict about a past instant rather than the present one.
+    """
+    if _runtime_builder is None:  # pragma: no cover - the kernel binds on import
+        raise RuntimeError("语义运行时尚未绑定，无法解释实例。")
+
+    with connect(platform_db) as platform:
+        runtime = _runtime_builder(platform, ontology_id, object_code, instance_id, as_of=as_of)
         attributes = platform.execute(
             """
-            select ba.code, ba.name, sc.column_name
+            select ba.code, ba.name, ba.unit, ba.derived_expression, sc.column_name
             from business_attribute ba
-            join source_column sc on sc.id = ba.source_column_id
+            left join source_column sc on sc.id = ba.source_column_id
             where ba.object_id = ?
             order by ba.id
             """,
-            (business_object["id"],),
+            (runtime_business_object_id(platform, ontology_id, object_code),),
         ).fetchall()
-
-        values = [
-            {
-                "attributeCode": attr["code"],
-                "attributeName": attr["name"],
-                "sourceColumn": attr["column_name"],
-                "value": record[attr["column_name"]],
-            }
-            for attr in attributes
-        ]
+        values = [_explained_attribute(attribute, runtime) for attribute in attributes]
         # The event history is what turns "what is true" into "how it got that way".
         # Read on the caller's connection and capped, since an explanation must not
         # scale with total event volume.
@@ -172,16 +187,105 @@ def explain_instance(platform_db: PlatformDb, ontology_id: int, object_code: str
         # Declared ancestry, so an explanation can say which type's rules apply.
         ancestors = ancestors_of(platform, ontology_id, object_code)
         return {
-            "ontology": {"id": ontology["id"], "name": ontology["name"], "version": ontology["version"]},
-            "object": {"code": business_object["code"], "name": business_object["name"]},
-            "objectCode": business_object["code"],
+            "ontology": {
+                "id": runtime.ontology_id,
+                "name": runtime.object_name,
+                "version": runtime.ontology_version,
+            },
+            "object": {"code": runtime.object_code, "name": runtime.object_name},
+            "objectCode": runtime.object_code,
             "instanceId": instance_id,
-            "source": {"table": source_table["table_name"], "primaryKey": primary_key, "instanceId": instance_id},
+            "source": {
+                "table": runtime.source_table,
+                "primaryKey": runtime.primary_key,
+                "instanceId": instance_id,
+            },
+            "asOf": runtime.as_of,
             "attributes": values,
             "ancestors": ancestors,
             "timeline": timeline,
-            "explanation": f"{business_object['name']}实例 {instance_id} 已映射到传统表 {source_table['table_name']}。",
+            "explanation": _explanation_sentence(runtime, values),
         }
+
+
+def runtime_business_object_id(platform: sqlite3.Connection, ontology_id: int, object_code: str) -> int:
+    row = platform.execute(
+        "select id from business_object where ontology_id = ? and code = ?", (ontology_id, object_code)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"业务对象不存在: {object_code}")
+    return int(row["id"])
+
+
+# `runtime` is typed loosely on purpose: naming the kernel's SemanticRuntime here would be a
+# module-level import of `semantic_kernel`, which imports this module.
+def _explained_attribute(attribute: Any, runtime: Any) -> dict[str, Any]:
+    """One declared attribute, with the value the rules saw and where it came from."""
+    code = attribute["code"]
+    column = attribute["column_name"] or ""
+    expression = attribute["derived_expression"] or ""
+    stored = runtime.record.get(column) if column else None
+
+    entry: dict[str, Any] = {
+        "attributeCode": code,
+        "attributeName": attribute["name"],
+        "sourceColumn": column,
+        "unit": attribute["unit"] or "",
+        "unitName": _unit_name(attribute["unit"] or ""),
+        "derived": bool(expression),
+        "derivedExpression": expression,
+        "value": stored,
+    }
+
+    if expression:
+        derived = runtime.derived.get(code) or {}
+        entry["value"] = derived.get("value")
+        # A derived attribute that could not be computed is a fact about the model, not a
+        # missing value: a rule referencing it fails closed, and the reader needs to see
+        # why rather than an empty cell.
+        entry["error"] = derived.get("error", "")
+        return entry
+
+    # Keyed by column, because that is how the stored context is built: units and value
+    # mappings are applied to the record's own keys.
+    effective = runtime.context.get(column, stored)
+    entry["value"] = effective
+    if isinstance(effective, MappedValue):
+        # The raw code and the business state it maps to. Both, because a rule may be
+        # written in either and a reader needs to see that `status == '生效中'` was true.
+        entry["stateName"] = effective.state
+    elif isinstance(effective, Quantity) and attribute["unit"]:
+        entry["unitName"] = _unit_name(effective.unit)
+    # Recorded history overrode the live row for this attribute. Stated because the reader
+    # of an as-of explanation is looking at a past moment and needs to know which fields
+    # came from it -- "what it says now" is deliberately not included: the live value was
+    # replaced on the record before this point, and re-reading it here would be a second
+    # query answering a question this endpoint is not being asked.
+    if runtime.temporal_values and column in runtime.temporal_values:
+        entry["fromHistory"] = True
+    return entry
+
+
+def _unit_name(code: str) -> str:
+    if not code:
+        return ""
+    try:
+        return str(get_unit(code).name)
+    except Exception:  # pragma: no cover - a unit that vanished from the registry
+        return code
+
+
+def _explanation_sentence(runtime: Any, values: list[dict[str, Any]]) -> str:
+    parts = [f"{runtime.object_name}实例 {runtime.instance_id} 已映射到传统表 {runtime.source_table}。"]
+    if runtime.as_of:
+        parts.append(f"本次解释针对 {runtime.as_of} 这一刻，历史覆盖的字段以当时取值为准。")
+    derived = [item["attributeCode"] for item in values if item["derived"]]
+    if derived:
+        parts.append(f"其中 {len(derived)} 个属性由表达式算出而非直接读取：{'、'.join(derived)}。")
+    united = [item["attributeCode"] for item in values if item["unit"] and not item["derived"]]
+    if united:
+        parts.append(f"{len(united)} 个属性带声明单位，比较时会先换算。")
+    return "".join(parts)
 
 
 # How many events an explanation carries. Small on purpose: an explanation is read

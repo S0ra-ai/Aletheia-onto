@@ -769,12 +769,20 @@ def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "p
 
 
 @core_router.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
-def explain_object_instance(object_code: str, instance_id: str, ontologyId: Optional[int] = None) -> dict[str, object]:
+def explain_object_instance(
+    object_code: str, instance_id: str, ontologyId: Optional[int] = None, asOf: str = ""
+) -> dict[str, object]:
+    """Explain an instance, optionally as of a past instant.
+
+    `asOf` exists because a verdict can be produced for a past moment: explaining only the
+    present would leave the reader of an old verdict unable to check it, which is the one
+    question an explanation exists to answer.
+    """
     try:
         resolved = (
             ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
         )
-        return explain_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id)
+        return explain_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
