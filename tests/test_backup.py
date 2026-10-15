@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from ontology_platform.access_policy import CAP_ADMIN, required_capability
-from ontology_platform.database import initialize_platform_db
 from ontology_platform.backup import (
     BackupError,
     backup_archive_path,
@@ -19,6 +18,7 @@ from ontology_platform.backup import (
     list_backups,
     restore_backup,
 )
+from ontology_platform.database import initialize_platform_db
 
 
 def test_list_backups_empty(tmp_path: Path) -> None:
