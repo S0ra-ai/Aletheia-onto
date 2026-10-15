@@ -320,12 +320,18 @@ def get_business_rule(platform_db: PlatformDb, ontology_id: int, rule_id: int) -
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
         rule = conn.execute(
-            "select id, code, name, rule_type, scope_object_code, expression, severity, natural_language, status, priority, category, effective_start, effective_end, depends_on from business_rule where id = ? and ontology_id = ?",
+            "select id, ontology_id, code, name, rule_type, scope_object_code, expression,"
+            " severity, natural_language, status, priority, category,"
+            " effective_start, effective_end, depends_on from business_rule where id = ? and ontology_id = ?",
             (rule_id, ontology_id),
         ).fetchone()
         if rule is None:
             raise ValueError(f"规则不存在: {rule_id}")
-        return dict(rule)
+        # Decoded, like the list beside it. A write returns the row it wrote, and the screen
+        # that called it reads the same field names -- the create path was sending
+        # `rule_type` while the page read `ruleType`, which the response contract caught
+        # after the list endpoint had already been fixed.
+        return business_rule_row(rule)
 
 
 def update_business_rule(
@@ -402,7 +408,7 @@ def update_business_rule(
                 json.dumps({"code": code, "scope": scope_object_code}, ensure_ascii=False),
             ),
         )
-        return dict(rule)
+        return business_rule_row(rule)
 
 
 def delete_business_rule(
@@ -550,7 +556,7 @@ def upsert_business_rule(
                 json.dumps({"code": code, "scope": scope_object_code}, ensure_ascii=False),
             ),
         )
-        return dict(rule)
+        return business_rule_row(rule)
 
 
 def _validate_override(conn: Any, ontology_id: int, code: str, scope_object_code: str, overrides: str) -> None:

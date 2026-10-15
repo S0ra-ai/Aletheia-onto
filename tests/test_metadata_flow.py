@@ -2427,3 +2427,96 @@ def test_the_mapping_review_payload_decodes_what_the_review_page_shows(tmp_path:
     # them through one map labelled this row with the code of attribute 1.
     assert object_mapping["targetObjectCode"] == "contract", object_mapping
     assert object_mapping["targetAttributeCode"] is None
+
+
+def test_rescanning_discards_a_draft_whose_children_have_children(tmp_path: Path) -> None:
+    """Depth, not one level.
+
+    The cleanup asked the catalog which tables reference the ontology and deleted their rows,
+    which is right until a child has children of its own: `workflow_definition` references the
+    ontology and `workflow_state`, `workflow_transition` and `instance_workflow` reference the
+    workflow; a knowledge document has entries; a rule has inference results. Deleting the
+    parent while a grandchild still points at it is the same failure one level down, and it
+    reached a user as a 500 from `/data-sources/{id}/initialize`.
+    """
+    from ontology_platform.knowledge_base import initialize_knowledge_base
+    from ontology_platform.workflow_permission import (
+        create_workflow,
+        enter_workflow,
+        init_workflow_and_permission_schema,
+    )
+
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+
+    workflow = create_workflow(platform_db, ontology_id, "contract", "审批流", initial_state="draft")
+    enter_workflow(platform_db, workflow["id"], "contract", "1")
+
+    # The production path: initialise a knowledge base, which re-scans the source first and
+    # therefore discards the draft -- with its workflow, its states and its instance in tow.
+    initialize_knowledge_base(platform_db, source_id)
+
+    with connect(platform_db) as conn:
+        for table in ("workflow_definition", "workflow_state", "workflow_transition", "instance_workflow"):
+            remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
+            assert remaining == 0, f"{table} 在重新扫描后仍留有 {remaining} 行"
+
+
+def test_a_transition_is_discarded_with_the_draft_that_owns_it(tmp_path: Path) -> None:
+    """The delete order, stated as an outcome rather than as an implementation.
+
+    A workflow that has been moved through -- not merely created -- is the case that failed:
+    the instance row and the history rows exist, and the draft's cleanup has to take them
+    before it takes the definition they point at.
+    """
+    from ontology_platform.workflow_permission import (
+        create_workflow,
+        enter_workflow,
+        get_available_actions,
+        init_workflow_and_permission_schema,
+        transition_instance,
+    )
+
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+
+    workflow = create_workflow(platform_db, ontology_id, "contract", "审批流", initial_state="draft")
+    enter_workflow(platform_db, workflow["id"], "contract", "1")
+    actions = get_available_actions(platform_db, workflow["id"], "1")
+    transition_instance(platform_db, workflow["id"], "1", actions[0]["action_code"], actor="test")
+
+    scan_data_source(platform_db, source_id)
+
+
+def test_regenerating_a_draft_clears_what_later_modules_attached_to_it(tmp_path: Path) -> None:
+    """The same cleanup as a re-scan, reached through a different door.
+
+    `_create_ontology` had its own hand-written list of tables to clear -- rules, mappings,
+    relations, attributes, objects -- which was correct when written and wrong the first time
+    a feature module added one. Regenerating a draft on a source that had a workflow failed
+    with `FOREIGN KEY constraint failed`, which reached a user as a 500 from
+    `POST /ontologies/draft`, a button on the ontology list.
+    """
+    from ontology_platform.workflow_permission import (
+        create_workflow,
+        init_workflow_and_permission_schema,
+    )
+
+    platform_db, source_id, _ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+
+    # `aletheia demo` leaves exactly this shape behind: an ontology with a workflow on it.
+    workflow = create_workflow(platform_db, 1, "contract", "审批流", initial_state="draft")
+
+    regenerated = generate_ontology_draft(platform_db, source_id)
+
+    assert regenerated["objects"], "重新生成应当产出对象"
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from workflow_definition").fetchone()[0] == 0
+        assert (
+            conn.execute("select count(*) from workflow_state where workflow_id = ?", (workflow["id"],)).fetchone()[0]
+            == 0
+        )

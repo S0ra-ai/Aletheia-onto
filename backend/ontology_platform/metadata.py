@@ -1065,45 +1065,71 @@ def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) ->
         # Children of the objects first, via the catalog: an attribute version, an event
         # type or an instance event all point at the object being removed, and pointing at
         # the ontology too does not make them safe to leave behind.
-        removed_children = _delete_referencing_rows(platform, "business_object", object_ids)
+        removed_children = delete_referencing_rows(platform, "business_object", object_ids)
         platform.execute(
             "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
             (ontology_id,),
         )
         platform.execute("delete from business_object where ontology_id = ?", (ontology_id,))
-        removed_children += _delete_referencing_rows(platform, "ontology", [ontology_id])
+        removed_children += delete_referencing_rows(platform, "ontology", [ontology_id])
         if removed_children:
             logger.debug("丢弃派生草案 %s 时一并清除了: %s", ontology_id, "、".join(removed_children))
         platform.execute("delete from ontology where id = ? and status = 'draft'", (ontology_id,))
 
 
-def _delete_referencing_rows(platform: Any, parent: str, ids: Sequence[int]) -> list[str]:
-    """Delete rows whose foreign key points at rows of `parent`, asking the catalog which.
+def delete_referencing_rows(platform: Any, parent: str, ids: Sequence[int]) -> list[str]:
+    """Delete everything that hangs off `parent`, to any depth, asking the catalog what does.
 
-    The explicit deletes above cover what this module knows about. This covers what it does
-    not: every table a later feature module added with a foreign key to the ontology or its
-    objects. Event types, instance events and attribute versions were all added after this
-    function was written, and none of them was in the list -- so re-scanning a source whose
-    draft had any of them failed with `FOREIGN KEY constraint failed`, a message that names
-    neither the table that blocked the delete nor the feature that owns it.
+    The explicit deletes in `_delete_derived_drafts` cover what that function knows about.
+    This covers what it does not: every table a later feature module added with a foreign key
+    to the ontology or its objects. Event types, instance events and attribute versions were
+    all added after the list was written, and none of them was in it -- so re-scanning a
+    source whose draft had any of them failed with `FOREIGN KEY constraint failed`, a message
+    that names neither the table that blocked the delete nor the feature that owns it.
 
-    Returns what it removed, so the caller can log it. Deleting from a table nobody listed
-    should be visible somewhere rather than inferred from a row count later.
+    **Depth first, because a child has children too.** The first version deleted one level and
+    failed the moment a draft had a workflow: `workflow_definition` references the ontology,
+    and `workflow_state`, `workflow_transition` and `instance_workflow` reference it. A
+    knowledge document has entries; a rule has inference results. Deleting a parent while a
+    grandchild still points at it is the same failure one level down, and it reached
+    production as a 500 from `/data-sources/{id}/initialize`.
+
+    Public because `ontology._create_ontology` discards a draft the same way, and it had its
+    own hand-written list of tables -- correct when written, wrong the first time a feature
+    module added one.
+
+    Returns what it removed, so the caller can log it: deleting from tables nobody listed
+    should be visible rather than inferred from a row count later.
     """
-    if not ids:
+    removed = _delete_subtree(platform, parent, list(ids), set())
+    return removed
+
+
+def _delete_subtree(platform: Any, parent: str, ids: list[int], on_path: set[str]) -> list[str]:
+    if not ids or parent in on_path:
+        # `on_path` breaks a reference cycle rather than recursing forever. The platform has
+        # none today; a feature module adding one should not produce a hung request.
         return []
+    on_path = on_path | {parent}
     dialect = dialect_of(platform.raw())
     touched: list[str] = []
     for child, column in referencing_columns(platform.raw(), parent):
         quoted_table = quote_identifier(child, dialect)
         quoted_column = quote_identifier(column, dialect)
-        removed = 0
-        for parent_id in ids:
-            cursor = platform.execute(f"delete from {quoted_table} where {quoted_column} = ?", (parent_id,))
-            # `rowcount` is -1 on drivers that do not report it, and a negative is not a count.
-            removed += max(getattr(cursor, "rowcount", 0), 0)
-        if removed:
-            touched.append(f"{child}({column})x{removed}")
+        placeholders = ", ".join("?" for _ in ids)
+        child_ids = [
+            int(row[0])
+            for row in platform.execute(
+                f"select id from {quoted_table} where {quoted_column} in ({placeholders})", tuple(ids)
+            ).fetchall()
+        ]
+        if not child_ids:
+            continue
+        touched.extend(_delete_subtree(platform, child, child_ids, on_path))
+        placeholders = ", ".join("?" for _ in child_ids)
+        cursor = platform.execute(f"delete from {quoted_table} where id in ({placeholders})", tuple(child_ids))
+        # `rowcount` is -1 on drivers that do not report it, and a negative is not a count.
+        touched.append(f"{child}({column})x{max(getattr(cursor, 'rowcount', 0), 0)}")
     return touched
 
 

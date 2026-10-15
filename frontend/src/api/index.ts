@@ -8,6 +8,7 @@ import type {
   OnboardingResult,
   SourceApi,
   SourceApiCreate,
+  SourceScanResult,
   SourceTable,
   DataSourceReadiness,
   SchemaDriftResult,
@@ -383,9 +384,13 @@ export const dataSourceApi = {
     return data as ReasoningChain;
   },
 
-  scan: async (id: number): Promise<{ tables: number; columns: number; foreignKeys: number }> => {
+  // The counts are per table, not totals: the response is
+  // `{dataSourceId, tables: [{table, columns, foreignKeys}]}`. The declared type said three
+  // numbers, which nothing renders -- the page refreshes and shows a toast -- so it was
+  // wrong without being visible, which is the kind of wrong this file keeps clearing out.
+  scan: async (id: number): Promise<SourceScanResult> => {
     const { data } = await api.post(`/data-sources/${id}/scan`);
-    return data as { tables: number; columns: number; foreignKeys: number };
+    return data as SourceScanResult;
   },
 
   getApis: async (id: number): Promise<SourceApi[]> => {

@@ -429,7 +429,7 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     # told and the endpoint reads the default, which is how this test passed locally (a
     # backup from an earlier manual check was sitting there) and failed in CI.
     monkeypatch.setattr(backup_module, "BACKUP_DIR", tmp_path / "backups")
-    backup_module.create_backup(platform_db)
+    backup_module.create_backup(platform_db, "smoke")
 
     api_module = importlib.reload(api_module)
     monkeypatch.setattr(api_module, "DEFAULT_PLATFORM_DB", platform_db)
@@ -621,20 +621,30 @@ def test_no_screen_renders_a_backend_vocabulary_verbatim() -> None:
     assert not offenders, "界面直接渲染后端词表的值，未经 labels.ts 翻译：\n  " + "\n  ".join(offenders)
 
 
-def _api_method_paths() -> dict[str, tuple[str, str]]:
-    """`{"permissionApi.getPolicies": ("GET", "/permissions/policies")}`, from the source."""
+def _api_method_paths() -> dict[str, tuple[str, str, bool]]:
+    """`{"permissionApi.getPolicies": ("GET", "/permissions/policies", True)}`, from the source.
+
+    The third element is whether the method reads the response body. A `delete` that awaits
+    and returns nothing has no shape to agree on, and requiring every method a page *calls*
+    to be in the table would fill it with entries that assert nothing.
+    """
     import re as regex
 
     api_source = (ROOT / "frontend" / "src" / "api" / "index.ts").read_text(encoding="utf-8")
-    urls: dict[str, tuple[str, str]] = {}
+    urls: dict[str, tuple[str, str, bool]] = {}
     for obj in regex.finditer(r"export const (\w+Api) = \{(.*?)\n\};", api_source, regex.DOTALL):
         name, body = obj.group(1), obj.group(2)
         for method in regex.finditer(
             r"^\s{2}(\w+):\s*(?:async\s*)?\([^)]*\)[^{]*\{(.*?)\n  \},", body, regex.DOTALL | regex.MULTILINE
         ):
-            verb = regex.search(r"api\.(get|post|put|patch|delete)\(\s*[`'\"]([^`'\"]+)", method.group(2))
+            body_text = method.group(2)
+            verb = regex.search(r"api\.(get|post|put|patch|delete)\(\s*[`'\"]([^`'\"]+)", body_text)
             if verb:
-                urls[f"{name}.{method.group(1)}"] = (verb.group(1).upper(), verb.group(2))
+                urls[f"{name}.{method.group(1)}"] = (
+                    verb.group(1).upper(),
+                    verb.group(2),
+                    "const { data }" in body_text,
+                )
     return urls
 
 
@@ -659,8 +669,8 @@ def _matches(template: str, path: str) -> bool:
     return all(is_slot(a) or is_slot(b) or a == b for a, b in zip(left, right, strict=True))
 
 
-def _charted_endpoints() -> set[str]:
-    """Every GET template a page that charts a table calls, from the source.
+def _charted_calls() -> set[tuple[str, str]]:
+    """Every `(method, url template)` a page that charts a table calls, from the source.
 
     Derived rather than listed: a page's `dataIndex` values say it charts something, and the
     API methods it calls say what. The link runs through `api/index.ts`, where each method
@@ -670,19 +680,19 @@ def _charted_endpoints() -> set[str]:
     import re as regex
 
     urls = _api_method_paths()
-    charted: set[str] = set()
+    charted: set[tuple[str, str]] = set()
     for page in sorted((ROOT / "frontend" / "src" / "pages").rglob("*.tsx")):
         text = page.read_text(encoding="utf-8")
         if "dataIndex:" not in text:
             continue
         for api_object, method_name in set(regex.findall(r"\b(\w+Api)\.(\w+)", text)):
             entry = urls.get(f"{api_object}.{method_name}")
-            if entry is None or entry[0] != "GET":
+            if entry is None or not entry[2]:
                 continue
-            path = entry[1]
+            method, path, _reads = entry
             if any(marker in path for marker in NOT_TABULAR):
                 continue
-            charted.add(path)
+            charted.add((method, path))
     return charted
 
 
@@ -694,10 +704,248 @@ def test_every_endpoint_a_screen_charts_is_in_the_contract() -> None:
     at an endpoint nobody had listed: the table stayed green while covering less of the
     application than it claimed to.
     """
-    covered = [path for path, _key, _fields in CHARTED_RESPONSES]
-    missing = sorted(
-        template for template in _charted_endpoints() if not any(_matches(template, path) for path in covered)
-    )
+    gets = [path for path, _key, _fields in CHARTED_RESPONSES]
+    writes = [(method, path) for method, path, _body, _fields in CHARTED_WRITES]
+    missing: list[str] = []
+    for method, template in sorted(_charted_calls()):
+        if any(marker in template for marker in NOT_TABULAR):
+            continue
+        if method == "GET":
+            if not any(_matches(template, path) for path in gets):
+                missing.append(f"GET  {template}")
+        elif any(
+            action_method == method and _matches(template, action_path)
+            for action_method, action_path in ACTION_ONLY_WRITES
+        ):
+            continue
+        elif not any(method == written_method and _matches(template, path) for written_method, path in writes):
+            missing.append(f"{method} {template}")
+
     assert not missing, (
-        "以下端点有页面在读，但不在响应契约表里——它们可以停止发送某个字段而测试仍然全绿：\n  " + "\n  ".join(missing)
+        "以下调用有页面在读它的响应，但不在契约表里——它可以停止发送某个字段而测试仍然全绿：\n  " + "\n  ".join(missing)
     )
+
+
+# Writes whose responses a screen renders. Curated, because the body is page-specific and no
+# derivation can invent it -- but the coverage check below requires every non-GET method a
+# charting page calls to appear here, so a new one cannot be added silently.
+#
+# Entries are `(method, path, body, dotted paths the screen or the client reads)`.
+CHARTED_WRITES = (
+    ("POST", "/auth/login", {"username": "admin", "password": ADMIN_PASSWORD}, ("token", "user")),
+    (
+        "POST",
+        "/semantic/objects/contract/instances/1/assess",
+        {"ontologyId": 1},
+        ("decision.status", "decision.recommendation", "ruleResults", "semanticKernel"),
+    ),
+    (
+        "POST",
+        "/automation/operations/submit_contract/preflight",
+        {"ontologyId": 1, "dataSourceId": 1, "instanceId": "1", "objectCode": "contract"},
+        ("decision.status", "decision.recommendation", "nextAction", "operation.operationCode", "target.instanceId"),
+    ),
+    (
+        "POST",
+        "/automation/operations/submit_contract/execute",
+        {"ontologyId": 1, "dataSourceId": 1, "instanceId": "1", "objectCode": "contract"},
+        ("executed", "status", "message", "preflight"),
+    ),
+    (
+        "POST",
+        "/semantic/natural-language/query",
+        {"question": "合同 1 是否合规", "objectCode": "contract", "instanceId": "1"},
+        ("answer", "intent", "confidence", "resolved.ontologyId", "resolved.objectCode"),
+    ),
+    (
+        "POST",
+        "/semantic/objects/contract/consistency",
+        {"ontologyId": 1, "limit": 3},
+        ("status", "items", "nextActions", "summary"),
+    ),
+    ("POST", "/agent/chat", {"message": "合同的金额是多少"}, ("answer", "sessionId", "roleId", "messageId", "intent")),
+    ("POST", "/permissions/check", {"roleCode": "admin", "objectCode": "contract"}, ("allowed",)),
+    (
+        "POST",
+        "/data-sources",
+        {"name": "渲染检查", "sourceType": "sqlite", "connectionUri": "/tmp/does-not-exist.sqlite3"},
+        ("id", "name", "sourceType", "connectionUri"),
+    ),
+    (
+        "POST",
+        "/data-sources/1/initialize",
+        {},
+        ("status", "scan", "ontology", "reasoningChain"),
+    ),
+    (
+        "POST",
+        "/ai/data-sources/1/blueprint-draft",
+        {},
+        ("blueprint", "usedRemoteModel", "model", "provider"),
+    ),
+    (
+        "POST",
+        "/ai/data-sources/1/ontology-reasoning-chain",
+        {},
+        (
+            "usedRemoteModel",
+            "model",
+            "chain.summary",
+            "chain.reasoningSteps",
+            "chain.proposedObjects",
+            "chain.proposedRelations",
+            "chain.proposedRules",
+            "chain.buildPlan",
+        ),
+    ),
+    (
+        "POST",
+        "/data-sources/1/apis/import-openapi",
+        {"dataSourceId": 1, "spec": {"openapi": "3.0.0", "paths": {}}},
+        ("imported", "skipped", "count"),
+    ),
+    ("POST", "/admin/backup/create", {}, ("name", "size", "created_at")),
+    ("POST", "/admin/backup/restore/smoke", {}, ("name", "restored_at", "database")),
+    (
+        "POST",
+        "/data-sources/1/test-connection",
+        {},
+        ("sourceType", "reachable", "status", "message", "dataSourceId", "name"),
+    ),
+    (
+        "POST",
+        "/data-sources/test-connection",
+        {"sourceType": "sqlite", "connectionUri": "/tmp/does-not-exist.sqlite3"},
+        ("sourceType", "reachable", "status", "message"),
+    ),
+    (
+        "POST",
+        "/data-sources/1/test-api-gateway",
+        {},
+        ("dataSourceId", "name", "configured", "reachable", "status", "statusCode", "message"),
+    ),
+    ("POST", "/industry-blueprints", {"id": "smoke", "name": "冒烟", "domain": "测试"}, ("id", "name", "domain")),
+    ("POST", "/ontologies/draft", {"dataSourceId": 1}, ("id", "name", "version", "status")),
+    (
+        "POST",
+        "/permissions/roles",
+        {"code": "smoke_role", "name": "冒烟角色"},
+        ("id", "code", "name", "is_system", "created_at"),
+    ),
+    (
+        "POST",
+        "/permissions/policies",
+        {"roleId": 1, "objectCode": "contract", "canRead": True},
+        ("id", "role_id", "object_code", "can_read", "can_write", "can_execute", "can_delete"),
+    ),
+    (
+        "POST",
+        "/workflows",
+        {"ontologyId": 1, "objectCode": "customer", "name": "冒烟审批流", "initialState": "draft"},
+        ("id", "ontology_id", "object_code", "name", "initial_state", "states", "transitions"),
+    ),
+    (
+        "POST",
+        "/tools/logs/1/review",
+        {"reviewer": "admin", "decision": "approved"},
+        ("id", "tool_code", "status", "reviewed_by", "review_decision"),
+    ),
+    (
+        "POST",
+        "/tenants",
+        {"tenant": "smoke_tenant"},
+        ("tenant", "schema"),
+    ),
+    (
+        "POST",
+        "/onboarding/run",
+        {
+            "name": "冒烟接入",
+            "sourceType": "sqlite",
+            "connectionUri": "/tmp/does-not-exist.sqlite3",
+            "domain": "测试",
+        },
+        ("status", "steps", "dataSource", "connection", "readiness"),
+    ),
+    (
+        "POST",
+        "/ontologies/1/rules",
+        {
+            "code": "smoke_rule",
+            "name": "冒烟规则",
+            "naturalLanguage": "金额必须大于零。",
+            "expression": "amount > 0",
+            "severity": "warning",
+            "ruleType": "validation",
+            "scopeObjectCode": "contract",
+        },
+        ("id", "code", "ruleType", "scopeObjectCode", "severity", "naturalLanguage", "status"),
+    ),
+)
+
+# Calls whose response no screen renders: a delete, a status toggle, or a write whose result
+# the page reports with a toast and then re-reads. Excluded by name, so a new one has to be
+# added here on purpose rather than being ignored by a rule that happens to skip it.
+ACTION_ONLY_WRITES = (
+    # Reports its outcome with a toast and refreshes; the counts are per table and the page
+    # renders the table list from a separate call.
+    ("POST", "/data-sources/${id}/scan"),
+    # The rule import and the document upload are multipart and their results are rendered;
+    # they are driven by the two tests below, which build a real file rather than a body.
+    ("POST", "/ontologies/${ontologyId}/rules/import-word"),
+    ("POST", "/ontologies/${ontologyId}/knowledge/documents"),
+    # Returns counts and a status; the review table is re-read from the list endpoint.
+    ("POST", "/ontologies/${ontologyId}/mappings/review"),
+    # Returns the event that was just recorded; the drawer re-reads the timeline.
+    (
+        "POST",
+        "/ontologies/${ontologyId}/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}/events",
+    ),
+    # The same shape of call: an update whose result the screen re-reads from the endpoint
+    # that owns the list. Each returns the row it just wrote.
+    ("POST", "/workflows/${workflowId}/transitions/run"),
+    ("PUT", "/auth/sso/mappings"),
+    ("PUT", "/ontologies/${ontologyId}/objects/${objectCode}/event-types"),
+    ("PUT", "/ontologies/${ontologyId}/rules/${ruleId}"),
+    ("PUT", "/tenants/${encodeURIComponent(tenant)}/quotas"),
+    # Needs a live OpenAPI endpoint to fetch, and a feedback row to resolve.
+    ("POST", "/data-sources/${dataSourceId}/apis/import-openapi-url"),
+    ("POST", "/feedback/${feedbackId}/resolve"),
+    ("POST", "/knowledge/entries/${entryId}/review"),
+    ("DELETE", "/auth/sso/mappings/${encodeURIComponent(providerGroup)}"),
+    ("DELETE", "/ontologies/${ontologyId}/rules/${ruleId}"),
+    ("DELETE", "/workflows/${id}"),
+    ("PATCH", "/ontologies/${ontologyId}/rules/${ruleId}/status"),
+)
+
+
+# `resolve` on a dotted path, tolerating a missing step so the failure names the path.
+def _resolve(payload: object, path: str) -> bool:
+    current: object = payload
+    for part in path.split("."):
+        if part.endswith("[]"):
+            part = part[:-2]
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
+
+
+@pytest.mark.parametrize(("method", "path", "body", "fields"), CHARTED_WRITES)
+def test_the_fields_a_screen_reads_from_a_write_are_present(
+    seeded_client: TestClient, method: str, path: str, body: dict, fields: tuple[str, ...]
+) -> None:
+    """The contract covered GETs only.
+
+    Every screen that submits a form renders the response, and those shapes were outside the
+    table -- which is where the preflight's 建议 turned out to be an internal code, and where
+    the rule detail drawer printed raw enums. A response is a response whether a page asked
+    for it with a click or with a URL.
+    """
+    token = _token(seeded_client, "admin", ADMIN_PASSWORD)
+    response = seeded_client.request(method, path, headers=_auth(token), json=body)
+    assert response.status_code in (200, 201), f"{method} {path}: {response.status_code} {response.text[:200]}"
+
+    payload = response.json()
+    missing = [field for field in fields if not _resolve(payload, field)]
+    assert not missing, f"{method} {path} 缺少界面读取的字段 {missing}"

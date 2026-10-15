@@ -14,6 +14,7 @@ from .database import connect, last_insert_id
 from .derived_attributes import Quantity, UnitError, get_unit
 from .events import EVENT_CATEGORY_LABELS, EVENT_TABLE, EVENT_TYPE_TABLE, event_tables_exist
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
+from .metadata import delete_referencing_rows
 from .relations import (
     AGGREGATION,
     ASSOCIATION,
@@ -708,14 +709,15 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         if existing["status"] == "published":
             raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
         ontology_id = int(existing["id"])
-        conn.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
-        conn.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))
-        conn.execute("delete from business_relation where ontology_id = ?", (ontology_id,))
-        conn.execute(
-            "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
-            (ontology_id,),
-        )
+        # Through the catalog, to any depth -- the same cleanup `_delete_derived_drafts`
+        # uses. A hand-written list of tables was correct when it was written and stopped
+        # being correct the first time a feature module added one: regenerating a draft on a
+        # source that had a workflow, an event or a knowledge document failed with
+        # `FOREIGN KEY constraint failed`, which reached a user as a 500 from
+        # `POST /ontologies/draft`.
+        delete_referencing_rows(conn, "business_object", _object_ids(conn, ontology_id))
         conn.execute("delete from business_object where ontology_id = ?", (ontology_id,))
+        delete_referencing_rows(conn, "ontology", [ontology_id])
         return ontology_id
 
     conn.execute(
@@ -723,6 +725,13 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         (name, domain, "0.1.0", "draft"),
     )
     return last_insert_id(conn)
+
+
+def _object_ids(conn: sqlite3.Connection, ontology_id: int) -> list[int]:
+    return [
+        int(row["id"])
+        for row in conn.execute("select id from business_object where ontology_id = ?", (ontology_id,)).fetchall()
+    ]
 
 
 @dataclass(frozen=True)

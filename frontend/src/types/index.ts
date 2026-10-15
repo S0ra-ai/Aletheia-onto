@@ -1,4 +1,10 @@
 // 数据源相关类型
+/** What a scan reports: one entry per table, not three totals. */
+export interface SourceScanResult {
+  dataSourceId: number;
+  tables: { table: string; columns: number; foreignKeys: number }[];
+}
+
 export interface DataSource {
   id: number;
   name: string;
