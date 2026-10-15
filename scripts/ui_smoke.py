@@ -42,6 +42,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 # Routes worth checking: every page that renders a table.
@@ -183,6 +184,28 @@ def main() -> int:
         return 2
 
     entry = seed_page(args.base_url, args.token, user, assets)
+    # Confirm the instance is serving the directory we just wrote into before walking
+    # sixteen routes. A server started with `ALETHEIA_FRONTEND_DIST` elsewhere serves its own
+    # copy, so every page fails to seed and the report reads "0 tables, 0 rows" for all of
+    # them -- which looks like an application where nothing renders, and is really a script
+    # looking in the wrong drawer.
+    try:
+        with urllib.request.urlopen(entry, timeout=10) as response:
+            served = response.read().decode("utf-8", "replace")
+    except Exception as error:
+        print(f"the seed page is not reachable at {entry}: {error}", file=sys.stderr)
+        (assets / "seed.html").unlink(missing_ok=True)
+        return 2
+    if "seeding" not in served:
+        print(
+            f"{entry} is not the file just written; the instance is serving a different build.\n"
+            f"This script writes into {assets} and can only seed an instance started without "
+            "ALETHEIA_FRONTEND_DIST pointing elsewhere.",
+            file=sys.stderr,
+        )
+        (assets / "seed.html").unlink(missing_ok=True)
+        return 2
+
     findings = 0
     try:
         print(f"seeding from {entry}")
