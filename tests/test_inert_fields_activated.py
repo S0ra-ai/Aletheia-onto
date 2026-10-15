@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.database import connect, initialize_platform_db
+from ontology_platform.events import init_event_schema, instance_timeline
 from ontology_platform.governance import upsert_business_rule
 from ontology_platform.metadata import register_data_source, scan_data_source
 from ontology_platform.ontology import generate_ontology_draft
@@ -415,3 +416,25 @@ def test_a_specific_policy_overrides_the_wildcard(platform) -> None:
         ontology_id=platform["ontology_id"],
     )
     assert result["allowed"] is False, result
+
+
+def test_a_transition_mirrors_onto_the_timeline_under_its_own_name(platform) -> None:
+    """The instance timeline is read by people; the action code is read by the engine.
+
+    The mirror declared its event type as `状态流转：approve` -- a Chinese prefix glued to an
+    internal identifier, in a console that says 审批通过 everywhere else. The transition
+    already carries a name, so the timeline was showing the less informative of the two.
+    """
+    # The event tables are an optional bundle; the mirror is best-effort and logs a warning
+    # when they are absent, so a test that wants to see the mirror has to create them.
+    with connect(platform["platform_db"]) as conn:
+        init_event_schema(conn)
+
+    workflow_id = _workflow_with_guard(platform, "")
+    enter_workflow(platform["platform_db"], workflow_id, "purchase", "1")
+    transition_instance(platform["platform_db"], workflow_id, "1", "approve", actor="tester")
+
+    events = instance_timeline(platform["platform_db"], platform["ontology_id"], "purchase", "1")
+    named = {item["eventCode"]: item["eventName"] for item in events["items"]}
+    assert named["state_approve"] == "状态流转：审批通过", named
+    assert named["state_init"] == "状态流转：进入工作流", named

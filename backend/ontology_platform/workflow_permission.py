@@ -689,6 +689,7 @@ def enter_workflow(
             to_state=initial,
             actor="system",
             reason="进入工作流",
+            action_name="进入工作流",
         )
     return state
 
@@ -704,6 +705,7 @@ def _mirror_state_change(
     to_state: str,
     actor: str,
     reason: str,
+    action_name: str = "",
 ) -> None:
     """Record a state change on the instance's event timeline.
 
@@ -714,6 +716,10 @@ def _mirror_state_change(
     are otherwise refused, every state change would vanish.
     """
     event_code = f"state_{action_code}" if not action_code.startswith("state_") else action_code
+    # The transition's own name when there is one. This is the instance's user-facing
+    # timeline, and `状态流转：submit` is half-translated in a console that says 提交审核
+    # everywhere else -- the code is an internal identifier that happens to be readable.
+    label = action_name or action_code
     try:
         record_event(
             platform_db,
@@ -725,7 +731,7 @@ def _mirror_state_change(
             actor=actor,
             declare_if_missing=EventType(
                 code=event_code,
-                name=f"状态流转：{action_code}",
+                name=f"状态流转：{label}",
                 object_code=object_code,
                 category=STATE_CHANGE,
                 payload_fields=["fromState", "toState", "reason"],
@@ -857,6 +863,7 @@ def transition_instance(
             to_state=to_state,
             actor=actor,
             reason=reason,
+            action_name=str(_row_value(transition, "name", "") or ""),
         )
     return state
 

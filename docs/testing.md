@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1614 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1615 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -62,7 +62,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
 | `test_api_authentication.py` | 55 | End-to-end authentication and authorization tests |
-| `test_inert_fields_activated.py` | 28 | Three fields that were stored but never evaluated |
+| `test_inert_fields_activated.py` | 29 | Three fields that were stored but never evaluated |
 | `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL export: the same ontology in vocabulary other tools can act on |
