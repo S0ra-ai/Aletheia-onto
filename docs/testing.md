@@ -148,5 +148,9 @@ the first tab is outside its reach unless the page puts the active tab in the UR
 86 backend modules, roughly 36,100 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
+CI also has a `scaffold` job that walks the path a *new* deployment takes --
+`aletheia new`, install, `init`, `connect`, `model`, `verify.py` -- because three
+defects in that path were found by walking it by hand rather than by any check.
+
 CI also has a `quickstart` job that replays the README quick start in a clean environment and
 verifies that the test count stated here matches what pytest collects.

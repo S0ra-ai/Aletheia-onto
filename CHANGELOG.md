@@ -35,6 +35,16 @@
   「生成本体草案」会 500。现在两处共用同一个目录驱动的清理函数（并因此提升为公开名字，
   否则模块边界测试会拒绝那次导入——那条测试是对的）。
 
+### Added
+
+- **CI 里多了一个 `scaffold` job，走的是新部署那条路**（`.github/workflows/ci.yml`）。
+  上一轮的三个缺陷**都不是靠检查发现的，是靠当一次用户发现的**——
+  照 README 生成一个项目、装它、跑它。那是一次性的人工动作，做完就没了。
+  现在它是 job：`aletheia new` → 按 README 装 → `init` → `connect` → `model` → `verify.py`，
+  并断言 `connect` 给出的下一步提示指向**包装入口**而不是 `aletheia`，
+  以及未初始化时那句提示里同时有「no such table」和「请先运行 aletheia init」。
+  任何一条文档命令不再可用，这个 job 就红。
+
 ### Fixed
 
 - **`aletheia new` 生成的第一个命令就跑不通**（`scaffold.py`、模板、`cli.py`）。

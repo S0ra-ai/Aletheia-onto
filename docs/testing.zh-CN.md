@@ -126,5 +126,9 @@ linter 看到的是一个合法字符串，mypy 看到的是合法 `string`，�
 
 86 个后端模块约 36100 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
+CI 另有一个 `scaffold` job，走的是**新部署**那条路——`aletheia new`、安装、`init`、
+`connect`、`model`、`verify.py`——因为那条路上的三个缺陷都是**靠人工走一遍**发现的，
+没有任何检查看见过它们。
+
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。

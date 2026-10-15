@@ -536,3 +536,70 @@ jobs:
         env:
           PYTHONPATH: backend
           CHROME_BIN: /usr/bin/google-chrome
+
+  # The path a *new* deployment takes: generate a project, install it, and follow the
+  # README it was born with. The quickstart job next door replays the platform's own
+  # first run; this one replays the skeleton's, which is a different set of promises --
+  # a pinned dependency that has to resolve, a wrapper that has to load extensions, and
+  # hints that have to name the right command.
+  #
+  # It exists because three defects in that path were found by walking it by hand rather
+  # than by any check: the dependency pointed at an index the package is not on, the
+  # wrapper's hints told the reader to use the command its own README warns against, and
+  # `connect` before `init` answered with the storage engine's sentence.
+  scaffold:
+    name: 生成骨架的文档路径可执行性验证
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装平台
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 生成骨架并照它的 README 走一遍
+        run: |
+          set -eux
+          python -m ontology_platform.cli --platform-db /tmp/unused.sqlite3 \
+            new acme_onto --directory proj --domain 合同管理
+
+          # The README's first command depends on `aletheia-onto`, which is not on any
+          # index. The generator prints the way out; this asserts it is there and takes it.
+          grep -q "no matching distribution" proj/README.md
+
+          pip install -e "$GITHUB_WORKSPACE[web]"
+          cd proj
+          pip install -e . --no-deps
+          cp .env.example .env
+          python -m acme_onto init > /dev/null
+          python -m acme_onto connect /tmp/sample.sqlite3 --domain 合同管理 > connect.json
+          python - <<'PY'
+          import json, pathlib
+
+          connected = json.loads(pathlib.Path("connect.json").read_text(encoding="utf-8"))
+          # The hint names the wrapper, not `aletheia`: this project's README says the bare
+          # command does not load its extensions.
+          assert connected["next"].startswith("python -m acme_onto"), connected["next"]
+          print("connect hint:", connected["next"])
+          PY
+          python -m acme_onto model 1 > /dev/null
+          # The conformance script the skeleton ships. It exits 0 with no extensions and
+          # says which ones have contracts; `|| true` would hide it never running at all.
+          python verify.py > /dev/null
+
+      - name: 未初始化时给出可执行的提示
+        run: |
+          set -eu
+          message=$(python -m ontology_platform.cli --platform-db /tmp/fresh.sqlite3 \
+            connect /tmp/sample.sqlite3 --domain 合同管理 2>&1 || true)
+          echo "$message"
+          # The storage engine's sentence and the command to run, in that order. Asserting
+          # only "init" would pass on a message that never says which command.
+          echo "$message" | grep -q "no such table"
+          echo "$message" | grep -q "请先运行 aletheia init"
