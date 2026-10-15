@@ -424,6 +424,21 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **扫描保留了草案，于是没人知道草案已经落后于来源**（`metadata.py`、`DataSourceList.tsx`、`docs/concepts*.md`）。
+  「扫描不再删除模型」修好之后留下一个问题：来源新增一张表，草案**不会**跟着变——
+  这正是「保留」的含义——而提示仍然是一句「扫描完成」。
+  于是扫描现在报告**扫到了、但草案里还没有的**那些表（响应里的 `unmodelledTables`、`modelledTables`、`modelledOntologyId`），
+  界面点名列出：「扫描完成：5 张表，其中 1 张草案里还没有（audit_trail）」，并说明纳入的方式与代价
+  （「重新生成草案」会清空现有草案上的规则、映射与工作流）。
+  **一个把「一切照旧」与「模型已经和来源不一致」报成同一句话的提示，等于没有提示。**
+- **`docs/01`–`04` 是立项阶段的设计稿，而它们自己不说**（四份设计稿、`tests/test_documented_claims.py`）。
+  `docs/README.md` 里那张表写了「与实现的差距」，但直接从链接、搜索结果或目录列表走进某一篇的读者，
+  看到的是一份读起来像现行规范的文档——而 `04` 说「当前支持 SQLite，并提供 PostgreSQL、MySQL 适配入口」，
+  这句话在后两套方言变成真的、CI 各起一个 service container 之后就作废了。
+  四篇现已各自带上抬头：说明自己写的是当时的意图、判断现状要看**由测试守着**的
+  [能力矩阵](docs/capabilities.md)与[当前限制](docs/limitations.md)，并**逐条点出已经过时的具体条目**
+  （如 `01` 的「元数据存储：PostgreSQL」与至今没有的 Oracle／达梦适配器、`04` 里已经上线与只做了一半的后续项）。
+  守护测试按目录通配，因此第五份设计稿不能悄悄混进来。
 - **同一列 `created_at` 在三套平台上含义不同，而界面上一个字都没说**（`database.py`、六处表格标题、
   `docs/configuration*.md`）。平台库的时间戳默认值全是 `current_timestamp`，而它取的是**会话**时区：
   SQLite 是 UTC，PostgreSQL 是带偏移的时间点，**MySQL 默认取数据库服务器的本地时间**——

@@ -2586,3 +2586,24 @@ def test_a_first_draft_reports_nothing_discarded(tmp_path: Path) -> None:
     assert draft["objects"], "新草案应当产出对象"
     assert draft["discarded"] == {}
     assert "discardedSummary" not in draft
+
+
+def test_a_scan_reports_the_tables_the_draft_does_not_model(tmp_path: Path) -> None:
+    """A scan keeps the draft, so it has to say when the draft no longer matches the source.
+
+    Re-scanning used to discard and rebuild the model, which made the question unaskable.
+    Now the model survives -- with its rules and workflows -- so a source that gained a table
+    keeps a model that has never seen it, and the toast said 「扫描完成」 either way.
+    """
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+
+    assert scan_data_source(platform_db, source_id)["unmodelledTables"] == []
+
+    with sqlite3.connect(legacy_db) as raw:
+        raw.execute("create table audit_trail (id integer primary key, note text)")
+    after = scan_data_source(platform_db, source_id)
+
+    assert after["unmodelledTables"] == ["audit_trail"]
+    assert after["modelledOntologyId"] == ontology_id
+    assert set(after["modelledTables"]) >= {"contract", "customer"}

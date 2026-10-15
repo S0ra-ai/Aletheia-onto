@@ -559,7 +559,49 @@ def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, 
                 json.dumps(scanned_tables, ensure_ascii=False),
             ),
         )
-        return {"dataSourceId": data_source_id, "tables": scanned_tables}
+        return {
+            "dataSourceId": data_source_id,
+            "tables": scanned_tables,
+            **_unmodelled_tables(platform, data_source_id, [table.name for table in tables]),
+        }
+
+
+def _unmodelled_tables(platform: Any, data_source_id: int, scanned: list[str]) -> dict[str, Any]:
+    """Which scanned tables the draft built from this source does not know about.
+
+    Reported by the scan because the scan no longer discards that draft. It used to, and the
+    deletion hid this question: the model was rebuilt from whatever the source had, so "is the
+    model out of date" could not be asked. Now a source that gains a table keeps its rules and
+    workflows -- and keeps a model that has never seen the new table, while 「扫描完成」 said
+    nothing about it.
+    """
+    rows = platform.execute(
+        """
+        select st.table_name
+        from source_table st
+        join business_object bo on bo.source_table_id = st.id
+        join ontology o on o.id = bo.ontology_id
+        where st.data_source_id = ? and o.status = 'draft'
+        """,
+        (data_source_id,),
+    ).fetchall()
+    modelled = {row["table_name"] for row in rows}
+    ontology = platform.execute(
+        """
+        select o.id
+        from ontology o
+        join business_object bo on bo.ontology_id = o.id
+        join source_table st on st.id = bo.source_table_id
+        where st.data_source_id = ?
+        order by o.id desc limit 1
+        """,
+        (data_source_id,),
+    ).fetchone()
+    return {
+        "modelledOntologyId": int(ontology["id"]) if ontology else None,
+        "modelledTables": sorted(modelled),
+        "unmodelledTables": sorted(name for name in scanned if name not in modelled),
+    }
 
 
 def analyze_schema_drift(platform_db: PlatformDb, data_source_id: int) -> dict[str, Any]:

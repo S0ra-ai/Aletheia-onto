@@ -123,6 +123,11 @@ one path, both buttons deleted modelling their owner had already done: the one l
 「初始化知识库」 reported success after doing it, which is how `aletheia demo`'s sample
 workflow disappeared.
 
+Because the scan now keeps the draft, it has to say when the draft and the source have
+drifted apart: `unmodelledTables` in its response names the tables it found that the draft
+does not model, and the screen lists them. Without that, a source that gained a table would
+keep a model that has never seen it, and the toast would still say 「扫描完成」.
+
 ## Assessment and provenance
 
 **BusinessRule** — an explainable condition evaluated in an AST-allowlist sandbox.

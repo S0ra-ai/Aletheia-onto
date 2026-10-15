@@ -3,6 +3,16 @@
 export interface SourceScanResult {
   dataSourceId: number;
   tables: { table: string; columns: number; foreignKeys: number }[];
+  /**
+   * What the scan found that the draft derived from this source does not model.
+   *
+   * The scan keeps that draft (a re-scan used to discard it, which destroyed rules and
+   * workflows), so a source that gained a table now keeps a model that has never seen it.
+   * Reported here because 「扫描完成」 is otherwise indistinguishable from 「扫描完成，而且模型仍然对得上」.
+   */
+  modelledOntologyId?: number | null;
+  modelledTables?: string[];
+  unmodelledTables?: string[];
 }
 
 export interface DataSource {

@@ -552,3 +552,27 @@ def test_every_documented_cli_flag_exists() -> None:
 
     assert checked > 20, f"只在文档里找到 {checked} 条命令示例，扫描方式或已失效"
     assert not unknown, "文档里的命令用了不存在的选项：\n  " + "\n  ".join(unknown)
+
+
+def test_every_design_document_says_it_is_one() -> None:
+    """`01`–`04` are the project's earliest writing, and nothing inside them said so.
+
+    `docs/README.md` lists them with a "gap vs implementation" column, but a reader who
+    arrives at one of the files directly -- a link, a search result, a directory listing --
+    sees a specification that reads as current. `04` stated 「当前支持 SQLite，并提供
+    PostgreSQL、MySQL 适配入口」, which stopped being true the moment the other two dialects
+    became real and CI started running both as service containers.
+
+    Asserted rather than remembered: the set is a glob, so a fifth design document cannot
+    join it without carrying the same note and the two documents that are checked against
+    the code.
+    """
+    design_docs = sorted((ROOT / "docs").glob("0*.md"))
+    assert len(design_docs) >= 4, f"没有找到立项阶段的设计稿：{design_docs}"
+    index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    for path in design_docs:
+        text = path.read_text(encoding="utf-8")
+        assert "这是立项阶段的设计稿" in text, f"{path.name} 没有说明自己是历史文档"
+        for target in ("capabilities.md", "limitations.md"):
+            assert target in text, f"{path.name} 没有指向 {target}，而判断现状要看那一份"
+        assert path.name in index, f"{path.name} 没在 docs/README.md 的设计文档表里"

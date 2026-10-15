@@ -127,8 +127,22 @@ const DataSourceList: React.FC = () => {
 
   const handleScan = async (id: number) => {
     try {
-      await dataSourceApi.scan(id);
-      message.success('扫描完成');
+      const result = await dataSourceApi.scan(id);
+      const tables = result?.tables?.length ?? 0;
+      const unmodelled = result?.unmodelledTables ?? [];
+      // A scan keeps the draft derived from the source rather than rebuilding it, so a source
+      // that gained a table keeps a model that has never seen it. Without this the toast said
+      // 「扫描完成」 for both cases -- and the model being out of date is the one thing the
+      // person who just scanned needs to know.
+      if (result?.modelledOntologyId && unmodelled.length) {
+        message.warning(
+          `扫描完成：${tables} 张表，其中 ${unmodelled.length} 张草案里还没有（${unmodelled.join('、')}）。` +
+            '需要时点「重新生成草案」纳入——那会清空现有草案上的规则、映射与工作流。',
+          8,
+        );
+      } else {
+        message.success(`扫描完成：${tables} 张表`);
+      }
       fetchDataSources();
     } catch (error) {
       message.error(requestErrorMessage(error, '扫描失败'));
