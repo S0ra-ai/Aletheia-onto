@@ -10,6 +10,17 @@
 
 ### Fixed
 
+- **规则页的表单与详情里仍是原始编码，并且自带一份后端词表的副本**（`RuleList.tsx`、
+  `governance.py`、`labels.ts`）。这张页面把 `SEVERITIES = ['info','warning','blocking']` 与
+  `RULE_TYPES = [...]` 抄在本文件里——**后端词表的副本**，加上一次就漂一次。
+  表单的下拉框因此显示 `validation`／`derivation`，详情抽屉显示原始 `ruleType`／`severity`，
+  而同一张表的列早就翻译过了。更隐蔽的是状态：表单提供的是
+  `['draft','published','disabled']`，而代码里另一处用了 `ONTOLOGY_STATUS`
+  （`draft/reviewing/published/deprecated`）——**两套词表长得像，值不一样**。
+  现在规则自己的状态在 `governance.VALID_RULE_STATUSES` 声明，前端用 `RULE_STATUS`，
+  三条词表（规则状态、执行结果、下一步动作）都进了「前端标签表必须覆盖后端词表」那条测试。
+- **执行结果的「状态」显示 `ready_for_execution`**，现在按 `EXECUTION_STATUS` 词表显示。
+
 - **操作预检的「建议」显示的是内部编码 `allow_automation`，而同一份响应里就有一句中文结论**
   （`api/index.ts`、`semantic/index.tsx`）。客户端把 `nextAction` **排在** `decision.recommendation`
   前面，于是那行字取的是机器指令而不是为读者写的那句话。现在两者分开：

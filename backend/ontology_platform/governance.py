@@ -15,6 +15,10 @@ VALID_MAPPING_STATUSES = {"pending", "confirmed", "rejected"}
 VALID_ONTOLOGY_STATUSES = {"draft", "reviewing", "published", "deprecated"}
 VALID_RULE_TYPES = {"validation", "derivation", "transition", "risk", "recommendation", "permission"}
 VALID_RULE_SEVERITIES = {"info", "warning", "blocking"}
+# A rule's own lifecycle, which is not the ontology's: a rule is `disabled`, an
+# ontology is `deprecated`, and offering one vocabulary where the other belongs is how
+# the rule form came to offer 草案／已发布 while the API accepts 停用.
+VALID_RULE_STATUSES = {"draft", "published", "disabled"}
 
 
 def _validate_rule_write(rule_type: str, severity: str, expression: str) -> None:
@@ -431,7 +435,7 @@ def delete_business_rule(
 def toggle_business_rule_status(
     platform_db: PlatformDb, ontology_id: int, rule_id: int, status: str, actor: str = "system"
 ) -> dict[str, Any]:
-    if status not in {"draft", "published", "disabled"}:
+    if status not in VALID_RULE_STATUSES:
         raise ValueError(f"不支持的状态: {status}")
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)

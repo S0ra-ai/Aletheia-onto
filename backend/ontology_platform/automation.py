@@ -211,6 +211,11 @@ def _infer_object_code(semantic_action: str, operation_code: str) -> str:
 NEXT_ACTIONS = ("allow_automation", "block_and_require_correction", "route_to_human_review")
 
 
+# What an execute call ended up doing. Declared as data for the same reason as
+# NEXT_ACTIONS: these are shown to a reader, and the console printed them verbatim.
+EXECUTION_STATUSES = ("executed", "ready_for_execution", "blocked_by_semantic_kernel")
+
+
 def _next_action(allowed: bool, decision_status: str) -> str:
     if allowed:
         return "allow_automation"

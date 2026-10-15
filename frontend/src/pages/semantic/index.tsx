@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
-import { CONSISTENCY_STATUS, DECISION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
+import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
@@ -548,10 +548,10 @@ const SemanticService: React.FC = () => {
                   <Descriptions.Item label="实例ID">{executeResult.instanceId}</Descriptions.Item>
                   <Descriptions.Item label="状态">
                     <Tag color={executeResult.executed ? 'green' : executeResult.status === 'blocked_by_semantic_kernel' ? 'red' : 'blue'}>
-                      {executeResult.status}
+                      {label(EXECUTION_STATUS, executeResult.status)}
                     </Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="决策">{executeResult.decision}</Descriptions.Item>
+                  <Descriptions.Item label="决策">{label(DECISION_STATUS, executeResult.decision)}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
                 <Alert message={executeResult.message} type={executeResult.status === 'blocked_by_semantic_kernel' ? 'error' : 'success'} />

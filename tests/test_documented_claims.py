@@ -288,6 +288,8 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
         "EVENT_CATEGORY": set(events.EVENT_CATEGORIES),
         "CONSISTENCY_STATUS": set(semantic_kernel.CONSISTENCY_STATUSES),
         "NEXT_ACTION": set(automation.NEXT_ACTIONS),
+        "RULE_STATUS": set(governance.VALID_RULE_STATUSES),
+        "EXECUTION_STATUS": set(automation.EXECUTION_STATUSES),
     }
     for name, vocabulary in expected.items():
         missing = vocabulary - entries(name)

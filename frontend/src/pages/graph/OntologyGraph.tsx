@@ -1,4 +1,4 @@
-import { label, RELATION_KIND } from '../../i18n/labels';
+import { label, ONTOLOGY_STATUS, RELATION_KIND } from '../../i18n/labels';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { graphApi, ontologyApi, requestErrorMessage } from '../../api';
@@ -319,7 +319,7 @@ const OntologyGraphPage: React.FC = () => {
                 <Descriptions.Item label="版本">
                   {graph.ontology.version}
                   <Tag color={graph.ontology.status === 'published' ? 'green' : 'blue'} style={{ marginLeft: 8 }}>
-                    {graph.ontology.status}
+                    {label(ONTOLOGY_STATUS, graph.ontology.status)}
                   </Tag>
                 </Descriptions.Item>
               </Descriptions>

@@ -22,6 +22,13 @@ export const ONTOLOGY_STATUS: Record<string, string> = {
   deprecated: '已废弃',
 };
 
+/** The values `governance.VALID_RULE_STATUSES` accepts. */
+export const RULE_STATUS: Record<string, string> = {
+  draft: '草案',
+  published: '已发布',
+  disabled: '已停用',
+};
+
 /** The values `governance.VALID_MAPPING_STATUSES` accepts. */
 export const MAPPING_STATUS: Record<string, string> = {
   pending: '待审核',
@@ -67,6 +74,13 @@ export const NEXT_ACTION: Record<string, string> = {
   allow_automation: '允许自动执行',
   block_and_require_correction: '阻断并要求修正',
   route_to_human_review: '转人工复核',
+};
+
+/** What an execute call did, from `automation.EXECUTION_STATUSES`. */
+export const EXECUTION_STATUS: Record<string, string> = {
+  executed: '已执行',
+  ready_for_execution: '已生成执行计划（未执行）',
+  blocked_by_semantic_kernel: '被语义内核阻断',
 };
 
 export const CONSISTENCY_STATUS: Record<string, string> = {

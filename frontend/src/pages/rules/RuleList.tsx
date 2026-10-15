@@ -1,3 +1,4 @@
+import { label, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert, Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
@@ -15,9 +16,6 @@ const { Option } = Select;
 const { TextArea } = Input;
 const { Dragger } = Upload;
 
-const RULE_TYPES = ['validation', 'derivation', 'transition', 'risk', 'recommendation', 'permission'];
-const SEVERITIES = ['info', 'warning', 'blocking'];
-const STATUSES = ['draft', 'published', 'disabled'];
 
 const severityColor: Record<string, string> = {
   blocking: 'red',
@@ -197,7 +195,7 @@ const RuleList: React.FC = () => {
       dataIndex: 'ruleType',
       key: 'ruleType',
       width: 100,
-      render: (type: string) => <Tag>{type}</Tag>,
+      render: (type: string) => <Tag>{label(RULE_TYPE, type)}</Tag>,
     },
     {
       title: '适用对象',
@@ -222,7 +220,7 @@ const RuleList: React.FC = () => {
       key: 'severity',
       width: 100,
       render: (severity: string) => (
-        <Tag color={severityColor[severity] || 'blue'}>{severity}</Tag>
+        <Tag color={severityColor[severity] || 'blue'}>{label(RULE_SEVERITY, severity)}</Tag>
       ),
     },
     {
@@ -231,7 +229,7 @@ const RuleList: React.FC = () => {
       key: 'status',
       width: 90,
       render: (status: string) => (
-        <Tag color={statusColor[status] || 'default'}>{status}</Tag>
+        <Tag color={statusColor[status] || 'default'}>{label(RULE_STATUS, status)}</Tag>
       ),
     },
     {
@@ -375,9 +373,9 @@ const RuleList: React.FC = () => {
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="ruleType" label="规则类型" rules={[{ required: true }]}>
-                <Select>
-                  {RULE_TYPES.map(t => <Option key={t} value={t}>{t}</Option>)}
-                </Select>
+                <Select
+                  options={Object.entries(RULE_TYPE).map(([value, text]) => ({ value, label: text }))}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -388,7 +386,7 @@ const RuleList: React.FC = () => {
             <Col span={8}>
               <Form.Item name="severity" label="严重程度" rules={[{ required: true }]}>
                 <Select>
-                  {SEVERITIES.map(s => <Option key={s} value={s}>{s}</Option>)}
+                  {Object.entries(RULE_SEVERITY).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
@@ -401,7 +399,7 @@ const RuleList: React.FC = () => {
           </Form.Item>
           <Form.Item name="status" label="状态">
             <Select>
-              {STATUSES.map(s => <Option key={s} value={s}>{s}</Option>)}
+              {Object.entries(RULE_STATUS).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
             </Select>
           </Form.Item>
         </Form>
@@ -467,13 +465,15 @@ const RuleList: React.FC = () => {
           <Descriptions column={2} bordered size="small">
             <Descriptions.Item label="编码">{detailRule.code}</Descriptions.Item>
             <Descriptions.Item label="名称">{detailRule.name}</Descriptions.Item>
-            <Descriptions.Item label="类型"><Tag>{detailRule.ruleType}</Tag></Descriptions.Item>
+            <Descriptions.Item label="类型">
+              <Tag>{label(RULE_TYPE, detailRule.ruleType)}</Tag>
+            </Descriptions.Item>
             <Descriptions.Item label="适用对象">{detailRule.scopeObjectCode}</Descriptions.Item>
             <Descriptions.Item label="严重程度">
-              <Tag color={severityColor[detailRule.severity]}>{detailRule.severity}</Tag>
+              <Tag color={severityColor[detailRule.severity]}>{label(RULE_SEVERITY, detailRule.severity)}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="状态">
-              <Tag color={statusColor[detailRule.status]}>{detailRule.status}</Tag>
+              <Tag color={statusColor[detailRule.status]}>{label(RULE_STATUS, detailRule.status)}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="表达式" span={2}>
               <code style={{ background: '#f5f5f5', padding: '4px 8px', borderRadius: 4 }}>{detailRule.expression}</code>
