@@ -456,3 +456,83 @@ jobs:
       - name: 类型检查与构建
         working-directory: frontend
         run: npm run build
+
+  # The check for columns that render blank for every row. It lives in its own job rather
+  # than in the test suite because it needs a browser and a running server, and a suite that
+  # depends on either fails for reasons unrelated to the change. Here, a browser is the
+  # subject: if it cannot start, this job genuinely cannot do its work.
+  #
+  # It was a script run by hand, which is how eight of them -- four columns in the governance
+  # audit table, four in the model-invocation table, five in the mapping review queue, seven
+  # in the permission policy table, three in the rules table, three in the workflow list,
+  # four in the workflow transitions, eight in the tool review queue -- were found one at a
+  # time, on the days somebody happened to look.
+  ui-smoke:
+    name: 界面渲染检查（无头浏览器）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: 准备一份有数据的实例
+        # Every capability the sweep walks past needs a row to have a column to check.
+        # `aletheia demo` registers a source, scans it, drafts an ontology, assesses one
+        # instance, records an event and a value, and creates a workflow it moves once.
+        run: |
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            demo --sample-db "$RUNNER_TEMP/sample.sqlite3" --quiet
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            passwd --username admin --password 'CI-Smoke-Passw0rd!x'
+        env:
+          PYTHONPATH: backend
+
+      - name: 启动服务
+        run: |
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            serve --port 8077 > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8077/health > /dev/null && exit 0
+            sleep 1
+          done
+          echo "服务未在 30 秒内就绪"; cat "$RUNNER_TEMP/server.log"; exit 1
+        env:
+          PYTHONPATH: backend
+          ONTOLOGY_ADMIN_USERNAME: admin
+          ONTOLOGY_ADMIN_PASSWORD: CI-Smoke-Passw0rd!x
+
+      - name: 逐页检查是否有整列为空的表格
+        run: |
+          TOKEN=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          USER_JSON=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
+            | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["user"]))')
+          python scripts/ui_smoke.py --base-url http://127.0.0.1:8077 \
+            --token "$TOKEN" --user "$USER_JSON"
+        env:
+          PYTHONPATH: backend
+          CHROME_BIN: /usr/bin/google-chrome

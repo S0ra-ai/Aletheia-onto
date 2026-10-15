@@ -58,23 +58,57 @@ ROUTES = (
     "/admin/mapping",
     "/admin/rules",
     "/admin/semantic",
+    "/admin/semantic?tab=explain",
+    "/admin/semantic?tab=assess",
+    "/admin/semantic?tab=consistency",
+    "/admin/semantic?tab=preflight",
     "/admin/governance",
     "/admin/governance?tab=decisions",
+    "/admin/governance?tab=audit",
+    "/admin/governance?tab=invocations",
     "/admin/governance?tab=report",
     "/admin/knowledge",
     "/admin/feedback",
     "/admin/permission",
+    "/admin/permission?tab=policies",
+    "/admin/permission?tab=tools",
     "/admin/permission?tab=sso",
+    "/admin/permission?tab=reviews",
     "/admin/workflow",
     "/admin/backup",
     "/admin/graph",
     "/admin/chat",
+    "/admin/objects",
+    "/admin/tenancy",
+)
+
+# Routes whose path needs an id. Filled in from the instance when a token is given, because
+# a fixed list cannot know one and skipping them leaves the detail pages -- where the
+# release gate, the attribute table, the coverage panel and the review queue live -- outside
+# the sweep entirely.
+ID_ROUTES = (
+    "/admin/ontology/{ontology}?tab=objects",
+    "/admin/ontology/{ontology}?tab=attributes",
+    "/admin/ontology/{ontology}?tab=relations",
+    "/admin/ontology/{ontology}?tab=mappings",
+    "/admin/ontology/{ontology}?tab=rules",
+    "/admin/ontology/{ontology}?tab=release",
+    "/admin/ontology/{ontology}?tab=extensions",
+    "/admin/datasource/{source}?tab=tables",
+    "/admin/datasource/{source}?tab=apis",
+    "/admin/datasource/{source}?tab=coverage",
 )
 
 CHROME_CANDIDATES = (
     "chromium-cli",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    # The absolute paths the GitHub runner image installs, so the CI job does not depend on
+    # Chrome happening to be on PATH there.
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
     shutil.which("chromium") or "",
     shutil.which("google-chrome") or "",
     shutil.which("chromium-browser") or "",
@@ -112,6 +146,57 @@ def seed_page(base_url: str, token: str, user: dict | None, directory: Path) -> 
         encoding="utf-8",
     )
     return f"{base_url}/assets/seed.html"
+
+
+# Columns that are empty because the *data* has nothing in them, not because the field name
+# is wrong. Listed rather than inferred: the script cannot tell the two apart, and a checker
+# that guesses would either miss real defects or fail on real data. Printed on every run, so
+# an allowance cannot quietly outlive the reason for it.
+KNOWN_SPARSE = (
+    ("/admin/permission?tab=policies", "描述"),
+    ("/admin/ontology/{id}?tab=attributes", "描述"),
+)
+
+
+def _normalise_route(route: str) -> str:
+    """Ids to `{id}`, so an allowance survives whichever ontology the instance happens to
+    have. A route with a hardcoded id in it would stop matching the day the first ontology
+    is not number one -- and then the job fails for a reason that is not a defect."""
+    return re.sub(r"/\d+(?=/|\?|$)", "/{id}", route)
+
+
+def _id_routes(base_url: str, token: str) -> list[str]:
+    """The detail routes, filled with the first ontology and data source on the instance.
+
+    Empty when either cannot be read -- a sweep that silently skipped them would read as
+    coverage it does not have, which is the failure this script exists to notice.
+    """
+    import urllib.request
+
+    def first(endpoint: str, key: str) -> str:
+        request = urllib.request.Request(f"{base_url}{endpoint}", headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except Exception:
+            return ""
+        for candidate in (payload.get(key), payload.get("items"), payload.get("dataSources")):
+            if isinstance(candidate, list) and candidate:
+                return str(candidate[0].get("id", ""))
+        return ""
+
+    ontology = first("/ontologies", "ontologies")
+    source = first("/data-sources", "dataSources")
+    filled = []
+    for template in ID_ROUTES:
+        if "{ontology}" in template and not ontology:
+            continue
+        if "{source}" in template and not source:
+            continue
+        filled.append(template.format(ontology=ontology, source=source))
+    if not filled:
+        print("warning: no ontology or data source to fill the detail routes with", file=sys.stderr)
+    return filled
 
 
 def dump_dom(browser: str, url: str) -> str:
@@ -175,6 +260,11 @@ def main() -> int:
     parser.add_argument("--token", default="", help="a bearer token; without one, only public pages are reachable")
     parser.add_argument("--user", default="", help="the JSON user object, as /auth/login returns it")
     parser.add_argument("--routes", default="", help="comma-separated override of the routes to visit")
+    parser.add_argument(
+        "--allow",
+        default=",".join(f"{route}:{column}" for route, column in KNOWN_SPARSE),
+        help="comma-separated route:column pairs known to be empty for want of data",
+    )
     args = parser.parse_args()
 
     browser = find_browser()
@@ -183,7 +273,10 @@ def main() -> int:
         return 2
 
     user = json.loads(args.user) if args.user else None
-    routes = tuple(r.strip() for r in args.routes.split(",") if r.strip()) or ROUTES
+    routes = [r.strip() for r in args.routes.split(",") if r.strip()] or list(ROUTES)
+    if not args.routes and args.token:
+        routes.extend(_id_routes(args.base_url, args.token))
+    routes = tuple(routes)
 
     # Written into the real build output, because that is what the running instance already
     # serves. A temp directory would be tidier and would not work: the server resolves
@@ -217,7 +310,12 @@ def main() -> int:
         (assets / "seed.html").unlink(missing_ok=True)
         return 2
 
+    allowed = {pair.strip() for pair in args.allow.split(",") if pair.strip()}
     findings = 0
+    if allowed:
+        print("已知因数据为空而整列为空的列（不是缺陷）:")
+        for pair in sorted(allowed):
+            print(f"  {pair}")
     try:
         print(f"seeding from {entry}")
         for route in routes:
@@ -232,7 +330,15 @@ def main() -> int:
             for index, (headers, rows) in enumerate(page_tables):
                 if not rows:
                     continue
-                empty = empty_columns(headers, rows)
+                # Matched with ids normalised, so the allowance does not depend on which
+                # ontology id the instance happens to use.
+                allowed_here = {_normalise_route(pair.rsplit(":", 1)[0]) for pair in allowed if ":" in pair}
+                allowed_columns = {pair.rsplit(":", 1)[1] for pair in allowed if ":" in pair}
+                empty = [
+                    column
+                    for column in empty_columns(headers, rows)
+                    if not (_normalise_route(route) in allowed_here and column in allowed_columns)
+                ]
                 if empty:
                     findings += 1
                     empty_here.append(f"table #{index}: {', '.join(empty)}")

@@ -115,8 +115,21 @@ were blank in every row for exactly this reason, and only a browser showed it.
 
 `scripts/ui_smoke.py` drives the running application headlessly and reports every column that
 is empty in *every* data row. It needs a browser and a live instance, which is precisely why
-it is a diagnostic and not part of the suite: a suite that depends on either fails for
-reasons unrelated to the change. Run it after touching a table.
+it is **not in the test suite**: a suite that depends on either fails for reasons unrelated to
+the change.
+
+It runs in CI as its own job, where a browser is the subject rather than an incidental
+dependency — a job that cannot start one genuinely cannot do its work. The job builds the
+frontend, loads a demo instance, and sweeps 35 routes: every screen that charts a table, every
+tab that puts one behind it, and the detail pages for the first ontology and data source,
+whose ids are read from the instance rather than written down.
+
+Columns that are empty because the *data* has nothing in them are listed in `KNOWN_SPARSE`
+and printed on every run. The script cannot tell those from a field-name mismatch, and a
+checker that guessed would either miss real defects or fail on real data — so the allowance is
+explicit, and anything not on it still fails the job.
+
+Run it by hand after touching a table:
 
 ```bash
 cd frontend && npm run build && cd ..
