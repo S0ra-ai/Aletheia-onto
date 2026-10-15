@@ -377,3 +377,43 @@ def _platform_table_count() -> int:
                 "select count(*) from sqlite_master where type = 'table' and name not like 'sqlite_%'"
             ).fetchone()[0]
         )
+
+
+def test_every_location_the_capability_matrix_names_exists() -> None:
+    """`docs/capabilities.zh-CN.md` says where each capability is implemented.
+
+    Nothing checked it. A row whose实现位置 points at a file that was renamed or removed
+    still reads as "implemented, and here it is" -- which is the most useful kind of wrong:
+    the reader follows the pointer and finds nothing, and has no way to tell whether the
+    capability moved or never existed.
+
+    Only the paths are asserted, not the status column. Whether a ✅ row is *correctly* ✅
+    is a question for the tests named beside it; whether the file it points at exists is a
+    question a machine can answer.
+    """
+    import re as regex
+
+    package_files = {path.name for path in (ROOT / "backend" / "ontology_platform").rglob("*.py")}
+    test_files = {path.name for path in TESTS.glob("*.py")}
+
+    # Both languages. The English matrix exists and is linked from the English README, so
+    # checking only the Chinese one is the mistake this file's own module docstring warns
+    # about -- a claim verified in one language and assumed in the other.
+    for name in ("capabilities.zh-CN.md", "capabilities.md"):
+        document = (ROOT / "docs" / name).read_text(encoding="utf-8")
+        checked = 0
+        missing: list[str] = []
+        for line in document.splitlines():
+            if not line.startswith("|") or "✅" not in line:
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+            for reference in regex.findall(r"`([A-Za-z0-9_./]+\.py)`", cells[2]):
+                checked += 1
+                base = reference.rsplit("/", 1)[-1]
+                if base not in package_files and base not in test_files:
+                    missing.append(f"{cells[0][:40]} -> {reference}")
+
+        assert checked > 50, f"{name} 里只解析到 {checked} 个实现位置，格式或已改变"
+        assert not missing, f"{name} 指向了不存在的文件：{missing}"

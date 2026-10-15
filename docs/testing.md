@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1613 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1614 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -92,7 +92,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_documented_claims.py` | 9 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 10 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
 | `test_object_service.py` | 13 | Generic business-object browsing over HTTP and in the service, metadata, pagination cost, row-level permission filtering |
 
