@@ -1,6 +1,6 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
+import { label, GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -120,7 +120,9 @@ const OntologyDetailPage: React.FC = () => {
       title: '级别',
       dataIndex: 'severity',
       key: 'severity',
-      render: (severity: string) => <Tag color={severity === 'blocker' ? 'red' : 'orange'}>{severity}</Tag>,
+      render: (severity: string) => (
+        <Tag color={severity === 'blocker' ? 'red' : 'orange'}>{label(GATE_SEVERITY, severity)}</Tag>
+      ),
     },
     { title: '证据', dataIndex: 'evidence', key: 'evidence' },
     { title: '修复动作', dataIndex: 'remediation', key: 'remediation' },
@@ -132,6 +134,14 @@ const OntologyDetailPage: React.FC = () => {
     return 'red';
   };
 
+  /** The four values `governance.VALID_ONTOLOGY_STATUSES` accepts. */
+  const statusColor = (status: string) => {
+    if (status === 'published') return 'green';
+    if (status === 'deprecated') return 'default';
+    if (status === 'reviewing') return 'blue';
+    return 'orange';
+  };
+
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
@@ -139,6 +149,12 @@ const OntologyDetailPage: React.FC = () => {
           返回
         </Button>
         <Title level={3} style={{ margin: 0 }}>本体详情</Title>
+        {/* Four formats, because the endpoint takes four. It offered two, so the pair the
+            endpoint's own docstring calls the one another tool can *interpret* rather than
+            merely read -- OWL/RDFS and SHACL -- was reachable only by composing the URL by
+            hand. JSON-LD and Turtle carry this platform's own fields, which standard
+            vocabulary has no word for; both are worth having, and a user comparing them
+            should not have to discover that two of the four exist. */}
         <Button
           icon={<DownloadOutlined />}
           onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'jsonld'), '_blank')}
@@ -151,6 +167,18 @@ const OntologyDetailPage: React.FC = () => {
         >
           Turtle
         </Button>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'owl'), '_blank')}
+        >
+          OWL/RDFS
+        </Button>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'shacl'), '_blank')}
+        >
+          SHACL
+        </Button>
       </Space>
 
       <Card style={{ marginBottom: 16 }}>
@@ -161,11 +189,18 @@ const OntologyDetailPage: React.FC = () => {
             <Tag>v{ontology.ontology.version}</Tag>
           </Descriptions.Item>
           <Descriptions.Item label="状态">
-            <Tag color={ontology.ontology.status === 'active' ? 'green' : 'orange'}>
-              {ontology.ontology.status}
-            </Tag>
+            {/* This asked `status === 'active'`, a value `VALID_ONTOLOGY_STATUSES` does not
+                contain, so the tag was orange for every status including a published one --
+                and it printed the raw enum, which the list page beside it already
+                translates. A condition that can never be true reads as a working rule. */}
+            <Tag color={statusColor(ontology.ontology.status)}>{label(ONTOLOGY_STATUS, ontology.ontology.status)}</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="数据源ID">{ontology.ontology.dataSourceId}</Descriptions.Item>
+          {/* The row here read "数据源ID" and bound `ontology.dataSourceId`, a field the
+              `ontology` table does not have -- an ontology reaches its data sources through
+              its objects, which may be several. The row was therefore blank on every
+              deployment, permanently. Replaced with two fields that exist in the payload. */}
+          <Descriptions.Item label="业务领域">{ontology.ontology.domain || '未标注'}</Descriptions.Item>
+          <Descriptions.Item label="创建时间">{ontology.ontology.createdAt}</Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -181,7 +216,9 @@ const OntologyDetailPage: React.FC = () => {
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
               <Descriptions.Item label="状态">
-                <Tag color={releaseColor(releaseReadiness.status)}>{releaseReadiness.status}</Tag>
+                <Tag color={releaseColor(releaseReadiness.status)}>
+                  {label(READINESS_STATUS, releaseReadiness.status)}
+                </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="业务对象">{releaseReadiness.summary.objects}</Descriptions.Item>
               <Descriptions.Item label="数据源">{releaseReadiness.summary.dataSources}</Descriptions.Item>

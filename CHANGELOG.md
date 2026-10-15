@@ -18,7 +18,11 @@
   该脚本加载路由再读 DOM，翻不动标签页。而它正是本仓库每一个「整列为空」bug 的发现方式
   （模型调用表 4 列、审计日志 3 列每一行都是空白，而 lint、类型、测试全绿）。
   同时给该脚本加了**逐路由的表/行计数输出**：什么都没访问到的检查，与什么都没发现的检查，
-  输出原本一模一样。
+  输出原本一模一样。另外它此前会把 antd 可展开表格的**展开列**报成「整列为空」——
+  那一列的表头和每个单元格本来就都是空的（只放一个展开图标），
+  于是每一张可展开表格都会产生一条假发现：**一个诊断工具持续报假发现，
+  就是在教使用者跳过它的输出**。现按图标识别并跳过该列，而不是按「首个表头为空」——
+  真的空表头值得被报出来。
 
 - **审计报表页**（`pages/governance/AuditReportPanel.tsx`，治理审计页新增「审计报表」标签）。
   `/governance/audit-report` 与 `/governance/audit-report/sections` 两个端点存在且无任何前端消费者：
@@ -207,6 +211,25 @@
   `/admin/backup -> 401 application/json`。
 
 ### Fixed
+
+- **本体详情页的状态标签永远不会变绿，且显示后端原样枚举**（`pages/ontology/OntologyDetail.tsx`）。
+  它判断的是 `status === 'active'`，而 `governance.VALID_ONTOLOGY_STATUSES` 只有
+  `draft`／`reviewing`／`published`／`deprecated`——**一个永远不可能成立的条件，读起来却像一条生效的规则**：
+  已发布的本体与草案同样是橙色，文字也仍是 `draft` 而不是「草案」（旁边的本体列表页早就翻译了）。
+  同一张卡片里的发布就绪度标签显示 `blocked`，因为 `READINESS_STATUS` 少了 `blocked` 与 `review`
+  两个值，而 `label()` 在缺项时回退为原值——**回退让缺项看起来像渲染细节，而不是漏了一条**。
+  新增 `test_the_frontend_label_maps_cover_the_backend_vocabulary`：
+  凡是后端以常量声明过的词表（本体状态、映射状态、规则类型、规则级别、关系种类），
+  前端标签表都必须覆盖完——这是可枚举的声明，不是散文。
+
+- **本体详情页的「数据源ID」每一行都是空的**，因为 `ontology` 表根本没有这个字段：
+  本体是通过它的对象去触达数据源的，而且可能不止一个。这一行在任何部署上都是永久空白，
+  现改为「业务领域」与「创建时间」两个确实存在于响应里的字段。
+
+- **两个后端支持、界面够不着的导出格式**（`pages/ontology/OntologyDetail.tsx`）。
+  `/ontologies/{id}/export` 接受 `jsonld`／`turtle`／`owl`／`shacl` 四种，
+  接口自己的文档字符串说后两种才是别的工具能**解释**（而非仅能阅读）的形式，
+  而界面只放了前两个按钮——要拿到 OWL/RDFS 与 SHACL 得自己拼 URL。
 
 - **中英文两份 `docs/testing.md` 对同一个事实给出不同数字**。
   中文写「85 个后端模块约 35300 行」，英文写「87 modules, roughly 34,100 lines」——

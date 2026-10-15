@@ -429,7 +429,11 @@ export const ontologyApi = {
     return data;
   },
 
-  exportUrl: (ontologyId: number, format: 'jsonld' | 'turtle'): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
+  /** `jsonld`/`turtle` are this platform's vocabulary; `owl`/`shacl` are the standard ones. */
+  exportUrl: (
+    ontologyId: number,
+    format: 'jsonld' | 'turtle' | 'owl' | 'shacl',
+  ): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
 };
 
 export const industryBlueprintApi = {

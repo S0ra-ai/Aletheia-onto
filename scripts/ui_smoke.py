@@ -133,6 +133,16 @@ def tables(html: str) -> list[tuple[list[str], list[list[str]]]]:
             rows.append(
                 [re.sub(r"<[^>]+>", "", cell).strip() for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)]
             )
+
+        # antd's expandable rows prepend a column holding nothing but the expand icon. Its
+        # header is empty and so is every cell, so it is reported as a finding on every
+        # expandable table -- a permanent false positive, which is how a diagnostic teaches
+        # its reader to skim past its output. Detected by the icon rather than by "first
+        # header is blank": a genuinely blank first header is worth reporting.
+        if "ant-table-row-expand-icon" in block:
+            headers = headers[1:]
+            rows = [row[1:] for row in rows]
+
         if headers:
             found.append((headers, rows))
     return found

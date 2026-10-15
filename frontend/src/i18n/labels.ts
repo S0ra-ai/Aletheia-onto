@@ -62,12 +62,25 @@ export const DECISION_STATUS: Record<string, string> = {
  */
 export const READINESS_STATUS: Record<string, string> = {
   ready: '就绪',
+  review: '需复核',
+  blocked: '受阻',
   partial: '部分就绪',
   incomplete: '不完整',
   bound: '已绑定',
   not_modeled: '尚未建模',
   not_configured: '未配置',
   error: '检查失败',
+};
+
+/**
+ * Release-gate severity, which is a different scale from rule severity: a gate is
+ * `blocker` or `warning`, a rule is `blocking` or `warning`. They share one word and not the
+ * other, so putting gates in `RULE_SEVERITY` would translate half of them and print the rest
+ * raw -- the kind of gap that reads as a styling inconsistency rather than a missing entry.
+ */
+export const GATE_SEVERITY: Record<string, string> = {
+  blocker: '阻断',
+  warning: '警告',
 };
 
 /** Structural drift between the modelled object and the live source. */

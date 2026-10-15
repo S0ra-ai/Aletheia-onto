@@ -254,6 +254,43 @@ def test_the_screenshot_docs_state_how_many_screenshots_there_are() -> None:
         assert int(claim.group(1)) == len(sections), f"{name} 声明 {claim.group(1)} 张，实际 {len(sections)}"
 
 
+def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
+    """`frontend/src/i18n/labels.ts` claims to know what the backend can emit.
+
+    `label()` falls back to the raw value when a map has not learned it, so an incomplete
+    map does not break anything -- it prints `blocked` in the middle of a Chinese console and
+    looks like a rendering detail rather than a gap. That is how `blocked` was missing from
+    `READINESS_STATUS` while three endpoints emit it, and how the ontology detail page came
+    to show a raw enum beside a translated one.
+
+    Only the vocabularies the backend declares as constants are checked. The rest are
+    literals scattered through the modules that return them, and a test that guessed at them
+    would be asserting its own guess.
+    """
+    import re as regex
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform import governance, relations
+
+    source = (ROOT / "frontend" / "src" / "i18n" / "labels.ts").read_text(encoding="utf-8")
+
+    def entries(name: str) -> set[str]:
+        match = regex.search(rf"export const {name}\b[^=]*= \{{(.*?)\n\}};", source, regex.DOTALL)
+        assert match, f"labels.ts 中找不到 {name}，请同步本测试"
+        return set(regex.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", match.group(1), regex.MULTILINE))
+
+    expected: dict[str, set[str]] = {
+        "ONTOLOGY_STATUS": set(governance.VALID_ONTOLOGY_STATUSES),
+        "MAPPING_STATUS": set(governance.VALID_MAPPING_STATUSES),
+        "RULE_TYPE": set(governance.VALID_RULE_TYPES),
+        "RULE_SEVERITY": set(governance.VALID_RULE_SEVERITIES),
+        "RELATION_KIND": set(relations.RELATION_KINDS),
+    }
+    for name, vocabulary in expected.items():
+        missing = vocabulary - entries(name)
+        assert not missing, f"labels.ts 的 {name} 缺少后端会产出的值：{sorted(missing)}"
+
+
 def test_the_documented_scale_is_current() -> None:
     """The "规模" line is the first thing a reader checks against reality.
 
