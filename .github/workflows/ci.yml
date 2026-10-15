@@ -496,12 +496,14 @@ jobs:
           npm run build
 
       - name: 准备一份有数据的实例
-        # Every capability the sweep walks past needs a row to have a column to check.
-        # `aletheia demo` registers a source, scans it, drafts an ontology, assesses one
-        # instance, records an event and a value, and creates a workflow it moves once.
+        # Every screen the sweep walks past needs a row, or its columns are checked against
+        # nothing -- an empty table makes every column look correct, which is how eight
+        # blank-column defects survived. `aletheia demo` covers the loop; the seeding script
+        # covers the eight screens the loop does not reach.
         run: |
           python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
             demo --sample-db "$RUNNER_TEMP/sample.sqlite3" --quiet
+          python scripts/seed_smoke_instance.py --platform-db "$RUNNER_TEMP/platform.sqlite3"
           python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
             passwd --username admin --password 'CI-Smoke-Passw0rd!x'
         env:

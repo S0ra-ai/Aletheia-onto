@@ -310,8 +310,25 @@ def main() -> int:
         (assets / "seed.html").unlink(missing_ok=True)
         return 2
 
+    # A token that does not authenticate renders the login page on every route. The sweep
+    # then reports "0 tables, 0 rows" 25 times and ends with "no wholly-empty columns found"
+    # -- a clean bill of health for a run that looked at nothing. Checked before sweeping
+    # rather than inferred from the empty result, which is indistinguishable from a
+    # deployment that genuinely has no data.
+    if args.token:
+        request = urllib.request.Request(f"{args.base_url}/auth/me", headers={"Authorization": f"Bearer {args.token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                who = json.loads(response.read().decode("utf-8"))
+        except Exception as error:
+            print(f"the token does not authenticate ({error}); nothing would be rendered", file=sys.stderr)
+            (assets / "seed.html").unlink(missing_ok=True)
+            return 2
+        print(f"sweeping as {who.get('username', '?')} ({who.get('roleCode', '?')})")
+
     allowed = {pair.strip() for pair in args.allow.split(",") if pair.strip()}
     findings = 0
+    rows_seen = 0
     if allowed:
         print("已知因数据为空而整列为空的列（不是缺陷）:")
         for pair in sorted(allowed):
@@ -322,6 +339,7 @@ def main() -> int:
             html = dump_dom(browser, f"{entry}?to={route}")
             page_tables = tables(html)
             examined = sum(len(rows) for _, rows in page_tables)
+            rows_seen += examined
             # A per-route line, because a silent run and a run that found nothing look
             # identical otherwise -- and "no findings" is only meaningful if the pages were
             # actually reached. A route behind a tab that ignored the query would otherwise
@@ -347,6 +365,16 @@ def main() -> int:
     finally:
         (assets / "seed.html").unlink(missing_ok=True)
 
+    if rows_seen == 0:
+        # The headline below would otherwise read "no wholly-empty columns found" for a sweep
+        # that rendered no data at all -- the same shape of false pass as an unauthenticated
+        # run, and the reason the token is checked above.
+        print(
+            "\n没有任何一行被渲染：这次扫描什么都没检查到。"
+            "通常是实例里没有数据（先跑 `aletheia demo`，或用 scripts/seed_smoke_instance.py 填充）。",
+            file=sys.stderr,
+        )
+        return 1
     if findings:
         print(f"\n{findings} table(s) with a column that is empty in every row.")
         print("A sparse column is normal; a column empty in *every* row usually means the")
