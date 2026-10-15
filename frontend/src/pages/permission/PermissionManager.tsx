@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { Card, Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, message, Tabs, Popconfirm, Badge } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { permissionApi, toolApi } from '../../api';
+import { permissionApi, requestErrorMessage, toolApi } from '../../api';
 import type { PermissionRole, PermissionPolicy, ToolDefinition, ToolExecutionLog } from '../../types';
 
 const PermissionManager: React.FC = () => {
@@ -29,7 +29,11 @@ const PermissionManager: React.FC = () => {
       setPolicies(p);
       setTools(t);
       setPendingReviews(pr);
-    } catch { /* ignore */ }
+    } catch (error) {
+      // A failure here left roles, policies, tools and pending reviews all empty with
+      // nothing shown -- the whole page rendered as "there is nothing configured".
+      message.error(requestErrorMessage(error, '加载权限配置失败'));
+    }
     setLoading(false);
   };
 
@@ -72,8 +76,8 @@ const PermissionManager: React.FC = () => {
       await toolApi.reviewExecution(logId, { reviewer: 'admin', decision });
       message.success(decision === 'approved' ? '已通过' : '已拒绝');
       loadAll();
-    } catch {
-      message.error('审核失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '审核失败'));
     }
   };
 

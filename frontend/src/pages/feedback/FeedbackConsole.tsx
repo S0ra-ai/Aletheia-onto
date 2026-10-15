@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { conversationApi, feedbackApi } from '../../api';
+import { conversationApi, feedbackApi, requestErrorMessage } from '../../api';
 import type { AnswerFeedback, Conversation, FeedbackSummary } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -55,8 +55,8 @@ const FeedbackConsolePage: React.FC = () => {
       setItems(feedback.items);
       setSummary(feedback.summary);
       setEscalated(conversations);
-    } catch {
-      message.error('加载反馈失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载反馈失败'));
     } finally {
       setLoading(false);
     }
@@ -71,8 +71,8 @@ const FeedbackConsolePage: React.FC = () => {
       await feedbackApi.resolve(item.id, resolution);
       message.success(resolution === 'resolved' ? '已标记为已处理' : '已忽略');
       await load();
-    } catch {
-      message.error('操作失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '操作失败'));
     }
   };
 

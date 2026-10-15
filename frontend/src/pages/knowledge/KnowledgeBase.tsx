@@ -6,7 +6,7 @@ import {
   Spin, Table, Tag, Typography, Upload, message,
 } from 'antd';
 import { InboxOutlined, ReloadOutlined } from '@ant-design/icons';
-import { knowledgeApi, ontologyApi } from '../../api';
+import { knowledgeApi, ontologyApi, requestErrorMessage } from '../../api';
 import type {
   KnowledgeDocument, KnowledgeEntry, Ontology,
 } from '../../types';
@@ -54,8 +54,8 @@ const KnowledgeBasePage: React.FC = () => {
           const richest = [...items].sort((a, b) => (b.objectCount ?? 0) - (a.objectCount ?? 0))[0];
           setSelected(richest.id);
         }
-      } catch {
-        message.error('加载本体列表失败');
+      } catch (error) {
+        message.error(requestErrorMessage(error, '加载本体列表失败'));
       }
     })();
   }, []);
@@ -69,8 +69,8 @@ const KnowledgeBasePage: React.FC = () => {
       ]);
       setDocuments(docs);
       setEntries(entryList.items);
-    } catch {
-      message.error('加载知识库失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载知识库失败'));
     } finally {
       setLoading(false);
     }

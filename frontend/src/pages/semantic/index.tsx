@@ -78,8 +78,8 @@ const SemanticService: React.FC = () => {
         limit: Number(values.limit || 50),
       });
       setConsistencyResult(result);
-    } catch {
-      message.error('决策一致性评估失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '决策一致性评估失败'));
     } finally {
       setLoading(false);
     }

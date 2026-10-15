@@ -58,8 +58,8 @@ const MappingList: React.FC = () => {
       await ontologyApi.reviewMappings(selectedOntology, { status, reviewer: '前端用户', note: '工作台批量审核' });
       message.success(status === 'confirmed' ? '已批量确认' : '已批量拒绝');
       fetchMappings(selectedOntology);
-    } catch {
-      message.error('审核失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '审核失败'));
     }
   };
 

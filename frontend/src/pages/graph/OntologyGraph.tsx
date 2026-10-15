@@ -1,7 +1,7 @@
 import { label, RELATION_KIND } from '../../i18n/labels';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
-import { graphApi, ontologyApi } from '../../api';
+import { graphApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, OntologyGraph, OntologyGraphNode } from '../../types';
 
 const { Title, Text } = Typography;
@@ -133,8 +133,8 @@ const OntologyGraphPage: React.FC = () => {
           )[0];
           setSelected(richest.id);
         }
-      } catch {
-        message.error('加载本体列表失败');
+      } catch (error) {
+        message.error(requestErrorMessage(error, '加载本体列表失败'));
       }
     })();
   }, []);
@@ -143,8 +143,8 @@ const OntologyGraphPage: React.FC = () => {
     setLoading(true);
     try {
       setGraph(await graphApi.getOntologyGraph(ontologyId));
-    } catch {
-      message.error('加载知识图谱失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载知识图谱失败'));
       setGraph(null);
     } finally {
       setLoading(false);

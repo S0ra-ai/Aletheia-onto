@@ -136,8 +136,8 @@ const OntologyChat: React.FC = () => {
       message.success(
         rating === 'incorrect' ? '已记录：该结论被标记为错误，将进入复核队列' : '感谢反馈',
       );
-    } catch {
-      message.error('提交反馈失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '提交反馈失败'));
     }
   };
 

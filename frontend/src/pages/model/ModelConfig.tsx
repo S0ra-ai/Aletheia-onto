@@ -6,7 +6,7 @@ import {
 import {
   ApiOutlined, CheckCircleOutlined, CloseCircleOutlined, SaveOutlined, UndoOutlined,
 } from '@ant-design/icons';
-import { modelApi } from '../../api';
+import { modelApi, requestErrorMessage } from '../../api';
 import type { ModelConfig, ModelConfigUpdate } from '../../types';
 
 const { Title, Paragraph, Text } = Typography;
@@ -136,8 +136,8 @@ const ModelConfigPage: React.FC = () => {
           ? JSON.stringify(data.extraHeaders, null, 2)
           : '',
       });
-    } catch {
-      message.error('获取配置失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '获取配置失败'));
     } finally {
       setLoading(false);
     }
@@ -178,8 +178,8 @@ const ModelConfigPage: React.FC = () => {
           return;
         }
         payload.extraHeaders = parsed as Record<string, string>;
-      } catch {
-        message.error('附加请求头不是合法 JSON');
+      } catch (error) {
+        message.error(requestErrorMessage(error, '附加请求头不是合法 JSON'));
         return;
       }
     } else {
@@ -207,8 +207,8 @@ const ModelConfigPage: React.FC = () => {
       message.success('配置已重置');
       setTestResult(null);
       await fetchConfig();
-    } catch {
-      message.error('重置失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '重置失败'));
     } finally {
       setLoading(false);
     }
@@ -222,8 +222,8 @@ const ModelConfigPage: React.FC = () => {
       setTestResult(result);
       if (result.success) message.success('连接测试成功');
       else message.error(result.message);
-    } catch {
-      message.error('测试失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '测试失败'));
     } finally {
       setTestLoading(false);
     }

@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
+  Alert, Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
   Modal, Form, Input, Upload, Descriptions, Popconfirm, Tooltip, Row, Col,
 } from 'antd';
 import {
   EditOutlined, DeleteOutlined, PlusOutlined, UploadOutlined, InboxOutlined,
   ReloadOutlined, EyeOutlined,
 } from '@ant-design/icons';
-import { ontologyApi } from '../../api';
+import { ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, BusinessRule, RuleWordImportResult } from '../../types';
 
 const { Title, Text } = Typography;
@@ -34,6 +34,8 @@ const statusColor: Record<string, string> = {
 const RuleList: React.FC = () => {
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [rules, setRules] = useState<BusinessRule[]>([]);
+  // Kept apart from an empty list: both leave `rules` empty.
+  const [loadError, setLoadError] = useState('');
   const [selectedOntology, setSelectedOntology] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -53,19 +55,23 @@ const RuleList: React.FC = () => {
     try {
       const items = await ontologyApi.list();
       setOntologies(items as Ontology[]);
-    } catch {
-      message.error('获取本体列表失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '获取本体列表失败'));
     }
   }, []);
 
   const fetchRules = useCallback(async (ontologyId: number) => {
     setLoading(true);
+    setLoadError('');
     try {
       const items = await ontologyApi.getRules(ontologyId);
       setRules(items as BusinessRule[]);
-    } catch {
-      console.error('Failed to fetch rules');
+    } catch (error) {
+      // A failed read used to render as an empty rule list, which reads as "this ontology
+      // has no rules" -- on the page where a reviewer checks that the controls they believe
+      // are running actually exist.
       setRules([]);
+      setLoadError(requestErrorMessage(error, '获取业务规则失败'));
     } finally {
       setLoading(false);
     }
@@ -105,8 +111,8 @@ const RuleList: React.FC = () => {
       await ontologyApi.deleteRule(selectedOntology, rule.id);
       message.success(`规则 ${rule.code} 已删除`);
       fetchRules(selectedOntology);
-    } catch {
-      message.error('删除规则失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '删除规则失败'));
     }
   };
 
@@ -117,8 +123,8 @@ const RuleList: React.FC = () => {
       await ontologyApi.toggleRuleStatus(selectedOntology, rule.id, newStatus);
       message.success(`规则已${newStatus === 'published' ? '启用' : '停用'}`);
       fetchRules(selectedOntology);
-    } catch {
-      message.error('切换规则状态失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '切换规则状态失败'));
     }
   };
 
@@ -159,8 +165,8 @@ const RuleList: React.FC = () => {
         message.success(`已从 Word 导入 ${result.importedCount} 条自定义规则`);
       }
       fetchRules(selectedOntology);
-    } catch {
-      message.error('规则 Word 导入失败，请确认文件格式和规则字段');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '规则 Word 导入失败，请确认文件格式和规则字段'));
     } finally {
       setRuleImporting(false);
     }
@@ -306,7 +312,15 @@ const RuleList: React.FC = () => {
       </Card>
 
       <Card>
-        {rules.length === 0 && !loading ? (
+        {loadError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="获取业务规则失败"
+            description={loadError}
+            action={<Button onClick={() => selectedOntology && fetchRules(selectedOntology)}>重试</Button>}
+          />
+        ) : rules.length === 0 && !loading ? (
           <Empty description={selectedOntology ? '该本体暂无规则，点击上方按钮创建或导入' : '请选择本体查看业务规则'} />
         ) : (
           <Table

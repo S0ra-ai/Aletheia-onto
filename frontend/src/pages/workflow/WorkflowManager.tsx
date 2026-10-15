@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, message, Popconfirm, Descriptions, Timeline } from 'antd';
 import { PlusOutlined, DeleteOutlined, RightOutlined, HistoryOutlined } from '@ant-design/icons';
-import { workflowApi, ontologyApi } from '../../api';
+import { ontologyApi, requestErrorMessage, workflowApi } from '../../api';
 import type { WorkflowDefinition, WorkflowHistoryItem } from '../../types';
 
 const WorkflowManager: React.FC = () => {
@@ -24,8 +24,8 @@ const WorkflowManager: React.FC = () => {
     try {
       const items = await workflowApi.list();
       setWorkflows(items);
-    } catch {
-      message.error('加载工作流失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载工作流失败'));
     }
     setLoading(false);
   };
@@ -34,7 +34,11 @@ const WorkflowManager: React.FC = () => {
     try {
       const items = await ontologyApi.list();
       setOntologies(items.map((o: any) => ({ id: o.id, name: o.name, domain: o.domain || '' })));
-    } catch { /* ignore */ }
+    } catch (error) {
+      // Ignoring this left the object selector empty with nothing said, so "why can I not
+      // pick an ontology" had no answer on screen.
+      message.error(requestErrorMessage(error, '加载本体列表失败'));
+    }
   };
 
   useEffect(() => { loadWorkflows(); loadOntologies(); }, []);
@@ -61,8 +65,8 @@ const WorkflowManager: React.FC = () => {
       await workflowApi.delete(id);
       message.success('已删除');
       loadWorkflows();
-    } catch {
-      message.error('删除失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '删除失败'));
     }
   };
 
@@ -71,8 +75,8 @@ const WorkflowManager: React.FC = () => {
       const detail = await workflowApi.get(wf.id);
       setSelectedWorkflow(detail);
       setDetailOpen(true);
-    } catch {
-      message.error('加载详情失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载详情失败'));
     }
   };
 
@@ -88,8 +92,11 @@ const WorkflowManager: React.FC = () => {
     try {
       const actions = await workflowApi.getAvailableActions(transitionWorkflowId, transitionInstanceId);
       setTransitionActions(actions);
-    } catch {
+    } catch (error) {
+      // An empty action list means "this workflow allows nothing from here", which is a
+      // statement about the configuration. A failed read is not that statement.
       setTransitionActions([]);
+      message.error(requestErrorMessage(error, '读取可执行动作失败'));
     }
   };
 
@@ -113,9 +120,13 @@ const WorkflowManager: React.FC = () => {
       const items = await workflowApi.getInstanceHistory(wf.id, transitionInstanceId || 'demo_1');
       setHistoryItems(items);
       setHistoryOpen(true);
-    } catch {
+    } catch (error) {
+      // This also opened the history dialog, so a failed read presented an empty dialog as
+      // "this instance has no history" -- a statement about the instance's audit trail,
+      // which is not what happened.
       setHistoryItems([]);
-      setHistoryOpen(true);
+      setHistoryOpen(false);
+      message.error(requestErrorMessage(error, '读取流转历史失败'));
     }
   };
 

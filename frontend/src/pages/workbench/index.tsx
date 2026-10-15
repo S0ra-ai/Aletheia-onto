@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Statistic, Table, Tag, Typography, message } from 'antd';
 import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RocketOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { workbenchApi } from '../../api';
+import { requestErrorMessage, workbenchApi } from '../../api';
 import type { Workbench, WorkbenchActionItem } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -38,8 +38,8 @@ const WorkbenchPage: React.FC = () => {
     try {
       setData(await workbenchApi.get());
       if (notify) message.success('工作台已刷新');
-    } catch {
-      message.error('加载工作台失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '加载工作台失败'));
     } finally {
       setLoading(false);
     }

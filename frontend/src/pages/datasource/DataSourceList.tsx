@@ -119,8 +119,8 @@ const DataSourceList: React.FC = () => {
       } else {
         message.warning(result.message);
       }
-    } catch {
-      message.error('连接测试失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '连接测试失败'));
     }
   };
 
@@ -142,8 +142,8 @@ const DataSourceList: React.FC = () => {
       void result;
       await fetchDataSources();
       navigate(`/datasource/${record.id}`);
-    } catch {
-      message.error('初始化失败，请先确认数据库连接可用');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '初始化失败，请先确认数据库连接可用'));
     } finally {
       setInitializingId(null);
     }

@@ -138,8 +138,8 @@ const DataSourceDetail: React.FC = () => {
       } else {
         message.success('未发现结构漂移');
       }
-    } catch {
-      message.error('结构漂移分析失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '结构漂移分析失败'));
     } finally {
       setDriftLoading(false);
     }
@@ -153,8 +153,8 @@ const DataSourceDetail: React.FC = () => {
       setBlueprintDraft(result.blueprint);
       setBlueprintDraftVisible(true);
       message.success(result.usedRemoteModel ? '已由 OpenRouter 生成蓝图草案' : '已生成本地蓝图草案');
-    } catch {
-      message.error('生成蓝图草案失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '生成蓝图草案失败'));
     } finally {
       setBlueprintDraftLoading(false);
     }
@@ -165,8 +165,8 @@ const DataSourceDetail: React.FC = () => {
     setTableBrowserLoading(true);
     try {
       setTableBrowser(await dataSourceApi.browseTable(parseInt(id), tableName, 50, offset));
-    } catch {
-      message.error('读取数据表失败，请确认连接和账号权限');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '读取数据表失败，请确认连接和账号权限'));
     } finally {
       setTableBrowserLoading(false);
     }
@@ -209,8 +209,8 @@ const DataSourceDetail: React.FC = () => {
       }
       await fetchData();
       await loadReasoningChain();
-    } catch {
-      message.error('规则 Word 导入失败，请确认文件格式和规则字段');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '规则 Word 导入失败，请确认文件格式和规则字段'));
     } finally {
       setRuleImporting(false);
     }
@@ -227,8 +227,8 @@ const DataSourceDetail: React.FC = () => {
         message.warning(result.message);
       }
       fetchData();
-    } catch {
-      message.error('业务 API 网关测试失败');
+    } catch (error) {
+      message.error(requestErrorMessage(error, '业务 API 网关测试失败'));
     } finally {
       setGatewayTesting(false);
     }
