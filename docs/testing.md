@@ -110,10 +110,15 @@ cd frontend && npm run build
 ## What static checks cannot see: an empty table column
 
 None of the above catches a column whose `dataIndex` does not match the field name the
-endpoint returns. antd draws nothing for a missing key, the linter sees a valid string, mypy
-sees a valid `string`, and a component test renders the table without asserting that any cell
-has text. Three columns of the governance audit table and four of the model-invocation table
-were blank in every row for exactly this reason, and only a browser showed it.
+endpoint returns. antd draws nothing for a missing key, the linter sees a valid string, and
+mypy sees a valid `string`. **The frontend has no test runner at all** — no vitest, no
+Testing Library, no test script — so there is no component test to render the table and assert
+that a cell has text. This paragraph used to claim there was one.
+
+Three columns of the governance audit table and four of the model-invocation table were blank
+in every row for exactly this reason, and only a browser showed it. What covers the class now
+is a browser and a check on the API: the render sweep below reads the drawn rows, and
+`test_frontend_type_agreement.py` holds each screen's fields to what its endpoint sends.
 
 `scripts/ui_smoke.py` drives the running application headlessly and reports every column that
 is empty in *every* data row. It needs a browser and a live instance, which is precisely why

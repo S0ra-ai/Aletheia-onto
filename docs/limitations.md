@@ -89,6 +89,15 @@ By design, not bugs. These are the next phase's work.
   tab in the URL), tables that render only after a click, and cells holding an icon rather
   than text, which were reported as empty forever. A diagnostic that reports a standing
   false positive is teaching its reader to skim past the real findings.
+- **The frontend has no test runner.** No vitest, no Testing Library, no `test` script in
+  `package.json` -- so nothing in `frontend/src` is unit-tested: not `label()`'s fallback,
+  not the payload normalisers in `api/index.ts`, not the pure helpers in `i18n/`. The
+  failure modes that mattered most are covered from outside instead -- the response contract
+  holds each screen's fields to what its endpoint sends, and the render sweep reads the drawn
+  rows in a real browser -- which is how eight blank-column defects were found after typing
+  and linting had passed. What that leaves uncovered is anything that does not change the
+  shape of a rendered table: a wrong fallback, a mis-sorted list, punctuation. Adding a
+  runner is a product decision about dependencies, not an oversight to fix in passing.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.
