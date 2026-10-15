@@ -265,6 +265,13 @@ def test_the_documented_scale_is_current() -> None:
     Counted with tolerance rather than exactly for the line total, since prose cannot
     reasonably track single-line edits. Module and endpoint counts are exact: those change
     only when something is added or removed.
+
+    Both languages are read. Reading only the Chinese copy is what this file's own module
+    docstring warns about -- the English README fell two releases behind while CI stayed
+    green -- and the same bug was sitting here: `docs/testing.md` said "87 backend modules,
+    roughly 34,100 lines" against an actual 85 and ~35,500, while the Chinese copy beside it
+    was correct and asserted. Two documents disagreeing about the same fact is worse than
+    one of them being stale, because the reader has to decide which one lied.
     """
     import re as regex
 
@@ -277,15 +284,29 @@ def test_the_documented_scale_is_current() -> None:
     sys.path.insert(0, str(ROOT / "backend"))
     from ontology_platform.api import declared_routes
 
-    testing = (ROOT / "docs" / "testing.zh-CN.md").read_text(encoding="utf-8")
-    claim = regex.search(r"(\d+) 个后端模块约 (\d+) 行，(\d+) 个 API 端点，(\d+) 张平台表", testing)
+    zh = (ROOT / "docs" / "testing.zh-CN.md").read_text(encoding="utf-8")
+    en = (ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
+
+    claim = regex.search(r"(\d+) 个后端模块约 (\d+) 行，(\d+) 个 API 端点，(\d+) 张平台表", zh)
     assert claim, "docs/testing.zh-CN.md 规模一节格式已变，请同步本测试"
     stated_modules, stated_lines, stated_endpoints, stated_tables = (int(value) for value in claim.groups())
+
+    english = regex.search(r"(\d+) backend modules, roughly ([\d,]+) lines, (\d+) API endpoints", en)
+    assert english, "docs/testing.md 规模一节格式已变，请同步本测试"
+    en_modules, en_lines, en_endpoints = (
+        int(english.group(1)),
+        int(english.group(2).replace(",", "")),
+        int(english.group(3)),
+    )
 
     assert stated_modules == len(modules), f"声明 {stated_modules} 个模块，实际 {len(modules)}"
     assert stated_endpoints == len(declared_routes()), f"声明 {stated_endpoints} 个端点，实际 {len(declared_routes())}"
     # Within 5%: close enough to be honest, loose enough not to fail on a comment edit.
     assert abs(stated_lines - lines) / lines < 0.05, f"声明约 {stated_lines} 行，实际 {lines}"
+
+    assert en_modules == len(modules), f"docs/testing.md 声明 {en_modules} 个模块，实际 {len(modules)}"
+    assert en_endpoints == len(declared_routes()), f"docs/testing.md 声明 {en_endpoints} 个端点"
+    assert abs(en_lines - lines) / lines < 0.05, f"docs/testing.md 声明约 {en_lines} 行，实际 {lines}"
 
     tables = _platform_table_count()
     assert stated_tables == tables, f"声明 {stated_tables} 张平台表，实际 {tables}"

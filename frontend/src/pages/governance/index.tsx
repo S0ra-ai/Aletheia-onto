@@ -3,12 +3,14 @@ import { Card, Table, Typography, Tabs, Tag, Button, message } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { governanceApi, requestErrorMessage } from '../../api';
 import type { AuditLogItem, ModelInvocationItem, DecisionRecordItem } from '../../types';
+import { useTabParam } from '../../hooks/useTabParam';
 import AuditReportPanel from './AuditReportPanel';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
 
 const Governance: React.FC = () => {
+  const [tab, setTab] = useTabParam('audit');
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [modelInvocations, setModelInvocations] = useState<ModelInvocationItem[]>([]);
   const [decisions, setDecisions] = useState<DecisionRecordItem[]>([]);
@@ -183,7 +185,7 @@ const Governance: React.FC = () => {
       </div>
 
       <Card>
-        <Tabs defaultActiveKey="audit">
+        <Tabs activeKey={tab} onChange={setTab}>
           <TabPane tab={`决策记录 (${decisions.length})`} key="decisions">
             <Table
               columns={decisionColumns}

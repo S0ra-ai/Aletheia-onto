@@ -4,11 +4,13 @@ import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divide
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
 import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
+import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
 const SemanticService: React.FC = () => {
+  const [tab, setTab] = useTabParam('natural');
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);
   const [assessResult, setAssessResult] = useState<InstanceAssessResult | null>(null);
   const [consistencyResult, setConsistencyResult] = useState<DecisionConsistencyResult | null>(null);
@@ -174,7 +176,7 @@ const SemanticService: React.FC = () => {
         提供实例解释、风险研判和操作预检能力
       </Paragraph>
 
-      <Tabs defaultActiveKey="natural">
+      <Tabs activeKey={tab} onChange={setTab}>
         <TabPane tab="自然语言交互" key="natural">
           <Card>
             <Form

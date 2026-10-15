@@ -12,6 +12,7 @@ import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, messag
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
+import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -30,6 +31,7 @@ type DataSourceRule = {
 };
 
 const DataSourceDetail: React.FC = () => {
+  const [tab, setTab] = useTabParam('tables');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [dataSource, setDataSource] = useState<DataSource | null>(null);
@@ -759,7 +761,7 @@ const DataSourceDetail: React.FC = () => {
       )}
 
       <Card>
-        <Tabs defaultActiveKey="tables">
+        <Tabs activeKey={tab} onChange={setTab}>
           <TabPane tab={`已扫描表 (${tables.length})`} key="tables">
             <div style={{ marginBottom: 16 }}>
               <Space>

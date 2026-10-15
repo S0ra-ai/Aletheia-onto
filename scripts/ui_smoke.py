@@ -45,6 +45,12 @@ import sys
 from pathlib import Path
 
 # Routes worth checking: every page that renders a table.
+#
+# Tab-qualified where a page keeps its tables behind one. `--dump-dom` loads a route and
+# reads the DOM; it cannot click, so before pages put the active tab in the URL
+# (`hooks/useTabParam.ts`) everything below the first tab was outside this check's reach.
+# The audit report and the release gate live there, and the bugs that prompted this script
+# -- columns rendering empty for every row -- are exactly the kind that hide behind a tab.
 ROUTES = (
     "/admin/workbench",
     "/admin/ontology",
@@ -52,9 +58,12 @@ ROUTES = (
     "/admin/rules",
     "/admin/semantic",
     "/admin/governance",
+    "/admin/governance?tab=decisions",
+    "/admin/governance?tab=report",
     "/admin/knowledge",
     "/admin/feedback",
     "/admin/permission",
+    "/admin/permission?tab=sso",
     "/admin/workflow",
     "/admin/backup",
     "/admin/graph",
@@ -169,13 +178,22 @@ def main() -> int:
         print(f"seeding from {entry}")
         for route in routes:
             html = dump_dom(browser, f"{entry}?to={route}")
-            for index, (headers, rows) in enumerate(tables(html)):
+            page_tables = tables(html)
+            examined = sum(len(rows) for _, rows in page_tables)
+            # A per-route line, because a silent run and a run that found nothing look
+            # identical otherwise -- and "no findings" is only meaningful if the pages were
+            # actually reached. A route behind a tab that ignored the query would otherwise
+            # report clean forever.
+            empty_here = []
+            for index, (headers, rows) in enumerate(page_tables):
                 if not rows:
                     continue
                 empty = empty_columns(headers, rows)
                 if empty:
                     findings += 1
-                    print(f"{route}  table #{index}  {len(rows)} rows  EMPTY: {', '.join(empty)}")
+                    empty_here.append(f"table #{index}: {', '.join(empty)}")
+            detail = f"  EMPTY: {'; '.join(empty_here)}" if empty_here else ""
+            print(f"{route:44s} {len(page_tables):2d} table(s), {examined:4d} row(s){detail}")
     finally:
         (assets / "seed.html").unlink(missing_ok=True)
 

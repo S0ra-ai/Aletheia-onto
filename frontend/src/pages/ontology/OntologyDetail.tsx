@@ -6,11 +6,13 @@ import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions,
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
+import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
 
 const OntologyDetailPage: React.FC = () => {
+  const [tab, setTab] = useTabParam('objects');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [ontology, setOntology] = useState<OntologyDetail | null>(null);
@@ -203,7 +205,7 @@ const OntologyDetailPage: React.FC = () => {
       )}
 
       <Card>
-        <Tabs defaultActiveKey="objects">
+        <Tabs activeKey={tab} onChange={setTab}>
           <TabPane tab={`业务对象 (${ontology.objects.length})`} key="objects">
             <Table
               columns={objectColumns}

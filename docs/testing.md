@@ -123,9 +123,15 @@ cd frontend && npm run build && cd ..
 aletheia serve                                  # in another shell
 python scripts/ui_smoke.py --base-url http://127.0.0.1:8000 --token "$TOKEN" --user "$USER"
 ```
+
+It prints a line per route with how many tables and rows it examined, because a check that
+silently visited nothing is indistinguishable from a check that found nothing. Routes that
+keep their tables behind a tab are listed with the tab in the query
+(`/admin/governance?tab=report`): the tool loads a route and reads the DOM, so anything below
+the first tab is outside its reach unless the page puts the active tab in the URL.
 ## Scale
 
-87 backend modules, roughly 34,100 lines, 156 API endpoints, 45 platform tables, React +
+85 backend modules, roughly 35,500 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `quickstart` job that replays the README quick start in a clean environment and

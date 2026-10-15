@@ -3,6 +3,7 @@ import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { Alert, Badge, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { permissionApi, requestErrorMessage, ssoApi, toolApi } from '../../api';
+import { useTabParam } from '../../hooks/useTabParam';
 import type {
   PermissionRole,
   PermissionPolicy,
@@ -13,6 +14,7 @@ import type {
 } from '../../types';
 
 const PermissionManager: React.FC = () => {
+  const [tab, setTab] = useTabParam('roles');
   const [roles, setRoles] = useState<PermissionRole[]>([]);
   const [policies, setPolicies] = useState<PermissionPolicy[]>([]);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
@@ -188,7 +190,7 @@ const PermissionManager: React.FC = () => {
 
   return (
     <div>
-      <Tabs items={[
+      <Tabs activeKey={tab} onChange={setTab} items={[
         {
           key: 'roles',
           label: '角色管理',
