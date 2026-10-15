@@ -80,20 +80,72 @@ def seeded_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Test
         login = client.post("/auth/login", json={"username": "admin", "password": "route-sweep-password"})
         assert login.status_code == 200, login.text
         client.headers.update({"Authorization": f"Bearer {login.json()['token']}"})
+        client.platform_db = platform_db  # type: ignore[attr-defined]
         yield client
     database_module._platform_adapter = None
 
 
-def _value_for(schema: dict[str, Any], components: dict[str, Any], depth: int = 0) -> Any:
+# Fields whose meaning a schema cannot describe. A generator sends a placeholder string for
+# every string, and the handler then refuses it as a missing object code or an unparseable
+# expression -- so the request never reaches the code under test. These are the values a
+# caller would send.
+SEMANTIC_VALUES: dict[str, Any] = {
+    "expression": "amount > 0",
+    "objectCode": "contract",
+    "object_code": "contract",
+    "scopeObjectCode": "contract",
+    "parentObjectCode": "",
+    "anchorObjectCode": "contract",
+    "ruleType": "validation",
+    "rule_type": "validation",
+    "severity": "warning",
+    "status": "draft",
+    "code": "route_sweep_code",
+    "function": "sum",
+    "target_table": "invoice",
+    "target_column": "contract_id",
+    "group_column": "id",
+    "value_column": "amount",
+    "decision": "approved",
+}
+
+# Path parameters that must name a row that exists, read from the seeded database. A literal
+# `1` happens to work on the demo and stops working the moment anything else is seeded first
+# -- the same trap the render check's route list avoids by reading the ids it needs.
+_ID_QUERIES = {
+    "ontology_id": "select id from ontology order by id limit 1",
+    "data_source_id": "select id from data_source order by id limit 1",
+    "rule_id": "select id from business_rule order by id limit 1",
+    "workflow_id": "select id from workflow_definition order by id limit 1",
+}
+
+
+def _seeded_ids(platform_db: Path) -> dict[str, Any]:
+    from ontology_platform.database import connect
+
+    values: dict[str, Any] = {"object_code": "contract", "instance_id": "1", "tenant": "acme"}
+    with connect(platform_db) as conn:
+        for name, query in _ID_QUERIES.items():
+            row = conn.execute(query).fetchone()
+            values[name] = int(row[0]) if row else 1
+    # `{id}` under `/data-sources/` is a data source; elsewhere the first of each table is a
+    # better guess than a literal.
+    values.setdefault("id", values["data_source_id"])
+    return values
+
+
+def _value_for(schema: dict[str, Any], components: dict[str, Any], depth: int = 0, name: str = "") -> Any:
     """A value of the right shape for one JSON-schema node."""
+    if name in SEMANTIC_VALUES:
+        return SEMANTIC_VALUES[name]
     if "$ref" in schema:
         schema = components.get(schema["$ref"].rsplit("/", 1)[-1], {})
     for option in schema.get("anyOf", []):
         if option.get("type") not in (None, "null"):
-            return _value_for(option, components, depth + 1)
+            return _value_for(option, components, depth + 1, name)
     kind = schema.get("type")
     if kind == "string":
-        return "1"
+        return schema.get("default") or "route-sweep"
     if kind in ("integer", "number"):
         return 1
     if kind == "boolean":
@@ -105,7 +157,10 @@ def _value_for(schema: dict[str, Any], components: dict[str, Any], depth: int = 
     properties = schema.get("properties", {})
     # Required only: a generator that fills every optional field builds requests nobody
     # sends, and the point is to reach the handler as a caller would.
-    return {name: _value_for(properties.get(name, {}), components, depth + 1) for name in schema.get("required", [])}
+    return {
+        field: _value_for(properties.get(field, {}), components, depth + 1, field)
+        for field in schema.get("required", [])
+    }
 
 
 def _docx_bytes() -> bytes:
@@ -147,7 +202,7 @@ def _multipart_for(schema: dict[str, Any], components: dict[str, Any]) -> tuple[
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
         else:
-            fields[name] = _value_for(property_schema, components)
+            fields[name] = _value_for(property_schema, components, 0, name)
     return fields, files
 
 
@@ -156,6 +211,7 @@ def test_no_route_crashes_on_a_request_built_from_its_own_schema(seeded_app: Tes
 
     spec = api_module.app.openapi()
     components = spec.get("components", {}).get("schemas", {})
+    seeded_ids = _seeded_ids(seeded_app.platform_db)  # type: ignore[attr-defined]
 
     crashes: list[str] = []
     requested = 0
@@ -168,9 +224,9 @@ def test_no_route_crashes_on_a_request_built_from_its_own_schema(seeded_app: Tes
             url = path
             for parameter in operation.get("parameters", []):
                 if parameter.get("in") == "path":
-                    url = url.replace("{" + parameter["name"] + "}", "1")
+                    url = url.replace("{" + parameter["name"] + "}", str(seeded_ids.get(parameter["name"], 1)))
             params = {
-                parameter["name"]: _value_for(parameter.get("schema", {}), components)
+                parameter["name"]: _value_for(parameter.get("schema", {}), components, 0, parameter["name"])
                 for parameter in operation.get("parameters", [])
                 if parameter.get("in") == "query" and parameter.get("required")
             }
