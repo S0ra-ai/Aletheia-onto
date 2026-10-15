@@ -30,11 +30,16 @@ frontend does not declare is a feature no user can reach.
 
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from pathlib import Path
+from typing import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
+
+ADMIN_PASSWORD = "frontend-type-agreement-password"
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -166,3 +171,186 @@ def test_the_response_side_is_recorded_as_debt_rather_than_claimed_as_done() -> 
         )
     else:
         assert "手写" in limitations, "响应仍无类型，限制文档应如实记录前端类型为手写"
+
+
+# -- The response side, guarded where a screen reads it --
+
+# Each entry: (path, the key holding the rows, the fields the screen reads).
+#
+# The response side cannot be generated (see above), so it was documented as debt and left
+# unguarded -- and it broke four times. `/governance/audit-log` and
+# `/governance/model-invocations` returned `dict(row)` while their tables asked for
+# camelCase: seven columns blank for every row. `/ontologies/{id}/mappings` blanked five of
+# seven on the review queue that gates publication. `/permissions/policies` blanked all
+# seven, twenty rows, on the screen that answers "who may do what". None of it failed
+# anything, because an antd column whose `dataIndex` does not exist simply draws nothing.
+#
+# This is not generated agreement and does not pretend to be. It is the contract each
+# screen depends on, written down where it can fail: add a field the page reads and it is
+# checked; stop sending one and the test names the screen that goes blank.
+CHARTED_RESPONSES = (
+    ("/governance/audit-log", "items", ("actor", "action", "target_type", "target_id", "detail", "created_at")),
+    (
+        "/governance/model-invocations",
+        "items",
+        ("provider", "model", "purpose", "prompt_tokens", "completion_tokens", "total_tokens", "status", "created_at"),
+    ),
+    (
+        "/ontologies/1/mappings",
+        "items",
+        (
+            "mappingType",
+            "sourceTable",
+            "sourceColumn",
+            "targetObjectCode",
+            "targetAttributeCode",
+            "confidence",
+            "status",
+        ),
+    ),
+    # Wire spellings, not the spellings the screens use: the frontend normalises these in
+    # `api/index.ts`, and what has to hold is that the keys those normalisers *consume* keep
+    # arriving. If `can_read` stops being sent, the normaliser produces 0 and the column is
+    # blank again -- silently, exactly as before.
+    (
+        "/permissions/policies",
+        "policies",
+        ("role_code", "role_name", "object_code", "can_read", "can_write", "can_execute", "can_delete", "description"),
+    ),
+    ("/permissions/roles", "roles", ("code", "name", "is_system", "created_at")),
+    ("/tools", "tools", ("code", "name", "tool_type", "risk_level", "requires_review", "status", "created_at")),
+    ("/data-sources", "dataSources", ("id", "name", "sourceType", "connectionUri")),
+    ("/data-sources/1/tables", "tables", ("table_name", "row_count", "primary_key")),
+    ("/data-sources/1/apis", "apis", ("operation_code", "name", "method", "path", "semantic_action")),
+    ("/ontologies", "items", ("id", "name", "version", "status", "objectCount")),
+    ("/ontologies/1", None, ("objects", "attributes", "relations", "mappings", "rules")),
+    (
+        "/governance/decisions",
+        "items",
+        ("decisionId", "decisionType", "status", "objectCode", "instanceId", "createdAt"),
+    ),
+    ("/workbench", None, ("dataSources", "ontologies", "governance", "rules", "decisions", "actionItems", "summary")),
+)
+
+
+@pytest.fixture
+def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    """A live app with a real ontology behind it, so every charted endpoint has rows.
+
+    Rows matter: a field is present in an empty list only in theory, and the four defects
+    this checks for were all invisible until a table had something to draw.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    sample_db = tmp_path / "legacy_contracts.sqlite3"
+    monkeypatch.setenv("ONTOLOGY_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ONTOLOGY_ADMIN_PASSWORD", ADMIN_PASSWORD)
+    monkeypatch.delenv("ONTOLOGY_AUTH_DISABLED", raising=False)
+
+    import ontology_platform.api as api_module
+    import ontology_platform.database as database_module
+    from ontology_platform.database import connect, initialize_platform_db
+    from ontology_platform.onboarding import run_onboarding_pipeline
+    from ontology_platform.sample_data import create_contract_sample_db
+
+    database_module._platform_adapter = None
+    monkeypatch.setattr(database_module, "DEFAULT_PLATFORM_DB", platform_db)
+
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(sample_db)
+    run_onboarding_pipeline(
+        platform_db,
+        "合同管理样例系统",
+        "sqlite",
+        str(sample_db),
+        domain="合同管理",
+        system_category="database+api",
+        blueprint_id="contract-management",
+    )
+    from ontology_platform.metadata import register_source_api
+    from ontology_platform.ontology import generate_ontology_draft
+    from ontology_platform.semantic_kernel import assess_instance
+
+    with connect(platform_db) as conn:
+        source_id = int(conn.execute("select id from data_source").fetchone()["id"])
+        ontology_id = int(conn.execute("select id from ontology").fetchone()["id"])
+        # Model invocations are part of the base schema but nothing writes one without a
+        # configured model, and an empty list satisfies any assertion about its columns.
+        conn.execute(
+            "insert into model_invocation (provider, model, purpose, prompt_tokens, completion_tokens,"
+            " total_tokens, status) values ('openrouter', 'm', 'qa', 1, 2, 3, 'success')"
+        )
+    register_source_api(
+        platform_db,
+        source_id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
+    # A verdict, so the decisions table has a row: a contract's shape is only checked by the
+    # test if there is something in it to look at.
+    draft = generate_ontology_draft(platform_db, source_id)
+    assess_instance(platform_db, ontology_id, "contract", "1")
+    del draft
+
+    api_module = importlib.reload(api_module)
+    monkeypatch.setattr(api_module, "DEFAULT_PLATFORM_DB", platform_db)
+
+    with TestClient(api_module.app) as client:
+        token = _token(client, "admin", ADMIN_PASSWORD)
+        headers = _auth(token)
+        # Through the API rather than by inserting rows: these tables live in an optional
+        # feature bundle and their foreign keys point at roles the platform creates.
+        assert client.post(
+            "/permissions/roles", headers=headers, json={"code": "reviewer", "name": "审核员"}
+        ).status_code in (200, 201)
+        assert client.post(
+            "/permissions/policies",
+            headers=headers,
+            json={"roleId": 1, "objectCode": "contract", "canRead": True, "description": ""},
+        ).status_code in (200, 201)
+        assert client.post(
+            "/tools",
+            headers=headers,
+            json={"code": "submit", "name": "提交", "toolType": "mutation", "riskLevel": "high"},
+        ).status_code in (200, 201)
+        yield client
+    database_module._platform_adapter = None
+
+
+@pytest.mark.parametrize(("path", "key", "fields"), CHARTED_RESPONSES)
+def test_the_fields_a_screen_reads_are_present_in_the_response(
+    seeded_client: TestClient, path: str, key: str | None, fields: tuple[str, ...]
+) -> None:
+    """Every field a screen reads must exist in the payload it reads it from.
+
+    A missing field is not an error anywhere in this stack: TypeScript checked the type
+    declaration, antd drew an empty cell, and the request succeeded. The screen simply
+    says nothing, which for a review queue reads as "nothing to review".
+    """
+    token = _token(seeded_client, "admin", ADMIN_PASSWORD)
+    response = seeded_client.get(path, headers=_auth(token))
+    assert response.status_code == 200, f"{path}: {response.status_code} {response.text[:200]}"
+    payload = response.json()
+
+    if key is None:
+        missing = [field for field in fields if field not in payload]
+        assert not missing, f"{path} 缺少 {missing}"
+        return
+
+    rows = payload.get(key)
+    assert isinstance(rows, list), f"{path} 的 {key} 不是列表: {type(rows).__name__}"
+    assert rows, f"{path} 没有数据行，这条契约没被真正验证到"
+    missing = sorted({field for row in rows for field in fields if field not in row})
+    assert not missing, f"{path} 的 {key} 缺少界面读取的字段 {missing}；对应的列会整列为空"
+
+
+def _token(client: TestClient, username: str, password: str) -> str:
+    response = client.post("/auth/login", json={"username": username, "password": password})
+    assert response.status_code == 200, response.text
+    return response.json()["token"]
+
+
+def _auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}

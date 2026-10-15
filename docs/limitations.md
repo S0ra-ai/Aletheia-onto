@@ -78,11 +78,17 @@ By design, not bugs. These are the next phase's work.
   is that file's job, and correcting one page at a time is how the same defect arrived four
   times.
 
-  Response-side consistency is still checked by hand, with `scripts/ui_smoke.py`, which
-  reports columns that are empty in every row. That script has just had three blind spots
-  closed: tabs (a page must put its active tab in the URL), tables that render only after a
-  click, and cells holding an icon rather than text — icon columns were reported as empty
-  forever, and a diagnostic that reports a standing false positive teaches its reader to skim.
+  Response-side consistency is now checked in two places, neither of them complete.
+  `tests/test_frontend_type_agreement.py` lists the fields each screen reads and asserts the
+  endpoint still sends them — a written-down contract, per screen, not generated agreement.
+  It covers the endpoints a screen charts; an endpoint no screen reads is not covered, and
+  adding a field to a screen without adding it there is not caught.
+  `scripts/ui_smoke.py` covers the rest by inspection, reporting columns that are empty in
+  every row; it needs a browser and a live instance, which is why it is a diagnostic rather
+  than a gate. It has just had three blind spots closed — tabs (a page must put its active
+  tab in the URL), tables that render only after a click, and cells holding an icon rather
+  than text, which were reported as empty forever. A diagnostic that reports a standing
+  false positive is teaching its reader to skim past the real findings.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.
