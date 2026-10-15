@@ -62,6 +62,13 @@ export const DECISION_STATUS: Record<string, string> = {
  * produces, and lacked `mixed_with_blockers`, so a divided sample printed the raw English
  * enum inside a Chinese console.
  */
+/** What a preflight tells the caller to do, from `automation.NEXT_ACTIONS`. */
+export const NEXT_ACTION: Record<string, string> = {
+  allow_automation: '允许自动执行',
+  block_and_require_correction: '阻断并要求修正',
+  route_to_human_review: '转人工复核',
+};
+
 export const CONSISTENCY_STATUS: Record<string, string> = {
   consistent: '一致',
   mixed: '存在分化',

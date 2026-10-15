@@ -701,7 +701,10 @@ export interface OperationPreflightResult {
   decision: 'approved' | 'review' | 'blocked';
   rulesHit: RuleHit[];
   explanation: string;
+  /** The sentence the verdict carried. What a reader wants under 建议. */
   recommendation: string;
+  /** The machine's instruction: `allow_automation` and friends. Kept for integrators. */
+  nextAction: string;
 }
 
 export interface OperationExecuteResult {

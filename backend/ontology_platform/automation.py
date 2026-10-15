@@ -205,6 +205,12 @@ def _infer_object_code(semantic_action: str, operation_code: str) -> str:
     raise ValueError("无法从业务操作推断业务对象，请显式传入 objectCode")
 
 
+# What a preflight tells a caller to do next. Declared as data so the console can label
+# them and the label-coverage test can hold it to them: `allow_automation` was rendered
+# verbatim under a heading that said 建议, in place of the sentence the same payload carried.
+NEXT_ACTIONS = ("allow_automation", "block_and_require_correction", "route_to_human_review")
+
+
 def _next_action(allowed: bool, decision_status: str) -> str:
     if allowed:
         return "allow_automation"

@@ -270,7 +270,7 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
     import re as regex
 
     sys.path.insert(0, str(ROOT / "backend"))
-    from ontology_platform import events, governance, relations, semantic_kernel
+    from ontology_platform import automation, events, governance, relations, semantic_kernel
 
     source = (ROOT / "frontend" / "src" / "i18n" / "labels.ts").read_text(encoding="utf-8")
 
@@ -287,6 +287,7 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
         "RELATION_KIND": set(relations.RELATION_KINDS),
         "EVENT_CATEGORY": set(events.EVENT_CATEGORIES),
         "CONSISTENCY_STATUS": set(semantic_kernel.CONSISTENCY_STATUSES),
+        "NEXT_ACTION": set(automation.NEXT_ACTIONS),
     }
     for name, vocabulary in expected.items():
         missing = vocabulary - entries(name)

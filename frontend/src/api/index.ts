@@ -704,7 +704,11 @@ export const automationApi = {
         message: rule.explanation,
       })),
       explanation: data.decision?.recommendation ?? '',
-      recommendation: data.nextAction ?? data.decision?.recommendation ?? '',
+      // The sentence, not the code. It preferred `nextAction` -- an internal identifier --
+      // over the recommendation the same payload carries, so the 建议 alert read
+      // `allow_automation` while a Chinese sentence sat unused beside it.
+      recommendation: data.decision?.recommendation ?? '',
+      nextAction: data.nextAction ?? '',
     };
   },
 

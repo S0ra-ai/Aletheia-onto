@@ -10,6 +10,13 @@
 
 ### Fixed
 
+- **操作预检的「建议」显示的是内部编码 `allow_automation`，而同一份响应里就有一句中文结论**
+  （`api/index.ts`、`semantic/index.tsx`）。客户端把 `nextAction` **排在** `decision.recommendation`
+  前面，于是那行字取的是机器指令而不是为读者写的那句话。现在两者分开：
+  `recommendation` 是句子（界面显示它），`nextAction` 保留给集成方；
+  只有在没有句子时才回退到编码，并按 `NEXT_ACTION` 词表翻译。
+  同一页的预检「决策」也显示 `approved`——与上一处一样，改为按词表显示。
+
 - **决策一致性页在样本分化时显示原始英文枚举**（`labels.ts`、`semantic_kernel.py`、
   `semantic/index.tsx`）。`DECISION_STATUS` 把两套词表混在了一起：单条判定的
   `approved／review／blocked`，和整批样本的 `consistent／inconsistent`——

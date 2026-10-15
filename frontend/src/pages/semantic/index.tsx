@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
-import { CONSISTENCY_STATUS, DECISION_STATUS, label } from '../../i18n/labels';
+import { CONSISTENCY_STATUS, DECISION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
@@ -514,7 +514,7 @@ const SemanticService: React.FC = () => {
                       preflightResult.decision === 'approved' ? 'green' :
                       preflightResult.decision === 'review' ? 'orange' : 'red'
                     }>
-                      {preflightResult.decision}
+                      {label(DECISION_STATUS, preflightResult.decision)}
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
@@ -530,7 +530,14 @@ const SemanticService: React.FC = () => {
                 </ul>
                 <Divider />
                 <Title level={5}>建议</Title>
-                <Alert message={preflightResult.recommendation} type="info" />
+                <Alert
+                  message={
+                    preflightResult.recommendation ||
+                    label(NEXT_ACTION, preflightResult.nextAction) ||
+                    '无'
+                  }
+                  type="info"
+                />
               </Card>
             )}
 
