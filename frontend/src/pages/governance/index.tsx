@@ -49,13 +49,16 @@ const Governance: React.FC = () => {
     },
     {
       title: '目标类型',
-      dataIndex: 'targetType',
-      key: 'targetType',
+      // `/governance/audit-log` returns `dict(row)` -- snake_case keys only. Three of
+      // these columns asked for camelCase, so 目标类型/目标ID/时间 rendered empty for
+      // every row while their siblings worked. Only a browser shows this.
+      dataIndex: 'target_type',
+      key: 'target_type',
     },
     {
       title: '目标ID',
-      dataIndex: 'targetId',
-      key: 'targetId',
+      dataIndex: 'target_id',
+      key: 'target_id',
     },
     {
       title: '详情',
@@ -65,8 +68,8 @@ const Governance: React.FC = () => {
     },
     {
       title: '时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'created_at',
+      key: 'created_at',
     },
   ];
 
@@ -88,18 +91,18 @@ const Governance: React.FC = () => {
     },
     {
       title: '提示词Token',
-      dataIndex: 'promptTokens',
-      key: 'promptTokens',
+      dataIndex: 'prompt_tokens',
+      key: 'prompt_tokens',
     },
     {
       title: '完成Token',
-      dataIndex: 'completionTokens',
-      key: 'completionTokens',
+      dataIndex: 'completion_tokens',
+      key: 'completion_tokens',
     },
     {
       title: '总Token',
-      dataIndex: 'totalTokens',
-      key: 'totalTokens',
+      dataIndex: 'total_tokens',
+      key: 'total_tokens',
     },
     {
       title: '状态',
@@ -111,8 +114,8 @@ const Governance: React.FC = () => {
     },
     {
       title: '时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'created_at',
+      key: 'created_at',
     },
   ];
 

@@ -69,7 +69,12 @@
 - HTTP 层共 156 个端点，**已开始拆分 APIRouter**（`routers/`）：
   工作流／权限／工具等已外移，`api.py` 内仍留大部分，按关注点继续外移是后续工作。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
-- 前端 `types/index.ts` **手写** 1143 行镜像后端模型；后端存在 camelCase／snake_case 双发。
+- 前端 `types/index.ts` **手写**镜像后端模型，而**命名约定并不统一**：
+  `decisions._decision_row` 刻意双发两种拼写，而 `/governance/audit-log` 与
+  `/governance/model-invocations` 直接 `dict(row)`，**只有 snake_case**。
+  审计表的 3 列与模型调用表的 4 列按 camelCase 取值，于是**每一行都渲染成空白**——
+  测试与 linter 都发现不了：**antd 的列在 `dataIndex` 不存在时就是空白，不报错**。
+  本次修法是让每张表对齐它自己的接口；真正的修法是让一种命名约定胜出。
   平台自身的类型尚不能由 OpenAPI 生成：156 个端点均返回 `dict[str, object]`，
   响应 schema 是裸 object，生成器只会产出 `unknown`。
   **但用户本体的类型已可生成**（`aletheia codegen`），且那才是手写做不对的部分。

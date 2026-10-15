@@ -105,6 +105,24 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 cd frontend && npm run build
 ```
 
+## What static checks cannot see: an empty table column
+
+None of the above catches a column whose `dataIndex` does not match the field name the
+endpoint returns. antd draws nothing for a missing key, the linter sees a valid string, mypy
+sees a valid `string`, and a component test renders the table without asserting that any cell
+has text. Three columns of the governance audit table and four of the model-invocation table
+were blank in every row for exactly this reason, and only a browser showed it.
+
+`scripts/ui_smoke.py` drives the running application headlessly and reports every column that
+is empty in *every* data row. It needs a browser and a live instance, which is precisely why
+it is a diagnostic and not part of the suite: a suite that depends on either fails for
+reasons unrelated to the change. Run it after touching a table.
+
+```bash
+cd frontend && npm run build && cd ..
+aletheia serve                                  # in another shell
+python scripts/ui_smoke.py --base-url http://127.0.0.1:8000 --token "$TOKEN" --user "$USER"
+```
 ## Scale
 
 87 backend modules, roughly 34,100 lines, 156 API endpoints, 45 platform tables, React +

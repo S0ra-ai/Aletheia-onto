@@ -61,8 +61,14 @@ By design, not bugs. These are the next phase's work.
   runtime accepted it ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
 - The HTTP layer has 156 endpoints and **APIRouter extraction has started**
   (`routers/`); `api.py` still owns most of them.
-- `frontend/src/types/index.ts` hand-mirrors backend models in 1143 lines; the backend
-  emits both camelCase and snake_case.
+- **`frontend/src/types/index.ts` hand-mirrors backend models**, and the convention is not
+  uniform: `decisions._decision_row` deliberately emits both spellings, while
+  `/governance/audit-log` and `/governance/model-invocations` return `dict(row)` — snake_key
+  only. Three columns of the audit table and four of the model-invocation table asked for
+  camelCase against those payloads and rendered **empty for every row**, which no test and no
+  linter reports: an antd column whose `dataIndex` does not exist is simply blank. The fix
+  here was to match each table to its own endpoint; the real fix is for one naming
+  convention to win.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.
