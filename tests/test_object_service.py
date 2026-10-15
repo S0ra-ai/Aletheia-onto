@@ -364,3 +364,73 @@ class TestTheBrowsingEndpoint:
 
         assert payload["pagination"]["limit"] <= 1000
         assert len(payload["items"]) == 30
+
+
+class TestAnUnevaluableRowFilterIsNotAnEmptyResult:
+    """A filter that cannot run is not the same as a filter that excluded everything.
+
+    Both deny every row, so both produce an empty page. The first is a misconfiguration
+    someone can fix; the second is the policy working. Reporting them identically tells the
+    reader "there is nothing here" when the truth is "your policy is broken", on the surface
+    where the governed data is supposed to be visible.
+    """
+
+    def _apply_filter(self, scenario: dict[str, object], expression: str) -> None:
+        platform = scenario["platform"]
+        with connect(platform) as conn:  # type: ignore[arg-type]
+            role = conn.execute("select id from permission_role where code = 'customer_reader'").fetchone()
+        upsert_permission_policy(
+            platform,  # type: ignore[arg-type]
+            int(role["id"]),
+            str(scenario["object_code"]),
+            can_read=True,
+            filter_expression=expression,
+            ontology_id=int(scenario["ontology_id"]),
+        )
+
+    def test_a_filter_that_cannot_be_evaluated_is_reported(self, scenario: dict[str, object]) -> None:
+        # `tier` holds 'gold'/'silver', so comparing it to a number cannot be evaluated.
+        self._apply_filter(scenario, "tier > 0")
+
+        result = list_object_instances(
+            scenario["platform"],  # type: ignore[arg-type]
+            int(scenario["ontology_id"]),
+            str(scenario["object_code"]),
+            role_code="customer_reader",
+            limit=10,
+        )
+
+        assert result["items"] == []
+        assert result["rowFilterApplied"] is True
+        assert "无法求值" in result["rowFilterError"]
+        # And it says which expression, so the reader knows where to go.
+        assert "行级访问过滤" in result["rowFilterError"]
+
+    def test_a_filter_that_excluded_every_row_reports_nothing(self, scenario: dict[str, object]) -> None:
+        """The working case must stay quiet, or the signal is lost in the noise."""
+        self._apply_filter(scenario, "tier == 'platinum'")
+
+        result = list_object_instances(
+            scenario["platform"],  # type: ignore[arg-type]
+            int(scenario["ontology_id"]),
+            str(scenario["object_code"]),
+            role_code="customer_reader",
+            limit=10,
+        )
+
+        assert result["items"] == []
+        assert result["rowFilterApplied"] is True
+        assert result["rowFilterError"] == ""
+
+    def test_no_filter_reports_neither(self, scenario: dict[str, object]) -> None:
+        result = list_object_instances(
+            scenario["platform"],  # type: ignore[arg-type]
+            int(scenario["ontology_id"]),
+            str(scenario["object_code"]),
+            role_code="customer_reader",
+            limit=10,
+        )
+
+        assert result["items"]
+        assert result["rowFilterApplied"] is False
+        assert result["rowFilterError"] == ""

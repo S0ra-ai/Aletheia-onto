@@ -1,3 +1,4 @@
+import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -195,7 +196,7 @@ const OntologyDetailPage: React.FC = () => {
               style={{ marginTop: 16 }}
               type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
               message="下一步动作"
-              description={releaseReadiness.nextActions.join('；')}
+              description={joinSentences(releaseReadiness.nextActions)}
             />
           )}
         </Card>

@@ -61,6 +61,7 @@ def _evaluate_guard(
         return {
             "expression": expression,
             "passed": False,
+            "evaluated": False,
             "reason": "工作流未绑定业务对象，无法求值流转守卫。",
         }
     try:
@@ -71,17 +72,20 @@ def _evaluate_guard(
         return {
             "expression": expression,
             "passed": False,
+            "evaluated": False,
             "reason": f"{subject}求值失败（已按未通过处理）：{error}",
         }
     if error is not None:
         return {
             "expression": expression,
             "passed": False,
+            "evaluated": False,
             "reason": f"{subject}无法求值（已按未通过处理）：{error}",
         }
     return {
         "expression": expression,
         "passed": bool(passed),
+        "evaluated": True,
         "reason": f"{subject}满足。" if passed else f"{subject}不满足。",
     }
 
@@ -1103,6 +1107,11 @@ def check_permission(
         subject="行级访问过滤表达式",
     )
     result["filterApplied"] = True
+    # False when the filter could not be evaluated at all, which is a different situation
+    # from a filter that evaluated and excluded the row. Callers that render an empty list
+    # need to tell those apart: one means "nothing is visible", the other "we could not
+    # ask", and only the second is a misconfiguration someone can fix.
+    result["filterEvaluated"] = bool(verdict.get("evaluated", True))
     result["instanceId"] = instance_id
     result["allowed"] = bool(verdict["passed"])
     result["reason"] = verdict["reason"]

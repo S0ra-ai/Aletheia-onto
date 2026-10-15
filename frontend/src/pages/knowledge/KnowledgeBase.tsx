@@ -1,3 +1,4 @@
+import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { label, MAPPING_STATUS } from '../../i18n/labels';
 import {
@@ -104,7 +105,7 @@ const KnowledgeBasePage: React.FC = () => {
                 showIcon
                 style={{ marginTop: 8 }}
                 message="切分提示"
-                description={result.warnings.join('；')}
+                description={joinSentences(result.warnings)}
               />
             )}
           </div>

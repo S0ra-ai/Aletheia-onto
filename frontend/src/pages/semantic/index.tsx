@@ -1,3 +1,4 @@
+import { joinSentences } from '../../i18n/text';
 import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
@@ -378,7 +379,7 @@ const SemanticService: React.FC = () => {
                     <Divider />
                     <Alert
                       message="治理建议"
-                      description={consistencyResult.nextActions.join('；')}
+                      description={joinSentences(consistencyResult.nextActions)}
                       type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
                     />
                   </>

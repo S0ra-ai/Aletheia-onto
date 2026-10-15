@@ -20,7 +20,17 @@ from .workflow_permission import check_permission
 
 
 class ObjectAccessError(ValueError):
-    """The caller cannot read the requested business object or instance."""
+    """The caller cannot read the requested business object or instance.
+
+    `filter_evaluated` separates the two ways a row-level filter denies a row: it excluded
+    the row, or it could not be evaluated at all. The second is a misconfiguration, and a
+    listing that reports it as an empty page tells the reader there is nothing to see
+    instead of telling them their policy is broken.
+    """
+
+    def __init__(self, message: str, *, filter_evaluated: bool = True) -> None:
+        super().__init__(message)
+        self.filter_evaluated = filter_evaluated
 
 
 # The most candidate instance ids one page request will ask a source for. A constant rather
@@ -97,7 +107,10 @@ def _authorize(
         instance_id=instance_id,
     )
     if not decision.get("allowed"):
-        raise ObjectAccessError(decision.get("reason") or "无权读取该业务对象")
+        raise ObjectAccessError(
+            decision.get("reason") or "无权读取该业务对象",
+            filter_evaluated=bool(decision.get("filterEvaluated", True)),
+        )
     return decision
 
 
@@ -154,10 +167,16 @@ def list_object_instances(
 
         readable = 0
         page_items: list[dict[str, Any]] = []
+        filter_failure = ""
         for instance_id in candidates:
             try:
                 _authorize(platform_db, role_code, object_code, ontology_id, instance_id)
-            except ObjectAccessError:
+            except ObjectAccessError as error:
+                # A row the filter excluded and a filter that could not run both land here.
+                # The second is a misconfiguration, and reporting it as an empty page makes
+                # "we could not ask" indistinguishable from "you may see nothing".
+                if not error.filter_evaluated and not filter_failure:
+                    filter_failure = str(error)
                 continue
             readable += 1
             if readable <= resolved_offset or readable > page_end:
@@ -173,6 +192,10 @@ def list_object_instances(
             page_items.append(_item(instance_id, record, resolver.tables()))
 
     total = readable
+    # Only when it explains the result: a filter failure alongside rows that were returned
+    # is not what the caller is looking at, and adding it to every listing would turn a
+    # per-row condition into permanent noise.
+    report_failure = filter_failure if not page_items and candidates else ""
     return {
         "ontology": {
             "id": target["ontology"]["id"],
@@ -205,6 +228,8 @@ def list_object_instances(
         # Stated so a caller can tell "every row was judged" from "the policy is a
         # capability check" without re-deriving it from the policy table.
         "rowFilterApplied": row_filtered,
+        # Present only when an empty page is the honest answer to "your filter is broken".
+        "rowFilterError": report_failure,
         "pagination": {
             "limit": resolved_limit,
             "offset": resolved_offset,

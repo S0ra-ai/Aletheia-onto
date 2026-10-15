@@ -1,3 +1,4 @@
+import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   DRIFT_STATUS,
@@ -326,7 +327,7 @@ const DataSourceDetail: React.FC = () => {
       title: '缺口',
       dataIndex: 'gaps',
       key: 'gaps',
-      render: (gaps: string[]) => gaps.length ? gaps.join('；') : '-',
+      render: (gaps: string[]) => gaps.length ? joinSentences(gaps) : '-',
     },
   ];
 
@@ -564,7 +565,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
               message="治理建议"
-              description={semanticCoverage.nextActions.join('；')}
+              description={joinSentences(semanticCoverage.nextActions)}
             />
           )}
         </div>
@@ -575,7 +576,7 @@ const DataSourceDetail: React.FC = () => {
           expandable={{
             expandedRowRender: (record) => (
               <Space direction="vertical" style={{ width: '100%' }}>
-                {record.gaps.length > 0 && <Alert type="warning" message="缺口" description={record.gaps.join('；')} />}
+                {record.gaps.length > 0 && <Alert type="warning" message="缺口" description={joinSentences(record.gaps)} />}
                 <Table
                   size="small"
                   columns={apiColumns}
@@ -644,7 +645,7 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
               message="建议动作"
-              description={schemaDrift.nextActions.join('；')}
+              description={joinSentences(schemaDrift.nextActions)}
             />
           )}
           <Table
@@ -751,7 +752,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={readiness.status === 'blocked' ? 'error' : 'warning'}
               message="下一步动作"
-              description={readiness.nextActions.join('；')}
+              description={joinSentences(readiness.nextActions)}
             />
           )}
         </Card>
@@ -817,7 +818,7 @@ const DataSourceDetail: React.FC = () => {
                     style={{ marginTop: 16 }}
                     type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
                     message="绑定建议"
-                    description={operationBindings.nextActions.join('；')}
+                    description={joinSentences(operationBindings.nextActions)}
                   />
                 )}
               </div>
@@ -864,10 +865,10 @@ const DataSourceDetail: React.FC = () => {
                   <Alert
                     type={ruleImportResult.errorCount > 0 ? 'warning' : 'success'}
                     message={`识别 ${ruleImportResult.rules.length} 条规则，成功导入 ${ruleImportResult.importedCount} 条`}
-                    description={[
+                    description={joinSentences([
                       ...ruleImportResult.warnings,
                       ...ruleImportResult.errors.map(item => `${item.code}: ${item.error}`),
-                    ].join('；') || `来源文件：${ruleImportResult.file.name}`}
+                    ]) || `来源文件：${ruleImportResult.file.name}`}
                   />
                 )}
               </Space>
