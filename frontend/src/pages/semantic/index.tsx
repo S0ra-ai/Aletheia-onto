@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
-import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
+import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title, Paragraph } = Typography;
@@ -299,12 +299,31 @@ const SemanticService: React.FC = () => {
                       render: (code: string) => <Typography.Text code>{code}</Typography.Text>,
                     },
                     {
-                      title: '来源列',
-                      dataIndex: 'sourceColumn',
-                      key: 'sourceColumn',
-                      render: (column: string) => <Typography.Text code>{column}</Typography.Text>,
+                      title: '来源',
+                      key: 'source',
+                      render: (_: unknown, row: InstanceExplainAttribute) =>
+                        // A derived attribute has no column behind it, and saying so is the
+                        // explanation. An empty code tag here read as a missing value.
+                        row.derived ? (
+                          <Typography.Text code style={{ fontSize: 12 }}>
+                            {row.derivedExpression}
+                          </Typography.Text>
+                        ) : row.sourceColumn ? (
+                          <Typography.Text code>{row.sourceColumn}</Typography.Text>
+                        ) : (
+                          <Typography.Text type="secondary">—</Typography.Text>
+                        ),
                     },
-                    { title: '值', dataIndex: 'value', key: 'value' },
+                    {
+                      title: '值',
+                      key: 'value',
+                      render: (_: unknown, row: InstanceExplainAttribute) => (
+                        <Space size={4}>
+                          <Typography.Text>{row.value === null || row.value === undefined ? '空值' : String(row.value)}</Typography.Text>
+                          {row.unitName && <Tag>{row.unitName}</Tag>}
+                        </Space>
+                      ),
+                    },
                   ]}
                 />
                 <Title level={5} style={{ marginTop: 16 }}>解释</Title>
