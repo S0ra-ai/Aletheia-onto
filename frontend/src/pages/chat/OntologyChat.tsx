@@ -60,6 +60,24 @@ const buildQuickPrompts = (knowledgeBase?: KnowledgeBase): string[] => {
 
 const preferredObjectCode = (knowledgeBase?: KnowledgeBase) => knowledgeBase?.objects?.[0]?.code;
 
+/**
+ * The opening line, which says what is actually left to do.
+ *
+ * It used to end with "请先选择已初始化的数据源和业务对象，然后向我提问。" unconditionally --
+ * including on a page where both selectors are already filled in, so the first thing the
+ * agent said was an instruction the user had no way to follow. It now names the objects it
+ * can answer about when they are chosen, and asks for a selection only when there is none.
+ *
+ * One function for both call sites: the two copies had already drifted (one carried the
+ * role's description, the other did not).
+ */
+const welcomeMessage = (roleName: string, roleDescription: string, hasTarget: boolean) =>
+  `你好，我是${roleName}。${roleDescription}${
+    hasTarget
+      ? '\n\n数据源与业务对象已选定，直接提问即可。'
+      : '\n\n请先选择已初始化的数据源和业务对象，然后向我提问。'
+  }`;
+
 const OntologyChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
@@ -96,11 +114,13 @@ const OntologyChat: React.FC = () => {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: `你好，我是${selectedRole.name}。${selectedRole.description}\n\n请先选择已初始化的数据源和业务对象，然后向我提问。`,
+        content: welcomeMessage(selectedRole.name, selectedRole.description, Boolean(objectCode)),
         roleId: selectedRole.id,
       }]);
     }
-  }, [selectedRole, messages.length]);
+    // `objectCode` is read here, so it is listed: while the conversation is empty the
+    // greeting should follow the selection instead of describing the state it loaded with.
+  }, [selectedRole, objectCode, messages.length]);
 
   const selectedKnowledgeBase = knowledgeBases.find(item => item.dataSourceId === dataSourceId);
 
@@ -235,7 +255,7 @@ const OntologyChat: React.FC = () => {
             setMessages([{
               id: 'welcome',
               role: 'assistant',
-              content: `你好，我是${selectedRole?.name || '业务顾问'}。请先选择已初始化的数据源和业务对象，然后向我提问。`,
+              content: welcomeMessage(selectedRole?.name || '业务顾问', selectedRole?.description || '', Boolean(objectCode)),
               roleId: selectedRoleId,
             }]);
           }}>
