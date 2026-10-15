@@ -65,6 +65,8 @@ import type {
   TenantStatistics,
   SsoGroupMapping,
   SsoStatus,
+  AuditReport,
+  AuditReportSection,
 } from '../types';
 
 const api = axios.create({
@@ -986,5 +988,25 @@ export const ssoApi = {
   remove: async (providerGroup: string): Promise<unknown> => {
     const { data } = await api.delete(`/auth/sso/mappings/${encodeURIComponent(providerGroup)}`);
     return data;
+  },
+};
+
+export const auditApi = {
+  /** What the report can answer, named by the audit question rather than by the table. */
+  sections: async (): Promise<AuditReportSection[]> => {
+    const { data } = await api.get('/governance/audit-report/sections');
+    return ((data as { items?: AuditReportSection[] }).items || []) as AuditReportSection[];
+  },
+
+  /**
+   * One report over one period. Both ends are required and there is no default window:
+   * a report over "everything" invites the reader to treat it as a statement about a period
+   * it does not describe.
+   */
+  report: async (start: string, end: string, ontologyId?: number): Promise<AuditReport> => {
+    const params: Record<string, string | number> = { start, end };
+    if (ontologyId) params.ontologyId = ontologyId;
+    const { data } = await api.get('/governance/audit-report', { params });
+    return data as AuditReport;
   },
 };

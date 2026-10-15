@@ -698,25 +698,32 @@ export interface DecisionRecordItem {
 }
 
 // 治理审计相关类型
+//
+// 这两张表的字段名是 snake_case，因为 `/governance/audit-log` 与
+// `/governance/model-invocations` 直接返回 `dict(row)`——列名即字段名。
+// 它们此前被声明成 camelCase，而 TypeScript 对此照单全收：
+// `record.createdAt` 通过类型检查、能被自动补全、运行时是 `undefined`。
+// 错误的类型声明不是中立的，它会给真实存在的 bug 盖章放行——
+// 这两处正是如此，rowKey 因此对每一行都算出 `undefined-<action>`。
 export interface AuditLogItem {
   actor: string;
   action: string;
-  targetType: string;
-  targetId: string;
+  target_type: string;
+  target_id: string;
   detail: string;
-  createdAt: string;
+  created_at: string;
 }
 
 export interface ModelInvocationItem {
   provider: string;
   model: string;
   purpose: string;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
   status: string;
   error?: string;
-  createdAt: string;
+  created_at: string;
 }
 
 // 演示相关类型
@@ -1263,4 +1270,73 @@ export interface SsoStatus {
   mappedGroups: number;
   mappings: SsoGroupMapping[];
   note: string;
+}
+
+/** One thing an auditor should look at, stated by the report rather than left to be noticed. */
+export interface AuditFinding {
+  severity: string;
+  finding: string;
+  action: string;
+}
+
+/** What a report section answers, so the caller knows what it asked for. */
+export interface AuditReportSection {
+  section: string;
+  name: string;
+  answers: string;
+}
+
+/** A published rule and how many times it was evaluated in the period. */
+export interface AuditRuleEntry {
+  code: string;
+  name: string;
+  severity: string;
+  ontologyId: number | null;
+  evaluations: number;
+}
+
+/** One audit_log row, as `dict(row)` sends it. */
+export interface AuditEvent {
+  actor: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  detail: string;
+  created_at: string;
+}
+
+/** One blocked decision, listed in full rather than counted. */
+export interface AuditBlockedDecision {
+  decision_id: string;
+  decision_type: string;
+  object_code: string;
+  instance_id: string;
+  status: string;
+  actor: string;
+  created_at: string;
+}
+
+/**
+ * `GET /governance/audit-report` -- a period, not "everything".
+ *
+ * `period.boundary` is part of the payload because the interval is half-open: a finding
+ * attached to the wrong period is a wrong finding.
+ *
+ * Every shape here was read off a live response, not inferred from the section names.
+ * Two of them were wrong when guessed -- `byActor` is actor → action → count, and
+ * `coverage` counts *rule evaluations* rather than decisions. A guessed type annotates
+ * the mistake as correct and the compiler endorses it.
+ */
+export interface AuditReport {
+  period: { start: string; end: string; boundary: string };
+  ontologyId: number | null;
+  decisions: { total: number; byStatus: Record<string, number>; blocked: AuditBlockedDecision[] };
+  rules: { triggered: AuditRuleEntry[]; neverTriggered: AuditRuleEntry[]; note: string };
+  /** Actor → action → count. Not actor → count. */
+  actors: { byActor: Record<string, Record<string, number>> };
+  governance: { events: AuditEvent[]; forcedPublications: AuditEvent[] };
+  model: { total: number; byPurpose: Record<string, number>; failed: number };
+  /** One assess call writes one decision and N evaluations; this counts the evaluations. */
+  coverage: { evaluations: number; withTrace: number; ratio: number | null };
+  findings: AuditFinding[];
 }

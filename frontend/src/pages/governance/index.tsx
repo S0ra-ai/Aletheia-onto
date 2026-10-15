@@ -3,6 +3,7 @@ import { Card, Table, Typography, Tabs, Tag, Button, message } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { governanceApi, requestErrorMessage } from '../../api';
 import type { AuditLogItem, ModelInvocationItem, DecisionRecordItem } from '../../types';
+import AuditReportPanel from './AuditReportPanel';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -195,7 +196,7 @@ const Governance: React.FC = () => {
             <Table
               columns={auditColumns}
               dataSource={auditLogs}
-              rowKey={(record) => `${record.createdAt}-${record.action}`}
+              rowKey={(record) => `${record.created_at}-${record.action}`}
               loading={loading}
             />
           </TabPane>
@@ -203,9 +204,12 @@ const Governance: React.FC = () => {
             <Table
               columns={invocationColumns}
               dataSource={modelInvocations}
-              rowKey={(record) => `${record.createdAt}-${record.model}`}
+              rowKey={(record) => `${record.created_at}-${record.model}`}
               loading={loading}
             />
+          </TabPane>
+          <TabPane tab="审计报表" key="report">
+            <AuditReportPanel />
           </TabPane>
         </Tabs>
       </Card>

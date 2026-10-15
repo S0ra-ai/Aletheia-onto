@@ -225,6 +225,35 @@ def test_no_signature_narrows_back_to_a_path() -> None:
     )
 
 
+def test_the_screenshot_docs_state_how_many_screenshots_there_are() -> None:
+    """Both screenshot docs must claim the number of screenshots they actually contain.
+
+    They said "Ten screenshots" while holding twelve, and "十张截图" in the Chinese copy.
+    No test noticed because the count is prose: `test_documentation_links.py` checks that
+    `![alt](images/NN-name.png)` resolves, and every one of them did. The claim that had
+    gone stale was the one a reader uses to decide whether they have seen everything.
+
+    The number is asserted rather than removed because it is a real promise -- it tells a
+    reader the page is finite and they have reached the end of it.
+    """
+    import re as regex
+
+    for name, pattern in (
+        ("docs/screenshots.md", r"^> (\d+) screenshots?,"),
+        ("docs/screenshots.zh-CN.md", r"^> (\d+) 张截图"),
+    ):
+        document = (ROOT / name).read_text(encoding="utf-8")
+        claim = regex.search(pattern, document, regex.MULTILINE)
+        assert claim, f"{name} 的截图数量引言格式已变，请同步本测试"
+
+        # Count sections that actually carry an image, not every `##` heading: the Chinese
+        # page has an extra section explaining the tenant-isolation ADR, which is prose
+        # about a decision rather than a screenshot of a screen.
+        sections = [chunk for chunk in document.split("\n## ")[1:] if "](images/" in chunk]
+
+        assert int(claim.group(1)) == len(sections), f"{name} 声明 {claim.group(1)} 张，实际 {len(sections)}"
+
+
 def test_the_documented_scale_is_current() -> None:
     """The "规模" line is the first thing a reader checks against reality.
 

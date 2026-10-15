@@ -10,7 +10,7 @@
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1529%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
+[![Tests](https://img.shields.io/badge/tests-1530%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
 
 [English](README.md) · 简体中文
 
@@ -93,7 +93,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 | 🔗 **标准词汇** | 导出 OWL/RDFS 与 SHACL，外部工具能**解释**而非仅能解析——外部 SPARQL 查询可回答「哪个类能关联到哪个类」。 |
 | 🔐 **多租户与 SSO** | 独立 schema + `tenant_id` 双保险、租户改不了的配额、JWT SSO——未映射的身份得到**零权限**而非默认角色。 |
 | 🛡️ **部署前自检** | `aletheia preflight` 拦的是静默误配：残留的认证开关、CORS 通配、SQLite 配多工作进程。`serve` 拒绝在不安全配置下对外暴露。 |
-| 🧾 **审计报表** | 本期**从未触发**的已发布规则、覆盖了门禁的发布、以及本期究竟有多少判定是可复核的。 |
+| 🧾 **审计报表** | 本期**从未触发**的已发布规则、覆盖了门禁的发布、以及本期究竟有多少规则求值是带解释链、可复核的。 |
 
 → **[完整能力矩阵](docs/capabilities.zh-CN.md)** · [当前限制](docs/limitations.zh-CN.md)
 
@@ -127,7 +127,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 
 ## 项目状态
 
-1529 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
+1530 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
 由 CI 在裸装环境校验，因此本体、规则引擎与决策留痕可以嵌入别人的应用。
 
 本文档里每一个可数的声明都由测试守着：测试总数、分布表、端点数、支持的 Python 版本，

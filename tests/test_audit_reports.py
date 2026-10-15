@@ -95,8 +95,8 @@ def test_the_period_is_half_open_so_consecutive_reports_neither_overlap_nor_gap(
     august = build_audit_report(platform_db, start="2026-08-01", end="2026-09-01")
     september = build_audit_report(platform_db, start="2026-09-01", end="2026-10-01")
 
-    assert august["coverage"]["decisions"] == 0, "区间上界应为开区间"
-    assert september["coverage"]["decisions"] == 1, "区间下界应为闭区间"
+    assert august["coverage"]["evaluations"] == 0, "区间上界应为开区间"
+    assert september["coverage"]["evaluations"] == 1, "区间下界应为闭区间"
 
 
 def test_every_section_states_the_question_it_answers() -> None:
@@ -125,7 +125,7 @@ def test_a_published_rule_that_never_fired_is_reported(platform_db) -> None:
     assert [item["code"] for item in report["rules"]["neverTriggered"]] == ["r_silent"]
 
     findings = {item["finding"] for item in report["findings"]}
-    assert any("从未参与判定" in item for item in findings), report["findings"]
+    assert any("从未参与求值" in item for item in findings), report["findings"]
 
 
 def test_a_draft_rule_is_not_reported_as_never_fired(platform_db) -> None:
@@ -189,9 +189,14 @@ def test_a_normal_publication_is_recorded_but_not_a_finding(platform_db) -> None
 # -- Trace coverage bounds what is auditable --
 
 
-def test_a_verdict_without_a_trace_is_reported_as_unauditable(platform_db) -> None:
-    """A decision without an explanation trace cannot be reviewed: the reviewer sees the
-    conclusion and not what produced it."""
+def test_an_evaluation_without_a_trace_is_reported_as_unauditable(platform_db) -> None:
+    """A rule evaluation without an explanation trace cannot be reviewed: the reviewer sees
+    the conclusion and not what produced it.
+
+    The unit is the evaluation, not the decision: one assess call writes one decision and
+    one evaluation per applicable rule, so counting the wrong one under the name
+    `decisions` puts two unrelated numbers under one word in the same payload.
+    """
     with connect(platform_db) as conn:
         rule_id = _rule(conn, "r_traced")
         traced = _result(conn, rule_id)
@@ -203,7 +208,7 @@ def test_a_verdict_without_a_trace_is_reported_as_unauditable(platform_db) -> No
         )
 
     report = build_audit_report(platform_db, **PERIOD)
-    assert report["coverage"]["decisions"] == 2
+    assert report["coverage"]["evaluations"] == 2
     assert report["coverage"]["withTrace"] == 1
     assert report["coverage"]["ratio"] == 0.5
 
@@ -215,7 +220,7 @@ def test_an_empty_period_reports_no_ratio_rather_than_full_coverage(platform_db)
     """A ratio over zero rows is not "complete coverage", and reporting 100% would be a
     claim about nothing."""
     report = build_audit_report(platform_db, **PERIOD)
-    assert report["coverage"]["decisions"] == 0
+    assert report["coverage"]["evaluations"] == 0
     assert report["coverage"]["ratio"] is None
     assert not [item for item in report["findings"] if "解释链" in item["finding"]]
 

@@ -10,6 +10,15 @@
 
 ### Added
 
+- **审计报表页**（`pages/governance/AuditReportPanel.tsx`，治理审计页新增「审计报表」标签）。
+  `/governance/audit-report` 与 `/governance/audit-report/sections` 两个端点存在且无任何前端消费者：
+  审计**报告**（按区间的分析）没有界面，只有旁边的原始审计**日志**有。
+  报告回答的是审计员真正带来的问题——本期**哪些已发布规则一次都没求值**、
+  哪些发布**覆盖了门禁**、以及本期**有多少结论是可复核的**（最后一项给前两项划定边界：
+  没有解释链的结论谁也复核不了）。页面先渲染 `findings`（后端已经写出「该看什么」，
+  前端不该把它埋进表格里），再按 section 展开；区间两端必填且不提供「全部时间」，
+  理由与后端拒绝它的理由相同。截图补进 `docs/screenshots.md`（双语）。
+
 - **请求标识贯穿日志与响应**（`tracing.py`、`request_logger.py`）。每个请求绑定一个 id，
   回带在 `X-Request-Id` 响应头上，并出现在该请求产生的**每一条**日志里——
   包括依赖库深处发出的告警，因为 id 绑定在上下文上而不是由各调用点传递。
@@ -34,8 +43,6 @@
   没有任何日志记录「哪些请求没有被限流」，第一个征兆就是服务被打垮，
   而那时日志里也没有原因。
 
-### Added
-
 - **业务对象浏览页**（`pages/objects/ObjectBrowser.tsx`，路由 `/objects`）。
   平台最核心的主张是「业务对象经一条稳定接口消费，调用方不必知道背后是哪张表、哪个解析器」——
   而**这个视图此前没有任何界面**。数据源页面的「浏览内容」看的是**原始表行**：不过解析器、
@@ -44,8 +51,6 @@
   行级过滤的信息也在这里落地：**「你的角色看不到」与「过滤表达式求值失败」都会得到空表**，
   而只有后者是有人能修的，所以页面把它说明白，不留给人猜。
   截图同时补进 `docs/screenshots.md`（双语）。
-
-### Added
 
 - **`aletheia passwd`：口令重置**（`auth.reset_password`）。这是首次运行路径上**唯一的死胡同**：
   未设 `ONTOLOGY_ADMIN_PASSWORD` 时 `aletheia init` 生成随机口令**只打印一次**，
@@ -193,6 +198,25 @@
 
 ### Fixed
 
+- **两张治理表格的 `rowKey` 对每一行都算出同一个值**（`types/index.ts`、`pages/governance`）。
+  `AuditLogItem` 与 `ModelInvocationItem` 把字段声明成 camelCase，而两个端点返回的是
+  `dict(row)`——snake_case。于是 `record.createdAt` 是 `undefined`，
+  rowKey 变成 `undefined-login`、`undefined-login`、`undefined-login`……
+  **类型声明不是中立的**：它让 `tsc` 为这个错误盖章，自动补全也照着错的名字提示，
+  而 antd 对重复 key 只是复用行身份，不报错。现已把两个类型改成它们真实收到的字段名，
+  并在类型上写明这一点来自实际响应而不是推测——同一个文件里，审计报表的
+  `byActor` 与 `coverage` 两处都是猜错的，后者的代价是把「1 条判定」与
+  「5 条判定带解释链」并排显示在同一个屏幕上。
+
+- **审计报表把「规则求值」叫作「判定」**（`audit_reports.py`）。
+  `coverage` 数的是 `inference_result`（每条适用规则一行），
+  而同一个 payload 里的 `decisions.total` 数的是 `decision_record`（每次研判一行）——
+  一次研判写一条判定加 N 条求值。两个不同的量共用一个词、放在同一个回报里，
+  报表于是能同时显示「判定总数 1」和「5 / 5 条判定带解释链」，
+  而读者无从判断该信哪个。键名改为 `evaluations`，finding 文案与 section 说明一并改；
+  同一段的 `REPORT_SECTIONS` 还带着 Markdown 星号（`含**从未触发**的…`），
+  它由界面原样渲染、由 CLI 原样打印，两处都不解释强调标记，所以浏览器里看到的是四个字面星号。
+
 - **治理审计页的「目标类型／目标ID／时间」三列每一行都是空白**（`pages/governance`）。
   `/governance/audit-log` 返回的是 `dict(row)`——只有 snake_case——而这三列按 camelCase 取值，
   同表其余列用的是 snake_case 所以正常。**antd 的列在 `dataIndex` 不存在时就是空白，不报错**，
@@ -201,8 +225,6 @@
   模型调用记录表有同样的四处（`promptTokens` 等），只是**那张表还没有数据所以从未暴露**。
   两处都改为对齐各自接口的真实字段；真正该做的是让一种命名约定胜出，已记入已知限制。
   发现方式是把应用真正跑起来截图：**三列空白在浏览器里一眼可见，在任何静态检查里都不可见**。
-
-### Fixed
 
 - **`tracing` 的上下文清理**：原实现用 `clear_request_id()` 收尾，
   会把外层 id 一并清掉——嵌套作用域返回后，其后的日志行全部失去关联。

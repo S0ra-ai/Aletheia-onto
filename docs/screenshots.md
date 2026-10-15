@@ -1,6 +1,6 @@
 # Screens and output
 
-> Ten screenshots, each captioned with what it proves rather than how it looks.
+> 13 screenshots, each captioned with what it proves rather than how it looks.
 
 Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 
@@ -62,9 +62,10 @@ An ontology is a graph, but every other screen renders it as tables, which hides
 the problems a reviewer needs to see: isolated objects nothing points at,
 self-referencing hierarchies, and clusters that produce no verdict. Colour encodes
 a diagnosis rather than decoration -- red for unbound to a source table, amber for
-carries no rules. The relation-expressiveness limitation is stated in the view
-itself: `relation_type` is always `references`, with no cardinality and no
-many-to-many.
+carries no rules. Edge kind is inferred from the key structure (composition /
+aggregation / association), junction tables collapse to many-to-many, and the view
+states that the quality of that classification is bounded by the quality of the
+schema it read.
 
 ## Document knowledge base
 
@@ -118,6 +119,22 @@ answer rather than a failure. The page says so, names the isolation model in for
 usage beside limits -- a limit without usage cannot answer the question an operator has, which
 is "is this tenant about to be blocked". A resource with no declared limit is rendered as
 不限量 rather than as a large number or as zero.
+
+## The audit report: the questions an auditor arrives with
+
+![Audit report](images/13-audit-report.png)
+
+The raw audit log next door answers "what happened recently". This answers the three questions
+an auditor actually brings: which published rules never evaluated anything this period, which
+releases overrode the gate, and how much of the period is re-examinable at all -- and the last
+one bounds the other two, because a conclusion with no explanation chain cannot be reviewed by
+anyone.
+
+The findings come first, because the backend already states what is worth looking at
+("4 published rules never evaluated anything") and a UI that buries that in a table has thrown
+away the analysis. The period has no "everything" option: a report whose coverage is unstated
+gets read as a statement about a period it does not describe, and the header repeats the
+half-open boundary so the reader never has to infer it.
 
 ## Model configuration for custom endpoints
 

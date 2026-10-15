@@ -164,9 +164,13 @@ def build_ontology_graph(platform_db: PlatformDb, ontology_id: int) -> dict[str,
             # from the key since ADR-0012, and the graph sends `aggregation` and the like.
             # A note that understates a delivered capability is not a harmless leftover: it
             # tells the reader not to expect something the product does.
+            # Plain text, no Markdown markers: the graph page hands this string straight to
+            # an Alert, which renders it verbatim. `**分类质量取决于模式质量**` therefore
+            # reached the browser as four literal asterisks around the words that were
+            # supposed to stand out.
             "limitation": (
                 "边的类型由外键推断：组成（子记录随主体存在）、聚合（必填但独立）、关联（可选）；"
-                "中间表折叠为多对多，基数见关系编码。**分类质量取决于模式质量**——"
+                "中间表折叠为多对多，基数见关系编码。分类质量取决于模式质量——"
                 "没有外键或非空约束的库只能得到最弱的分类，此时外键列名是判断关联含义的依据。"
             ),
         },

@@ -61,13 +61,17 @@ __all__ = [
 
 # What the report answers, in the order an auditor works through it: scope first, then
 # findings, then the trail that supports them.
+#
+# Plain text, no Markdown: this string is rendered verbatim by the UI and printed by the
+# CLI, neither of which interprets emphasis markers. `**从未触发**` reached a browser as
+# four literal asterisks around the words meant to stand out.
 REPORT_SECTIONS = (
     ("decisions", "判定统计", "按结论与严重级聚合，回答「这段时间阻断了多少、为什么」"),
-    ("rules", "规则触发情况", "含**从未触发**的已发布规则——那是控制失效还是死规则"),
+    ("rules", "规则触发情况", "含从未触发的已发布规则——那是控制失效还是死规则"),
     ("actors", "操作者活动", "谁在这段时间改了什么，按操作者与动作聚合"),
     ("governance", "治理事件", "发布、派生、覆盖门禁、配额调整"),
     ("model", "模型调用", "哪些结论涉及模型，以及调用是否失败"),
-    ("coverage", "留痕完整性", "判定是否都带解释链——缺失意味着结论无法复核"),
+    ("coverage", "留痕完整性", "每次规则求值是否都带解释链——缺失意味着结论无法复核"),
 )
 
 
@@ -298,14 +302,22 @@ def _model_invocations(conn: Any, start: str, end: str) -> dict[str, Any]:
 
 
 def _trace_coverage(conn: Any, start: str, end: str, ontology_id: Optional[int]) -> dict[str, Any]:
-    """Whether every verdict in the period can be re-examined.
+    """Whether everything concluded in the period can be re-examined.
 
-    A decision without an explanation trace cannot be reviewed: the reviewer can see the
-    conclusion and not what produced it. That makes it the one coverage number an audit
-    genuinely needs, because it bounds how much of the period is auditable at all.
+    A rule evaluation without an explanation trace cannot be reviewed: the reviewer can see
+    the conclusion and not what produced it. That makes this the one coverage number an
+    audit genuinely needs, because it bounds how much of the period is auditable at all.
+
+    The unit counted is the *rule evaluation* (`inference_result`), not the decision
+    (`decision_record`). They are different tables at different granularity -- one assess
+    call evaluates every applicable rule and writes one decision plus N evaluations -- so
+    the key is named `evaluations`. It was named `decisions` while counting evaluations,
+    which put two unrelated numbers under one word in the same payload: a report could say
+    "1 decision" and "5 / 5 decisions carry a trace" on the same screen, and a reader has
+    no way to tell which of them to believe.
     """
     if not (table_exists(conn, "inference_result") and table_exists(conn, "explanation_trace")):
-        return {"decisions": 0, "withTrace": 0, "ratio": None}
+        return {"evaluations": 0, "withTrace": 0, "ratio": None}
 
     total = int(
         conn.execute(
@@ -322,7 +334,7 @@ def _trace_coverage(conn: Any, start: str, end: str, ontology_id: Optional[int])
         ).fetchone()["total"]
     )
     return {
-        "decisions": total,
+        "evaluations": total,
         "withTrace": with_trace,
         # None rather than 1.0 for an empty period: a ratio over zero rows is not "complete
         # coverage", and reporting it as 100% would be a claim about nothing.
@@ -334,8 +346,8 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
     """The things an auditor should look at, stated rather than left to be noticed.
 
     A report that only presents numbers relies on the reader knowing which number is
-    alarming. These are the three that are always worth surfacing: controls that never
-    ran, gates that were overridden, and verdicts that cannot be re-examined.
+    alarming. These are the ones that are always worth surfacing: controls that never
+    ran, gates that were overridden, and conclusions that cannot be re-examined.
     """
     findings: list[dict[str, str]] = []
 
@@ -344,7 +356,7 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
         findings.append(
             {
                 "severity": "warning",
-                "finding": f"{len(never)} 条已发布规则在本期内从未参与判定",
+                "finding": f"{len(never)} 条已发布规则在本期内从未参与求值",
                 "action": "确认是死规则（应下线）还是匹配失效（是控制缺口）。",
             }
         )
@@ -364,8 +376,8 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
         findings.append(
             {
                 "severity": "blocker",
-                "finding": f"仅 {ratio:.1%} 的判定带有解释链",
-                "action": "无解释链的判定无法复核，等同于本期该部分不可审计。",
+                "finding": f"仅 {ratio:.1%} 的规则求值带有解释链",
+                "action": "无解释链的求值无法复核，等同于本期该部分不可审计。",
             }
         )
 
