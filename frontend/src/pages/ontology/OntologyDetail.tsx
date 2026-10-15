@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -93,7 +94,7 @@ const OntologyDetailPage: React.FC = () => {
     { title: '目标对象', dataIndex: 'targetObjectCode', key: 'targetObjectCode' },
     { title: '目标属性', dataIndex: 'targetAttributeCode', key: 'targetAttributeCode', render: (attr: string) => attr || '-' },
     { title: '置信度', dataIndex: 'confidence', key: 'confidence', render: (conf: number) => `${(conf * 100).toFixed(0)}%` },
-    { title: '状态', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'confirmed' ? 'green' : 'orange'}>{status}</Tag> },
+    { title: '状态', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'confirmed' ? 'green' : 'orange'}>{label(ONTOLOGY_STATUS, status)}</Tag> },
   ];
 
   const ruleColumns = [

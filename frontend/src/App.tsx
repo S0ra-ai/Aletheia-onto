@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import MainLayout from './layouts/MainLayout';
+import NotFound from './pages/NotFound';
 import { AuthProvider } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
 import LoginPage from './pages/auth/LoginPage';
@@ -237,6 +238,7 @@ const App: React.FC = () => {
                     </ErrorBoundary>
                   }
                 />
+                <Route path="*" element={<NotFound />} />
               </Route>
             </Routes>
           </AuthProvider>

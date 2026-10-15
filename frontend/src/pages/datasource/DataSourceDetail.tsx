@@ -1,4 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import {
+  DRIFT_STATUS,
+  label,
+  ONTOLOGY_STATUS,
+  READINESS_STATUS,
+  RULE_SEVERITY,
+} from '../../i18n/labels';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
@@ -307,7 +314,7 @@ const DataSourceDetail: React.FC = () => {
       title: '绑定状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag color={bindingColor(status)}>{status}</Tag>,
+      render: (status: string) => <Tag color={bindingColor(status)}>{label(READINESS_STATUS, status)}</Tag>,
     },
     {
       title: '自动化',
@@ -449,7 +456,7 @@ const DataSourceDetail: React.FC = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag color={coverageColor(status)}>{status}</Tag>,
+      render: (status: string) => <Tag color={coverageColor(status)}>{label(READINESS_STATUS, status)}</Tag>,
     },
     {
       title: '自动化',
@@ -497,14 +504,14 @@ const DataSourceDetail: React.FC = () => {
       dataIndex: 'severity',
       key: 'severity',
       width: 120,
-      render: (severity: string) => <Tag color={ruleSeverityColor(severity)}>{severity}</Tag>,
+      render: (severity: string) => <Tag color={ruleSeverityColor(severity)}>{label(RULE_SEVERITY, severity)}</Tag>,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (status: string) => <Tag color={status === 'published' ? 'green' : 'orange'}>{status}</Tag>,
+      render: (status: string) => <Tag color={status === 'published' ? 'green' : 'orange'}>{label(ONTOLOGY_STATUS, status)}</Tag>,
     },
     {
       title: '规则表达式',
@@ -539,7 +546,7 @@ const DataSourceDetail: React.FC = () => {
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
               <Descriptions.Item label="状态">
-                <Tag color={coverageColor(semanticCoverage.status)}>{semanticCoverage.status}</Tag>
+                <Tag color={coverageColor(semanticCoverage.status)}>{label(READINESS_STATUS, semanticCoverage.status)}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="业务对象">{semanticCoverage.summary.businessObjects}</Descriptions.Item>
               <Descriptions.Item label="闭环对象">{semanticCoverage.summary.fullyCoveredObjects}</Descriptions.Item>
@@ -621,7 +628,7 @@ const DataSourceDetail: React.FC = () => {
           <Typography.Text strong>结构漂移影响分析</Typography.Text>
           <Descriptions column={4}>
             <Descriptions.Item label="状态">
-              <Tag color={driftStatusColor(schemaDrift.status)}>{schemaDrift.status}</Tag>
+              <Tag color={driftStatusColor(schemaDrift.status)}>{label(DRIFT_STATUS, schemaDrift.status)}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="新增表">{summary.addedTables}</Descriptions.Item>
             <Descriptions.Item label="删除表">{summary.removedTables}</Descriptions.Item>
@@ -728,7 +735,7 @@ const DataSourceDetail: React.FC = () => {
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
               <Descriptions.Item label="状态">
-                <Tag color={readinessColor(readiness.status)}>{readiness.status}</Tag>
+                <Tag color={readinessColor(readiness.status)}>{label(READINESS_STATUS, readiness.status)}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="表">{readiness.summary.tables}</Descriptions.Item>
               <Descriptions.Item label="字段">{readiness.summary.columns}</Descriptions.Item>
@@ -796,7 +803,7 @@ const DataSourceDetail: React.FC = () => {
               <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
                 <Descriptions column={4}>
                   <Descriptions.Item label="状态">
-                    <Tag color={bindingColor(operationBindings.status)}>{operationBindings.status}</Tag>
+                    <Tag color={bindingColor(operationBindings.status)}>{label(READINESS_STATUS, operationBindings.status)}</Tag>
                   </Descriptions.Item>
                   <Descriptions.Item label="API">{operationBindings.summary.operations}</Descriptions.Item>
                   <Descriptions.Item label="已绑定">{operationBindings.summary.boundOperations}</Descriptions.Item>
@@ -896,7 +903,7 @@ const DataSourceDetail: React.FC = () => {
                   items={[
                     { key: 'steps', label: '推理步骤', children: <Steps direction="vertical" items={reasoningChain.steps.map(step => ({ title: step.label, description: step.type }))} /> },
                     { key: 'relations', label: '本体关系', children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: '源对象', dataIndex: 'sourceObject' }, { title: '关系', dataIndex: 'name' }, { title: '目标对象', dataIndex: 'targetObject' }, { title: '类型', dataIndex: 'relationType' }]} /> },
-                    { key: 'chain-rules', label: '推理规则', children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: '规则', dataIndex: 'name' }, { title: '对象', dataIndex: 'scopeObjectCode' }, { title: '表达式', dataIndex: 'expression' }, { title: '严重程度', dataIndex: 'severity' }]} /> },
+                    { key: 'chain-rules', label: '推理规则', children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: '规则', dataIndex: 'name' }, { title: '对象', dataIndex: 'scopeObjectCode' }, { title: '表达式', dataIndex: 'expression' }, { title: '严重程度', dataIndex: 'severity', render: (v: string) => label(RULE_SEVERITY, v) }]} /> },
                   ]}
                 />
               </Space>

@@ -153,18 +153,18 @@ const WorkbenchPage: React.FC = () => {
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="数据源" value={dataSources.total} suffix={`/ ${dataSources.tables} 张表`} />
+            <Statistic title="数据源" value={dataSources.total} suffix="个" />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {dataSources.unscanned ? `${dataSources.unscanned} 个未扫描` : '全部已扫描'}
+              {dataSources.tables} 张表 · {dataSources.unscanned ? `${dataSources.unscanned} 个未扫描` : '全部已扫描'}
               {dataSources.withBusinessApi ? ` · ${dataSources.withBusinessApi} 个含业务 API` : ''}
             </Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="业务对象" value={ontologies.objects} suffix={`/ ${ontologies.relations} 关系`} />
+            <Statistic title="业务对象" value={ontologies.objects} suffix="个" />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {ontologies.published} 个已发布本体 · {ontologies.draft} 个草案
+              {ontologies.relations} 条关系 · {ontologies.published} 个已发布本体 · {ontologies.draft} 个草案
             </Text>
           </Card>
         </Col>

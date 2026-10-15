@@ -179,7 +179,10 @@ const SemanticService: React.FC = () => {
             <Form
               layout="vertical"
               onFinish={handleNaturalLanguageQuery}
-              initialValues={{ question: '合同 1 是否合规？', objectCode: 'contract' }}
+              // No prefilled object code and no prefilled question: this platform ships no industry
+    // vocabulary (ADR-0003), and a prefilled `contract` showed a user in another domain a
+    // value that meant nothing while looking like an answer they could just submit.
+    initialValues={{ question: '', objectCode: '' }}
             >
               <Form.Item name="question" label="业务问题" rules={[{ required: true }]}>
                 <Input.TextArea rows={3} placeholder="例如：合同 1 是否合规？HT-2026-003 能提交审批吗？合同整体决策是否一致？" />
@@ -192,7 +195,7 @@ const SemanticService: React.FC = () => {
                   <Input placeholder="可选" type="number" style={{ width: 140 }} />
                 </Form.Item>
                 <Form.Item name="objectCode" label="业务对象编码">
-                  <Input placeholder="contract" style={{ width: 180 }} />
+                  <Input placeholder="留空则自动识别" style={{ width: 180 }} />
                 </Form.Item>
                 <Form.Item name="instanceId" label="实例ID">
                   <Input placeholder="可选" style={{ width: 140 }} />
@@ -250,7 +253,7 @@ const SemanticService: React.FC = () => {
           <Card>
             <Form layout="inline" onFinish={handleExplain}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="例如：contract" />
+                <Input placeholder="留空则自动识别" />
               </Form.Item>
               <Form.Item name="instanceId" label="实例ID" rules={[{ required: true }]}>
                 <Input placeholder="例如：1" />
@@ -287,7 +290,7 @@ const SemanticService: React.FC = () => {
           <Card>
             <Form layout="inline" onFinish={handleAssess}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="例如：contract" />
+                <Input placeholder="留空则自动识别" />
               </Form.Item>
               <Form.Item name="instanceId" label="实例ID" rules={[{ required: true }]}>
                 <Input placeholder="例如：1" />
@@ -338,7 +341,7 @@ const SemanticService: React.FC = () => {
           <Card>
             <Form layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="例如：contract" />
+                <Input placeholder="留空则自动识别" />
               </Form.Item>
               <Form.Item name="ontologyId" label="本体ID" rules={[{ required: true }]}>
                 <Input placeholder="例如：1" type="number" />

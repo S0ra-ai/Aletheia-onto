@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { label, MAPPING_STATUS } from '../../i18n/labels';
 import { Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
@@ -101,7 +102,7 @@ const MappingList: React.FC = () => {
       key: 'status',
       render: (status: string) => (
         <Tag color={status === 'confirmed' ? 'green' : status === 'pending' ? 'orange' : 'default'}>
-          {status}
+          {label(MAPPING_STATUS, status)}
         </Tag>
       ),
     },

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { label, MAPPING_STATUS } from '../../i18n/labels';
 import {
   Alert, Button, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tag,
   Tooltip, Typography, message,
@@ -246,7 +247,7 @@ const FeedbackConsolePage: React.FC = () => {
                 title: '状态',
                 dataIndex: 'status',
                 width: 90,
-                render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{status}</Tag>,
+                render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(MAPPING_STATUS, status)}</Tag>,
               },
               { title: '时间', dataIndex: 'createdAt', width: 160, ellipsis: true },
               {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -86,8 +87,8 @@ const OntologyList: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'active' ? 'green' : status === 'draft' ? 'orange' : 'default'}>
-          {status}
+        <Tag color={status === 'published' ? 'green' : status === 'draft' ? 'orange' : 'default'}>
+          {label(ONTOLOGY_STATUS, status)}
         </Tag>
       ),
     },

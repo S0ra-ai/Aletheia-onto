@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { Card, Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, message, Tabs, Popconfirm, Badge } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { permissionApi, toolApi } from '../../api';
@@ -114,7 +115,7 @@ const PermissionManager: React.FC = () => {
       return <Tag color={color}>{v}</Tag>;
     }},
     { title: '需审核', dataIndex: 'requiresReview', key: 'requiresReview', render: (v: number) => v ? <Tag color="warning">是</Tag> : '-' },
-    { title: '状态', dataIndex: 'status', key: 'status' },
+    { title: '状态', dataIndex: 'status', key: 'status', render: (v: string) => label(ONTOLOGY_STATUS, v) },
   ];
 
   const reviewColumns = [
