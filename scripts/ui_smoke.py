@@ -99,6 +99,11 @@ ID_ROUTES = (
     "/admin/datasource/{source}?tab=coverage",
 )
 
+# Where the seed page is written: the build the running instance serves, unless it was
+# started with `ALETHEIA_FRONTEND_DIST` pointing somewhere else -- which the guard below
+# detects, because the symptom is otherwise "every page renders nothing".
+SEED_DIRECTORY = Path(__file__).resolve().parents[1] / "frontend" / "dist" / "assets"
+
 CHROME_CANDIDATES = (
     "chromium-cli",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -254,6 +259,46 @@ def empty_columns(headers: list[str], rows: list[list[str]]) -> list[str]:
     return empty
 
 
+def seed_is_the_build_just_written(entry: str) -> str:
+    """Empty when the instance serves the file we just wrote, a reason otherwise.
+
+    A server started with `ALETHEIA_FRONTEND_DIST` elsewhere serves its own copy, so every
+    page fails to seed and the report reads "0 tables, 0 rows" sixteen times -- which looks
+    like an application where nothing renders, and is really this script looking in the wrong
+    drawer.
+    """
+    try:
+        with urllib.request.urlopen(entry, timeout=10) as response:
+            served = response.read().decode("utf-8", "replace")
+    except Exception as error:
+        return f"the seed page is not reachable at {entry}: {error}"
+    if "seeding" not in served:
+        return (
+            f"{entry} is not the file just written; the instance is serving a different build.\n"
+            f"This script writes into {SEED_DIRECTORY} and can only seed an instance started "
+            "without ALETHEIA_FRONTEND_DIST pointing elsewhere."
+        )
+    return ""
+
+
+def token_authenticates(base_url: str, token: str) -> str:
+    """Empty when the token works; a line to print when it does, and a reason when it does not.
+
+    A token that does not authenticate renders the login page on every route. The sweep then
+    reports "0 tables, 0 rows" for all of them and ends with "no wholly-empty columns found"
+    -- a clean bill of health for a run that looked at nothing. Checked before sweeping rather
+    than inferred from the empty result, which is indistinguishable from a deployment that
+    genuinely has no data.
+    """
+    request = urllib.request.Request(f"{base_url}/auth/me", headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            who = json.loads(response.read().decode("utf-8"))
+    except Exception as error:
+        return f"the token does not authenticate ({error}); nothing would be rendered"
+    return f"sweeping as {who.get('username', '?')} ({who.get('roleCode', '?')})"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -282,7 +327,7 @@ def main() -> int:
     # serves. A temp directory would be tidier and would not work: the server resolves
     # `frontend_dist()` at request time and cannot be pointed at a path it was not started
     # with. The file is removed on the way out, including on failure.
-    assets = Path(__file__).resolve().parents[1] / "frontend" / "dist" / "assets"
+    assets = SEED_DIRECTORY
     if not assets.is_dir():
         print(f"the frontend is not built: {assets} does not exist (run `npm run build`)", file=sys.stderr)
         return 2
@@ -293,38 +338,22 @@ def main() -> int:
     # copy, so every page fails to seed and the report reads "0 tables, 0 rows" for all of
     # them -- which looks like an application where nothing renders, and is really a script
     # looking in the wrong drawer.
-    try:
-        with urllib.request.urlopen(entry, timeout=10) as response:
-            served = response.read().decode("utf-8", "replace")
-    except Exception as error:
-        print(f"the seed page is not reachable at {entry}: {error}", file=sys.stderr)
-        (assets / "seed.html").unlink(missing_ok=True)
-        return 2
-    if "seeding" not in served:
-        print(
-            f"{entry} is not the file just written; the instance is serving a different build.\n"
-            f"This script writes into {assets} and can only seed an instance started without "
-            "ALETHEIA_FRONTEND_DIST pointing elsewhere.",
-            file=sys.stderr,
-        )
+    reason = seed_is_the_build_just_written(entry)
+    if reason:
+        print(reason, file=sys.stderr)
         (assets / "seed.html").unlink(missing_ok=True)
         return 2
 
     # A token that does not authenticate renders the login page on every route. The sweep
     # then reports "0 tables, 0 rows" 25 times and ends with "no wholly-empty columns found"
-    # -- a clean bill of health for a run that looked at nothing. Checked before sweeping
-    # rather than inferred from the empty result, which is indistinguishable from a
-    # deployment that genuinely has no data.
+    # -- a clean bill of health for a run that looked at nothing.
     if args.token:
-        request = urllib.request.Request(f"{args.base_url}/auth/me", headers={"Authorization": f"Bearer {args.token}"})
-        try:
-            with urllib.request.urlopen(request, timeout=10) as response:
-                who = json.loads(response.read().decode("utf-8"))
-        except Exception as error:
-            print(f"the token does not authenticate ({error}); nothing would be rendered", file=sys.stderr)
+        status = token_authenticates(args.base_url, args.token)
+        if status.startswith("the token"):
+            print(status, file=sys.stderr)
             (assets / "seed.html").unlink(missing_ok=True)
             return 2
-        print(f"sweeping as {who.get('username', '?')} ({who.get('roleCode', '?')})")
+        print(status)
 
     allowed = {pair.strip() for pair in args.allow.split(",") if pair.strip()}
     findings = 0
