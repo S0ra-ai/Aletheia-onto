@@ -596,3 +596,90 @@ def test_the_browser_demo_produces_the_same_thing_the_terminal_one_does(capsys, 
         assert conn.execute("select count(*) from workflow_definition").fetchone()[0] == 1
         state = conn.execute("select current_state from instance_workflow").fetchone()
         assert state is not None and state[0] != "draft", "演示应当让实例真的流转一次"
+
+
+# -- Every subcommand, run once --
+
+
+def _seeded_platform(tmp_path: Path) -> tuple[Path, Path]:
+    """A platform with the demo scenario in it, and the sample database it came from."""
+    platform_db = tmp_path / "platform.sqlite3"
+    sample_db = tmp_path / "sample.sqlite3"
+    assert main(["--platform-db", str(platform_db), "init"]) == 0
+    assert main(["--platform-db", str(platform_db), "demo", "--sample-db", str(sample_db), "--quiet"]) == 0
+    return platform_db, sample_db
+
+
+# Every subcommand the parser declares, with args that exercise it. `serve` is excluded: it
+# blocks until stopped, so running it here would hang the suite -- it is covered end to end
+# by the CI quickstart job instead.
+CLI_INVOCATIONS: tuple[tuple[tuple[str, ...], set[int]], ...] = (
+    (("doctor",), {0}),
+    (("preflight",), {0, 1}),  # 1 is a blocker on a fresh database, which is the point of it
+    (("verify",), {0}),
+    (("model", "1"), {0}),
+    (("assess", "1", "contract", "1"), {0}),
+    (("assess", "1", "contract", "999"), {1}),  # a deliberate refusal, not a crash
+    (("publish", "1", "--actor", "tester"), {0, 1}),
+    (("export", "1", "--format", "jsonld"), {0}),
+    (("export", "1", "--format", "turtle"), {0}),
+    (("export", "1", "--format", "owl"), {0}),
+    (("export", "1", "--format", "shacl"), {0}),
+    (("audit", "--start", "2020-01-01", "--end", "2030-01-01"), {0, 1}),
+    (("codegen", "1", "--allow-draft"), {0, 1}),
+    (("passwd", "--username", "admin", "--password", "Routed-Passw0rd!x"), {0}),
+    (("new", "routed_project", "--directory", "{tmp}/routed", "--domain", "测试"), {0}),
+    (("new", "bad-name", "--directory", "{tmp}/bad"), {1}),  # a message, not a traceback
+)
+
+
+def test_every_subcommand_runs_once_and_never_traces_back(tmp_path: Path, capsys) -> None:
+    """The CLI surface, walked the way the last three defects were found -- but as a check.
+
+    Those were found by being a user for an afternoon: generate a project, install it, run
+    it. That does not survive the afternoon. This runs each subcommand against a seeded
+    instance and asserts two things: the exit code is one the command means, and nothing
+    prints a traceback. A refusal with a sentence is correct behaviour; a stack trace is not.
+
+    The list is asserted to cover every subcommand the parser declares, so a new one cannot
+    be added without being walked.
+    """
+    platform_db, sample_db = _seeded_platform(tmp_path)
+
+    for args, allowed in CLI_INVOCATIONS:
+        concrete = tuple(part.format(tmp=tmp_path) for part in args)
+        code, out, err = _run(capsys, "--platform-db", str(platform_db), *concrete)
+        assert code in allowed, f"{' '.join(concrete)} -> {code}\nstdout: {out[:400]}\nstderr: {err[:400]}"
+        assert "Traceback" not in err, f"{' '.join(concrete)} 打印了堆栈:\n{err[-600:]}"
+        assert out or err, f"{' '.join(concrete)} 什么都没输出"
+
+    # A second run over the same database: the commands that create things must survive
+    # being asked twice.
+    code, out, err = _run(capsys, "--platform-db", str(platform_db), "model", "1")
+    assert code == 0 and "Traceback" not in err, err[-400:]
+
+    # `connect` on a source that is already registered.
+    code, out, err = _run(
+        capsys, "--platform-db", str(platform_db), "connect", str(sample_db), "--name", "again", "--domain", "测试"
+    )
+    assert code == 0, err[-400:]
+
+
+def test_the_walk_covers_every_subcommand_the_parser_declares() -> None:
+    """A subcommand nobody runs is a subcommand nobody has tried.
+
+    `serve` is the one exception and it says so where the list is defined: it blocks, and the
+    CI quickstart job starts it and talks to it over HTTP.
+    """
+    from ontology_platform.cli import build_parser
+
+    subcommands = {name for action in build_parser()._actions for name in getattr(action, "choices", {}) or {}}
+    walked = {args[0] for args, _allowed in CLI_INVOCATIONS}
+    # `init` and `demo` build the instance every other invocation runs against, and are
+    # asserted there; `connect` is run twice above, the second time on an already-registered
+    # source. `serve` blocks, and the CI quickstart job starts it and talks to it over HTTP.
+    accounted_for = {"serve", "init", "demo", "connect"}
+    assert subcommands, "没有从 parser 里枚举到任何子命令，枚举方式或已失效"
+    assert subcommands - walked == accounted_for, (
+        f"以下子命令既没有被走查，也不在已记账的名单里：{sorted(subcommands - walked - accounted_for)}"
+    )
