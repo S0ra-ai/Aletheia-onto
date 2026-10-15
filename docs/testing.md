@@ -136,6 +136,11 @@ and printed on every run. The script cannot tell those from a field-name mismatc
 checker that guessed would either miss real defects or fail on real data — so the allowance is
 explicit, and anything not on it still fails the job.
 
+The job then runs the sweep **once more with the allowance switched off**, and asserts that
+what it reports is exactly what the list contains. An allowance suppresses a finding, so a
+stale entry suppresses the very thing this check exists to find; the first run of that
+assertion removed an entry that the seeding had made obsolete.
+
 Run it by hand after touching a table:
 
 ```bash

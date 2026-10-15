@@ -158,7 +158,10 @@ def seed_page(base_url: str, token: str, user: dict | None, directory: Path) -> 
 # that guesses would either miss real defects or fail on real data. Printed on every run, so
 # an allowance cannot quietly outlive the reason for it.
 KNOWN_SPARSE = (
-    ("/admin/permission?tab=policies", "描述"),
+    # The seeded instance writes a description on the one policy it creates, so that column
+    # is populated now -- this entry was removed the first time the CI assertion below ran,
+    # which is what the assertion is for: an allowance outlives its reason and then suppresses
+    # the finding it was never meant to cover.
     ("/admin/ontology/{id}?tab=attributes", "描述"),
 )
 
