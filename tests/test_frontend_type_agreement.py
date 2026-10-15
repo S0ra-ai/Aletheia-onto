@@ -908,6 +908,10 @@ ACTION_ONLY_WRITES = (
     ("PUT", "/ontologies/${ontologyId}/objects/${objectCode}/event-types"),
     ("PUT", "/ontologies/${ontologyId}/rules/${ruleId}"),
     ("PUT", "/tenants/${encodeURIComponent(tenant)}/quotas"),
+    # Reports the published version in a toast and re-reads the page. The *success* path also
+    # needs zero pending mappings, which the contract fixture cannot arrange -- so the summary
+    # shape is asserted where publishing is: the governance tests.
+    ("POST", "/ontologies/${ontologyId}/publish"),
     # Needs a live OpenAPI endpoint to fetch, and a feedback row to resolve.
     ("POST", "/data-sources/${dataSourceId}/apis/import-openapi-url"),
     ("POST", "/feedback/${feedbackId}/resolve"),

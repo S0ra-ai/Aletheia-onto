@@ -83,7 +83,9 @@ It uses the values that were valid then, and the rules that were in force then. 
 against today's values answers a different question.
 
 `aletheia assess` prints the verdict and the rules that failed; use `--verbose` for the
-full evidence. `aletheia publish` is subject to the release gate, and **unreviewed
+full evidence. Publishing is in the console under 本体 → 发布门禁 (the button is disabled
+while any blocker gate fails, and the page lists each one), and `aletheia publish` does the
+same from a terminal. Both are subject to the release gate, and **unreviewed
 mappings cannot be skipped with `--force`** -- publishing on mappings nobody looked at
 would make every verdict derived from them unaccountable.
 

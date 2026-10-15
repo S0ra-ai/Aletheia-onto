@@ -2,8 +2,8 @@ import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { label, GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
+import { ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
@@ -23,6 +23,7 @@ const OntologyDetailPage: React.FC = () => {
   // the same "未找到本体数据" for a failed read told the user the data does not exist when
   // the real cause was a permission or a server failure.
   const [loadError, setLoadError] = useState('');
+  const [publishing, setPublishing] = useState(false);
 
   // `useCallback` so the effect below can list its real dependency instead of capturing the
   // first render's closure and warning about it.
@@ -49,6 +50,30 @@ const OntologyDetailPage: React.FC = () => {
   useEffect(() => {
     fetchOntology();
   }, [fetchOntology]);
+
+  const blockers = (releaseReadiness?.gates ?? []).filter((gate) => gate.severity === 'blocker' && !gate.passed);
+  // Only the plain path is offered here. `aletheia publish --force` exists for a deliberate
+  // override and records it in the audit log; a button labelled 强行发布 in a web console
+  // would make an override look like an ordinary action -- and the refusal names every
+  // blocker, so the button being disabled is never the end of the story.
+  const canPublish =
+    !!ontology && ontology.ontology.status !== 'published' && blockers.length === 0;
+
+  const handlePublish = async () => {
+    if (!id) return;
+    setPublishing(true);
+    try {
+      const result = await ontologyApi.publish(parseInt(id));
+      message.success(`本体已发布：${result.name} v${result.version}`);
+      await fetchOntology();
+    } catch (error) {
+      // The server's refusal names the blockers, and that message is the useful one -- the
+      // gate list on this tab shows the same thing in detail.
+      message.error(requestErrorMessage(error, '发布失败'));
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   if (loading) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
@@ -280,6 +305,43 @@ const OntologyDetailPage: React.FC = () => {
             />
           </TabPane>
           <TabPane tab="发布门禁" key="release">
+            {/*
+              The gate's verdict had no door: this tab listed what blocks a release, the card
+              above listed what is ready, and there was no way to publish from the application
+              at all -- while `ontologyApi.publish` sat unused in the client. A screen that
+              shows a gate and offers no way through it is a screen that ends in a terminal.
+            */}
+            <Space style={{ marginBottom: 12 }} direction="vertical" size={8}>
+              <Space>
+                <Popconfirm
+                  title="发布本体"
+                  description="发布后该版本不可修改，只能派生新版本。确认发布？"
+                  okText="发布"
+                  cancelText="取消"
+                  onConfirm={() => void handlePublish()}
+                  disabled={!canPublish}
+                >
+                  <Button
+                    type="primary"
+                    icon={<CloudUploadOutlined />}
+                    loading={publishing}
+                    disabled={!canPublish}
+                  >
+                    {ontology.ontology.status === 'published' ? '已发布' : '发布本体'}
+                  </Button>
+                </Popconfirm>
+                {blockers.length > 0 && (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    还有 {blockers.length} 项阻断项，先按上面的「下一步动作」处理；
+                    需要强行发布时用命令行 <Typography.Text code>aletheia publish --force</Typography.Text>，
+                    它会把这处覆盖写进审计。
+                  </Typography.Text>
+                )}
+              </Space>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                发布后该版本不可修改：改动要派生新版本，判定仍能追溯到发布时的模型。
+              </Typography.Text>
+            </Space>
             <Table
               columns={releaseGateColumns}
               dataSource={releaseReadiness?.gates || []}

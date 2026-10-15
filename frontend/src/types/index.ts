@@ -415,6 +415,23 @@ export interface OntologyDetail {
   discardedSummary?: string;
 }
 
+/**
+ * What `POST /ontologies/{id}/publish` answers with.
+ *
+ * The summary of the version that is now published -- `_ontology_publication_summary` in the
+ * backend. Declared because the screen reads `name` and `version` from it, and an undeclared
+ * shape is a shape nobody can rely on.
+ */
+export interface OntologyPublication {
+  id: number;
+  name: string;
+  domain: string;
+  version: string;
+  status: string;
+  publishedAt?: string | null;
+  mappingCounts?: Record<string, number>;
+}
+
 export interface ReleaseReadinessGate {
   code: string;
   name: string;

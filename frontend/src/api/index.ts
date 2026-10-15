@@ -37,6 +37,7 @@ import type {
   ModelConfig,
   ModelConfigUpdate,
   IndustryBlueprint,
+  OntologyPublication,
   OntologyReasoningChainResult,
   RuleWordImportResult,
   KnowledgeBase,
@@ -495,9 +496,14 @@ export const ontologyApi = {
     return data;
   },
 
-  publish: async (ontologyId: number, publisher = 'system'): Promise<any> => {
-    const { data } = await api.post(`/ontologies/${ontologyId}/publish`, { publisher });
-    return data;
+  /**
+   * Publish a version. No `publisher` argument: the audit credits the authenticated caller,
+   * and the server's request model does not declare one -- so a value sent here looked like it
+   * decided who was recorded while Pydantic dropped it on the floor.
+   */
+  publish: async (ontologyId: number): Promise<OntologyPublication> => {
+    const { data } = await api.post(`/ontologies/${ontologyId}/publish`, {});
+    return data as OntologyPublication;
   },
 
   derive: async (ontologyId: number, version: string, actor = 'system'): Promise<any> => {
