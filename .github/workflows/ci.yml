@@ -524,15 +524,18 @@ jobs:
           ONTOLOGY_ADMIN_PASSWORD: CI-Smoke-Passw0rd!x
 
       - name: 逐页检查是否有整列为空的表格
+        # One login, and the response is kept: when the token came back empty this step died
+        # with `argument --token: expected one argument`, which describes argparse rather than
+        # the login that failed -- and printed neither the response nor a status code.
         run: |
-          TOKEN=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+          LOGIN=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
             -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
-            | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-          USER_JSON=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
-            | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["user"]))')
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}')
+          TOKEN=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.load(sys.stdin).get("token", ""))')
+          if [ -z "$TOKEN" ]; then
+            echo "登录没有返回令牌，服务响应为：$LOGIN"; exit 1
+          fi
+          USER_JSON=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("user", {})))')
           python scripts/ui_smoke.py --base-url http://127.0.0.1:8077 \
             --token "$TOKEN" --user "$USER_JSON"
         env:
