@@ -8,8 +8,12 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1675 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
-no server is reachable.
+**1677 tests**, all passing. A case that needs something this machine does not have skips
+rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
+the frontend ones without a build. That is **nine** skips on a developer machine with neither
+database driver and **three** in CI, which installs both drivers and runs both databases as
+service containers. A fixed number here would describe the reader's machine rather than the
+suite, which is why the claim is not one.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
 breaks in a user's environment first: Python keeps syntax compatible but removes stdlib
@@ -93,6 +97,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
 | `test_ui_smoke_guards.py` | 6 | The render check's own guards, exercised without a browser |
+| `test_ci_workflow.py` | 2 | The workflow GitHub runs is the workflow the file describes |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
 | `test_documented_claims.py` | 12 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
@@ -165,3 +170,12 @@ defects in that path were found by walking it by hand rather than by any check.
 
 CI also has a `quickstart` job that replays the README quick start in a clean environment and
 verifies that the test count stated here matches what pytest collects.
+
+The workflow file is checked as well, because it is written by hand and two hand-written
+mistakes reached GitHub with nothing local objecting. A `run:` continued with a shell
+backslash: YAML folds the line break into a space first, so the backslash lands on that
+space, the script is handed `" --base-url"` — one argument with a leading space — and
+argparse reports it as unrecognized. And three job keys duplicated: `yaml.safe_load` returns
+the last copy without complaint while GitHub refuses the whole file, so no job ran at all.
+`test_ci_workflow.py` reads the file as YAML *nodes*, where the source style and the
+discarded duplicates both still exist; it has been confirmed to fail on each.

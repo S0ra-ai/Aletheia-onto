@@ -545,8 +545,7 @@ jobs:
         # compares; it lives in `scripts/` rather than inline here because a heredoc inside a
         # YAML block scalar needs its terminator at column zero, and this workflow failed to
         # parse the first time it was written that way.
-        run: python scripts/check_smoke_allowance.py \
-          --base-url http://127.0.0.1:8077 --password 'CI-Smoke-Passw0rd!x'
+        run: python scripts/check_smoke_allowance.py --base-url http://127.0.0.1:8077 --password 'CI-Smoke-Passw0rd!x'
         env:
           PYTHONPATH: backend
 

@@ -8,7 +8,11 @@
 .venv/bin/python -m pytest
 ```
 
-**1675 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1677 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
+在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
+并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
+所以这里不写死。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -87,6 +91,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
 | `test_ui_smoke_guards.py` | 6 | The render check's own guards, exercised without a browser |
+| `test_ci_workflow.py` | 2 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
 | `test_documented_claims.py` | 12 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
@@ -141,3 +146,11 @@ CI 另有一个 `scaffold` job，走的是**新部署**那条路——`aletheia 
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。
+
+工作流文件本身也在检查范围内。`ci.yml` 是手写的，而两个手写错误都是到了 GitHub 才暴露、
+本地一样都没拦住：一是 `run:` 用 shell 反斜杠续行——YAML 会先把换行折叠成空格，
+那个 `\` 于是落在空格上，脚本收到的是 `" --base-url"` 这样一个带前导空格的参数，
+argparse 于是报「无法识别的参数」；二是三个 job 键重复，`yaml.safe_load` 取最后一份不吭声，
+GitHub 直接拒绝整个文件，于是一个 job 都没跑起来。
+`test_ci_workflow.py` 把文件当作 YAML **节点**来读——源码书写风格与被丢弃的重复键都还在——
+两条都能拦住，且两条都已在真实缺陷上确认会失败。

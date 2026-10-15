@@ -73,6 +73,14 @@ dev = [
     # "contains" a substring is how a syntactically invalid Turtle document shipped
     # unnoticed, since an invalid document contains substrings just as well as a valid one.
     "rdflib==7.6.0",
+    # Reads `.github/workflows/*.yml` as YAML *nodes* rather than as parsed data, so the
+    # suite can see what the runner sees: a plain multi-line `run:` folds its newline into
+    # a space before the shell ever gets it, and a duplicated job key is discarded by
+    # `safe_load` but refused outright by GitHub. Both shipped once; neither is visible in
+    # the file's text. It arrives transitively via `uvicorn[standard]` and is declared
+    # anyway -- relying on that copy means a change there silently breaks a test that has
+    # nothing to do with the web layer.
+    "PyYAML==6.0.3",
 ]
 # Everything, for a deployment that does not want to reason about extras.
 all = [

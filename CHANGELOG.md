@@ -23,6 +23,23 @@
 
 ### Fixed
 
+- **测试文档把「跳过几个」写成了固定数字**（`docs/testing.md`、`docs/testing.zh-CN.md`）。
+  原话是「其中 2 个按环境跳过」，而在没装 MySQL／PostgreSQL 驱动的开发机上实际是 **9 个**，
+  在 CI 上是 3 个（CI 两个驱动都装，两个数据库都作为 service container 跑起来，
+  于是在那里跳过的是前端构建相关的用例）。**那个数字描述的是读文档那台机器，不是测试套件**——
+  照文档数一遍会得到 9，然后怀疑多出来的 7 个跳过是不是出了问题。现在写的是机制与两处实测值。
+- **工作流文件里两条「本地看不出来」的写法**（`.github/workflows/ci.yml`、`tests/test_ci_workflow.py`）。
+  一是 `run:` 用 shell 反斜杠续行：YAML 的**普通标量先把换行折叠成空格**，那个 `\` 于是落在空格上
+  而不是落在换行上，脚本收到的是 `" --base-url"`——**一个带前导空格的参数**——argparse 报
+  `unrecognized arguments`，而它说的恰恰是反话：这个参数它认出来了。读文件看不出来，
+  因为文件读起来就是它模仿的那条 shell 命令；YAML 解析也看不出来，因为折叠发生在两者看到它之前。
+  二是三个 job 键重复（`packaging`／`frontend`／`ui-smoke`）：`yaml.safe_load` 取最后一份**不吭声**，
+  我本地的检查因此通过，而 GitHub **直接拒绝整个文件**——十个 job 一个都没跑，
+  失败发生在第 0 秒，报的是解析错误而不是一条红的用例。
+  现由 `tests/test_ci_workflow.py` 把文件当 YAML **节点**读：源码书写风格与被 `safe_load` 丢弃的重复键
+  都还在，两条都能拦（且已各自在真实缺陷上确认会失败——**从没失败过的检查与空检查无法区分**）。
+  PyYAML 因此成为显式声明的测试依赖：它本来就由 `uvicorn[standard]` 带进来，而依赖一份传递依赖，
+  等于把一条与 web 层毫不相干的测试，押在别人下次改依赖上。
 - **两层深的清理**（`metadata.py`、`ontology.py`）。清掉一个派生草案时，
   清理逻辑向目录问「哪些表的外键指向本体」再删它们的行——这在**子表也有子表**之前是对的：
   `workflow_definition` 指向本体，而 `workflow_state`、`workflow_transition`、
