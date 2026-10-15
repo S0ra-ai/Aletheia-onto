@@ -321,7 +321,18 @@ const RuleList: React.FC = () => {
             action={<Button onClick={() => selectedOntology && fetchRules(selectedOntology)}>重试</Button>}
           />
         ) : rules.length === 0 && !loading ? (
-          <Empty description={selectedOntology ? '该本体暂无规则，点击上方按钮创建或导入' : '请选择本体查看业务规则'} />
+          // Three different situations, and "请选择本体" told the reader to pick something
+          // that may not exist: on a fresh install the list is empty and the instruction is
+          // impossible to follow. Naming the next step beats naming the missing selection.
+          <Empty
+            description={
+              ontologies.length === 0
+                ? '还没有本体，规则依附于本体。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成本体草案'
+                : selectedOntology
+                  ? '该本体暂无规则，点击上方按钮创建或导入'
+                  : '请选择本体查看业务规则'
+            }
+          />
         ) : (
           <Table
             columns={columns}

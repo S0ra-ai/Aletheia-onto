@@ -204,7 +204,11 @@ const ObjectBrowser: React.FC = () => {
       )}
 
       <Card>
-        {!ontologyId || !objectCode ? (
+        {ontologies.length === 0 ? (
+          // "请选择本体与业务对象" is unanswerable when there are none, and this is the page a
+          // reader reaches straight from the navigation.
+          <Empty description="还没有可浏览的本体。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成本体草案" />
+        ) : !ontologyId || !objectCode ? (
           <Empty description="请选择本体与业务对象" />
         ) : !rowFilterError && rows.length === 0 && !loading ? (
           <Empty description={rowFilterApplied ? '按当前角色的可见范围内没有实例' : '该对象没有实例'} />

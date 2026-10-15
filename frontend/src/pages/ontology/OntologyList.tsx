@@ -145,10 +145,24 @@ const OntologyList: React.FC = () => {
 
       <Card>
         {ontologies.length === 0 && !loading ? (
-          <Empty description="暂无本体数据">
-            <Button type="primary" onClick={() => setModalVisible(true)}>
-              生成第一个本体
-            </Button>
+          <Empty
+            description={
+              dataSources.length === 0
+                ? '本体由扫描到的表结构生成，因此需要先接入一个数据源。请到「数据接入」登记业务库，扫描后再回来生成草案'
+                : '暂无本体数据'
+            }
+          >
+            {/* The button generates from a data source. Offering it with none registered
+                leads straight to an empty dropdown and a disabled confirm. */}
+            {dataSources.length === 0 ? (
+              <Button type="primary" onClick={() => navigate('/datasource')}>
+                去接入数据源
+              </Button>
+            ) : (
+              <Button type="primary" onClick={() => setModalVisible(true)}>
+                生成第一个本体
+              </Button>
+            )}
           </Empty>
         ) : (
           <Table

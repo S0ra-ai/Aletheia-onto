@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse } from 'antd';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse, Empty } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
@@ -284,12 +284,42 @@ const DataSourceList: React.FC = () => {
       </div>
 
       <Card>
-        <Table
-          columns={columns}
-          dataSource={dataSources}
-          rowKey="id"
-          loading={loading}
-        />
+        {!loading && dataSources.length === 0 ? (
+          // The workbench sends a first-time reader here with "接入一个业务库", and this page
+          // answered with an empty table and the words 暂无数据 -- the least instructive
+          // screen on the path it is the destination of. What a reader needs at that moment
+          // is what a data source is *for* and what happens after adding one.
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
+                <Text strong>还没有接入任何业务系统</Text>
+                <Text type="secondary">
+                  平台的全部能力都从一次元数据扫描开始：读取表结构、字段类型与外键，
+                  据此生成业务对象与属性的草案，再由你审核映射。
+                </Text>
+                <Text type="secondary">
+                  <Text strong>只读元数据</Text>，不会修改你的业务数据库。
+                  想先看看它长什么样，工作台的「先体验演示」会用内置样例跑通一遍完整闭环。
+                </Text>
+              </Space>
+            }
+          >
+            <Space>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
+                接入一个业务系统
+              </Button>
+              <Button onClick={() => navigate('/workbench')}>回到工作台看演示</Button>
+            </Space>
+          </Empty>
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={dataSources}
+            rowKey="id"
+            loading={loading}
+          />
+        )}
       </Card>
 
       <Modal

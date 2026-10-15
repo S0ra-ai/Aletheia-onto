@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, message, Popconfirm, Descriptions, Timeline } from 'antd';
+import { Empty, Card, Table, Button, Modal, Form, Input, Select, Space, Tag, message, Popconfirm, Descriptions, Timeline } from 'antd';
 import { PlusOutlined, DeleteOutlined, RightOutlined, HistoryOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, workflowApi } from '../../api';
 import type { WorkflowDefinition, WorkflowHistoryItem } from '../../types';
@@ -163,7 +163,20 @@ const WorkflowManager: React.FC = () => {
   return (
     <div>
       <Card title="工作流管理" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建工作流</Button>}>
-        <Table dataSource={workflows} columns={columns} rowKey="id" loading={loading} pagination={false} />
+        <Table
+          dataSource={workflows}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          pagination={false}
+          locale={{
+            // A bare "暂无数据" leaves the reader to guess whether the feature is missing,
+            // the fetch failed, or there is simply nothing yet.
+            emptyText: (
+              <Empty description="还没有工作流。工作流为一个业务对象定义状态与流转条件，流转时的守卫表达式会在规则沙箱中求值。" />
+            ),
+          }}
+        />
       </Card>
 
       <Modal title="新建工作流" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => form.submit()} width={500}>
