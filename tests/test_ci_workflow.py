@@ -129,3 +129,16 @@ def test_no_key_is_declared_twice() -> None:
                     )
                 seen.setdefault(name, key_node.start_mark.line)
     assert not found, "以下键重复声明：\n  " + "\n  ".join(found)
+
+
+def test_the_render_job_passes_its_token_with_an_equals_sign() -> None:
+    """About 1 in 64 tokens begins with `-`, and a space-separated value is then read as an
+    option: `argument --token: expected one argument`, for an argument that is right there.
+
+    It cost two red runs, both reported as an argparse message that names neither the token
+    nor the login. Asserted as text because the alternative is another red run every few
+    weeks -- `--token=...` attaches the value whatever it looks like.
+    """
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "--token=" in text and "--user=" in text, "CI 又用空格分隔的方式传令牌了"
+    assert '--token "$TOKEN"' not in text, "CI 里仍有会被当成选项的写法"

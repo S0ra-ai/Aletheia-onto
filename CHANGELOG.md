@@ -424,6 +424,13 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **CI 又红了两次，而两次报的都是同一句与原因无关的话**（`.github/workflows/ci.yml`、`scripts/ui_smoke.py`）。
+  渲染 job 里那句 `--token "$TOKEN"`：平台约 **1/64 的令牌以 `-` 开头**（`token_urlsafe` 的字母表含 `-`），
+  而 argparse 看到值以 `-` 开头就当成另一个选项，于是报
+  「argument --token: expected one argument」——**而那个参数就在那儿**。
+  改成 `--token="$TOKEN"`（`=` 形式无论值长什么样都会附上去），并在脚本的用法说明里写明这一点；
+  测试断言 CI 里不再出现空格分隔的写法。
+  **一句错误信息如果不提它自己这件事，就会把下一次排查也一起带偏。**
 - **两个页面都会扫描，而「扫描完成」只修好了一处**（`DataSourceList.tsx`、`DataSourceDetail.tsx`、`i18n/text.ts`）。
   上一条把数据源**列表页**的扫描提示改成了「扫描完成：N 张表，其中 M 张草案里还没有」，
   而**详情页**里那个同样调用的按钮仍然只说「扫描完成」——**同一个缺陷的第二处**，

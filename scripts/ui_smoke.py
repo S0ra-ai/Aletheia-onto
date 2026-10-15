@@ -26,6 +26,11 @@ Usage
         --token "$(curl -s -X POST $BASE/auth/login -H 'Content-Type: application/json' \\
                    -d '{"username":"admin","password":"..."}' | python -c 'import json,sys;print(json.load(sys.stdin)["token"])')"
 
+Write the token as `--token=...` rather than `--token ...`: about 1 in 64 of the platform's
+tokens begins with `-`, and argparse reads a `-`-leading value as another option, answering
+「argument --token: expected one argument」 for an argument that is right there. The `=`
+form attaches the value whatever it looks like.
+
 Without a token only the public pages are checked. A session is seeded the way the SPA keeps
 it (sessionStorage), so this drives the same authenticated application a person sees.
 

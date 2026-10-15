@@ -536,8 +536,12 @@ jobs:
             echo "登录没有返回令牌，服务响应为：$LOGIN"; exit 1
           fi
           USER_JSON=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("user", {})))')
+          # `=` rather than a space: about 1 in 64 tokens begins with `-`, and argparse reads
+          # a `-`-leading value as another option -- 「argument --token: expected one argument」
+          # for an argument that is right there. This form attaches the value whatever it looks
+          # like. It cost two red runs to find, both times reported as an argparse message.
           python scripts/ui_smoke.py --base-url http://127.0.0.1:8077 \
-            --token "$TOKEN" --user "$USER_JSON"
+            --token="$TOKEN" --user="$USER_JSON"
         env:
           PYTHONPATH: backend
           CHROME_BIN: /usr/bin/google-chrome
