@@ -69,6 +69,20 @@ By design, not bugs. These are the next phase's work.
   linter reports: an antd column whose `dataIndex` does not exist is simply blank. The fix
   here was to match each table to its own endpoint; the real fix is for one naming
   convention to win.
+
+  **It keeps recurring.** Found afterwards: all seven columns of `/permissions/policies`,
+  the type and risk columns of `/tools`, and five of seven on `/ontologies/{id}/mappings` —
+  where the more galling part is that the serializer producing exactly the right fields
+  already existed in the same repository and the endpoint simply did not call it. Those three
+  are now normalised in `api/index.ts`, because mapping the wire onto the application's shape
+  is that file's job, and correcting one page at a time is how the same defect arrived four
+  times.
+
+  Response-side consistency is still checked by hand, with `scripts/ui_smoke.py`, which
+  reports columns that are empty in every row. That script has just had three blind spots
+  closed: tabs (a page must put its active tab in the URL), tables that render only after a
+  click, and cells holding an icon rather than text — icon columns were reported as empty
+  forever, and a diagnostic that reports a standing false positive teaches its reader to skim.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.

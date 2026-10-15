@@ -211,6 +211,52 @@ const normalizeSourceApi = (item: any): SourceApi => ({
   responseSchema: item.responseSchema ?? item.response_schema ?? {},
 });
 
+/**
+ * Permission and tool rows, mapped from the wire to the shape the screens use.
+ *
+ * These three endpoints send snake_case (`role_code`, `can_read`, `tool_type`,
+ * `risk_level`) while their TypeScript types declared camelCase. The types therefore
+ * checked out, autocompleted, and described fields that were `undefined` at runtime --
+ * and antd draws nothing for a missing `dataIndex`, so the permission policy table
+ * rendered twenty rows of blank cells on the screen that answers "who may do what".
+ *
+ * Normalised here rather than at each call site: the boundary between the wire and the
+ * application is this file's job, and the alternative -- correcting one page at a time --
+ * is how the same defect arrived three times.
+ */
+const normalizePolicy = (item: any): PermissionPolicy => ({
+  id: item.id,
+  roleId: item.roleId ?? item.role_id,
+  roleCode: item.roleCode ?? item.role_code ?? '',
+  roleName: item.roleName ?? item.role_name ?? '',
+  objectCode: item.objectCode ?? item.object_code ?? '',
+  canRead: item.canRead ?? item.can_read ?? 0,
+  canWrite: item.canWrite ?? item.can_write ?? 0,
+  canExecute: item.canExecute ?? item.can_execute ?? 0,
+  canDelete: item.canDelete ?? item.can_delete ?? 0,
+  filterExpression: item.filterExpression ?? item.filter_expression ?? '',
+  description: item.description ?? '',
+});
+
+const normalizeRole = (item: any): PermissionRole => ({
+  ...item,
+  isSystem: item.isSystem ?? item.is_system ?? 0,
+  createdAt: item.createdAt ?? item.created_at ?? '',
+});
+
+const normalizeTool = (item: any): ToolDefinition => ({
+  id: item.id,
+  code: item.code,
+  name: item.name,
+  description: item.description ?? '',
+  toolType: item.toolType ?? item.tool_type ?? '',
+  inputSchema: item.inputSchema ?? item.input_schema ?? '',
+  riskLevel: item.riskLevel ?? item.risk_level ?? '',
+  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
+  status: item.status ?? '',
+  createdAt: item.createdAt ?? item.created_at ?? '',
+});
+
 const normalizeSourceTable = (item: any): SourceTable => ({
   id: item.id,
   tableName: item.tableName ?? item.table_name,
@@ -813,7 +859,7 @@ export const workflowApi = {
 export const permissionApi = {
   getRoles: async (): Promise<PermissionRole[]> => {
     const { data } = await api.get('/permissions/roles');
-    return (data.roles || []) as PermissionRole[];
+    return ((data.roles || []) as unknown[]).map(normalizeRole);
   },
 
   createRole: async (payload: {
@@ -826,7 +872,7 @@ export const permissionApi = {
   getPolicies: async (roleId?: number): Promise<PermissionPolicy[]> => {
     const params = roleId ? { roleId } : {};
     const { data } = await api.get('/permissions/policies', { params });
-    return (data.policies || []) as PermissionPolicy[];
+    return ((data.policies || []) as unknown[]).map(normalizePolicy);
   },
 
   upsertPolicy: async (payload: {
@@ -849,7 +895,7 @@ export const permissionApi = {
 export const toolApi = {
   list: async (): Promise<ToolDefinition[]> => {
     const { data } = await api.get('/tools');
-    return (data.tools || []) as ToolDefinition[];
+    return ((data.tools || []) as unknown[]).map(normalizeTool);
   },
 
   register: async (payload: {

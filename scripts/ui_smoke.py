@@ -123,6 +123,19 @@ def dump_dom(browser: str, url: str) -> str:
     ).stdout
 
 
+# An icon carries meaning without carrying text: a tick and a cross are the whole content of
+# a permission cell. Stripping tags and reading what is left reports every icon-only column as
+# "empty in every row", and a diagnostic that reports a standing false positive is teaching
+# its reader to skim past the real ones.
+_ICON = re.compile(r'<span[^>]*class="[^"]*anticon[^"]*"')
+
+
+def _cell_text(cell: str) -> str:
+    if _ICON.search(cell):
+        return "\u2713"
+    return re.sub(r"<[^>]+>", "", cell).strip()
+
+
 def tables(html: str) -> list[tuple[list[str], list[list[str]]]]:
     found = []
     for block in re.findall(r"<table[^>]*>(.*?)</table>", html, re.DOTALL):
@@ -131,9 +144,7 @@ def tables(html: str) -> list[tuple[list[str], list[list[str]]]]:
         ]
         rows = []
         for row in re.findall(r'<tr[^>]*class="[^"]*ant-table-row[^"]*"[^>]*>(.*?)</tr>', block, re.DOTALL):
-            rows.append(
-                [re.sub(r"<[^>]+>", "", cell).strip() for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)]
-            )
+            rows.append([_cell_text(cell) for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)])
 
         # antd's expandable rows prepend a column holding nothing but the expand icon. Its
         # header is empty and so is every cell, so it is reported as a finding on every
