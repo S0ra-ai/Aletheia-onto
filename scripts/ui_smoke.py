@@ -44,6 +44,7 @@ import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 # Routes worth checking: every page that renders a table.
 #
@@ -59,9 +60,7 @@ ROUTES = (
     "/admin/mapping",
     "/admin/rules",
     "/admin/semantic",
-    "/admin/semantic?tab=explain",
     "/admin/semantic?tab=assess",
-    "/admin/semantic?tab=consistency",
     "/admin/semantic?tab=preflight",
     "/admin/governance",
     "/admin/governance?tab=decisions",
@@ -105,6 +104,11 @@ ID_ROUTES = (
     "/admin/datasource/{source}?tab=tables",
     "/admin/datasource/{source}?tab=apis",
     "/admin/datasource/{source}?tab=coverage",
+    # The two semantic tabs whose tables appear only after a request. The page reads the
+    # query from the URL, so the request is made by arriving -- which is also what makes an
+    # explanation something you can paste into a ticket.
+    "/admin/semantic?tab=explain&object={object}&instance={instance}&ontology={ontology}",
+    "/admin/semantic?tab=consistency&object={object}&ontology={ontology}&instance={instance}",
 )
 
 # Where the seed page is written: the build the running instance serves, unless it was
@@ -184,14 +188,13 @@ KNOWN_SPARSE = (
 # stops rendering without landing here fails, and a route listed here that starts rendering
 # one also fails -- the list is checked in both directions.
 NO_TABLE_ROUTES = {
-    # Two of the five semantic tabs do have tables, and both need a submitted request first;
-    # the other three render prose or a description list and have none. Stated per tab rather
-    # than as one sentence covering all five, because a reason that is approximately right is
-    # the kind of entry that stops being read.
+    # Two of the five semantic tabs do have tables. Those two are swept through a URL that
+    # names the object and the instance (see `ID_ROUTES`), because the page only answers after
+    # a submit; the other three render prose or a description list and have no table at all.
+    # Stated per tab rather than as one sentence covering all five, because a reason that is
+    # approximately right is the kind of entry that stops being read.
     "/admin/semantic": "自然语言交互：答案是正文，没有表格",
-    "/admin/semantic?tab=explain": "实例解释：属性表要提交一次解释请求后才出现（本工具不点按钮）",
     "/admin/semantic?tab=assess": "风险研判：结论以描述列表呈现，没有表格",
-    "/admin/semantic?tab=consistency": "决策一致性：问题表要提交一次检查后才出现（本工具不点按钮）",
     "/admin/semantic?tab=preflight": "操作预检：结果以描述列表呈现，没有表格",
     "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
     "/admin/graph": "本体图是画布，没有表格",
@@ -208,15 +211,18 @@ def _normalise_route(route: str) -> str:
     return re.sub(r"/\d+(?=/|\?|$)", "/{id}", route)
 
 
-def _id_routes(base_url: str, token: str) -> list[str]:
-    """The detail routes, filled with the first ontology and data source on the instance.
+def _id_routes(base_url: str, token: str) -> tuple[list[str], list[str]]:
+    """The detail routes, filled with what the instance actually has; plus the ones it could not fill.
 
-    Empty when either cannot be read -- a sweep that silently skipped them would read as
-    coverage it does not have, which is the failure this script exists to notice.
+    Read from the instance rather than written down: a literal `contract` or `1` works on the
+    demo and stops working the moment anything else is seeded first, and the job then fails
+    for a reason that is not a defect. The second half of the return value is the point: a
+    route that cannot be filled is *reported* rather than dropped, because a silently skipped
+    route is a coverage loss that reads exactly like a route that was swept and was clean.
     """
     import urllib.request
 
-    def first(endpoint: str, key: str) -> str:
+    def first(endpoint: str, key: str, field: str = "id") -> str:
         request = urllib.request.Request(f"{base_url}{endpoint}", headers={"Authorization": f"Bearer {token}"})
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
@@ -225,21 +231,35 @@ def _id_routes(base_url: str, token: str) -> list[str]:
             return ""
         for candidate in (payload.get(key), payload.get("items"), payload.get("dataSources")):
             if isinstance(candidate, list) and candidate:
-                return str(candidate[0].get("id", ""))
+                return str(candidate[0].get(field, ""))
         return ""
 
     ontology = first("/ontologies", "ontologies")
     source = first("/data-sources", "dataSources")
+    # The object and the instance come from the ontology the sweep is already pointed at, so
+    # the semantic routes answer for a real row: the explanation of an instance that does not
+    # exist renders the same table with nothing in it, which is the state this check cannot
+    # tell from a defect.
+    object_code = first(f"/ontologies/{ontology}", "objects", field="code") if ontology else ""
+    instance = (
+        first(
+            f"/semantic/objects/{object_code}/instances?ontologyId={ontology}",
+            "items",
+            field="instanceId",
+        )
+        if object_code
+        else ""
+    )
     filled = []
+    unfilled = []
     for template in ID_ROUTES:
-        if "{ontology}" in template and not ontology:
+        values = {"ontology": ontology, "source": source, "object": object_code, "instance": instance}
+        missing = [name for name in values if "{" + name + "}" in template and not values[name]]
+        if missing:
+            unfilled.append(f"{template}（缺少 {'、'.join(missing)}）")
             continue
-        if "{source}" in template and not source:
-            continue
-        filled.append(template.format(ontology=ontology, source=source))
-    if not filled:
-        print("warning: no ontology or data source to fill the detail routes with", file=sys.stderr)
-    return filled
+        filled.append(template.format(**values))
+    return filled, unfilled
 
 
 def dump_dom(browser: str, url: str) -> str:
@@ -303,6 +323,18 @@ def empty_columns(headers: list[str], rows: list[list[str]]) -> list[str]:
 # table either. Without this, the second case is an entry in `NO_TABLE_ROUTES` that quietly
 # becomes true.
 FAILURE_MARKERS = ("页面加载失败", "页面不存在")
+
+
+def seeded_url(entry: str, route: str) -> str:
+    """The seed page's URL for one route, with the route encoded.
+
+    `to` is a single query parameter, so a route carrying more than one of its own --
+    `?tab=explain&object=contract&instance=1` -- arrives at the page cut in half at the first
+    `&`, and the browser then loads a different screen than the one asked for. That failure
+    looks exactly like the page having nothing to show, which is this script's recurring
+    shape of mistake.
+    """
+    return f"{entry}?to={quote(route, safe='')}"
 
 
 def failure_marker(html: str) -> str:
@@ -379,8 +411,10 @@ def main() -> int:
 
     user = json.loads(args.user) if args.user else None
     routes = [r.strip() for r in args.routes.split(",") if r.strip()] or list(ROUTES)
+    skipped: list[str] = []
     if not args.routes and args.token:
-        routes.extend(_id_routes(args.base_url, args.token))
+        filled, skipped = _id_routes(args.base_url, args.token)
+        routes.extend(filled)
     routes = tuple(routes)
 
     # Written into the real build output, because that is what the running instance already
@@ -427,7 +461,7 @@ def main() -> int:
     try:
         print(f"seeding from {entry}")
         for route in routes:
-            html = dump_dom(browser, f"{entry}?to={route}")
+            html = dump_dom(browser, seeded_url(entry, route))
             page_tables = tables(html)
             examined = sum(len(rows) for _, rows in page_tables)
             rows_seen += examined
@@ -473,6 +507,15 @@ def main() -> int:
     # -- the second is how an allowance outlives its reason and starts hiding a defect.
     unexpected = sorted(route for route in tableless if route not in NO_TABLE_ROUTES)
     stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and route not in tableless)
+    if skipped:
+        # A route that was dropped is not a route that passed. Reported with the same weight
+        # as an unexamined screen, because from the outside the two are the same thing.
+        print(
+            "\n以下详情路由没有填出来，因此这一次没有扫到（缺少的是实例里的哪一项，见括号）：\n  "
+            + "\n  ".join(skipped),
+            file=sys.stderr,
+        )
+        return 1
     if unexpected:
         print(
             "\n以下路由一张表都没有渲染，说明这次扫描在它们身上什么都没检查到：\n  "

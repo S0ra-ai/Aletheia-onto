@@ -19,6 +19,7 @@ import json
 import re
 import sys
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -216,3 +217,17 @@ def test_every_excused_route_is_one_the_sweep_visits() -> None:
     module = _load_script()
     unknown = set(module.NO_TABLE_ROUTES) - set(module.ROUTES) - set(module.ID_ROUTES)
     assert not unknown, f"NO_TABLE_ROUTES 里这些键不对应任何被扫的路由：{sorted(unknown)}"
+
+
+def test_a_route_carrying_its_own_query_survives_the_seed_page() -> None:
+    """`to` is one parameter, so a route with two of its own has to be encoded.
+
+    `?to=/admin/semantic?tab=explain&object=contract&instance=1` reaches the page as
+    `to=/admin/semantic?tab=explain` plus a stray `object`, and the browser loads a screen
+    nobody asked for. That is the shape of failure this whole script keeps producing: the
+    line it prints reads the same either way.
+    """
+    module = _load_script()
+    route = "/admin/semantic?tab=explain&object=contract&instance=1&ontology=1"
+    query = dict(urllib.parse.parse_qsl(module.seeded_url("http://host/assets/seed.html", route).split("?", 1)[1]))
+    assert query["to"] == route

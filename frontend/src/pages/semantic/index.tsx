@@ -1,10 +1,11 @@
 import { joinSentences } from '../../i18n/text';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
 import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
+import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title, Paragraph } = Typography;
@@ -20,6 +21,26 @@ const SemanticService: React.FC = () => {
   const [naturalLanguageResult, setNaturalLanguageResult] = useState<NaturalLanguageQueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [operationForm] = Form.useForm();
+  const [explainForm] = Form.useForm();
+  const [assessForm] = Form.useForm();
+  const [consistencyForm] = Form.useForm();
+
+  /**
+   * The query in the URL, so an explanation is a place rather than a form somebody filled in.
+   *
+   * `/admin/semantic?tab=explain&object=contract&instance=1` opens that instance's
+   * explanation: it can be pasted into a ticket, and the recipient sees the same thing the
+   * sender did. It is also the only way `scripts/ui_smoke.py` can reach these two tables --
+   * that check loads a route and reads the DOM, and cannot type into a form, so the columns
+   * of the attributes table and the consistency table were outside it entirely.
+   */
+  const [searchParams] = useSearchParams();
+  const fromUrl = {
+    objectCode: searchParams.get('object') ?? '',
+    instanceId: searchParams.get('instance') ?? '',
+    ontologyId: searchParams.get('ontology') ?? '',
+  };
+  const ranFromUrl = useRef(false);
 
   const handleNaturalLanguageQuery = async (values: {
     question: string;
@@ -87,6 +108,44 @@ const SemanticService: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Runs once, on arrival. A URL that names an object and an instance is a request for that
+  // answer -- the alternative is a form that looks filled in and answers nothing, which is
+  // what a reader of a shared link would get.
+  useEffect(() => {
+    if (ranFromUrl.current) return;
+    ranFromUrl.current = true;
+    const ontologyId = fromUrl.ontologyId ? Number(fromUrl.ontologyId) : undefined;
+    if (tab === 'explain' && fromUrl.objectCode && fromUrl.instanceId) {
+      explainForm.setFieldsValue({
+        objectCode: fromUrl.objectCode,
+        instanceId: fromUrl.instanceId,
+        ontologyId: fromUrl.ontologyId,
+      });
+      void handleExplain({ objectCode: fromUrl.objectCode, instanceId: fromUrl.instanceId, ontologyId });
+    } else if (tab === 'assess' && fromUrl.objectCode && fromUrl.instanceId) {
+      assessForm.setFieldsValue({
+        objectCode: fromUrl.objectCode,
+        instanceId: fromUrl.instanceId,
+        ontologyId: fromUrl.ontologyId,
+      });
+      void handleAssess({ objectCode: fromUrl.objectCode, instanceId: fromUrl.instanceId, ontologyId });
+    } else if (tab === 'consistency' && fromUrl.objectCode && ontologyId) {
+      consistencyForm.setFieldsValue({
+        objectCode: fromUrl.objectCode,
+        ontologyId: fromUrl.ontologyId,
+        instanceIds: fromUrl.instanceId,
+      });
+      void handleConsistency({
+        objectCode: fromUrl.objectCode,
+        ontologyId,
+        instanceIds: fromUrl.instanceId || undefined,
+      });
+    }
+    // Deliberately once: the parameters are the arrival state, not a live binding. Re-running
+    // on every keystroke in the address bar would fire a request per character.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePreflight = async (values: { operationCode: string; ontologyId: number; dataSourceId: number; instanceId: string; objectCode?: string }) => {
     setLoading(true);
@@ -255,7 +314,7 @@ const SemanticService: React.FC = () => {
 
         <TabPane tab="实例解释" key="explain">
           <Card>
-            <Form layout="inline" onFinish={handleExplain}>
+            <Form form={explainForm} layout="inline" onFinish={handleExplain}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
                 <Input placeholder="留空则自动识别" />
               </Form.Item>
@@ -339,7 +398,7 @@ const SemanticService: React.FC = () => {
 
         <TabPane tab="风险研判" key="assess">
           <Card>
-            <Form layout="inline" onFinish={handleAssess}>
+            <Form form={assessForm} layout="inline" onFinish={handleAssess}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
                 <Input placeholder="留空则自动识别" />
               </Form.Item>
@@ -390,7 +449,7 @@ const SemanticService: React.FC = () => {
 
         <TabPane tab="决策一致性" key="consistency">
           <Card>
-            <Form layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
+            <Form form={consistencyForm} layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
               <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
                 <Input placeholder="留空则自动识别" />
               </Form.Item>
