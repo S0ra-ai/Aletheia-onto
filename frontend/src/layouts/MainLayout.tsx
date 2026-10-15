@@ -76,7 +76,10 @@ const menuItems = [
       { key: '/feedback', icon: <MessageOutlined />, label: '反馈闭环' },
       { key: '/workflow', icon: <ApartmentOutlined />, label: '工作流管理' },
       { key: '/permission', icon: <SafetyOutlined />, label: '权限管理' },
-      { key: '/backup', icon: <DatabaseOutlined />, label: '数据备份' },
+      // Not `/backup`: `/admin/backup` is an API namespace the access policy keeps out of
+      // the SPA shell -- archives hold credentials -- so a page there is served raw 401
+      // JSON on a refresh or a bookmark instead of the application.
+      { key: '/data-backup', icon: <DatabaseOutlined />, label: '数据备份' },
       { key: '/model', icon: <SettingOutlined />, label: '模型配置' },
     ],
   },
@@ -102,7 +105,7 @@ const MainLayout: React.FC = () => {
   const openKeys = location.pathname.startsWith('/graph') || location.pathname.startsWith('/knowledge')
     || location.pathname.startsWith('/mapping') || location.pathname.startsWith('/rules')
     || location.pathname.startsWith('/feedback') || location.pathname.startsWith('/workflow')
-    || location.pathname.startsWith('/permission') || location.pathname.startsWith('/backup')
+    || location.pathname.startsWith('/permission') || location.pathname.startsWith('/data-backup')
     || location.pathname.startsWith('/model') ? ['/more'] : [];
 
   return (

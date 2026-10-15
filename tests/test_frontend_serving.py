@@ -51,3 +51,56 @@ def test_unknown_api_path_never_falls_back_to_the_spa(monkeypatch: pytest.Monkey
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/json")
+
+
+@pytest.mark.skipif(
+    not (ROOT / "frontend" / "dist" / "index.html").is_file(),
+    reason="源码检出未包含构建后的 frontend/dist；生产镜像构建会提供它",
+)
+def test_every_spa_route_serves_the_shell_without_a_token() -> None:
+    """The shell has to load before a token can exist, so no page may demand one.
+
+    This is the property; the route list is the implementation of it. `/admin/backup` was on
+    the list and is also an API namespace the access policy keeps out of the shell -- backup
+    archives hold credentials -- so that page returned raw `{"detail":"缺少访问令牌"}` for a
+    bookmark, a refresh or a new tab, while every other page returned the application. The
+    collision is invisible from inside the app: clicking the nav entry routes on the client
+    and never asks for the document.
+    """
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from ontology_platform.api import app
+
+    # Every lazy route declared in `App.tsx`, by URL.
+    pages = (
+        "/admin/workbench",
+        "/admin/datasource",
+        "/admin/ontology",
+        "/admin/mapping",
+        "/admin/rules",
+        "/admin/semantic",
+        "/admin/objects",
+        "/admin/governance",
+        "/admin/demo",
+        "/admin/model",
+        "/admin/workflow",
+        "/admin/permission",
+        "/admin/data-backup",
+        "/admin/graph",
+        "/admin/knowledge",
+        "/admin/feedback",
+        "/admin/chat",
+    )
+
+    with TestClient(app) as client:
+        shell = client.get("/admin/").text
+        refused = []
+        for page in pages:
+            response = client.get(page)
+            if response.status_code != 200 or response.text != shell:
+                refused.append(f"{page} -> {response.status_code} {response.headers.get('content-type')}")
+        # And a path nobody declares still renders the application, which reports it.
+        unknown = client.get("/admin/no-such-page")
+
+    assert not refused, "这些页面在未认证时拿不到 SPA 外壳:\n" + "\n".join(refused)
+    assert unknown.status_code == 200

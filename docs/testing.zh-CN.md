@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1522 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1523 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -77,7 +77,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
 | `test_frontend_type_agreement.py` | 12 | The frontend's hand-written types must agree with the API they mirror |
-| `test_frontend_serving.py` | 3 | 同源生产管理端与 API 传输前缀 |
+| `test_frontend_serving.py` | 4 | 同源生产管理端与 API 传输前缀 |
 | `test_metrics.py` | 5 | Prometheus 兼容运行指标与安全重复初始化 |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |

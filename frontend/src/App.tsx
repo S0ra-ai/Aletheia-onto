@@ -230,7 +230,7 @@ const App: React.FC = () => {
                   }
                 />
                 <Route
-                  path="backup"
+                  path="data-backup"
                   element={
                     <ErrorBoundary fullPage>
                       <Suspense fallback={<PageLoader />}>
