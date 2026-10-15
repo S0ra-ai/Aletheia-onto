@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,13 +105,14 @@ def seed(platform_db: Path) -> dict[str, object]:
         provision_tenant(PlatformContext(db_type="sqlite", connection_uri=str(platform_db)), "smoke")
     done["tenant"] = True
 
-    backup_dir = Path(tempfile.gettempdir()) / "aletheia-smoke-backups"
+    backup_dir = _backup_directory()
     create_backup(platform_db, "smoke", backup_dir=backup_dir)
     done["backup"] = str(backup_dir)
 
     with connect(platform_db) as conn:
         document = conn.execute("select id from knowledge_document order by id limit 1").fetchone()
         has_entry = conn.execute("select 1 from knowledge_entry limit 1").fetchone() is not None
+        has_invocation = conn.execute("select 1 from model_invocation limit 1").fetchone() is not None
     if document is not None and not has_entry:
         with connect(platform_db) as conn:
             conn.execute(
@@ -123,7 +123,32 @@ def seed(platform_db: Path) -> dict[str, object]:
             )
     done["knowledgeEntry"] = True
 
+    if not has_invocation:
+        # The model-invocation table is where four columns once rendered blank for every row,
+        # and it stayed invisible afterwards because no screen had a row to check: the demo
+        # never calls a model. A synthetic invocation is not a claim that one happened -- this
+        # script exists so that every table has a row to render, and it says so at the top.
+        with connect(platform_db) as conn:
+            conn.execute(
+                "insert into model_invocation (provider, model, purpose, prompt_tokens, completion_tokens,"
+                " total_tokens, status, error) values ('openai-compatible', 'smoke-model', 'render-check',"
+                " 120, 40, 160, 'success', '')"
+            )
+    done["modelInvocation"] = True
+
     return done
+
+
+def _backup_directory() -> Path:
+    """Where the platform itself keeps backups.
+
+    Not a temporary directory: a backup written somewhere the application does not look is a
+    row that exists only for the person who wrote it, so the backup screen stayed empty on
+    every machine while the seeding reported `"backup": ".../aletheia-smoke-backups"`.
+    """
+    from ontology_platform.backup import BACKUP_DIR
+
+    return Path(BACKUP_DIR).expanduser()
 
 
 def _first_ontology_id(platform_db: Path) -> int | None:

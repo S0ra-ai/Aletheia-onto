@@ -54,6 +54,7 @@ from pathlib import Path
 # -- columns rendering empty for every row -- are exactly the kind that hide behind a tab.
 ROUTES = (
     "/admin/workbench",
+    "/admin/datasource",
     "/admin/ontology",
     "/admin/mapping",
     "/admin/rules",
@@ -75,7 +76,14 @@ ROUTES = (
     "/admin/permission?tab=sso",
     "/admin/permission?tab=reviews",
     "/admin/workflow",
-    "/admin/backup",
+    # `/admin/backup` was in this list and is not a route the application serves: the backup
+    # screen is `/admin/data-backup`, and `/admin/backup` is the *API* namespace, so a browser
+    # navigation to it is answered by the auth middleware with `{"detail":"缺少访问令牌"}`.
+    # The line it printed -- `0 table(s), 0 row(s)` -- read like a page with nothing to show,
+    # and the backup table, four columns of it, was never examined at all.
+    "/admin/data-backup",
+    "/admin/demo",
+    "/admin/model",
     "/admin/graph",
     "/admin/chat",
     "/admin/objects",
@@ -164,6 +172,31 @@ KNOWN_SPARSE = (
     # the finding it was never meant to cover.
     ("/admin/ontology/{id}?tab=attributes", "描述"),
 )
+
+# Routes that render no table in the seeded instance, and why. Every other route must render
+# at least one, because a route that renders none is a route this check examined *nothing* on
+# -- and until this list existed that was indistinguishable from a clean result. It is how
+# `/admin/backup` spent its whole life printing `0 table(s), 0 row(s)`: a path the app does
+# not serve, standing in for the backup screen that was never visited.
+#
+# Each entry is a claim, so each is a reason rather than a waiver: a table that needs an
+# action this tool cannot take, or a page that has no table by design. A route whose table
+# stops rendering without landing here fails, and a route listed here that starts rendering
+# one also fails -- the list is checked in both directions.
+NO_TABLE_ROUTES = {
+    "/admin/semantic": "结果表在提交一次解释／研判请求之后才出现；本工具只加载路由、读 DOM，不点按钮",
+    "/admin/semantic?tab=explain": "同上：解释结果表要有一个实例才能渲染",
+    "/admin/semantic?tab=assess": "同上：研判结论由表单提交触发",
+    "/admin/semantic?tab=consistency": "同上：一致性问题表来自一次一致性检查",
+    "/admin/semantic?tab=preflight": "同上：检查结果由表单提交触发",
+    "/admin/knowledge": "文档表要先在页面上选定本体；种子实例里有知识库，但页面不读 URL 上的本体 id",
+    "/admin/feedback": "反馈条目表在没有条目时渲染为空状态；种子实例里没有反馈",
+    "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
+    "/admin/graph": "本体图是画布，没有表格",
+    "/admin/chat": "对话界面没有表格",
+    "/admin/demo": "演示中心是引导与步骤表单，没有表格",
+    "/admin/model": "模型配置是表单，没有表格",
+}
 
 
 def _normalise_route(route: str) -> str:
@@ -361,6 +394,7 @@ def main() -> int:
     allowed = {pair.strip() for pair in args.allow.split(",") if pair.strip()}
     findings = 0
     rows_seen = 0
+    tableless: list[str] = []
     if allowed:
         print("已知因数据为空而整列为空的列（不是缺陷）:")
         for pair in sorted(allowed):
@@ -392,10 +426,34 @@ def main() -> int:
                 if empty:
                     findings += 1
                     empty_here.append(f"table #{index}: {', '.join(empty)}")
+            if not page_tables:
+                tableless.append(route)
             detail = f"  EMPTY: {'; '.join(empty_here)}" if empty_here else ""
+            if not page_tables:
+                detail = f"  NO TABLE{': ' + NO_TABLE_ROUTES[route] if route in NO_TABLE_ROUTES else ''}"
             print(f"{route:44s} {len(page_tables):2d} table(s), {examined:4d} row(s){detail}")
     finally:
         (assets / "seed.html").unlink(missing_ok=True)
+
+    # Nothing was examined on a route whose table should be there. Checked in both directions:
+    # a route that lost its table, and a route that gained one while still being excused here
+    # -- the second is how an allowance outlives its reason and starts hiding a defect.
+    unexpected = sorted(route for route in tableless if route not in NO_TABLE_ROUTES)
+    stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and route not in tableless)
+    if unexpected:
+        print(
+            "\n以下路由一张表都没有渲染，说明这次扫描在它们身上什么都没检查到：\n  "
+            + "\n  ".join(unexpected)
+            + "\n（若确实没有表格，把它连同理由加进 NO_TABLE_ROUTES；若应该有，那这就是一个发现。）",
+            file=sys.stderr,
+        )
+        return 1
+    if stale:
+        print(
+            "\n以下路由在 NO_TABLE_ROUTES 里，却渲染出了表格——豁免过期了：\n  " + "\n  ".join(stale),
+            file=sys.stderr,
+        )
+        return 1
 
     if rows_seen == 0:
         # The headline below would otherwise read "no wholly-empty columns found" for a sweep
@@ -412,7 +470,11 @@ def main() -> int:
         print("A sparse column is normal; a column empty in *every* row usually means the")
         print("`dataIndex` does not match the field name the endpoint returns.")
         return 1
-    print("\nno wholly-empty columns found")
+    checked = len(routes) - len(tableless)
+    print(
+        f"\nno wholly-empty columns found"
+        f"（{checked}/{len(routes)} 条路由渲染了表格；{len(tableless)} 条没有表格，理由见 NO_TABLE_ROUTES）"
+    )
     return 0
 
 

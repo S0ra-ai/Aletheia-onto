@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1680 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1682 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -90,7 +90,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 6 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 8 | The render check's own guards, exercised without a browser |
 | `test_ci_workflow.py` | 2 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
 | `test_documented_claims.py` | 13 | Documented numbers match the code they describe |
@@ -123,8 +123,19 @@ linter 看到的是一个合法字符串，mypy 看到的是合法 `string`。
 
 但它在 CI 里作为**独立 job** 运行：在那里浏览器是主角而不是附带依赖，
 起不来浏览器就是这份工作真的做不了。该 job 会构建前端、载入一份演示实例，
-并扫过 **35 条路由**——每一张画表格的页面、每个把表格藏在后面的标签页，
+并扫过 **40 条路由**——每一张画表格的页面、每个把表格藏在后面的标签页，
 以及首个本体与首个数据源详情页（id 从实例里读出来，不是写死的）。
+
+路由清单由 `tests/test_ui_smoke_guards.py` **双向**对齐前端路由表：
+`App.tsx` 服务的每个路径都要被扫，被扫的每个路径也都要是它服务的。
+此前有两个页面从未被访问过（`/admin/demo` 与 `/admin/model`，不是拼错，是压根不在清单里），
+而清单里还留着 `/admin/backup`——那是**接口**的命名空间而不是前端路由，浏览器访问它会收到
+`401 {"detail":"缺少访问令牌"}`，于是那行读起来是 `0 table(s), 0 row(s)`，
+真正的备份页 `/admin/data-backup` 反而一次都没被加载过。
+
+**没有渲染出表格的路由现在会让扫描失败**，除非它连同理由列在 `NO_TABLE_ROUTES` 里；
+而列在那里的路由一旦渲染出了表格，同样失败。两个方向都要断言，因为它们是两种不同的失效：
+前者是页面坏了，后者是豁免过期了、开始掩盖真问题。
 
 **因数据为空而整列为空的列**写在 `KNOWN_SPARSE` 里，并且每次运行都打印出来。
 job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单里那几条——

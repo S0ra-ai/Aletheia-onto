@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -128,3 +129,68 @@ def test_an_unreachable_instance_is_refused() -> None:
     """A port nobody is listening on is not a clean sweep either."""
     reason = _load_script().token_authenticates("http://127.0.0.1:9", "whatever")
     assert reason.startswith("the token does not authenticate")
+
+
+# -- The route list against the router --
+
+
+def _app_routes() -> set[str]:
+    """Every path the frontend router serves, ids normalised to `*`.
+
+    Read from `App.tsx` because that is the only place the routes exist. A list kept beside
+    it would be a second copy, which is how the sweep came to hold `/admin/backup` while the
+    application served `/admin/data-backup`: a path that reads correct, is not a route, and
+    renders nothing.
+    """
+    source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    routes = set()
+    for path in re.findall(r'<Route\s+path="([^"]+)"', source):
+        # `login` is not behind the authenticated layout, and `*` is the not-found page --
+        # neither is a screen with data to show. `/` is the layout itself, whose index
+        # redirects to the workbench, which is swept under its own path.
+        if path.strip("/") in ("login", "*", ""):
+            continue
+        # The layout route is `/`, and every child is relative to the `/admin` basename the
+        # production build sets.
+        normalised = path.strip("/")
+        routes.add("/admin/" + normalised if normalised else "/admin")
+    # A detail path is compared by shape, not by parameter name: the router writes `:id` and
+    # the sweep writes `{ontology}`, and neither spelling is the thing being asserted.
+    return {re.sub(r"/:[A-Za-z_]+", "/*", path) for path in routes}
+
+
+def _swept_routes() -> set[str]:
+    """The sweep's routes as router paths: id placeholders to `*`, tabs dropped."""
+    module = _load_script()
+    paths = set()
+    for route in list(module.ROUTES) + list(module.ID_ROUTES):
+        path = route.split("?", 1)[0]
+        path = re.sub(r"\{(ontology|source)\}", "*", path)
+        path = re.sub(r"/\d+(?=/|$)", "/*", path)
+        paths.add(path)
+    # `/admin/ontology/{ontology}?tab=objects` normalises to `/admin/ontology/*`, and so does
+    # the router's `/admin/ontology/:id`.
+    return {re.sub(r"/:[A-Za-z_]+", "/*", path) for path in paths}
+
+
+def test_every_screen_the_router_serves_is_swept() -> None:
+    """A screen nobody sweeps is a screen whose columns nobody has looked at.
+
+    Checked against `App.tsx` rather than against a list beside it. `/admin/demo` and
+    `/admin/model` had never been visited -- not misspelled, simply absent -- and nothing
+    said so: a route list is only as complete as the memory of whoever last edited it.
+    """
+    missing = _app_routes() - _swept_routes()
+    assert not missing, f"以下页面从未被渲染检查访问过：{sorted(missing)}"
+
+
+def test_every_swept_route_is_a_screen_the_router_serves() -> None:
+    """The other direction, which is the one that cost a table nobody had ever read.
+
+    `/admin/backup` was in the list for as long as the list existed. It is the API's
+    namespace, so a navigation to it is answered with a 401 body: the sweep printed
+    `0 table(s), 0 row(s)` and moved on, while the real backup screen at `/admin/data-backup`
+    -- a table with four columns -- was never loaded.
+    """
+    unknown = _swept_routes() - _app_routes()
+    assert not unknown, f"渲染检查在扫这些路径，但它们不是前端路由：{sorted(unknown)}"
