@@ -318,13 +318,96 @@ def _custom_blueprints(platform_db: PlatformDb) -> dict[str, IndustryBlueprint]:
                 description=row["description"],
                 object_hints=json.loads(row["object_hints"] or "{}"),
                 attribute_hints=json.loads(row["attribute_hints"] or "{}"),
-                rule_templates=tuple(_rule_template(item) for item in json.loads(row["rule_templates"] or "[]")),
+                rule_templates=tuple(
+                    _rule_template(index, item) for index, item in enumerate(json.loads(row["rule_templates"] or "[]"))
+                ),
                 table_keywords=tuple(json.loads(row["table_keywords"] or "[]")),
                 capability_tags=tuple(json.loads(row["capability_tags"] or "[]")),
                 source=row["source"],
             )
             for row in rows
         }
+
+
+# Field names a blueprint may use to identify or label a hint entry. A blueprint arriving
+# from a model, or from a hand-written file, is free to write these fields as a list of
+# descriptors instead of a mapping -- and that is the *richer* form, because a descriptor
+# can carry the source table, primary key and relationships that `{code: label}` cannot.
+_HINT_KEY_FIELDS = ("code", "objectCode", "object_code", "sourceTable", "source_table", "table", "column", "key", "id")
+_HINT_LABEL_FIELDS = ("name", "label", "displayName", "display_name", "title", "description")
+
+
+def _hint_key(value: Any) -> str:
+    """The code from a hint entry."""
+    if isinstance(value, dict):
+        for field in _HINT_KEY_FIELDS:
+            if value.get(field):
+                return str(value[field])
+        return ""
+    return "" if value is None else str(value)
+
+
+def _hint_label(value: Any) -> str:
+    """The label from a hint entry.
+
+    Structures are refused rather than stringified: `str(["合同", "销售合同"])` is truthy,
+    so a list of candidate names used to be accepted and stored as the literal Python repr
+    of that list -- a business term no one wrote, sitting in the vocabulary the ontology is
+    built from.
+    """
+    if isinstance(value, dict):
+        for field in _HINT_LABEL_FIELDS:
+            if value.get(field):
+                return str(value[field])
+        return ""
+    if isinstance(value, (list, tuple, set, frozenset)) or value is None:
+        return ""
+    return str(value)
+
+
+def coerce_hints(raw: Any, *, dotted: bool = False) -> dict[str, str]:
+    """Read a hints field into `{code: label}`, whichever shape it arrives in.
+
+    Two shapes are accepted because both really occur: the mapping this platform writes,
+    and the list of descriptors a model produces when a prompt names the field without
+    stating its shape. Only a faithful projection is performed -- an entry's own code and
+    label, or a bare string used as both -- because these labels become the business
+    vocabulary of a governed ontology, and a name the author never wrote is
+    indistinguishable from one they did once it is stored.
+
+    This replaces `dict(raw)`, which failed in both directions on the descriptor form:
+    a single-descriptor entry raised `dictionary update sequence element #0 has length 7;
+    2 is required`, and a *two*-key entry did not raise at all -- `dict()` read the
+    descriptor's keys as a key/value pair, so `[{"column": "amount", "label": "金额"}]`
+    was stored as `{"column": "label"}`. An object named "column" whose label is "label",
+    with nothing having reported a problem.
+
+    `dotted` preserves the two addressing styles the consumers expect: object hints are
+    keyed by bare code, attribute hints keep the `table.column` spelling and also gain the
+    bare column.
+    """
+    if isinstance(raw, dict):
+        entries = list(raw.items())
+    elif isinstance(raw, (list, tuple)):
+        entries = [(_hint_key(item), item) for item in raw]
+    else:
+        return {}
+
+    hints: dict[str, str] = {}
+    for key, value in entries:
+        name = str(key or "").strip()
+        if not name:
+            continue
+        label = _hint_label(value).strip() or name
+        if not dotted:
+            name = name.split(".")[-1]
+        hints.setdefault(name, label)
+
+    if dotted:
+        for name, label in list(hints.items()):
+            if "." in name:
+                hints.setdefault(name.split(".")[-1], label)
+    return hints
 
 
 def _blueprint_from_payload(payload: dict[str, Any], source: str) -> IndustryBlueprint:
@@ -337,22 +420,77 @@ def _blueprint_from_payload(payload: dict[str, Any], source: str) -> IndustryBlu
         name=str(payload["name"]),
         domain=str(payload["domain"]),
         description=str(payload.get("description") or ""),
-        object_hints=dict(payload.get("objectHints") or payload.get("object_hints") or {}),
-        attribute_hints=dict(payload.get("attributeHints") or payload.get("attribute_hints") or {}),
-        rule_templates=tuple(_rule_template(item) for item in payload.get("rules", [])),
+        object_hints=coerce_hints(payload.get("objectHints") or payload.get("object_hints")),
+        attribute_hints=coerce_hints(payload.get("attributeHints") or payload.get("attribute_hints"), dotted=True),
+        rule_templates=tuple(_rule_template(index, item) for index, item in enumerate(payload.get("rules") or [])),
         table_keywords=tuple(payload.get("tableKeywords") or payload.get("table_keywords") or ()),
         capability_tags=tuple(payload.get("capabilityTags") or payload.get("capability_tags") or ()),
         source=source,
     )
 
 
-def _rule_template(item: dict[str, Any]) -> RuleTemplate:
+# Rule fields, with the spellings a model or a hand-written file may use for each.
+_RULE_ALIASES: dict[str, tuple[str, ...]] = {
+    "code": ("code",),
+    "name": ("name",),
+    "rule_type": ("rule_type", "ruleType"),
+    "scope_object_code": ("scope_object_code", "scopeObjectCode"),
+    "expression": ("expression",),
+    "severity": ("severity",),
+    "natural_language": ("natural_language", "naturalLanguage"),
+}
+
+# Fields a rule must carry to be importable. `scope_object_code` is in the list because
+# `ontology._create_blueprint_rules` keeps only rules whose scope names an existing object,
+# so a rule without one is discarded when the blueprint is applied -- the blueprint would
+# declare more rules than it creates and say nothing about the difference. That is the
+# "control the organisation believes is running" failure, and it is worth a refusal here.
+_RULE_REQUIRED = ("code", "name", "scope_object_code", "expression", "severity")
+
+
+def _rule_text(item: dict[str, Any], field: str) -> str:
+    """The value of a rule field, or an empty string when it is absent.
+
+    Empty rather than the string `"None"`. `str(item.get(key))` on a missing key stored the
+    literal `"None"` as the rule's type and scope, which reads as a value in the database
+    and matches nothing at apply time.
+    """
+    for key in _RULE_ALIASES[field]:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def rule_is_readable(item: Any) -> bool:
+    """Whether `_rule_template` can read this element. Shared with the model normalizer,
+    so a draft the platform generates is always a draft it can import."""
+    if not isinstance(item, dict):
+        return False
+    return all(_rule_text(item, field) for field in _RULE_REQUIRED)
+
+
+def _rule_template(index: int, item: Any) -> RuleTemplate:
+    """One rule element, with a refusal that names what is wrong.
+
+    The subscription form this replaced (`item["code"]`) raised `KeyError` for an element
+    missing a key, and the route turns only `ValueError` into a response -- so a user
+    pasting a model-generated draft got a 500 with no indication of which rule was at
+    fault. Naming the position and the missing fields is the difference between a report
+    and a crash.
+    """
+    if not isinstance(item, dict):
+        raise ValueError(f"行业蓝图的第 {index + 1} 条规则不是对象，无法读取（收到 {type(item).__name__}）")
+    missing = [field for field in _RULE_REQUIRED if not _rule_text(item, field)]
+    if missing:
+        identified = _rule_text(item, "code") or f"第 {index + 1} 条"
+        raise ValueError(f"行业蓝图规则 {identified} 缺少字段: {', '.join(missing)}")
     return RuleTemplate(
-        code=str(item["code"]),
-        name=str(item["name"]),
-        rule_type=str(item.get("rule_type") or item.get("ruleType")),
-        scope_object_code=str(item.get("scope_object_code") or item.get("scopeObjectCode")),
-        expression=str(item["expression"]),
-        severity=str(item["severity"]),
-        natural_language=str(item.get("natural_language") or item.get("naturalLanguage")),
+        code=_rule_text(item, "code"),
+        name=_rule_text(item, "name"),
+        rule_type=_rule_text(item, "rule_type"),
+        scope_object_code=_rule_text(item, "scope_object_code"),
+        expression=_rule_text(item, "expression"),
+        severity=_rule_text(item, "severity"),
+        natural_language=_rule_text(item, "natural_language"),
     )

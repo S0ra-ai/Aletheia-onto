@@ -47,6 +47,16 @@ services:
       # 逐个列出真实前端来源。`*` 会被 preflight 拦下。
       ONTOLOGY_ALLOWED_ORIGINS: ${ONTOLOGY_ALLOWED_ORIGINS:?必须设置 ONTOLOGY_ALLOWED_ORIGINS}
       ONTOLOGY_SESSION_TTL_HOURS: ${ONTOLOGY_SESSION_TTL_HOURS:-12}
+      # 显式透传而不是依赖容器继承：compose 只把这里列出的变量交给容器，
+      # 于是写在 .env 里却漏在这里的设置会**静默失效**——看起来配好了，实际没生效。
+      # 默认 0 = 不限制，与平台默认一致；不设置时 preflight 会给出 warning。
+      ONTOLOGY_RATE_LIMIT_PER_MINUTE: ${ONTOLOGY_RATE_LIMIT_PER_MINUTE:-0}
+      ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE: ${ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE:-10}
+      # 容器里默认输出 JSON 到 stderr，由 docker logs／日志驱动收集。
+      # 要写文件就设 ONTOLOGY_LOG_FILE（目录会自动创建），但那样得自己处理卷与轮转。
+      ONTOLOGY_LOG_FORMAT: ${ONTOLOGY_LOG_FORMAT:-json}
+      ONTOLOGY_LOG_LEVEL: ${ONTOLOGY_LOG_LEVEL:-INFO}
+      ONTOLOGY_LOG_FILE: ${ONTOLOGY_LOG_FILE:-}
       # SQLite 备份不用于这份 PostgreSQL 编排，但上传状态和未来的本地运维文件
       # 需要固定在已声明的可写目录。
       ONTOLOGY_BACKUP_DIR: /var/lib/aletheia/backups
@@ -69,6 +79,9 @@ services:
         postgresql://${POSTGRES_USER:-ontology}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ontology}
       ONTOLOGY_ADMIN_PASSWORD: ${ONTOLOGY_ADMIN_PASSWORD}
       ONTOLOGY_ALLOWED_ORIGINS: ${ONTOLOGY_ALLOWED_ORIGINS}
+      # 同样必须透传：preflight 检查的就是这个值，收不到它会报一个
+      # 「未配置限流」的假警告——而假警告与真警告长得一样。
+      ONTOLOGY_RATE_LIMIT_PER_MINUTE: ${ONTOLOGY_RATE_LIMIT_PER_MINUTE:-0}
     command: ["preflight", "--environment", "production", "--workers", "1"]
 
   # Prometheus metrics scraper. Monitoring is opt-in and does not widen the platform

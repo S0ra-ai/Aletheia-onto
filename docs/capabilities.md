@@ -24,9 +24,17 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 | 6 capabilities × 6 roles, central route policy | ✅ | `access_policy.py` |
 | Audit actor taken from identity, never client-supplied | ✅ | `api.py` |
 | Credential redaction | ✅ | `credentials.py` |
+| **Request identity across response and logs** (`X-Request-Id`; a caller may supply one, validated first) | ✅ | `tracing.py`, `request_logger.py` |
+| **Access log** (path but never query string; 5xx and 4xx at different levels) | ✅ | `request_logger.py` |
+| **Structured logging** (`ONTOLOGY_LOG_FORMAT=json`, every record carrying the request id) | ✅ | `logging_config.py` |
+| **A 500 that carries `requestId`** (exception text goes to the log, not the response body) | ✅ | `request_logger.py` |
+| **Request rate limiting** (before authentication; off unless configured; stricter for login) | ✅ | `rate_limiter.py` |
+| CSRF protection | 📋 | **not applicable as the API stands**: bearer header, no cookies — see [`SECURITY.md`](../SECURITY.md) |
+| Credential encryption at rest | 📋 | none: credentials are stored plaintext in the platform database, which is therefore the credential store — see [limitations](limitations.md) |
 | Domain neutrality (no built-in industry vocabulary) | ✅ | `vocabulary.py` |
 | Natural-language semantic Q&A | ✅ | `natural_language.py` |
 | Agent roles derived from onboarded domains | ✅ | `agent_roles.py` |
+| **Model responses normalised field by field** — one wrong-shaped field costs that field only, and is named in `unreadableModelFields` | ✅ | `model_client.py` |
 | Operation preflight and HTTP writeback | ✅ | `automation.py` |
 | JSON-LD / Turtle export | ✅ | `ontology.py` |
 | Workflow `guard_expression` | ✅ | evaluated on transition, fail-closed |

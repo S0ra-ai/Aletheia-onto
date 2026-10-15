@@ -51,6 +51,7 @@ from .governance import (
 from .graph_view import build_ontology_graph
 from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
+from .logging_config import setup_logging
 from .metadata import (
     register_data_source,
     register_source_api,
@@ -67,7 +68,9 @@ from .ontology import (
     resolve_ontology_for_object,
     summarize_ontology,
 )
+from .rate_limiter import RateLimitMiddleware
 from .release_readiness import assess_ontology_release_readiness
+from .request_logger import request_logging_middleware, unhandled_exception_response
 from .routers import (
     auth_router,
     data_source_router,
@@ -103,6 +106,10 @@ from .workflow_permission import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Configured at startup rather than at import: importing a module should not install
+    # process-wide handlers or create a log directory. A deployment's logging is a
+    # decision made when it starts serving.
+    setup_logging()
     platform_db_type = os.environ.get("ONTOLOGY_PLATFORM_DB_TYPE", "sqlite").lower()
     platform_db_uri = os.environ.get("ONTOLOGY_PLATFORM_DB_URI", "")
     if platform_db_type != "sqlite":
@@ -238,6 +245,28 @@ async def enforce_access_policy(request: Request, call_next):
 
     request.state.principal = principal
     return await call_next(request)
+
+
+# Middleware order is the reverse of registration order: the last one registered is the
+# outermost. The order below is deliberate and each step depends on the one outside it.
+#
+# `request_logging_middleware` is outermost so a request id exists before anything else
+# runs, and so its id is on the response even when a later middleware rejects the request
+# -- the rejections are the lines an investigation wants most. It also means every log
+# line written by the layers inside it carries that id.
+#
+# Rate limiting sits outside the access policy, and therefore before authentication: the
+# pre-auth work this bounds is exactly what an unauthenticated flood targets.
+app.add_middleware(RateLimitMiddleware)
+
+
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    """Access log and request id. See `request_logger` for what it records and why."""
+    return await request_logging_middleware(request, call_next)
+
+
+app.add_exception_handler(Exception, unhandled_exception_response)
 
 
 class OntologyDraftCreate(BaseModel):
@@ -749,7 +778,9 @@ def list_semantic_object_instances(
 ) -> dict[str, object]:
     """Browse a business object through its configured instance resolver."""
     try:
-        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        resolved = (
+            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        )
         return list_object_instances(
             DEFAULT_PLATFORM_DB,
             resolved,
@@ -773,7 +804,9 @@ def get_semantic_object_instance(
 ) -> dict[str, object]:
     """Fetch one business-object instance through the same permission boundary."""
     try:
-        resolved = ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        resolved = (
+            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
+        )
         return get_object_instance(
             DEFAULT_PLATFORM_DB,
             resolved,
@@ -1047,7 +1080,12 @@ def frontend_shell(frontend_path: str = "") -> FileResponse:
     # A mistyped API URL must stay an API 404 rather than returning HTML to a client
     # expecting JSON. Registered API routes win before this handler; this guards only
     # the unmatched remainder of their namespaces.
-    if frontend_path == "api" or frontend_path.startswith("api/") or frontend_path == "v1" or frontend_path.startswith("v1/"):
+    if (
+        frontend_path == "api"
+        or frontend_path.startswith("api/")
+        or frontend_path == "v1"
+        or frontend_path.startswith("v1/")
+    ):
         raise HTTPException(status_code=404, detail="API 路径不存在")
     entry = frontend_index()
     if entry is None:

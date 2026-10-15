@@ -24,6 +24,8 @@ By design, not bugs. These are the next phase's work.
 | **No transitive inference across sources**: A↔B and B↔C never imply A↔C — that would introduce a correspondence nobody declared | `entity_resolution.py` |
 | **History covers only what the platform observed**: a source that overwrites values in place still lost its own history. `coverage` reports the window it can actually answer for | `temporal.py` |
 | **Aggregates compute in Python**, not pushed down as SQL. Buys identical behaviour across all three dialects; costs a row cap | `aggregation.py` |
+| **Row-level permission filters are judged per candidate row.** The filter is an arbitrary sandboxed expression, so it cannot be pushed into SQL: with a filter configured, listing an object reads one row per candidate up to the candidate cap. Without one, only the returned page is read | `object_service.py`, `workflow_permission.py` |
+| **Object listings consider at most 100 000 candidate rows**, so `total` is a count within that window rather than a `COUNT(*)` of the source | `object_service.py` |
 | **Relation classification depends on schema quality**: a database without foreign keys or NOT NULL gets the weakest classification | `relations.py` |
 | **CSV and REST never infer foreign keys**: relation semantics require declared structure, and a relation resting on a naming coincidence cannot be explained | `file_adapter.py`, `rest_adapter.py` |
 | **CSV reads the whole file per query**: fine at extract scale, wrong at warehouse scale | `file_adapter.py` |
@@ -36,12 +38,29 @@ By design, not bugs. These are the next phase's work.
 
 ## Engineering limitations
 
-- No connection pooling; no unified transaction boundary across `connect()` calls.
+- **No connection pooling.** Every `connect()` opens a connection. A pool is not a
+  drop-in: connections here are tenant-scoped, and returning one to a shared pool without
+  respecting the schema it was opened against would hand a caller another tenant's data.
+  Also no unified transaction boundary across `connect()` calls.
+- **Credentials are stored as given — there is no encryption at rest.** Data source
+  passwords and model API keys sit in the platform database in plaintext, so that database
+  *is* the credential store: protect it with filesystem permissions and database access
+  controls, and prefer environment variables for the model keys
+  (`docs/configuration.md`). A per-row encryption layer needs a crypto dependency the
+  zero-dependency kernel does not carry, and an encryption layer whose key is stored beside
+  the ciphertext is worse than none, because it looks like protection.
+- **Rate limiting is off unless configured.** Set `ONTOLOGY_RATE_LIMIT_PER_MINUTE`;
+  `aletheia preflight` reports an externally reachable deployment that has not. Counters are
+  per process, so the effective limit is the configured value times the worker count.
+- **CSRF protection is not implemented, and is not applicable as the API stands.** The
+  platform authenticates with an `Authorization: Bearer` header and sets no cookies, so a
+  browser never attaches credentials to a cross-site request on its own. Reintroducing
+  cookie-based sessions would make it applicable — see `SECURITY.md`.
 - `platform_db` signatures are **all widened to `PlatformDb`** (context, path or string).
   The former `Path | str` annotation rejected contexts in type checkers even though
   runtime accepted it ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
-- The HTTP layer has 153 endpoints and **APIRouter extraction has started**
-  (`routers/`); `api.py` still owns 40 of them.
+- The HTTP layer has 156 endpoints and **APIRouter extraction has started**
+  (`routers/`); `api.py` still owns most of them.
 - `frontend/src/types/index.ts` hand-mirrors backend models in 1143 lines; the backend
   emits both camelCase and snake_case.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:

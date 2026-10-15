@@ -10,6 +10,7 @@ one of them is silent — the platform starts, serves traffic, and looks healthy
 | Misconfiguration | What actually happens |
 |---|---|
 | `ONTOLOGY_AUTH_DISABLED=1` left on | the entire API is reachable with no token, including writeback |
+| rate limiting never configured | one caller can generate unbounded load, and nothing records the requests that were not throttled |
 | CORS left at `*` or localhost | either any origin can drive the API, or the real frontend cannot |
 | bootstrap admin password unset | a random one is printed to the log once, then nobody can log in |
 | SQLite as the platform store with several workers | writes serialise and time out under load |
@@ -161,6 +162,7 @@ def check_deployment(
     """
     report = PreflightReport(environment=environment)
     _check_authentication(report)
+    _check_rate_limiting(report)
     _check_cors(report, expected_origins)
     _check_bootstrap_admin(report)
     _check_platform_store(report, platform_db, worker_count)
@@ -190,6 +192,38 @@ def _check_authentication(report: PreflightReport) -> None:
         severity=WARNING,
         detail=(f"ONTOLOGY_SESSION_TTL_HOURS={ttl!r} 不是 1..168 之间的整数" if not 0 < hours <= 24 * 7 else ""),
         remedy="设为业务可接受的最短时长；令牌泄露后的暴露窗口就是这个值",
+    )
+
+
+def _check_rate_limiting(report: PreflightReport) -> None:
+    """Rate limiting is off unless a limit is configured, so say so before it matters.
+
+    A `warning` rather than a `critical`: the deployment serves correctly without it, and
+    the limit that is right depends on traffic this report cannot know. But it is the one
+    setting here whose absence is invisible in every other way -- nothing logs a request
+    that was not throttled, and the first sign of an unbounded caller is the service
+    falling over, at which point the cause is not in the logs either.
+    """
+    raw = _env("ONTOLOGY_RATE_LIMIT_PER_MINUTE")
+    try:
+        limit = int(raw) if raw else 0
+    except ValueError:
+        limit = 0
+
+    unusable = bool(raw) and limit <= 0
+    report.add(
+        "已配置请求速率限制",
+        limit > 0,
+        severity=WARNING,
+        detail=(
+            f"ONTOLOGY_RATE_LIMIT_PER_MINUTE={raw!r} 不是正整数，限制不会生效"
+            if unusable
+            else "未设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE：单个调用方可以无上限地产生请求"
+        ),
+        remedy=(
+            "设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE 为预期峰值之上的正整数（如 600）；"
+            "登录接口另有更严的 ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE（默认 10）"
+        ),
     )
 
 

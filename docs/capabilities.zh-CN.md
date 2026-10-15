@@ -92,6 +92,13 @@
 | **插件可注册路由权限策略** | ✅ | `access_policy.py` |
 | 审计 actor 取自认证身份，不接受客户端自报 | ✅ | `api.py`、`auth.py` |
 | 凭据脱敏（连接串密码段、API Key 首尾） | ✅ | `credentials.py` |
+| **请求标识贯穿响应与日志**（`X-Request-Id`，调用方可传入但先校验字符集） | ✅ | `tracing.py`、`request_logger.py` |
+| **访问日志**（记路径不记查询串；5xx 与 4xx 分级） | ✅ | `request_logger.py` |
+| **结构化日志**（`ONTOLOGY_LOG_FORMAT=json`，每条记录都带请求 id） | ✅ | `logging_config.py` |
+| **500 响应带 `requestId`**（异常文本只进日志，不进响应体） | ✅ | `request_logger.py` |
+| **请求限流**（认证之前生效，默认关闭，登录另有更严限额） | ✅ | `rate_limiter.py` |
+| CSRF 防护 | 📋 | **当前形态下不适用**：Bearer 头认证、无 cookie，见 [`SECURITY.md`](../SECURITY.md) |
+| 凭据静态加密 | 📋 | 无：凭据明文存放于平台库，该库即凭据存储，见[已知限制](limitations.zh-CN.md) |
 | 权限行级过滤 `filter_expression` | ✅ | `check_permission` 传入实例时真实求值 |
 | **检索期权限过滤**（引用不得越过调用者可读的对象） | ✅ | `retrieval.py`：锚定后、排序前，判定失败按拒绝 |
 | 权限策略本体维度 | ✅ | 按 `(role, ontology, object)` 索引，0 表示通配 |
@@ -114,6 +121,7 @@
 | 模型层 OpenAI 兼容协议，自定义 Base URL 与订阅 | ✅ | `model_client.py` |
 | 鉴权方式可选 / 扩展字段可关闭 / 附加请求头 | ✅ | `model_client.py` |
 | 未配置密钥时回退本地启发式 | ✅ | `model_client.py` |
+| **模型响应按字段归一化**：单个字段形状不对只损失该字段，并出现在 `unreadableModelFields` 中 | ✅ | `model_client.py` |
 | 工作台聚合视图（待处理事项按阻断优先） | ✅ | `workbench.py` |
 | 知识图谱预览（含建模缺口诊断） | ✅ | `graph_view.py` |
 | 文档知识库（条款切分 + 可引用定位） | ✅ | `knowledge_documents.py` |

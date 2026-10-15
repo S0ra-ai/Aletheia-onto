@@ -39,6 +39,7 @@ healthy.
 | CORS still localhost | the real frontend is blocked, and the next step someone takes is `*` | warning |
 | admin password unset | a random one is printed once, and container logs rotate | warning |
 | password inline in the connection URI | it appears in the process list, container inspect, and crash logs | warning |
+| rate limiting never configured | one caller generates unbounded load; nothing logs the requests that were *not* throttled, so the first symptom is the service falling over | warning |
 
 A single-node SQLite evaluation deployment is legitimate, so one worker does not block —
 refusing it would push people to skip the check entirely.

@@ -28,6 +28,19 @@ INTENT_CONSISTENCY = "decision_consistency"
 INTENT_UNKNOWN = "unknown"
 INTENT_KNOWLEDGE_OVERVIEW = "knowledge_overview"
 
+# The intents the understanding prompt enumerates. A value outside this set is not an
+# interpretation of the question, so it must not replace the deterministic detector's.
+ROUTING_INTENTS: frozenset[str] = frozenset(
+    {
+        INTENT_COMPLIANCE,
+        INTENT_EXPLAIN,
+        INTENT_PREFLIGHT,
+        INTENT_CONSISTENCY,
+        INTENT_UNKNOWN,
+        INTENT_KNOWLEDGE_OVERVIEW,
+    }
+)
+
 
 @dataclass(frozen=True)
 class ResolvedTarget:
@@ -38,22 +51,79 @@ class ResolvedTarget:
     operation_code: str | None = None
 
 
-def _first_int(*candidates: Any) -> int | None:
-    """First candidate that is present, coerced to int.
+def _as_int(value: Any) -> int | None:
+    """An integer from a model-supplied value, or None when there is not one.
 
-    The caller's explicit argument wins over the model's interpretation, and an
-    absent value stays None rather than becoming 0.
+    `bool` is excluded even though Python would read it as 0/1: JSON `true` in an
+    identifier field is not an identifier, it is the model declining to answer.
     """
-    for candidate in candidates:
-        if candidate:
-            return int(candidate)
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            # "12.0" is a number a model may write for an integer field; "12.5" is not an
+            # id, so the float parse is only accepted when it lands on a whole number.
+            try:
+                as_float = float(text)
+            except ValueError:
+                return None
+            return int(as_float) if as_float.is_integer() else None
     return None
 
 
-def _first_str(*candidates: Any) -> str | None:
-    """First candidate that is present, coerced to str."""
+def _first_int(*candidates: Any) -> int | None:
+    """First candidate that is present and numeric, coerced to int.
+
+    The caller's explicit argument wins over the model's interpretation, and an absent
+    value stays None rather than becoming 0.
+
+    Lenient on purpose. The prompt tells the model to write `null` for anything it cannot
+    determine, and models routinely write that as the *string* `"null"` -- or `"unknown"`,
+    or `"N/A"`. Those are answers the prompt invites. `int()` over them raised, and the
+    exception travelled all the way out to the asker as HTTP 400 reading
+    `invalid literal for int() with base 10: 'null'`: a Python message about a model's
+    output, naming neither the cause nor anything a caller could act on. A value the model
+    could not determine is simply absent, which is what this now returns.
+    """
     for candidate in candidates:
-        if candidate:
+        coerced = _as_int(candidate)
+        if coerced is not None:
+            return coerced
+    return None
+
+
+# Spellings a model uses to mean "no value" when the prompt asked it to write `null`.
+# Honoured as absent rather than taken literally: an object code of `"null"` resolves to
+# nothing, and the asker was then told "业务对象不存在: null" -- an error about a string the
+# platform itself invited. The cost is that a real object code literally named "null" or
+# "unknown" cannot be addressed through the model's interpretation; the deterministic
+# resolution path (and the explicit request field) still can.
+_ABSENT_MARKERS: frozenset[str] = frozenset(
+    {"null", "none", "nil", "n/a", "na", "unknown", "undefined", "-", "无", "未知"}
+)
+
+
+def _first_str(*candidates: Any) -> str | None:
+    """First candidate that is present and scalar, coerced to str.
+
+    Structures are refused rather than stringified. `str({"code": "x"})` is truthy, so a
+    model answering an identifier field with an object used to produce the object code
+    `{'code': 'x'}` -- which no ontology matches, so the asker was told
+    "业务对象不存在: {'code': 'x'}", a message that reports the symptom and hides the cause.
+    """
+    for candidate in candidates:
+        if isinstance(candidate, (dict, list, tuple, set, frozenset)):
+            continue
+        if candidate and str(candidate).strip().lower() not in _ABSENT_MARKERS:
             return str(candidate)
     return None
 
@@ -79,7 +149,13 @@ def query_natural_language(
         if use_model
         else {}
     )
-    intent = str(model_interpretation.get("intent") or detect_intent(normalized_question))
+    # The model's intent is accepted only when it names one of the intents the prompt
+    # enumerates. Anything else -- a near miss like "compliance", a nested object, an
+    # empty string -- is not an interpretation, and letting it through routed the question
+    # to no branch at all, so the asker got the unknown-intent answer for a question the
+    # deterministic detector could route.
+    model_intent = str(model_interpretation.get("intent") or "").strip()
+    intent = model_intent if model_intent in ROUTING_INTENTS else detect_intent(normalized_question)
     resolved = _resolve_target(
         platform_db,
         normalized_question,
@@ -120,10 +196,18 @@ def query_natural_language(
             raise ValueError(f"请在问题中说明要预检的实例，例如：{example['preflight']}")
         if resolved.data_source_id is None:
             raise ValueError("无法定位数据源，不能进行操作预检")
-        operation_code = str(
-            model_interpretation.get("operationCode")
-            or resolved.operation_code
-            or _default_operation_code(platform_db, normalized_question, resolved.object_code, resolved.data_source_id)
+        # `_first_str` rather than `str(...)`: the model may answer this field with a
+        # descriptor (`{"code": "submit", "name": "提交"}`), and `str()` turned that into its
+        # Python repr, which was then passed to the preflight as an operation code -- so the
+        # caller got "业务操作不存在: {'code': 'submit', 'name': '提交'}".
+        operation_code = (
+            _first_str(
+                model_interpretation.get("operationCode"),
+                resolved.operation_code,
+                _default_operation_code(
+                    platform_db, normalized_question, resolved.object_code, resolved.data_source_id
+                ),
+            )
             or ""
         )
         if not operation_code:

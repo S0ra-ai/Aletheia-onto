@@ -17,6 +17,35 @@
 | `ONTOLOGY_AUTH_DISABLED` | 设为 `1` 关闭全部认证，**仅限本地开发** | 未设（认证开启） |
 | `ONTOLOGY_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔 | `http://127.0.0.1:3000,http://localhost:3000` |
 
+## 日志
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `ONTOLOGY_LOG_FORMAT` | `json` 为每行一个对象；`text` 给人看 | `text` |
+| `ONTOLOGY_LOG_LEVEL` | 根日志级别。值不可用时回落到 `INFO` 而不是拒绝启动 | `INFO` |
+| `ONTOLOGY_LOG_FILE` | 轮转日志文件（10 MiB × 5），父目录会自动创建 | 未设：只写 stderr |
+
+两种格式都带请求 id——文本是行内 `request_id=…`，JSON 是 `requestId` 字段，且**每条记录都带**，
+包括依赖库深处发出的那几条：id 在请求进入时绑定到上下文，而不是由各调用点自行传递。
+用它排查故障见[运维手册](operations.md)。
+
+日志在**服务开始提供请求时**配置，而不是在模块被导入时：导入一个库不应安装进程级 handler
+或创建目录。
+
+## 请求限流
+
+未设置即不启用。计数器按进程独立，因此实际额度为配置值乘以 worker 数。
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `ONTOLOGY_RATE_LIMIT_PER_MINUTE` | 每调用方地址每分钟请求数，`0` 关闭 | `0`（关闭） |
+| `ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE` | `/auth/login` 与 `/auth/sso/login` 的每分钟请求数 | `10` |
+
+限流**在认证之前**生效，按对端地址计数（**刻意不读 `X-Forwarded-For`**——该头由调用方
+自行填写，读它等于让调用方决定审计日志里记哪个地址）。因此同一 NAT 后的数百人共用一个额度，
+限额应按该人群规模设置。公开路径（`/health`、`/metrics`、文档）不计数，
+否则监控会消耗掉它自己那份额度。
+
 ## SSO（单点登录）
 
 三项全部设置后 SSO 才启用——半配置状态按「SSO 关闭」处理，而非「SSO 开启且接受任意断言」。

@@ -475,6 +475,9 @@ export interface SemanticObjectInstancesResult {
   };
   attributes: SemanticObjectAttribute[];
   items: SemanticObjectInstanceItem[];
+  // Whether the policy carried a row filter. Distinguishes "every row was judged against
+  // it" from "this was a capability check only" without re-reading the policy table.
+  rowFilterApplied?: boolean;
   pagination: { limit: number; offset: number; total: number; hasMore: boolean };
 }
 

@@ -23,6 +23,12 @@ class ObjectAccessError(ValueError):
     """The caller cannot read the requested business object or instance."""
 
 
+# The most candidate instance ids one page request will ask a source for. A constant rather
+# than an expression involving the caller's offset, because an "upper bound" that grows with
+# one of its inputs is not a bound.
+_MAX_CANDIDATE_IDS = 100_000
+
+
 def _json_value(value: Any) -> Any:
     """Normalize adapter values into JSON-safe values without losing information."""
     try:
@@ -112,33 +118,61 @@ def list_object_instances(
     limit: int | None = None,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """List readable instances of an ontology business object."""
+    """List readable instances of an ontology business object.
+
+    The candidate walk is deliberate: resolver APIs expose opaque ids rather than SQL
+    offsets, so authorization is applied to each candidate id and every resolver kind stays
+    on one security path. What that walk must not do is *materialise* every candidate.
+    `check_permission` decides from the policy alone when no row filter is configured, and
+    returns without ever reading the instance -- so fetching each candidate turns a
+    twenty-row page into one query per row in the source, for a request an administrator
+    triggers by opening a page, against a legacy system that is often across a WAN link.
+    Rows are read only when a decision needs them (a configured row filter) or when they
+    belong to the page being returned.
+    """
     target = _load_target(platform_db, ontology_id, object_code)
-    _authorize(platform_db, role_code, object_code, ontology_id)
+    # One capability check, up front. It also reports whether a row filter is configured,
+    # which is the only reason a candidate has to be materialised in order to be judged.
+    capability = _authorize(platform_db, role_code, object_code, ontology_id)
+    row_filtered = bool(capability.get("filterExpression"))
     resolved_limit = clamp_page_size(limit)
     resolved_offset = max(0, int(offset or 0))
     resolver = _resolver(target)
     if not target.get("source_type") or not target.get("connection_uri"):
         raise ValueError(f"业务对象未绑定可用数据源: {object_code}")
 
-    # Resolver APIs intentionally expose opaque ids rather than SQL offsets.  Fetch a
-    # bounded but generous id set, then apply row-level authorization before slicing.
-    # This keeps joined/discriminated/custom resolvers on the same security path.
+    page_end = resolved_offset + resolved_limit
+
     with get_adapter(target["source_type"]).runtime(target["connection_uri"]) as runtime:
-        ids = resolver.list_ids(runtime, limit=max(resolved_offset + resolved_limit, 100000))
-        readable: list[dict[str, Any]] = []
-        for raw_id in ids:
-            instance_id = str(raw_id)
+        # A bound on how many candidates one page request considers -- not a value derived
+        # from the caller's offset. This previously read
+        # `max(offset + limit, 100000)`, so `?offset=100000000` asked the legacy system for
+        # a hundred million primary keys: an upper bound that grew with its input.
+        candidates: list[str] = []
+        if resolved_offset < _MAX_CANDIDATE_IDS:
+            candidates = [str(value) for value in resolver.list_ids(runtime, limit=_MAX_CANDIDATE_IDS)]
+
+        readable = 0
+        page_items: list[dict[str, Any]] = []
+        for instance_id in candidates:
             try:
                 _authorize(platform_db, role_code, object_code, ontology_id, instance_id)
             except ObjectAccessError:
                 continue
+            readable += 1
+            if readable <= resolved_offset or readable > page_end:
+                # Counted for `total`, but not on this page and not needed by any decision,
+                # so it is never read.
+                continue
             record = resolver.fetch(runtime, instance_id)
-            if record is not None:
-                readable.append(_item(instance_id, record, resolver.tables()))
+            if record is None:
+                # Listed but gone: the id query and the row read are separate statements, so
+                # a concurrent delete lands here. It is not readable after all.
+                readable -= 1
+                continue
+            page_items.append(_item(instance_id, record, resolver.tables()))
 
-    page_items = readable[resolved_offset : resolved_offset + resolved_limit]
-    total = len(readable)
+    total = readable
     return {
         "ontology": {
             "id": target["ontology"]["id"],
@@ -168,11 +202,14 @@ def list_object_instances(
             for attr in target["attributes"]
         ],
         "items": page_items,
+        # Stated so a caller can tell "every row was judged" from "the policy is a
+        # capability check" without re-deriving it from the policy table.
+        "rowFilterApplied": row_filtered,
         "pagination": {
             "limit": resolved_limit,
             "offset": resolved_offset,
             "total": total,
-            "hasMore": resolved_offset + resolved_limit < total,
+            "hasMore": page_end < total,
         },
     }
 

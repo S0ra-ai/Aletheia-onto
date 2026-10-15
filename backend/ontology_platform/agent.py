@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time as _time
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Iterator
 
 from .agent_roles import AgentRole, build_system_prompt, list_agent_roles, resolve_agent_role
 from .automation import preflight_operation
@@ -402,22 +401,89 @@ def _build_knowledge_context(
     return result
 
 
-def _extract_tool_calls(content: str) -> list[dict[str, Any]]:
-    calls = []
-    pattern = re.compile(r'\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*"args"\s*:\s*\{[^{}]*\}[^{}]*\}', re.DOTALL)
-    for match in pattern.finditer(content):
+def _iter_json_spans(content: str) -> Iterator[tuple[int, int, str]]:
+    """Every top-level `{...}` span in the text, with its offsets.
+
+    Brace counting rather than a regex. The pattern this replaces used `[^{}]*` between the
+    braces, which cannot span a nested object -- so one nested level anywhere inside `args`
+    made the whole marker unmatched, and the failure was silent in the worst way: the tool
+    was never executed *and* the raw JSON stayed in the answer the user read. A structure
+    whose depth is not known in advance is not a regular language, so it needs a counter.
+
+    Quoting is respected, so a brace inside a JSON string does not affect the depth.
+    """
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for index, char in enumerate(content):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                yield start, index + 1, content[start : index + 1]
+
+
+def _tool_marker_spans(content: str) -> list[tuple[int, int]]:
+    """Offsets of the spans that really are tool calls.
+
+    A span qualifies only if it parses as JSON and carries both keys, so an ordinary JSON
+    example in the model's prose is left alone.
+    """
+    spans: list[tuple[int, int]] = []
+    for start, end, text in _iter_json_spans(content):
         try:
-            parsed = json.loads(match.group())
-            if "tool" in parsed and "args" in parsed:
-                calls.append(parsed)
+            parsed = json.loads(text)
         except json.JSONDecodeError:
             continue
+        if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
+            spans.append((start, end))
+    return spans
+
+
+def _extract_tool_calls(content: str) -> list[dict[str, Any]]:
+    calls = []
+    for _, _, text in _iter_json_spans(content):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and "tool" in parsed and "args" in parsed:
+            calls.append(parsed)
     return calls
 
 
 def _strip_tool_calls(content: str) -> str:
-    cleaned = re.sub(r'\{[^{}]*"tool"\s*:\s*"[^"]+"[^{}]*"args"\s*:\s*\{[^{}]*\}[^{}]*\}', "", content, flags=re.DOTALL)
-    return cleaned.strip()
+    """The answer with the tool markers removed.
+
+    Removing exactly the spans that were recognised as calls -- rather than re-matching a
+    pattern -- is what keeps the two functions in agreement. They used to run the same
+    regex independently, so any case the regex missed left the marker in the prose *and*
+    skipped the call, which is both halves of the failure at once.
+    """
+    spans = _tool_marker_spans(content)
+    if not spans:
+        return content.strip()
+    pieces: list[str] = []
+    cursor = 0
+    for start, end in spans:
+        pieces.append(content[cursor:start])
+        cursor = end
+    pieces.append(content[cursor:])
+    return "".join(pieces).strip()
 
 
 # Agent tool calls are always authorized as the platform's AI agent principal,

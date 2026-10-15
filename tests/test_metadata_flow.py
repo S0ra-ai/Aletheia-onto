@@ -52,6 +52,7 @@ from ontology_platform.model_client import (
     OpenRouterClient,
     OpenRouterConfig,
     generate_blueprint_draft,
+    generate_ontology_reasoning_chain,
     get_model_config,
     reset_model_config,
     update_model_config,
@@ -1522,3 +1523,551 @@ def test_blueprint_draft_uses_local_fallback_and_openrouter_shape(tmp_path: Path
 def test_api_module_imports_on_supported_python() -> None:
     api = importlib.import_module("ontology_platform.api")
     assert api.app.title == "本体改造研发平台"
+
+
+def _blueprint_client(blueprint_payload: dict, calls: list, model: str = "openai/test-model") -> OpenRouterClient:
+    """A client whose transport answers with `blueprint_payload`, recording the request."""
+
+    def fake_transport(
+        url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float
+    ) -> dict[str, object]:
+        calls.append({"url": url, "headers": headers, "payload": payload})
+        return {
+            "model": model,
+            "choices": [{"message": {"content": json.dumps(blueprint_payload, ensure_ascii=False)}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+
+    return OpenRouterClient(
+        OpenRouterConfig("or-test-key", model, "https://openrouter.ai/api/v1", "", "Ontology Platform", "auto", 10),
+        transport=fake_transport,
+    )
+
+
+def _scanned_source(tmp_path: Path, name: str = "platform.sqlite3"):
+    platform_db = tmp_path / name
+    legacy_db = tmp_path / f"{name}.legacy.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    return platform_db, source
+
+
+def test_blueprint_hints_written_as_a_list_of_objects_are_read(tmp_path: Path) -> None:
+    """The shape a live model actually returned, which used to discard the whole response.
+
+    The prompt named `objectHints` without stating its shape, and a real model answered
+    with a list of object descriptors -- a reasonable reading, and the richer one, since it
+    carries the source table and key that a `{code: label}` mapping cannot. The normalizer
+    ran `dict()` over that list, raised, and the caller's broad `except` replaced sixteen
+    kilobytes of usable modelling with the local heuristic, reporting only
+    `usedRemoteModel: False` -- which reads as "no model was configured".
+    """
+    platform_db, source = _scanned_source(tmp_path)
+    calls: list[dict] = []
+    draft = generate_blueprint_draft(
+        platform_db,
+        source.id,
+        _blueprint_client(
+            {
+                "id": "contract-management-blueprint",
+                "name": "合同管理行业蓝图",
+                "domain": "合同管理",
+                "description": "模型生成",
+                "objectHints": [
+                    {
+                        "code": "Contract",
+                        "name": "合同",
+                        "sourceTable": "contract",
+                        "primaryKey": "id",
+                        "businessKey": ["contract_no"],
+                        "relationships": [{"type": "many-to-one", "targetObjectCode": "Customer"}],
+                    },
+                    {"code": "Customer", "name": "客户", "sourceTable": "customer"},
+                ],
+                "attributeHints": [
+                    {"code": "contract.amount", "name": "合同金额"},
+                    {"code": "contract.contract_no", "name": "合同编号"},
+                ],
+                "rules": [
+                    {
+                        "code": "amount_positive",
+                        "name": "金额为正",
+                        "rule_type": "validation",
+                        "scope_object_code": "Contract",
+                        "expression": "amount > 0",
+                        "severity": "blocking",
+                        "natural_language": "合同金额必须大于零。",
+                    }
+                ],
+                "tableKeywords": ["contract", "customer"],
+                "capabilityTags": ["contract_lifecycle"],
+            },
+            calls,
+        ),
+    )
+
+    assert draft["usedRemoteModel"] is True, draft.get("remoteError")
+    assert "unreadableModelFields" not in draft
+    blueprint = draft["blueprint"]
+    # The model's business names survive, rather than the snake_case-derived heuristic ones.
+    assert blueprint["objectHints"] == {"Contract": "合同", "Customer": "客户"}
+    assert blueprint["attributeHints"]["contract.amount"] == "合同金额"
+    # Attribute hints keep the dotted spelling and gain the bare column, as before.
+    assert blueprint["attributeHints"]["amount"] == "合同金额"
+    assert [rule["code"] for rule in blueprint["rules"]] == ["amount_positive"]
+    assert calls, "模型未被调用"
+
+
+def test_a_bare_string_keyword_list_is_not_exploded_into_characters(tmp_path: Path) -> None:
+    """Iterating a string yields its characters: "contract" became six keywords."""
+    platform_db, source = _scanned_source(tmp_path)
+    draft = generate_blueprint_draft(
+        platform_db,
+        source.id,
+        _blueprint_client(
+            {
+                "id": "x",
+                "name": "n",
+                "domain": "合同管理",
+                "objectHints": {"contract": "合同"},
+                "attributeHints": {},
+                "rules": [],
+                "tableKeywords": "contract",
+                "capabilityTags": "contract_lifecycle",
+            },
+            [],
+        ),
+    )
+
+    assert draft["blueprint"]["tableKeywords"] == ["contract"]
+    assert draft["blueprint"]["capabilityTags"] == ["contract_lifecycle"]
+
+
+def test_one_unreadable_field_costs_one_field(tmp_path: Path) -> None:
+    """The model's other work must survive a single shape it got wrong.
+
+    Before this, any shape surprise raised out of the normalizer and the whole response was
+    discarded. The failure has to be proportionate to the mistake, and it has to be visible:
+    the caller asked for a model-assisted draft and is entitled to know which parts of it
+    fell back.
+    """
+    platform_db, source = _scanned_source(tmp_path)
+    draft = generate_blueprint_draft(
+        platform_db,
+        source.id,
+        _blueprint_client(
+            {
+                "id": "partial",
+                "name": "部分可用",
+                "domain": "合同管理",
+                "description": "模型生成",
+                "objectHints": "请把合同和客户建模为业务对象",
+                "attributeHints": {},
+                "rules": [],
+                "tableKeywords": ["contract"],
+                "capabilityTags": [],
+            },
+            [],
+        ),
+    )
+
+    assert draft["usedRemoteModel"] is True
+    assert draft["unreadableModelFields"] == ["objectHints"]
+    # The fields the model did supply are used...
+    assert draft["blueprint"]["name"] == "部分可用"
+    assert draft["blueprint"]["tableKeywords"] == ["contract"]
+    # ...and the unreadable one falls back to the draft's own hints rather than to empty.
+    assert "contract" in draft["blueprint"]["objectHints"]
+
+
+class TestAModelAnsweringWithSentinels:
+    """The understanding prompt asks the model to write `null` for anything it cannot
+    determine, and models write that as the string "null" at least as often as JSON null.
+
+    These drive the real `query_natural_language` with a fake transport, because the defect
+    they pin was only reachable through the model's answer: the values went straight from
+    parsed JSON into `int()`, and the resulting `ValueError` travelled out to the asker as
+    HTTP 400 reading `invalid literal for int() with base 10: 'null'`.
+    """
+
+    @staticmethod
+    def _model_returning(payload: dict):
+        def fake_transport(
+            url: str, headers: dict[str, str], request_payload: dict[str, object], timeout_seconds: float
+        ) -> dict[str, object]:
+            return {
+                "model": "openai/test-model",
+                "choices": [{"message": {"content": json.dumps(payload, ensure_ascii=False)}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+
+        return fake_transport
+
+    def _scenario(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model_payload: dict):
+        import ontology_platform.model_client as model_client_module
+
+        platform_db = tmp_path / "platform.sqlite3"
+        legacy_db = tmp_path / "legacy.sqlite3"
+        initialize_platform_db(platform_db)
+        create_contract_sample_db(legacy_db)
+        source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+        scan_data_source(platform_db, source.id)
+        ontology = generate_ontology_draft(platform_db, source.id)
+
+        monkeypatch.setattr(model_client_module, "_post_json", self._model_returning(model_payload))
+        update_model_config(platform_db, {"apiKey": "or-test-key", "model": "openai/test-model"})
+        return platform_db, source, ontology
+
+    @pytest.mark.parametrize("sentinel", ["null", "unknown", "N/A"])
+    def test_string_sentinels_in_identifier_fields_are_treated_as_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sentinel: str
+    ) -> None:
+        platform_db, source, ontology = self._scenario(
+            tmp_path,
+            monkeypatch,
+            {
+                "intent": "compliance_assessment",
+                "ontologyId": sentinel,
+                "dataSourceId": sentinel,
+                "objectCode": sentinel,
+                "instanceId": sentinel,
+                "operationCode": None,
+            },
+        )
+
+        # The question names nothing, so the platform resolves the target itself. What
+        # matters is that it answers at all rather than surfacing a parse error.
+        answer = query_natural_language(
+            platform_db,
+            "合同是否合规？",
+            ontology["ontology"]["id"],
+            source.id,
+            use_model=True,
+        )
+
+        assert answer["answer"], answer
+        assert answer["resolved"]["ontologyId"] == ontology["ontology"]["id"]
+
+    def test_a_structured_identifier_does_not_become_an_object_code(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`str({"code": "x"})` is truthy, so this used to be searched for literally."""
+        platform_db, source, ontology = self._scenario(
+            tmp_path,
+            monkeypatch,
+            {
+                "intent": "compliance_assessment",
+                "ontologyId": {"value": 1},
+                "dataSourceId": None,
+                "objectCode": {"code": "Contract"},
+                "instanceId": ["1"],
+                "operationCode": None,
+            },
+        )
+
+        answer = query_natural_language(
+            platform_db,
+            "合同是否合规？",
+            ontology["ontology"]["id"],
+            source.id,
+            use_model=True,
+        )
+
+        assert answer["answer"], answer
+        # The structured values are dropped, so resolution falls back rather than trying to
+        # find an object literally called "{'code': 'Contract'}".
+        assert "{'code'" not in json.dumps(answer, ensure_ascii=False)
+
+    def test_an_intent_outside_the_enumerated_set_does_not_suppress_routing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A near miss like "compliance" is not an interpretation of the question.
+
+        Letting it through routed the question to no branch, so the asker got the
+        unknown-intent answer for a question the deterministic detector routes fine.
+        """
+        platform_db, source, ontology = self._scenario(
+            tmp_path,
+            monkeypatch,
+            {
+                "intent": "compliance",
+                "ontologyId": None,
+                "dataSourceId": None,
+                "objectCode": None,
+                "instanceId": None,
+                "operationCode": None,
+            },
+        )
+
+        answer = query_natural_language(
+            platform_db,
+            "合同是否合规？",
+            ontology["ontology"]["id"],
+            source.id,
+            use_model=True,
+        )
+
+        assert answer["intent"] == "compliance_assessment", answer
+
+
+class TestBlueprintImportShapes:
+    """Importing a blueprint, which is where a generated draft has to come back in.
+
+    The platform writes a blueprint to the database through this function, so whatever
+    `generate_blueprint_draft` can produce, this has to be able to accept -- otherwise the
+    platform generates a draft it then refuses to import. It could not accept the shape a
+    live model produced, and it accepted a neighbouring one *silently wrong*.
+    """
+
+    def test_a_descriptor_list_is_read_faithfully(self, tmp_path: Path) -> None:
+        """The live-model shape: a list of objects rather than a mapping."""
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+
+        stored = upsert_industry_blueprint(
+            platform_db,
+            {
+                "id": "ai-contract",
+                "name": "AI 合同蓝图",
+                "domain": "合同管理",
+                "objectHints": [
+                    {"code": "contract", "name": "合同", "sourceTable": "contract", "primaryKey": "id"},
+                    {"code": "customer", "name": "客户"},
+                ],
+                "attributeHints": [{"code": "contract.amount", "name": "合同金额"}],
+            },
+        )
+
+        assert stored["objectHints"] == {"contract": "合同", "customer": "客户"}
+        assert stored["attributeHints"]["contract.amount"] == "合同金额"
+        # Attribute hints gain the bare column alongside the dotted key, as before.
+        assert stored["attributeHints"]["amount"] == "合同金额"
+
+    def test_two_key_descriptors_are_not_read_as_a_key_value_pair(self, tmp_path: Path) -> None:
+        """The silent case, which is worse than the crash it sat next to.
+
+        `dict([{"column": "amount", "label": "合同金额"}])` does not raise: a two-element
+        dict is itself a valid key/value pair, so the *keys* became the entry. The platform
+        stored an object named "column" labelled "label", reported success, and nothing
+        anywhere recorded that the model's answer had been misread.
+        """
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+
+        stored = upsert_industry_blueprint(
+            platform_db,
+            {
+                "id": "ai",
+                "name": "n",
+                "domain": "d",
+                "objectHints": [{"column": "amount", "label": "合同金额"}, {"column": "status", "label": "状态"}],
+            },
+        )
+
+        assert stored["objectHints"] == {"amount": "合同金额", "status": "状态"}
+        assert "column" not in stored["objectHints"]
+
+    def test_the_documented_mapping_form_is_unchanged(self, tmp_path: Path) -> None:
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+        stored = upsert_industry_blueprint(
+            platform_db,
+            {"id": "ai", "name": "n", "domain": "d", "objectHints": {"contract": "合同"}},
+        )
+        assert stored["objectHints"] == {"contract": "合同"}
+
+    def test_a_list_of_candidate_labels_is_not_stored_as_a_repr(self, tmp_path: Path) -> None:
+        """`str(["合同", "销售合同"])` is truthy, so it used to be accepted as the label.
+
+        Two candidate names cannot be resolved without inventing a rule, so the code is
+        used as the label instead -- a name the model did write, rather than a Python repr
+        of names it offered.
+        """
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+        stored = upsert_industry_blueprint(
+            platform_db,
+            {"id": "ai", "name": "n", "domain": "d", "objectHints": {"contract": ["合同", "销售合同"]}},
+        )
+        assert stored["objectHints"] == {"contract": "contract"}
+
+    def test_a_generated_draft_imports_back(self, tmp_path: Path) -> None:
+        """The closed loop, which is the property that was broken.
+
+        Nothing linked the drafting path to the import path, so each was tested against its
+        own idea of the shape and the pair did not fit.
+        """
+        platform_db, source = _scanned_source(tmp_path)
+        draft = generate_blueprint_draft(
+            platform_db,
+            source.id,
+            _blueprint_client(
+                {
+                    "id": "loop",
+                    "name": "回路蓝图",
+                    "domain": "合同管理",
+                    "description": "模型生成",
+                    "objectHints": [{"code": "contract", "name": "合同", "sourceTable": "contract"}],
+                    "attributeHints": [{"code": "contract.amount", "name": "合同金额"}],
+                    "rules": [],
+                    "tableKeywords": ["contract"],
+                    "capabilityTags": ["modelled"],
+                },
+                [],
+            ),
+        )
+        assert draft["usedRemoteModel"] is True
+
+        stored = upsert_industry_blueprint(platform_db, dict(draft["blueprint"]))
+
+        assert stored["objectHints"] == {"contract": "合同"}
+        assert stored["attributeHints"]["amount"] == "合同金额"
+
+
+class TestRuleElementsAreReadableOrRefused:
+    """A blueprint's rules, which the import path reads by subscripting.
+
+    `item["code"]` raised `KeyError` for an element missing a key, and the route converts
+    only `ValueError` into a response -- so a user pasting a model-generated draft got a 500
+    with no indication of which rule was at fault. The quieter half was worse: a missing
+    optional field became the *literal string* `"None"` via `str(item.get(...))`, and a rule
+    whose scope is `"None"` matches no object, so `ontology._create_blueprint_rules` dropped
+    it without a word. The blueprint then declares more rules than it creates.
+    """
+
+    @pytest.mark.parametrize(
+        "rules, expected",
+        [
+            ([{"code": "r1", "name": "n", "rule_type": "validation"}], "expression"),
+            ([{"code": "r2", "name": "n", "expression": "a > 0", "severity": "blocking"}], "scope_object_code"),
+            (["合同金额必须大于 0"], "不是对象"),
+            ({"r1": {"name": "n"}}, "不是对象"),
+            ([None], "不是对象"),
+        ],
+    )
+    def test_an_unreadable_rule_is_refused_with_a_reason(self, tmp_path: Path, rules: object, expected: str) -> None:
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+
+        with pytest.raises(ValueError) as refused:
+            upsert_industry_blueprint(platform_db, {"id": "x", "name": "n", "domain": "d", "rules": rules})
+
+        assert expected in str(refused.value), refused.value
+
+    def test_a_missing_optional_field_is_empty_not_the_string_none(self, tmp_path: Path) -> None:
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+
+        stored = upsert_industry_blueprint(
+            platform_db,
+            {
+                "id": "x",
+                "name": "n",
+                "domain": "d",
+                "rules": [
+                    {
+                        "code": "r3",
+                        "name": "n",
+                        "scope_object_code": "contract",
+                        "expression": "a > 0",
+                        "severity": "blocking",
+                    }
+                ],
+            },
+        )
+
+        rule = stored["rules"][0]
+        assert rule["rule_type"] == ""
+        assert rule["natural_language"] == ""
+        assert "None" not in json.dumps(rule)
+
+
+class TestTheReasoningChainNormalizer:
+    """The sibling of the blueprint normalizer, which had no test at all.
+
+    The blueprint's prompt and normalizer were hardened while this one kept validating only
+    `isinstance(list)` -- so a model answering per its own reading ("给出两种路径" -> one
+    object per path) produced a chain the UI could not draw: React rejects an object child
+    and the error boundary replaces the page, with the endpoint having returned 200 and
+    recorded success.
+    """
+
+    @staticmethod
+    def _local() -> dict:
+        return {
+            "summary": "本地摘要",
+            "reasoningSteps": ["本地步骤"],
+            "proposedObjects": [{"objectCode": "t", "objectName": "T"}],
+            "proposedRelations": [],
+            "proposedRules": [],
+            "buildPlan": ["本地路径"],
+            "questionsForUser": ["本地问题"],
+        }
+
+    def _normalize(self, parsed: dict) -> tuple[dict, list[str]]:
+        from ontology_platform.model_client import _normalize_reasoning_chain
+
+        return _normalize_reasoning_chain(parsed, self._local())
+
+    def test_objects_where_text_is_expected_keep_the_models_words(self) -> None:
+        """The shape the prompt's own wording invites."""
+        chain, unreadable = self._normalize(
+            {
+                "summary": "模型摘要",
+                "reasoningSteps": [{"step": 1, "detail": "读取表与字段"}],
+                "buildPlan": [{"path": "自动构建", "steps": ["生成草案"]}],
+            }
+        )
+
+        assert chain["reasoningSteps"] == ["读取表与字段"]
+        assert chain["buildPlan"] == ["自动构建"]
+        assert unreadable == []
+
+    def test_strings_where_records_are_expected_fall_back_and_say_so(self) -> None:
+        """Otherwise every row renders "-" and the candidate list looks empty."""
+        chain, unreadable = self._normalize({"proposedObjects": ["contract", "customer"]})
+
+        assert unreadable == ["proposedObjects"]
+        assert chain["proposedObjects"] == self._local()["proposedObjects"]
+
+    def test_a_summary_written_as_lines_is_joined(self) -> None:
+        chain, unreadable = self._normalize({"summary": ["第一点", "第二点"]})
+
+        assert chain["summary"] == "第一点\n第二点"
+        assert unreadable == []
+
+    def test_every_element_is_a_string_or_a_record_as_the_frontend_expects(self) -> None:
+        chain, _ = self._normalize(
+            {
+                "reasoningSteps": [{"detail": "一"}, "二", None, {"unknown": "shape"}],
+                "proposedObjects": [{"objectCode": "t"}, "not-a-record"],
+            }
+        )
+
+        assert all(isinstance(step, str) for step in chain["reasoningSteps"])
+        assert all(isinstance(item, dict) for item in chain["proposedObjects"])
+        assert chain["reasoningSteps"] == ["一", "二"]
+        assert chain["proposedObjects"] == [{"objectCode": "t"}]
+
+    def test_the_endpoint_reports_which_fields_were_coerced(self, tmp_path: Path) -> None:
+        platform_db, source = _scanned_source(tmp_path)
+        result = generate_ontology_reasoning_chain(
+            platform_db,
+            source.id,
+            _blueprint_client(
+                {
+                    "summary": "模型摘要",
+                    "reasoningSteps": [{"step": 1, "detail": "读取元数据"}],
+                    "proposedObjects": ["contract"],
+                    "buildPlan": ["自动路径"],
+                    "questionsForUser": ["哪些是主业务对象？"],
+                },
+                [],
+            ),
+        )
+
+        assert result["usedRemoteModel"] is True
+        assert result["unreadableModelFields"] == ["proposedObjects"]
+        assert result["chain"]["reasoningSteps"] == ["读取元数据"]

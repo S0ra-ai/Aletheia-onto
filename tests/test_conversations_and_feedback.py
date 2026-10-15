@@ -21,7 +21,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from ontology_platform.agent import agent_chat
+from ontology_platform.agent import _extract_tool_calls, _strip_tool_calls, _tool_marker_spans, agent_chat
 from ontology_platform.conversations import (
     FEEDBACK_RATINGS,
     append_message,
@@ -386,3 +386,63 @@ def test_feedback_endpoints_require_sensible_capabilities() -> None:
     assert required_capability("POST", "/conversations/messages/5/feedback") == "platform:read"
     assert required_capability("POST", "/conversations/abc/escalate") == "governance:review"
     assert required_capability("POST", "/feedback/1/resolve") == "governance:review"
+
+
+# -- tool-call markers --
+
+
+class TestToolCallMarkers:
+    """Parsing the marker the agent prompt asks the model to emit.
+
+    The pattern this replaced used `[^{}]*` between the braces, which cannot span a nested
+    object -- so one nested level anywhere inside `args` made the whole marker unmatched.
+    The failure was silent in both directions at once: the tool was never executed, and the
+    raw JSON stayed in the answer the user read. An extraction whose depth is not known in
+    advance is not a regular language, which is why this is brace counting now.
+    """
+
+    def test_a_flat_marker_is_extracted_and_stripped(self) -> None:
+        text = '好的。{"tool": "preflight_operation", "args": {"instanceId": "1"}} 以上。'
+        assert [call["tool"] for call in _extract_tool_calls(text)] == ["preflight_operation"]
+        assert _strip_tool_calls(text) == "好的。 以上。"
+
+    def test_a_nested_argument_object_is_extracted(self) -> None:
+        """The case the regex silently dropped."""
+        text = (
+            '{"tool": "preflight_operation", "args": '
+            '{"operationCode": "submit", "instanceId": "1", "context": {"source": "chat"}}}'
+        )
+        calls = _extract_tool_calls(text)
+        assert [call["tool"] for call in calls] == ["preflight_operation"]
+        assert calls[0]["args"]["context"] == {"source": "chat"}
+        assert _strip_tool_calls(text) == ""
+
+    def test_several_markers_in_one_answer(self) -> None:
+        text = '先看这个 {"tool": "a", "args": {"x": {"y": 1}}} 再看 {"tool": "b", "args": {}}'
+        assert [call["tool"] for call in _extract_tool_calls(text)] == ["a", "b"]
+        assert _strip_tool_calls(text) == "先看这个  再看"
+
+    def test_a_brace_inside_a_string_does_not_confuse_the_depth(self) -> None:
+        text = '{"tool": "x", "args": {"note": "a } brace and { another"}}'
+        assert [call["tool"] for call in _extract_tool_calls(text)] == ["x"]
+        assert _strip_tool_calls(text) == ""
+
+    def test_prose_containing_json_that_is_not_a_call_is_left_alone(self) -> None:
+        text = '规则是这样的：{"expression": "amount > 0"}，请确认。'
+        assert _extract_tool_calls(text) == []
+        assert _strip_tool_calls(text) == text
+
+    def test_extraction_and_stripping_agree(self) -> None:
+        """They used to run the same regex independently, so anything it missed failed
+        twice over: no call executed *and* the marker left in the prose."""
+        for text in (
+            '前言 {"tool": "a", "args": {}} 后语',
+            '{"tool": "a", "args": {"deep": {"deeper": {"deepest": 1}}}}',
+            "没有标记",
+            '{"not_a_tool": true}',
+        ):
+            spans = _tool_marker_spans(text)
+            calls = _extract_tool_calls(text)
+            assert len(spans) == len(calls)
+            if calls:
+                assert text not in _strip_tool_calls(text)

@@ -21,6 +21,38 @@ Only the documented opt-in values disable authentication. A typo
 (`ONTOLOGY_AUTH_DISABLED=ture`) leaves it **on** — guessing at intent here would mean
 guessing in favour of exposure.
 
+## Logging
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ONTOLOGY_LOG_FORMAT` | `json` for one object per line, `text` for a person reading a terminal | `text` |
+| `ONTOLOGY_LOG_LEVEL` | Root log level. An unusable value falls back to `INFO` rather than refusing to start | `INFO` |
+| `ONTOLOGY_LOG_FILE` | Rotating log file (10 MiB × 5). The parent directory is created | Unset: stderr only |
+
+Both formats carry the request id — `request_id=…` inline in text, `requestId` in JSON —
+and every record carries it, including lines logged deep inside a dependency, because the
+id is bound to the request context rather than passed at each call site. See
+[operations](operations.md) for using it to trace a failure.
+
+Logging is configured when the service starts serving, not when the module is imported:
+importing a library should not install process-wide handlers or create directories.
+
+## Rate limiting
+
+Off unless a limit is set. Counters are per process, so the effective limit is the
+configured value times the worker count.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ONTOLOGY_RATE_LIMIT_PER_MINUTE` | Requests per minute per client address. `0` disables | `0` (disabled) |
+| `ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE` | Requests per minute per client address against `/auth/login` and `/auth/sso/login` | `10` |
+
+Limiting runs **before authentication**, keyed on the peer address (`X-Forwarded-For` is
+deliberately not read — it is caller-supplied, so reading it lets a caller choose the
+address recorded in the audit log). Several hundred people behind one NAT therefore share
+one budget: size the limit by that population. Public paths (`/health`, `/metrics`, the
+docs) are never counted, so monitoring cannot consume its own allowance.
+
 ## SSO
 
 SSO is enabled only when all three are set. A half-configured deployment behaves as

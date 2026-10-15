@@ -37,6 +37,19 @@ TEST_TOTAL_SOURCES = {
     "docs/testing.zh-CN.md": r"\*\*(\d+) 个测试\*\*",
 }
 
+# The same total, in the sentence a reader actually reads. The badge is a URL fragment that
+# happens to contain a number; the prose is the claim. They are separate copies, and only
+# the badge was checked -- so the prose sat at a stale `1379` while the badge, the testing
+# pages and CI were all green, which is precisely the drift this file exists to prevent.
+#
+# Matched loosely (`<number> tests`) rather than against a fixed sentence, and asserted to
+# be *the only* such number rather than merely present: a file carrying both the right
+# number and a stale one has the same problem as carrying only the stale one.
+PROSE_TOTAL_SOURCES = {
+    "README.md": r"(\d{3,5}) tests\b",
+    "README.zh-CN.md": r"(\d{3,5}) 个测试",
+}
+
 
 def _collected_counts() -> dict[str, int]:
     """Test file -> number of collected tests, per pytest itself.
@@ -65,6 +78,25 @@ def test_both_readmes_state_the_real_test_total() -> None:
         claimed = {int(found) for found in re.findall(pattern, (ROOT / filename).read_text(encoding="utf-8"))}
         assert claimed, f"{filename} 未声明测试总数"
         assert total in claimed, f"{filename} 声明 {sorted(claimed)}，实际收集到 {total}"
+
+
+def test_the_prose_test_total_matches_the_badge() -> None:
+    """The sentence a reader reads, not just the URL fragment beside it.
+
+    The badge is checked above and always was; the prose stating the same number was not,
+    so it sat at a stale `1379` while the badge, both testing pages and CI were green. That
+    is the exact failure this module exists to prevent -- a number a reader can check, wrong
+    in one of the two places they might check it.
+
+    Asserted to be the *only* such number in the file rather than merely present: a file
+    carrying both the current number and a stale one is no better than carrying only the
+    stale one, and `in` would accept it.
+    """
+    total = sum(_collected_counts().values())
+    for filename, pattern in PROSE_TOTAL_SOURCES.items():
+        found = {int(number) for number in re.findall(pattern, (ROOT / filename).read_text(encoding="utf-8"))}
+        assert found, f"{filename} 未在正文中声明测试总数"
+        assert found == {total}, f"{filename} 正文声明 {sorted(found)}，实际收集到 {total}"
 
 
 def test_the_per_file_breakdown_covers_every_test_file() -> None:

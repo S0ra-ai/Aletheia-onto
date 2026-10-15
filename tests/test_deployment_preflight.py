@@ -40,6 +40,8 @@ _MANAGED = (
     "ONTOLOGY_PLATFORM_DB_TYPE",
     "ONTOLOGY_PLATFORM_DB_URI",
     "ONTOLOGY_SESSION_TTL_HOURS",
+    "ONTOLOGY_RATE_LIMIT_PER_MINUTE",
+    "ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE",
     "OPENROUTER_API_KEY",
     "ONTOLOGY_MODEL_API_KEY",
 )
@@ -128,6 +130,48 @@ def test_an_absurd_session_ttl_is_a_warning_not_a_blocker(clean_env, secure_db: 
     report = _production(clean_env, secure_db, ONTOLOGY_SESSION_TTL_HOURS="100000")
     assert report.ready
     assert "会话有效期合理" in {check.name for check in report.warnings}
+
+
+# -- Rate limiting --
+
+
+def test_unconfigured_rate_limiting_is_warned_about(clean_env, secure_db: Path) -> None:
+    """The absence is invisible in every other way.
+
+    Nothing logs a request that was *not* throttled, so the first sign of an unbounded
+    caller is the service falling over -- and by then the cause is not in the logs either.
+    A warning rather than a blocker because the deployment serves correctly without it,
+    and the right limit depends on traffic this report cannot know.
+    """
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE=None)
+    assert report.ready
+    assert "已配置请求速率限制" in {check.name for check in report.warnings}
+
+
+def test_a_configured_rate_limit_clears_the_warning(clean_env, secure_db: Path) -> None:
+    """Otherwise the check is noise that gets ignored along with the real findings."""
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE="600")
+    assert report.ready
+    assert "已配置请求速率限制" not in _failed(report)
+
+
+def test_an_unusable_rate_limit_is_reported_as_disabled(clean_env, secure_db: Path) -> None:
+    """`100/min` reads as configured and behaves as disabled.
+
+    The effective value falls back to no limit, so the finding has to describe the state
+    that actually applies rather than the state someone intended.
+    """
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE="100/min")
+    assert report.ready
+    complaint = next(check for check in report.warnings if check.name == "已配置请求速率限制")
+    assert "100/min" in complaint.detail
+
+
+def test_the_rate_limit_remedy_names_the_variable(clean_env, secure_db: Path) -> None:
+    """A check that reports a problem without saying what to set is a complaint."""
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE=None)
+    complaint = next(check for check in report.warnings if check.name == "已配置请求速率限制")
+    assert "ONTOLOGY_RATE_LIMIT_PER_MINUTE" in complaint.remedy
 
 
 # -- CORS --

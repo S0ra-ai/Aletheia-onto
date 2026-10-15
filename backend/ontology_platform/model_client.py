@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .config import MODEL_PROVIDER_DEFAULTS
 from .context import PlatformDb
 from .database import connect
+from .industry_blueprints import coerce_hints, rule_is_readable
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
 
@@ -123,8 +124,12 @@ class OpenRouterConfig:
         use_deepseek = bool(deepseek_key and not openrouter_key)
         return cls(
             api_key=deepseek_key if use_deepseek else openrouter_key,
-            model=(os.getenv("DEEPSEEK_MODEL", "").strip() or "deepseek-flash") if use_deepseek else MODEL_PROVIDER_DEFAULTS.model,
-            base_url=(os.getenv("DEEPSEEK_BASE_URL", "").strip() or "https://api.deepseek.com") if use_deepseek else MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
+            model=(os.getenv("DEEPSEEK_MODEL", "").strip() or "deepseek-flash")
+            if use_deepseek
+            else MODEL_PROVIDER_DEFAULTS.model,
+            base_url=(os.getenv("DEEPSEEK_BASE_URL", "").strip() or "https://api.deepseek.com")
+            if use_deepseek
+            else MODEL_PROVIDER_DEFAULTS.base_url.rstrip("/"),
             http_referer=os.getenv("OPENROUTER_HTTP_REFERER", ""),
             app_title=MODEL_PROVIDER_DEFAULTS.app_title,
             service_tier="" if use_deepseek else MODEL_PROVIDER_DEFAULTS.service_tier,
@@ -240,15 +245,57 @@ class OpenRouterClient:
             payload,
             self.config.timeout_seconds,
         )
-        content = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
         return ModelResult(
             provider=self.provider,
             model=raw.get("model", self.config.model),
             configured=True,
             used_remote_model=True,
-            content=content,
+            content=_response_text(raw),
             raw=raw,
         )
+
+
+def _response_text(raw: Any) -> str:
+    """The assistant text of an OpenAI-compatible response, always a string.
+
+    Read defensively because every variation here is a legal HTTP 200 from some gateway:
+    `content` is `null` for a turn that produced no text (a tool-call-only or
+    reasoning-only reply), `choices` comes back as an empty list on several relays' error
+    paths, and the text may be a list of content parts rather than a string.
+
+    Each of those used to raise from whatever consumer next called `.strip()` -- and every
+    such consumer sits inside a broad `except` that reports a fallback, so a user whose
+    model answered correctly was told the model service was unavailable. An empty string is
+    the honest value instead: it says "no text came back", which callers already handle,
+    rather than raising something that reads as an outage.
+
+    `ModelResult.content` is annotated `str`, so returning `None` was also a lie to every
+    type checker downstream.
+    """
+    if not isinstance(raw, dict):
+        return ""
+    choices = raw.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0]
+    message = first.get("message") if isinstance(first, dict) else None
+    if not isinstance(message, dict):
+        return ""
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # The multimodal shape. Joined rather than stringified: `str([...])` would hand the
+        # caller a Python repr, which reads as the model's words but is not.
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        return "".join(parts)
+    return ""
 
 
 def generate_semantic_suggestions(
@@ -322,6 +369,18 @@ def generate_blueprint_draft(
             "content": (
                 "你是企业本体工程师。请基于传统业务系统元数据生成一个可导入的行业蓝图 JSON。"
                 "必须只输出 JSON 对象，字段包括 id,name,domain,description,objectHints,attributeHints,rules,tableKeywords,capabilityTags。"
+                # The shapes are stated because the platform stores them, and a prompt that
+                # names a field without its shape leaves the model to guess -- a live model
+                # answered `objectHints` with a list of object descriptors, which the
+                # platform then could not read. Stating the shape is cheaper than accepting
+                # every shape, and the list form is still accepted for robustness.
+                # Placeholders rather than an example drawn from a real domain: the platform
+                # ships no industry vocabulary (tests/test_domain_neutrality.py enforces
+                # exactly that), and a concrete example here would also anchor the model to
+                # one domain's table names instead of the metadata it was handed.
+                'objectHints 必须是对象：键为元数据中的来源表名，值为该表对应的业务对象中文名，例如 {"<表名>": "<业务对象名>"}。'
+                'attributeHints 必须是对象：键为「<表名>.<列名>」，值为该字段的业务含义中文名，例如 {"<表名>.<列名>": "<字段业务含义>"}。'
+                "tableKeywords 与 capabilityTags 必须是字符串数组。"
                 "rules 的元素必须包含 code,name,rule_type,scope_object_code,expression,severity,natural_language。"
             ),
         },
@@ -331,13 +390,20 @@ def generate_blueprint_draft(
         result = model_client.chat(messages, purpose="blueprint_draft", session_id=f"blueprint-{data_source_id}")
         _record_model_invocation(platform_db, result, "blueprint_draft", "success")
         parsed = _extract_json_object(result.content)
-        return {
+        blueprint, unreadable = _normalize_blueprint(parsed, local)
+        response = {
             "provider": result.provider,
             "model": result.model,
             "usedRemoteModel": result.used_remote_model,
-            "blueprint": _normalize_blueprint(parsed, local),
+            "blueprint": blueprint,
             "openrouter": model_client.status(),
         }
+        if unreadable:
+            # Surfaced rather than swallowed: the caller asked for a model-assisted draft
+            # and is entitled to know which parts of it came from the draft instead. The
+            # whole bug this replaces was invisible for exactly the lack of this line.
+            response["unreadableModelFields"] = unreadable
+        return response
     except Exception as error:
         _record_model_invocation(platform_db, None, "blueprint_draft", "error", str(error), model_client)
         return {
@@ -373,6 +439,14 @@ def generate_ontology_reasoning_chain(
             "content": (
                 "你是企业本体工程架构师。请基于传统数据库元数据构建本体推理链。"
                 "必须只输出 JSON 对象，字段包括 summary, reasoningSteps, proposedObjects, proposedRelations, proposedRules, buildPlan, questionsForUser。"
+                # Shapes stated for the same reason as the blueprint prompt: naming a field
+                # without its shape leaves the model to guess, and the guess that reads most
+                # naturally ("给出两种路径" -> one object per path) is the one the UI cannot draw.
+                "summary 必须是字符串。"
+                "reasoningSteps、buildPlan、questionsForUser 必须是字符串数组。"
+                "proposedObjects 的元素必须是对象，包含 objectCode,objectName,sourceTable,reason。"
+                "proposedRelations 的元素必须是对象，包含 sourceObject,targetObject,sourceForeignKey,reason。"
+                "proposedRules 的元素必须是对象，包含 scopeObject,ruleName,severity,reason。"
                 "reasoningSteps 要说明从表、字段、外键、业务 API 推断业务对象/关系/规则的过程。"
                 "buildPlan 要给出自动构建与用户手工确认两种路径。"
             ),
@@ -385,13 +459,17 @@ def generate_ontology_reasoning_chain(
         )
         _record_model_invocation(platform_db, result, "ontology_reasoning_chain", "success")
         parsed = _extract_json_object(result.content)
-        return {
+        chain, unreadable = _normalize_reasoning_chain(parsed, local)
+        response = {
             "provider": result.provider,
             "model": result.model,
             "usedRemoteModel": result.used_remote_model,
-            "chain": _normalize_reasoning_chain(parsed, local),
+            "chain": chain,
             "openrouter": model_client.status(),
         }
+        if unreadable:
+            response["unreadableModelFields"] = unreadable
+        return response
     except Exception as error:
         _record_model_invocation(platform_db, None, "ontology_reasoning_chain", "error", str(error), model_client)
         return {
@@ -536,7 +614,12 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
             session_id="model-config-test",
         )
         _record_model_invocation(platform_db, result, "model_config_test", "success")
-        return {"success": True, "message": f"{client.provider} 连接测试成功。", "model": result.model, "status": status}
+        return {
+            "success": True,
+            "message": f"{client.provider} 连接测试成功。",
+            "model": result.model,
+            "status": status,
+        }
     except Exception as error:
         _record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
         return {"success": False, "message": str(error), "status": status}
@@ -745,7 +828,100 @@ def _extract_json_object(content: str) -> dict[str, Any]:
     return json.loads(stripped[start : end + 1])
 
 
-def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+def _string_list(raw: Any, fallback: Any) -> list[str]:
+    """A list of strings from whatever the model supplied for a list field.
+
+    A bare string is taken as a one-element list rather than iterated: iterating it yields
+    its characters, which turns `"contract"` into six nonsense keywords. This is the same
+    reason the reasoning-chain normalizer rejects a non-list `proposedObjects` instead of
+    trusting it.
+    """
+    if isinstance(raw, list):
+        return [str(item) for item in raw if str(item).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    return [str(item) for item in fallback if str(item).strip()]
+
+
+# Field names a model may use for the human-readable text of one step or plan entry. The
+# reasoning prompt asks for "the process of inferring ..." and "two paths", wording that
+# invites a descriptive object per entry. Projecting a known field keeps the model's words
+# instead of discarding the entry, and it never invents one.
+_TEXT_FIELDS = (
+    "text",
+    "detail",
+    "description",
+    "title",
+    "step",
+    "path",
+    "name",
+    "question",
+    "summary",
+    "label",
+)
+
+
+def _text_of(value: Any) -> str:
+    """The text of an element the schema says is a string."""
+    if isinstance(value, dict):
+        for field in _TEXT_FIELDS:
+            candidate = value.get(field)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return ""
+    if isinstance(value, (list, tuple, set, frozenset)) or value is None or isinstance(value, bool):
+        return ""
+    return str(value).strip()
+
+
+def _text_value(raw: Any, fallback: str) -> tuple[str, bool]:
+    """A prose field as a string, and whether anything supplied had to be dropped."""
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip(), False
+    if isinstance(raw, list):
+        # A model answering a prose field with one line per point. Joined with newlines
+        # rather than stringified, and the joined form still renders as Markdown.
+        lines = [text for text in (_text_of(item) for item in raw) if text]
+        if lines:
+            return "\n".join(lines), len(lines) != len(raw)
+    return str(fallback), raw not in (None, "", [], {})
+
+
+def _text_list(raw: Any, fallback: Any) -> tuple[list[str], bool]:
+    """A list of strings, and whether anything the model supplied had to be dropped."""
+    if not isinstance(raw, list):
+        return [str(item) for item in fallback], raw not in (None, "", [], {})
+    items = [text for text in (_text_of(item) for item in raw) if text]
+    if not items and raw:
+        return [str(item) for item in fallback], True
+    return items, len(items) != len(raw)
+
+
+def _record_list(raw: Any, fallback: Any) -> tuple[list[dict[str, Any]], bool]:
+    """A list of records, and whether anything supplied had to be dropped.
+
+    Scalars are dropped rather than kept: the frontend reads these entries as records, so
+    a string element renders every field as "-" and the candidate list looks empty without
+    anything having failed.
+    """
+    if not isinstance(raw, list):
+        return [item for item in fallback if isinstance(item, dict)], raw not in (None, "", [], {})
+    items = [item for item in raw if isinstance(item, dict)]
+    if not items and raw:
+        return [item for item in fallback if isinstance(item, dict)], True
+    return items, len(items) != len(raw)
+
+
+def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Merge a model's blueprint over the local draft, field by field.
+
+    Returns the blueprint and the names of fields the model supplied that could not be
+    read. Field-level rather than all-or-nothing: a shape surprise in one field used to
+    raise out of this function, and the caller's broad `except` then discarded the
+    *entire* response -- sixteen kilobytes of usable modelling replaced by the local
+    heuristic, reported only as `usedRemoteModel: False`, which reads as "no model was
+    configured". One unreadable field must cost one field.
+    """
     result = dict(fallback)
     for key in (
         "id",
@@ -761,43 +937,81 @@ def _normalize_blueprint(parsed: dict[str, Any], fallback: dict[str, Any]) -> di
         if key in parsed and parsed[key] not in (None, "", [], {}):
             result[key] = parsed[key]
     result["id"] = _slug(str(result["id"]))
-    result["objectHints"] = {
-        str(key).split(".")[-1]: str(value) for key, value in dict(result.get("objectHints") or {}).items()
-    }
-    attribute_hints = {str(key): str(value) for key, value in dict(result.get("attributeHints") or {}).items()}
-    for key, value in list(attribute_hints.items()):
-        if "." in key:
-            attribute_hints.setdefault(key.split(".")[-1], value)
-    result["attributeHints"] = attribute_hints
-    result["tableKeywords"] = [str(item) for item in result.get("tableKeywords") or []]
-    result["capabilityTags"] = [str(item) for item in result.get("capabilityTags") or []]
-    return result
+
+    unreadable: list[str] = []
+    # `coerce_hints` is shared with the blueprint import path, so a draft the model wrote
+    # and a draft the user imported are read by the same rules -- otherwise the platform
+    # could generate a blueprint it then refused to import.
+    for key, dotted in (("objectHints", False), ("attributeHints", True)):
+        raw = result.get(key)
+        hints = coerce_hints(raw, dotted=dotted)
+        if not hints and raw not in (None, "", [], {}):
+            # Non-empty but unreadable: say so, and use the draft's own hints rather than
+            # passing an empty mapping off as the model's work.
+            unreadable.append(key)
+            hints = coerce_hints(fallback.get(key), dotted=dotted)
+        result[key] = hints
+
+    if not isinstance(result.get("rules"), list):
+        unreadable.append("rules")
+        result["rules"] = list(fallback.get("rules") or [])
+    else:
+        # Keep only elements the import path can read, using that path's own predicate, so
+        # a draft this function produces is always a draft `upsert_industry_blueprint`
+        # accepts. Without this, one malformed rule element sent the whole import to a 500
+        # -- which is how "generate a draft, then import it" was broken on the way back in
+        # as well as on the way out.
+        readable_rules = [rule for rule in result["rules"] if rule_is_readable(rule)]
+        if len(readable_rules) != len(result["rules"]):
+            unreadable.append("rules")
+        result["rules"] = readable_rules
+
+    for key in ("tableKeywords", "capabilityTags"):
+        raw = result.get(key)
+        items = _string_list(raw, fallback.get(key) or [])
+        if not items and raw not in (None, "", [], {}):
+            # A mapping or a number here was silently swapped for the heuristic's keywords
+            # while the response still claimed the model's output was used.
+            unreadable.append(key)
+        result[key] = items
+    return result, unreadable
 
 
-def _normalize_reasoning_chain(parsed: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+def _normalize_reasoning_chain(parsed: dict[str, Any], fallback: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Merge a model's reasoning chain over the local one, field by field.
+
+    Element shapes are coerced, not just containers. Validating only `isinstance(list)`
+    let a list of *objects* through into fields the frontend renders as text -- React
+    rejects an object child and the error boundary replaces the page -- and let a list of
+    *strings* through into fields the frontend reads as records, where every lookup falls
+    through and the rows render as "-" with nothing reported.
+
+    The prompt for this endpoint names the seven fields and states no element shape, which
+    is the same gap that made the blueprint draft unusable; it was fixed there and left
+    standing here, so a model answering per its own reading of "给出…两种路径" produced a
+    chain the UI could not draw.
+    """
     result = dict(fallback)
-    for key in (
-        "summary",
-        "reasoningSteps",
-        "proposedObjects",
-        "proposedRelations",
-        "proposedRules",
-        "buildPlan",
-        "questionsForUser",
-    ):
-        if key in parsed and parsed[key] not in (None, "", [], {}):
-            result[key] = parsed[key]
-    for key in (
-        "reasoningSteps",
-        "proposedObjects",
-        "proposedRelations",
-        "proposedRules",
-        "buildPlan",
-        "questionsForUser",
-    ):
-        if not isinstance(result.get(key), list):
-            result[key] = fallback.get(key, [])
-    return result
+    unreadable: list[str] = []
+
+    summary, dropped = _text_value(parsed.get("summary"), fallback.get("summary", ""))
+    result["summary"] = summary
+    if dropped:
+        unreadable.append("summary")
+
+    for key in ("reasoningSteps", "buildPlan", "questionsForUser"):
+        texts, dropped = _text_list(parsed.get(key), fallback.get(key) or [])
+        result[key] = texts
+        if dropped:
+            unreadable.append(key)
+
+    for key in ("proposedObjects", "proposedRelations", "proposedRules"):
+        records, dropped = _record_list(parsed.get(key), fallback.get(key) or [])
+        result[key] = records
+        if dropped:
+            unreadable.append(key)
+
+    return result, unreadable
 
 
 def _slug(value: str) -> str:

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1379 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1488 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -44,13 +44,14 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_conformance_suites.py` | 44 | Executable conformance suites for the extension points |
 | `test_derived_attributes_and_units.py` | 42 | Derived attributes and units of measure |
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
+| `test_request_observability.py` | 42 | 请求标识、访问日志与结构化日志 |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
-| `test_deployment_preflight.py` | 41 | Pre-flight checks for a production deployment |
+| `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
 | `test_cli.py` | 37 | The `aletheia` command line |
-| `test_conversations_and_feedback.py` | 35 | Conversation persistence and the feedback loop |
+| `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
-| `test_metadata_flow.py` | 34 |  |
+| `test_metadata_flow.py` | 58 | 元数据扫描、蓝图草案（含模型响应形状）与映射流程 |
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
@@ -60,10 +61,10 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL export: the same ontology in vocabulary other tools can act on |
 | `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
-| `test_rate_limiter.py` | 3 | 固定窗口请求限流 |
+| `test_rate_limiter.py` | 24 | 固定窗口请求限流，以及施加限流的中间件 |
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
-| `test_custom_model_endpoints.py` | 23 | Custom model endpoint compatibility |
+| `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
 | `test_backup.py` | 6 | SQLite 平台安全备份、列表与原子恢复 |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
@@ -84,9 +85,9 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_documented_claims.py` | 6 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 7 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
-| `test_object_service.py` | 4 | 通用业务对象浏览、元数据与行级权限过滤 |
+| `test_object_service.py` | 10 | 通用业务对象浏览（HTTP 与服务层）、元数据、分页代价与行级权限过滤 |
 
 ## 静态检查与前端构建
 
@@ -99,7 +100,7 @@ cd frontend && npm run build
 
 ## 规模
 
-87 个后端模块约 34100 行，156 个 API 端点，45 张平台表，前端 React + antd。
+84 个后端模块约 34400 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。

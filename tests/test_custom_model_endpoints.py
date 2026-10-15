@@ -263,3 +263,54 @@ def test_api_key_is_not_returned_in_full(tmp_path: Path) -> None:
     update_model_config(platform_db, {"apiKey": "sk-super-secret-value-1234567890"})
     reported = get_model_config(platform_db)
     assert "sk-super-secret-value-1234567890" not in str(reported)
+
+
+# -- Response envelope --
+
+
+class TestResponseEnvelope:
+    """What comes back is read defensively, and always as a string.
+
+    Every shape here is a legal HTTP 200 from some gateway. Each one used to raise from
+    whatever consumer called `.strip()` next, inside a broad `except` that reported a
+    fallback -- so a user whose model answered correctly was told the model service was
+    unavailable. The declared type is `content: str`, and these are the cases where it
+    was not.
+    """
+
+    @staticmethod
+    def _content(raw: dict, config_overrides: dict | None = None) -> str:
+        client = OpenRouterClient(
+            config=_config(**(config_overrides or {})),
+            transport=lambda url, headers, payload, timeout: raw,
+        )
+        return client.chat([{"role": "user", "content": "ping"}]).content
+
+    def test_a_null_content_becomes_an_empty_string(self) -> None:
+        """A tool-call-only or reasoning-only turn answers with `"content": null`."""
+        assert self._content({"choices": [{"message": {"content": None}}]}) == ""
+
+    def test_an_empty_choices_list_does_not_raise(self) -> None:
+        """Several relays return this on their error paths, with a 200 status."""
+        assert self._content({"choices": []}) == ""
+        assert self._content({}) == ""
+
+    def test_a_malformed_envelope_does_not_raise(self) -> None:
+        assert self._content({"choices": [{"message": "not-a-dict"}]}) == ""
+        assert self._content({"choices": "not-a-list"}) == ""
+        assert self._content({"choices": [None]}) == ""
+
+    def test_content_parts_are_joined_rather_than_stringified(self) -> None:
+        """The multimodal shape. `str([...])` would hand back a Python repr."""
+        raw = {"choices": [{"message": {"content": [{"type": "text", "text": "甲"}, "乙"]}}]}
+        assert self._content(raw) == "甲乙"
+
+    def test_the_content_is_always_a_string(self) -> None:
+        """The annotation is `str`, so a `None` here is a lie to every type checker."""
+        for raw in (
+            {"choices": [{"message": {"content": None}}]},
+            {"choices": []},
+            {},
+            {"choices": [{"message": {"content": {"nested": True}}}]},
+        ):
+            assert isinstance(self._content(raw), str)

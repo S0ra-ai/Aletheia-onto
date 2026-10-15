@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1379 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1488 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -50,13 +50,14 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_conformance_suites.py` | 44 | Executable conformance suites for the extension points |
 | `test_derived_attributes_and_units.py` | 42 | Derived attributes and units of measure |
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
+| `test_request_observability.py` | 42 | Request identity, the access log, and structured logging |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
-| `test_deployment_preflight.py` | 41 | Pre-flight checks for a production deployment |
+| `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
 | `test_cli.py` | 37 | The `aletheia` command line |
-| `test_conversations_and_feedback.py` | 35 | Conversation persistence and the feedback loop |
+| `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
-| `test_metadata_flow.py` | 34 |  |
+| `test_metadata_flow.py` | 58 |  |
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
@@ -66,10 +67,10 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL export: the same ontology in vocabulary other tools can act on |
 | `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
-| `test_rate_limiter.py` | 3 | Fixed-window request rate limiting |
+| `test_rate_limiter.py` | 24 | Fixed-window request rate limiting, and the middleware that applies it |
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
-| `test_custom_model_endpoints.py` | 23 | Custom model endpoint compatibility |
+| `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
 | `test_backup.py` | 6 | Safe SQLite backup inventory and atomic restore |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
@@ -90,9 +91,9 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_documented_claims.py` | 6 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 7 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
-| `test_object_service.py` | 4 | Generic business-object browsing, metadata and row-level permission filtering |
+| `test_object_service.py` | 10 | Generic business-object browsing over HTTP and in the service, metadata, pagination cost, row-level permission filtering |
 
 ## Static checks and frontend build
 
