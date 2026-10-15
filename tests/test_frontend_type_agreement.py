@@ -461,3 +461,56 @@ def test_every_contracted_field_is_still_read_by_the_frontend() -> None:
         }
     )
     assert not unused, f"契约表里的字段没有任何前端代码读取，条目已过期：{unused}"
+
+
+# Rendered as-is, deliberately, with the reason each one is not a vocabulary.
+BARE_ENUM_ALLOWED = {
+    # An identifier or a field name, not a state.
+    "row.decisionId",
+    "record.decisionId",
+    # The audit trail's action name is the record of what happened; translating it would
+    # make the log disagree with itself across releases.
+    "row.action",
+    "record.action",
+    # Rendered through a lookup that already returns a word: `SEVERITY_META[..].label`.
+    "item.severity",
+    # A machine-facing code shown on purpose, in a column labelled as a code.
+    "h.actionCode",
+    "a.actionCode",
+}
+
+ENUM_ISH = re.compile(
+    r"\{([A-Za-z_][A-Za-z0-9_.]*\."
+    r"(?:status|severity|decision|ruleType|mappingType|category|nextAction|relationType|kind|toolType|riskLevel)[A-Za-z0-9_]*)\}"
+)
+
+
+def test_no_screen_renders_a_backend_vocabulary_verbatim() -> None:
+    """A value from a controlled vocabulary has a word in `labels.ts`; printing the raw one
+    puts English identifiers in a Chinese console.
+
+    This is the check that found five of them in one pass -- `mixed_with_blockers` on the
+    consistency page, `allow_automation` under a heading that said 建议, `ready_for_execution`,
+    and the rule drawer's type and severity. Each had been fixed where it was noticed, which
+    is why they kept appearing: nothing looked for the next one.
+
+    Two things count as handled: the line calls `label(...)`, or the expression is a lookup
+    whose result is already a word. A short allow-list covers the values that are identifiers
+    or audit records rather than states, and each entry says which it is.
+    """
+    offenders: list[str] = []
+    for page in sorted((ROOT / "frontend" / "src").rglob("*.tsx")):
+        text = page.read_text(encoding="utf-8")
+        for match in ENUM_ISH.finditer(text):
+            expression = match.group(1)
+            if expression in BARE_ENUM_ALLOWED:
+                continue
+            line = text[: match.start()].count("\n")
+            source_line = text.split("\n")[line]
+            # `key={...}` and `rowKey={...}` produce React identities, not text. So does a
+            # lookup whose result is already a word.
+            if "label(" in source_line or "rowKey" in source_line or "key=" in source_line:
+                continue
+            offenders.append(f"{page.relative_to(ROOT)}:{line + 1} {{{expression}}}")
+
+    assert not offenders, "界面直接渲染后端词表的值，未经 labels.ts 翻译：\n  " + "\n  ".join(offenders)

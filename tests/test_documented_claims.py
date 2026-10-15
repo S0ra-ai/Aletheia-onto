@@ -270,7 +270,16 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
     import re as regex
 
     sys.path.insert(0, str(ROOT / "backend"))
-    from ontology_platform import automation, events, governance, relations, semantic_kernel
+    from ontology_platform import (
+        adapters,
+        automation,
+        conversations,
+        events,
+        governance,
+        onboarding,
+        relations,
+        semantic_kernel,
+    )
 
     source = (ROOT / "frontend" / "src" / "i18n" / "labels.ts").read_text(encoding="utf-8")
 
@@ -290,6 +299,10 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
         "NEXT_ACTION": set(automation.NEXT_ACTIONS),
         "RULE_STATUS": set(governance.VALID_RULE_STATUSES),
         "EXECUTION_STATUS": set(automation.EXECUTION_STATUSES),
+        "CONVERSATION_STATUS": set(conversations.CONVERSATION_STATUSES),
+        "FEEDBACK_STATUS": set(conversations.FEEDBACK_STATUSES),
+        "CONNECTION_STATUS": set(adapters.CONNECTION_STATUSES),
+        "ONBOARDING_STEP_STATUS": set(onboarding.ONBOARDING_STEP_STATUSES),
     }
     for name, vocabulary in expected.items():
         missing = vocabulary - entries(name)

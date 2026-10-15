@@ -1,4 +1,4 @@
-import { label, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
+import { label, ONTOLOGY_STATUS, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert, Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
@@ -297,7 +297,7 @@ const RuleList: React.FC = () => {
           >
             {ontologies.map(ontology => (
               <Option key={ontology.id} value={ontology.id}>
-                {ontology.name} v{ontology.version} ({ontology.status})
+                {ontology.name} v{ontology.version}（{label(ONTOLOGY_STATUS, ontology.status)}）
               </Option>
             ))}
           </Select>

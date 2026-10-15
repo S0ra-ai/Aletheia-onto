@@ -10,6 +10,23 @@
 
 ### Fixed
 
+- **把「界面直接渲染后端词表」这一类一次性关掉**（新增 `tests/test_frontend_type_agreement.py`
+  的 `test_no_screen_renders_a_backend_vocabulary_verbatim`）。
+  这一轮之前已经修过五处，每一处都是**在发现它的地方修**，所以总有下一处。
+  现在有一条扫描：JSX 里直接渲染 `xxx.status`／`severity`／`decision` 一类标识符、
+  且没有经过 `label()` 的，一律报出来——`key=`／`rowKey=` 不算（那是 React 身份不是文字），
+  另有一份七条的白名单，每条都写明它为什么是个标识符或审计记录而不是状态。
+  它当场又逮出六处：连接测试结果、接入结果、两处本体状态下拉、工作流状态、以及审计发现的
+  `severity` 被用在 `key` 上（假阳性，已归类）。
+- **反馈列表的状态用的是「映射」词表**（`conversations.py`、`labels.ts`）。
+  反馈的 `open` 拿 `MAPPING_STATUS`（`pending/confirmed/rejected`）去翻译，
+  于是显示原样的 `open`——一张词表从没听说过的词。现在反馈自己的生命周期在
+  `conversations.FEEDBACK_STATUSES` 声明，状态筛选器的选项也**由词表生成**：
+  它此前手写了三个里的两个，`已忽略` 根本筛不了。
+- **工作流详情的「状态」行删掉了**。`workflow_definition.status` 恒为 `active`，
+  没有任何代码改它（删除是删行），于是一个不会变化的值挂在一个承诺有生命周期的标题下面——
+  **一个不能变的值是对模型的断言，而这条断言不成立**。
+
 - **规则页的表单与详情里仍是原始编码，并且自带一份后端词表的副本**（`RuleList.tsx`、
   `governance.py`、`labels.ts`）。这张页面把 `SEVERITIES = ['info','warning','blocking']` 与
   `RULE_TYPES = [...]` 抄在本文件里——**后端词表的副本**，加上一次就漂一次。

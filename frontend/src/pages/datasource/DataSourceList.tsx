@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse, Empty } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { CONNECTION_STATUS, READINESS_STATUS, label } from '../../i18n/labels';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
@@ -383,7 +384,7 @@ const DataSourceList: React.FC = () => {
             <Alert
               style={{ marginBottom: 16 }}
               type={connectionResult.reachable ? 'success' : 'warning'}
-              message={connectionResult.status}
+              message={label(CONNECTION_STATUS, connectionResult.status)}
               description={connectionResult.message}
               showIcon
             />
@@ -446,7 +447,7 @@ const DataSourceList: React.FC = () => {
             </Button>
           </Form.Item>
           {onboardingResult && (
-            <Card size="small" title={`接入结果：${onboardingResult.status}`} style={{ marginBottom: 16 }}>
+            <Card size="small" title={`接入结果：${label(READINESS_STATUS, onboardingResult.status)}`} style={{ marginBottom: 16 }}>
               <Steps
                 direction="vertical"
                 size="small"

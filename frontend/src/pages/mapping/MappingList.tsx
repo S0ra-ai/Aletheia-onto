@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { label, MAPPING_STATUS } from '../../i18n/labels';
+import { label, ONTOLOGY_STATUS, MAPPING_STATUS } from '../../i18n/labels';
 import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
@@ -143,7 +143,7 @@ const MappingList: React.FC = () => {
           >
             {ontologies.map(ontology => (
               <Option key={ontology.id} value={ontology.id}>
-                {ontology.name} v{ontology.version} ({ontology.status})
+                {ontology.name} v{ontology.version}（{label(ONTOLOGY_STATUS, ontology.status)}）
               </Option>
             ))}
           </Select>

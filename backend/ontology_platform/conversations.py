@@ -46,6 +46,11 @@ FEEDBACK_RATINGS = ("helpful", "unhelpful", "incorrect")
 
 CONVERSATION_STATUSES = ("active", "escalated", "resolved", "closed")
 
+# The lifecycle of a feedback item, which shares `resolved` with the conversation states and
+# nothing else. The console labelled them with the *mapping* vocabulary (pending / confirmed
+# / rejected), so an open item printed `open` -- a word that map has never heard of.
+FEEDBACK_STATUSES = ("open", "resolved", "dismissed")
+
 MAX_HISTORY_TURNS = 20
 
 
@@ -515,7 +520,7 @@ def resolve_feedback(
     platform_db: PlatformDb, feedback_id: int, *, resolution: str = "resolved", actor: str = ""
 ) -> dict[str, Any]:
     """Close a feedback item after acting on it."""
-    if resolution not in {"resolved", "dismissed", "open"}:
+    if resolution not in FEEDBACK_STATUSES:
         raise ValueError(f"不支持的处理结果: {resolution}")
     with connect(platform_db) as conn:
         row = conn.execute("select id from answer_feedback where id = ?", (feedback_id,)).fetchone()

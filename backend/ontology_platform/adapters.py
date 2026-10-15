@@ -604,6 +604,12 @@ def _is_enum_candidate(row_count: int, distinct_count: int) -> bool:
     return distinct_count <= ceiling
 
 
+# What a connection test can conclude. Declared as data because the console shows it and
+# the two failures are told apart on purpose -- `driver_missing` means install a package,
+# `connection_error` means fix a credential -- so the words have to be the console's too.
+CONNECTION_STATUSES = ("ok", "not_found", "driver_missing", "connection_error")
+
+
 def connection_status(source_type: str, reachable: bool, status: str, message: str) -> dict[str, Any]:
     """The shape every adapter's `test_connection` returns.
 

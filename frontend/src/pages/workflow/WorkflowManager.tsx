@@ -205,7 +205,11 @@ const WorkflowManager: React.FC = () => {
               <Descriptions.Item label="名称">{selectedWorkflow.name}</Descriptions.Item>
               <Descriptions.Item label="业务对象"><Tag>{selectedWorkflow.objectCode}</Tag></Descriptions.Item>
               <Descriptions.Item label="初始状态"><Tag color={stateColor(selectedWorkflow.initialState)}>{selectedWorkflow.initialState}</Tag></Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={selectedWorkflow.status === 'active' ? 'green' : 'default'}>{selectedWorkflow.status}</Tag></Descriptions.Item>
+              {/* No status row. `workflow_definition.status` is `active` and nothing ever
+                  changes it -- deleting a workflow removes the row -- so the row showed one
+                  value under a heading that promises a lifecycle. A field that cannot vary is
+                  a claim about the model, and this one was not true. */}
+
             </Descriptions>
 
             <Card title="状态节点" size="small" style={{ marginTop: 16 }}>

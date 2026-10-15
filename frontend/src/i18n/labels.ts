@@ -76,6 +76,36 @@ export const NEXT_ACTION: Record<string, string> = {
   route_to_human_review: '转人工复核',
 };
 
+/** What a data source connection test concluded, from `adapters.CONNECTION_STATUSES`. */
+export const CONNECTION_STATUS: Record<string, string> = {
+  ok: '连接成功',
+  not_found: '文件或库不存在',
+  driver_missing: '缺少驱动',
+  connection_error: '连接失败',
+};
+
+/** How one onboarding step ended, from `onboarding.ONBOARDING_STEP_STATUSES`. */
+export const ONBOARDING_STEP_STATUS: Record<string, string> = {
+  completed: '已完成',
+  failed: '失败',
+  skipped: '已跳过',
+};
+
+/** A conversation's state, from `conversations.CONVERSATION_STATUSES`. */
+export const CONVERSATION_STATUS: Record<string, string> = {
+  active: '进行中',
+  escalated: '已转人工',
+  resolved: '已解决',
+  closed: '已关闭',
+};
+
+/** A feedback item's state, from `conversations.FEEDBACK_STATUSES`. */
+export const FEEDBACK_STATUS: Record<string, string> = {
+  open: '待处理',
+  resolved: '已处理',
+  dismissed: '已忽略',
+};
+
 /** What an execute call did, from `automation.EXECUTION_STATUSES`. */
 export const EXECUTION_STATUS: Record<string, string> = {
   executed: '已执行',

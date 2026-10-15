@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { label, MAPPING_STATUS } from '../../i18n/labels';
+import { FEEDBACK_STATUS, label } from '../../i18n/labels';
 import {
   Alert, Button, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tag,
   Tooltip, Typography, message,
@@ -99,9 +99,10 @@ const FeedbackConsolePage: React.FC = () => {
             style={{ width: 140 }}
             value={statusFilter}
             onChange={setStatusFilter}
+            // Derived from the vocabulary rather than retyped: the inline list had two of
+            // the three states, so 已忽略 could not be filtered for at all.
             options={[
-              { value: 'open', label: '待处理' },
-              { value: 'resolved', label: '已处理' },
+              ...Object.entries(FEEDBACK_STATUS).map(([value, text]) => ({ value, label: text })),
               { value: '', label: '全部状态' },
             ]}
           />
@@ -247,7 +248,7 @@ const FeedbackConsolePage: React.FC = () => {
                 title: '状态',
                 dataIndex: 'status',
                 width: 90,
-                render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(MAPPING_STATUS, status)}</Tag>,
+                render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(FEEDBACK_STATUS, status)}</Tag>,
               },
               { title: '时间', dataIndex: 'createdAt', width: 160, ellipsis: true },
               {

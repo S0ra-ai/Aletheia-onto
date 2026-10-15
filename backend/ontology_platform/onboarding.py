@@ -124,5 +124,10 @@ def run_onboarding_pipeline(
     }
 
 
+# How one onboarding step ended. The result as a whole reuses the readiness vocabulary,
+# which is why `blocked` appears here and not among these.
+ONBOARDING_STEP_STATUSES = ("completed", "failed", "skipped")
+
+
 def _step(code: str, status: str, message: str, detail: dict[str, Any]) -> dict[str, Any]:
     return {"code": code, "status": status, "message": message, "detail": detail}
