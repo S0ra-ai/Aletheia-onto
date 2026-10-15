@@ -308,7 +308,7 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
         system_category="database+api",
         blueprint_id="contract-management",
     )
-    from ontology_platform.backup import create_backup
+    from ontology_platform import backup as backup_module
     from ontology_platform.metadata import register_source_api
     from ontology_platform.ontology import generate_ontology_draft
     from ontology_platform.semantic_kernel import assess_instance
@@ -370,7 +370,13 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     with connect(platform_db) as conn:
         init_workflow_and_permission_schema(conn)
     create_workflow(platform_db, ontology_id, "contract", "样例审批流", initial_state="draft")
-    create_backup(platform_db, backup_dir=tmp_path / "backups")
+    # `BACKUP_DIR` is read from the environment at import time and defaults to the user's
+    # `~/.aletheia/backups`, so the endpoint lists whatever that machine happens to have.
+    # Passing `backup_dir` to `create_backup` alone is not enough: it writes where it is
+    # told and the endpoint reads the default, which is how this test passed locally (a
+    # backup from an earlier manual check was sitting there) and failed in CI.
+    monkeypatch.setattr(backup_module, "BACKUP_DIR", tmp_path / "backups")
+    backup_module.create_backup(platform_db)
 
     api_module = importlib.reload(api_module)
     monkeypatch.setattr(api_module, "DEFAULT_PLATFORM_DB", platform_db)
