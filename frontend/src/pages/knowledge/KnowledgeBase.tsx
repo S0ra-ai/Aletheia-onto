@@ -6,6 +6,7 @@ import {
   Spin, Table, Tag, Typography, Upload, message,
 } from 'antd';
 import { InboxOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useIdParam } from '../../hooks/useIdParam';
 import { knowledgeApi, ontologyApi, requestErrorMessage } from '../../api';
 import type {
   KnowledgeDocument, KnowledgeEntry, Ontology,
@@ -35,7 +36,10 @@ const STATUS_COLOR: Record<string, string> = {
 
 const KnowledgeBasePage: React.FC = () => {
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
-  const [selected, setSelected] = useState<number | null>(null);
+  // The ontology is in the URL: "the documents of this system" is a place somebody can send.
+  // Without it a bare `/admin/knowledge` opens whichever ontology the page picks by itself,
+  // and a shared link can quietly show a different system's documents than the sender meant.
+  const [selected, setSelected] = useIdParam('ontology');
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,7 +54,10 @@ const KnowledgeBasePage: React.FC = () => {
       try {
         const items = await ontologyApi.list();
         setOntologies(items);
-        if (items.length) {
+        // Nothing named in the URL: open the most-modelled ontology, which is the one a
+        // fresh deployment has documents for, and *write it into the URL* so the address
+        // matches what is on screen from the first second.
+        if (items.length && selected == null) {
           const richest = [...items].sort((a, b) => (b.objectCount ?? 0) - (a.objectCount ?? 0))[0];
           setSelected(richest.id);
         }
@@ -58,6 +65,9 @@ const KnowledgeBasePage: React.FC = () => {
         message.error(requestErrorMessage(error, '加载本体列表失败'));
       }
     })();
+    // Once, on arrival: `selected` is the URL's value at that moment, and re-running this
+    // when the user switches ontologies would fight their choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const load = useCallback(async (ontologyId: number) => {

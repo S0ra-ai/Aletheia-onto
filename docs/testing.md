@@ -154,14 +154,13 @@ Every route is also read for the text the application renders when a screen did 
 that, a page that throws in render and a page that has no table by design produce the same
 line — and the second is on an exemption list.
 
-Two screens answer a form rather than render on arrival, and both are swept through a URL
-that names what to answer for
-(`/admin/semantic?tab=explain&object=contract&instance=1&ontology=1`): the page reads the
-query from the URL for the same reason tabs do, which also makes an explanation something a
-person can paste into a ticket. The object code and the instance id are read from the
-instance, so the sweep answers for a row that exists — an explanation of an instance that
-does not exist renders the same table with nothing in it, which this check cannot tell from
-a defect.
+Screens that answer a form, or pick a record, are swept through a URL that names what to
+show (`/admin/semantic?tab=explain&object=contract&instance=1&ontology=1`,
+`/admin/knowledge?ontology=1`): each page reads the query from the URL for the same reason
+tabs do, which also makes an explanation something a person can paste into a ticket. The
+object code and the instance id are read from the instance, so the sweep answers for a row
+that exists — an explanation of an instance that does not exist renders the same table with
+nothing in it, which this check cannot tell from a defect.
 
 Columns that are empty because the *data* has nothing in them are listed in `KNOWN_SPARSE`
 and printed on every run. The script cannot tell those from a field-name mismatch, and a

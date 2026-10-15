@@ -109,6 +109,9 @@ ID_ROUTES = (
     # explanation something you can paste into a ticket.
     "/admin/semantic?tab=explain&object={object}&instance={instance}&ontology={ontology}",
     "/admin/semantic?tab=consistency&object={object}&ontology={ontology}&instance={instance}",
+    # Same reason, one screen further: the knowledge base names the ontology it is showing,
+    # so a link opens the documents of the system it was sent about.
+    "/admin/knowledge?ontology={ontology}",
 )
 
 # Where the seed page is written: the build the running instance serves, unless it was
