@@ -538,3 +538,53 @@ def test_reload_rejects_multiple_workers(capsys, tmp_path) -> None:
     )
     assert code == 1
     assert "不能与多个 worker" in error
+
+
+def test_the_browser_demo_produces_the_same_thing_the_terminal_one_does(capsys, tmp_path) -> None:
+    """Both entry points are named "demo", so they must demonstrate the same thing.
+
+    The scenario was written out three times -- CLI, HTTP layer, and a script -- and the
+    copies had drifted: the terminal path assessed an instance and the browser's did not. So
+    a reader who clicked 先体验演示, captioned "quickly see one complete verdict", arrived at
+    a workbench reporting **zero** decisions, while the same word in a terminal produced one.
+
+    They share `ontology_platform.demo` now, and this asserts the outcome rather than the
+    sharing: an implementation that inlines the scenario again fails here.
+    """
+    from ontology_platform.database import connect, initialize_platform_db
+    from ontology_platform.demo import run_contract_demo
+
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    result = run_contract_demo(platform_db, tmp_path / "sample.sqlite3")
+
+    assert result["decision"] in {"approved", "review", "blocked"}
+
+    cli_payload = _json(
+        capsys,
+        "--platform-db",
+        str(tmp_path / "cli.sqlite3"),
+        "demo",
+        "--quiet",
+        "--sample-db",
+        str(tmp_path / "cli-sample.sqlite3"),
+    )
+    assert cli_payload["decision"] == result["decision"], "两条演示路径必须得出同一个结论"
+    assert cli_payload["objectCode"] == result["objectCode"]
+
+    # The three capabilities the demo exists to make visible. An empty screen is
+    # indistinguishable from a missing feature, which is why the scenario writes each.
+    with connect(platform_db) as conn:
+        ontology_id = result["ontologyId"]
+        assert conn.execute("select count(*) from decision_record").fetchone()[0] == 1
+        assert (
+            conn.execute("select count(*) from business_event_type where ontology_id = ?", (ontology_id,)).fetchone()[0]
+            == 1
+        )
+        assert (
+            conn.execute("select count(*) from business_event where ontology_id = ?", (ontology_id,)).fetchone()[0] == 1
+        )
+        assert (
+            conn.execute("select count(*) from attribute_version where ontology_id = ?", (ontology_id,)).fetchone()[0]
+            == 1
+        )

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1574 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1575 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -47,7 +47,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_request_observability.py` | 42 | 请求标识、访问日志与结构化日志 |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 38 | The `aletheia` command line |
+| `test_cli.py` | 39 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
@@ -114,7 +114,7 @@ linter 看到的是一个合法字符串，mypy 看到的是合法 `string`，�
 该工具只是加载路由再读 DOM，页面若不把当前标签写进 URL，第一个标签页之外的内容就在它的视野之外。
 ## 规模
 
-85 个后端模块约 35500 行，156 个 API 端点，45 张平台表，前端 React + antd。
+86 个后端模块约 36100 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。

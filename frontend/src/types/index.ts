@@ -884,6 +884,13 @@ export interface DemoBootstrapResult {
   dataSource: DataSource;
   scan: ScanResult;
   ontology: Ontology;
+  /**
+   * The verdict the scenario produced, so the success panel can say what happened rather
+   * than only what was created. It is the point of the demo: the sample system is modelled
+   * and then assessed once, which is what makes the workbench show a decision instead of
+   * zero.
+   */
+  decision: string;
 }
 
 // 通用响应类型

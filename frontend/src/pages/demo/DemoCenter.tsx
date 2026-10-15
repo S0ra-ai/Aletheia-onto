@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Button, Card, Divider, message, Result, Typography } from 'antd';
 import { RocketOutlined, FileTextOutlined, SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { DECISION_STATUS, label } from '../../i18n/labels';
 import { demoApi, requestErrorMessage } from '../../api';
 import type { DemoBootstrapResult } from '../../types';
 
@@ -101,7 +102,11 @@ const DemoCenter: React.FC = () => {
           <Result
             status="success"
             title="演示数据加载成功"
-            subTitle={`数据源ID: ${result.dataSource.id}，本体已生成`}
+            subTitle={
+              result.decision
+                ? `数据源 ${result.dataSource.id} 已接入，本体已生成，并对样例实例完成了一次研判：${label(DECISION_STATUS, result.decision)}`
+                : `数据源ID: ${result.dataSource.id}，本体已生成`
+            }
             extra={[
               <Button
                 type="primary"

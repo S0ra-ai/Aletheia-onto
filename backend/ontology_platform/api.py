@@ -52,11 +52,6 @@ from .graph_view import build_ontology_graph
 from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .logging_config import setup_logging
-from .metadata import (
-    register_data_source,
-    register_source_api,
-    scan_data_source,
-)
 from .metrics import expose_metrics, init_metrics
 from .natural_language import query_natural_language
 from .object_service import ObjectAccessError, get_object_instance, list_object_instances
@@ -83,8 +78,6 @@ from .routers import (
 from .sample_data import (
     DEFAULT_EQUIPMENT_SAMPLE_DB,
     DEFAULT_SAMPLE_DB,
-    create_contract_sample_db,
-    create_equipment_sample_db,
 )
 from .semantic_kernel import (
     assess_decision_consistency,
@@ -414,64 +407,47 @@ def health() -> dict[str, str]:
 
 @core_router.post("/demo/bootstrap")
 def bootstrap_demo() -> dict[str, object]:
+    """Load the contract sample system and exercise it once.
+
+    The scenario lives in `demo.py` and is shared with the CLI. It used to be written out
+    here as well, and the two copies had already drifted: the terminal path assessed an
+    instance and this one did not, so the browser's demo ended on a workbench reporting
+    zero decisions while the button that started it promised a complete verdict.
+    """
+    from .demo import run_contract_demo
+
     # ValueError here means a governance rule refused the request -- most often
     # "this ontology version is already published, derive a new one". That is a
     # client-correctable condition, so it must not surface as a 500.
     try:
         initialize_platform_db(DEFAULT_PLATFORM_DB)
-        sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
-        source = register_data_source(
-            DEFAULT_PLATFORM_DB,
-            "合同管理样例系统",
-            "sqlite",
-            str(sample_path),
-            domain="合同管理",
-            system_category="database+api",
-        )
-        register_source_api(
-            DEFAULT_PLATFORM_DB,
-            source.id,
-            "submit_contract",
-            "提交合同审批",
-            "POST",
-            "/contracts/{id}/submit",
-            "contract.submit_for_approval",
-        )
-        scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-        ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+        result = run_contract_demo(DEFAULT_PLATFORM_DB, DEFAULT_SAMPLE_DB)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
+    return {
+        "dataSource": result["source"].public_dict(),
+        "scan": result["scan"],
+        "ontology": result["ontology"],
+        "decision": result["decision"],
+    }
 
 
 @core_router.post("/demo/bootstrap/equipment")
 def bootstrap_equipment_demo() -> dict[str, object]:
-    # Same as /demo/bootstrap: a refused governance rule is a 409, not a 500.
+    """The device-maintenance scenario. Same shape as the contract one, by construction."""
+    from .demo import run_equipment_demo
+
     try:
         initialize_platform_db(DEFAULT_PLATFORM_DB)
-        sample_path = create_equipment_sample_db(DEFAULT_EQUIPMENT_SAMPLE_DB)
-        source = register_data_source(
-            DEFAULT_PLATFORM_DB,
-            "设备运维样例系统",
-            "sqlite",
-            str(sample_path),
-            domain="设备运维",
-            system_category="database+api",
-        )
-        register_source_api(
-            DEFAULT_PLATFORM_DB,
-            source.id,
-            "close_work_order",
-            "关闭工单",
-            "POST",
-            "/work-orders/{id}/close",
-            "work_order.close",
-        )
-        scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-        ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
+        result = run_equipment_demo(DEFAULT_PLATFORM_DB, DEFAULT_EQUIPMENT_SAMPLE_DB)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    return {"dataSource": source.public_dict(), "scan": scan, "ontology": ontology}
+    return {
+        "dataSource": result["source"].public_dict(),
+        "scan": result["scan"],
+        "ontology": result["ontology"],
+        "decision": result["decision"],
+    }
 
 
 @core_router.post("/ontologies/draft")

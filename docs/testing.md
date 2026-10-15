@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1574 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1575 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -53,7 +53,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_request_observability.py` | 42 | Request identity, the access log, and structured logging |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 38 | The `aletheia` command line |
+| `test_cli.py` | 39 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
@@ -131,7 +131,7 @@ keep their tables behind a tab are listed with the tab in the query
 the first tab is outside its reach unless the page puts the active tab in the URL.
 ## Scale
 
-85 backend modules, roughly 35,500 lines, 156 API endpoints, 45 platform tables, React +
+86 backend modules, roughly 36,100 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `quickstart` job that replays the README quick start in a clean environment and

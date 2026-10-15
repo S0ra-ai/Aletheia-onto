@@ -343,12 +343,15 @@ def cmd_codegen(args: argparse.Namespace) -> int:
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
-    """Run the whole loop against a built-in sample system."""
-    from .metadata import register_data_source, register_source_api, scan_data_source
-    from .ontology import generate_ontology_draft
-    from .sample_data import DEFAULT_SAMPLE_DB, create_contract_sample_db
-    from .semantic_kernel import assess_instance
-    from .vocabulary import default_object_code_for_ontology
+    """Run the whole loop against a built-in sample system.
+
+    The scenario itself lives in `demo.py`, shared with the HTTP layer. It used to be
+    written out in both places and the copies had drifted: this one assessed an instance and
+    the browser's did not, so the two demos named the same thing and showed different
+    results.
+    """
+    from .demo import run_contract_demo
+    from .sample_data import DEFAULT_SAMPLE_DB
 
     platform_db = _platform_db(args)
     if not args.quiet:
@@ -358,86 +361,15 @@ def cmd_demo(args: argparse.Namespace) -> int:
         # wants. A caller parsing the output wants exactly one, so `--quiet` suppresses
         # the init report rather than making the consumer split the stream.
         _silent(cmd_init, args)
-    sample_path = create_contract_sample_db(Path(args.sample_db) if args.sample_db else DEFAULT_SAMPLE_DB)
-    source = register_data_source(
-        platform_db,
-        "合同管理样例系统",
-        "sqlite",
-        str(sample_path),
-        domain="合同管理",
-        system_category="database+api",
-    )
-    register_source_api(
-        platform_db,
-        source.id,
-        "submit_contract",
-        "提交合同审批",
-        "POST",
-        "/contracts/{id}/submit",
-        "contract.submit_for_approval",
-    )
-    scan_data_source(platform_db, source.id)
-    draft = generate_ontology_draft(platform_db, source.id)
-    ontology_id = (draft.get("ontology") or draft)["id"]
-    # The object code comes from the blueprint lexicon (ADR-0003), so it is discovered
-    # rather than assumed -- hardcoding "contract" would break on a renamed blueprint.
-    object_code = default_object_code_for_ontology(platform_db, ontology_id)
-    verdict = assess_instance(platform_db, ontology_id, object_code, "1")
 
-    # Two capabilities that the demo otherwise left empty, and an empty screen is
-    # indistinguishable from a missing feature: the instance explanation has a timeline
-    # section and a value-history section, and a fresh demo populated neither, so a first
-    # run showed two blank tables where the product's temporal claims should be.
-    #
-    # The event code is discovered from the blueprint's lexicon for the same reason the
-    # object code is: hardcoding "signed" would break on a renamed blueprint.
-    from .events import EventType, declare_event_type, record_event
-
-    event_code = "signed"
-    declare_event_type(
-        platform_db,
-        ontology_id,
-        EventType(code=event_code, name="签订", object_code=object_code, description="样例系统的一次签订动作"),
-        actor="bootstrap",
-    )
-    record_event(
-        platform_db,
-        ontology_id,
-        object_code,
-        "1",
-        event_code,
-        payload={"source": "aletheia demo"},
-        actor="bootstrap",
-    )
-
-    from .ontology import explain_instance
-    from .temporal import record_attribute_version
-
-    # Whichever declared attribute the sample carries a value for. Recording a version for
-    # an attribute the object does not have would be refused, and guessing the name would
-    # make the demo depend on the blueprint's wording.
-    explanation = explain_instance(platform_db, ontology_id, object_code, "1")
-    for attribute in explanation.get("attributes", []):
-        if attribute.get("value") not in (None, ""):
-            record_attribute_version(
-                platform_db,
-                ontology_id,
-                object_code,
-                "1",
-                str(attribute["attributeCode"]),
-                attribute["value"],
-                valid_from="2026-01-01 00:00:00",
-                actor="bootstrap",
-            )
-            break
-
+    result = run_contract_demo(platform_db, Path(args.sample_db) if args.sample_db else DEFAULT_SAMPLE_DB)
     _print(
         {
             "platformDb": str(platform_db),
-            "sampleDb": str(sample_path),
-            "ontologyId": ontology_id,
-            "objectCode": object_code,
-            "decision": verdict.get("decision", {}).get("status"),
+            "sampleDb": str(result["samplePath"]),
+            "ontologyId": result["ontologyId"],
+            "objectCode": result["objectCode"],
+            "decision": result["decision"],
             "next": f"{PROGRAM} serve  # 打开 http://127.0.0.1:8000/docs",
         }
     )

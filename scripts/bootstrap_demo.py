@@ -1,3 +1,11 @@
+"""Load the built-in contract sample into the default platform database.
+
+Kept as a script because it is convenient in a checkout, but it no longer holds the
+scenario: `ontology_platform.demo` does, and this calls it. The three copies of that flow
+had already drifted once -- the browser's demo stopped assessing an instance -- and a
+fourth copy would drift again.
+"""
+
 from __future__ import annotations
 
 import sys
@@ -8,49 +16,26 @@ BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from ontology_platform.database import DEFAULT_PLATFORM_DB, initialize_platform_db
-from ontology_platform.metadata import register_data_source, register_source_api, scan_data_source
-from ontology_platform.ontology import generate_ontology_draft
-from ontology_platform.sample_data import DEFAULT_SAMPLE_DB, create_contract_sample_db
-from ontology_platform.semantic_kernel import assess_instance
+from ontology_platform.demo import run_contract_demo
+from ontology_platform.sample_data import DEFAULT_SAMPLE_DB
 
 
 def main() -> None:
     initialize_platform_db(DEFAULT_PLATFORM_DB)
-    sample_path = create_contract_sample_db(DEFAULT_SAMPLE_DB)
-    source = register_data_source(
-        DEFAULT_PLATFORM_DB,
-        "合同管理样例系统",
-        "sqlite",
-        str(sample_path),
-        domain="合同管理",
-        system_category="database+api",
-    )
-    register_source_api(
-        DEFAULT_PLATFORM_DB,
-        source.id,
-        "submit_contract",
-        "提交合同审批",
-        "POST",
-        "/contracts/{id}/submit",
-        "contract.submit_for_approval",
-    )
-    scan = scan_data_source(DEFAULT_PLATFORM_DB, source.id)
-    ontology = generate_ontology_draft(DEFAULT_PLATFORM_DB, source.id)
-    assessment = assess_instance(DEFAULT_PLATFORM_DB, ontology["id"], "contract", "1")
-
-    print("已创建合同管理样例库:", sample_path)
-    print("已注册数据源:", source)
-    print("元数据扫描结果:", scan)
+    result = run_contract_demo(DEFAULT_PLATFORM_DB, DEFAULT_SAMPLE_DB)
+    print("已创建合同管理样例库:", result["samplePath"])
+    print("已注册数据源:", result["source"])
+    print("元数据扫描结果:", result["scan"])
     print(
         "本体草案:",
         {
-            "id": ontology["id"],
-            "objects": len(ontology["objects"]),
-            "relations": len(ontology["relations"]),
-            "rules": len(ontology["rules"]),
+            "id": result["ontologyId"],
+            "objects": len(result["ontology"]["objects"]),
+            "relations": len(result["ontology"]["relations"]),
+            "rules": len(result["ontology"]["rules"]),
         },
     )
-    print("合同 1 语义研判:", assessment["decision"])
+    print("合同 1 语义研判:", result["decision"])
 
 
 if __name__ == "__main__":
