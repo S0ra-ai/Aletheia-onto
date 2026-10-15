@@ -51,8 +51,23 @@ export const DECISION_STATUS: Record<string, string> = {
   approved: '通过',
   review: '待复核',
   blocked: '阻断',
+};
+
+/**
+ * How divided a batch of verdicts is, from `semantic_kernel.CONSISTENCY_STATUSES`.
+ *
+ * A different vocabulary from `DECISION_STATUS`, which is why it is a different map: one
+ * describes a single verdict, the other describes a sample. They were merged, and the
+ * merged map was wrong in both directions -- it carried `inconsistent`, which no code
+ * produces, and lacked `mixed_with_blockers`, so a divided sample printed the raw English
+ * enum inside a Chinese console.
+ */
+export const CONSISTENCY_STATUS: Record<string, string> = {
   consistent: '一致',
-  inconsistent: '不一致',
+  mixed: '存在分化',
+  mixed_with_blockers: '分化且含阻断',
+  incomplete: '不完整',
+  empty: '无可评估实例',
 };
 
 /**

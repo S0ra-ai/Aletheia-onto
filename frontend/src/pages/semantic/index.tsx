@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
+import { CONSISTENCY_STATUS, DECISION_STATUS, label } from '../../i18n/labels';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
@@ -365,7 +366,7 @@ const SemanticService: React.FC = () => {
                       assessResult.decision === 'approved' ? 'green' :
                       assessResult.decision === 'review' ? 'orange' : 'red'
                     }>
-                      {assessResult.decision}
+                      {label(DECISION_STATUS, assessResult.decision)}
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
@@ -416,7 +417,9 @@ const SemanticService: React.FC = () => {
                   <Descriptions.Item label="样本数">{consistencyResult.sampleSize}</Descriptions.Item>
                   <Descriptions.Item label="已评估">{consistencyResult.assessed}</Descriptions.Item>
                   <Descriptions.Item label="状态">
-                    <Tag color={consistencyColor(consistencyResult.status)}>{consistencyResult.status}</Tag>
+                    <Tag color={consistencyColor(consistencyResult.status)}>
+                      {label(CONSISTENCY_STATUS, consistencyResult.status)}
+                    </Tag>
                   </Descriptions.Item>
                   <Descriptions.Item label="通过">{consistencyResult.summary.approved}</Descriptions.Item>
                   <Descriptions.Item label="复核">{consistencyResult.summary.review}</Descriptions.Item>

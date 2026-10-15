@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 # change for no benefit.
 __all__ = [
     "ALLOWED_AST_NODES",
+    "CONSISTENCY_STATUSES",
     "FORBIDDEN_ATTRIBUTE_PREFIXES",
     "RULE_FUNCTION_ENTRY_POINT_GROUP",
     "RULE_FUNCTION_REGISTRY",
@@ -1036,6 +1037,13 @@ def _failed_rule_counts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {"ruleCode": rule_code, "failures": failures}
         for rule_code, failures in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
     ]
+
+
+# The statuses `_consistency_status` can return. Declared as data so the frontend's label
+# map can be checked against them -- it had `consistent` and `inconsistent`, neither of
+# which is `mixed_with_blockers`, so a divided sample rendered the raw English enum inside a
+# Chinese console. `inconsistent` was in that map and in nothing else.
+CONSISTENCY_STATUSES = ("consistent", "mixed", "mixed_with_blockers", "incomplete", "empty")
 
 
 def _consistency_status(status_counts: dict[str, int], errors: list[dict[str, str]]) -> str:

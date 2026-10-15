@@ -10,6 +10,18 @@
 
 ### Fixed
 
+- **决策一致性页在样本分化时显示原始英文枚举**（`labels.ts`、`semantic_kernel.py`、
+  `semantic/index.tsx`）。`DECISION_STATUS` 把两套词表混在了一起：单条判定的
+  `approved／review／blocked`，和整批样本的 `consistent／inconsistent`——
+  而后端 `_consistency_status` 返回的是
+  `consistent／mixed／mixed_with_blockers／incomplete／empty`。
+  于是这张图**两个方向都错**：带着一个没有任何代码会产出的 `inconsistent`，
+  却缺少 `mixed_with_blockers`，样本分化时界面上直接打出英文枚举。
+  现在两套词表分开，且一致性词表以 `CONSISTENCY_STATUSES` 常量声明在后端，
+  由「前端标签表必须覆盖后端词表」那条测试守住——这也是它第一次抓到**已存在**的缺口，
+  而不是我顺手写进去的新表。
+- **同一页的研判结论显示 `approved`**，而旁边的抽屉与工作台都写着「通过」。
+
 - **业务规则表的「类型／适用对象／业务说明」三列每一行都是空的**（`governance.py`、`ontology.py`、
   `RuleList.tsx`）。`/ontologies/{id}/rules` 返回 `dict(row)`——只有 `rule_type`／
   `scope_object_code`／`natural_language` 这些线上列，而表格读的是解码后的名字。
