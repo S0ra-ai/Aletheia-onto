@@ -184,11 +184,15 @@ KNOWN_SPARSE = (
 # stops rendering without landing here fails, and a route listed here that starts rendering
 # one also fails -- the list is checked in both directions.
 NO_TABLE_ROUTES = {
-    "/admin/semantic": "结果表在提交一次解释／研判请求之后才出现；本工具只加载路由、读 DOM，不点按钮",
-    "/admin/semantic?tab=explain": "同上：解释结果表要有一个实例才能渲染",
-    "/admin/semantic?tab=assess": "同上：研判结论由表单提交触发",
-    "/admin/semantic?tab=consistency": "同上：一致性问题表来自一次一致性检查",
-    "/admin/semantic?tab=preflight": "同上：检查结果由表单提交触发",
+    # Two of the five semantic tabs do have tables, and both need a submitted request first;
+    # the other three render prose or a description list and have none. Stated per tab rather
+    # than as one sentence covering all five, because a reason that is approximately right is
+    # the kind of entry that stops being read.
+    "/admin/semantic": "自然语言交互：答案是正文，没有表格",
+    "/admin/semantic?tab=explain": "实例解释：属性表要提交一次解释请求后才出现（本工具不点按钮）",
+    "/admin/semantic?tab=assess": "风险研判：结论以描述列表呈现，没有表格",
+    "/admin/semantic?tab=consistency": "决策一致性：问题表要提交一次检查后才出现（本工具不点按钮）",
+    "/admin/semantic?tab=preflight": "操作预检：结果以描述列表呈现，没有表格",
     "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
     "/admin/graph": "本体图是画布，没有表格",
     "/admin/chat": "对话界面没有表格",
