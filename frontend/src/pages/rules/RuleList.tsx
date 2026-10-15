@@ -53,8 +53,13 @@ const RuleList: React.FC = () => {
 
   const fetchOntologies = useCallback(async () => {
     try {
-      const items = await ontologyApi.list();
-      setOntologies(items as Ontology[]);
+      const items = (await ontologyApi.list()) as Ontology[];
+      setOntologies(items);
+      // Selected rather than left for the reader to choose, for the same reason the mapping
+      // review page does it: on a deployment with one ontology, asking which one puts the
+      // work behind a guess. It also meant the page rendered no table at all until somebody
+      // clicked, so the check that reports empty columns had nothing to look at.
+      setSelectedOntology((current) => current ?? items[0]?.id ?? null);
     } catch (error) {
       message.error(requestErrorMessage(error, '获取本体列表失败'));
     }

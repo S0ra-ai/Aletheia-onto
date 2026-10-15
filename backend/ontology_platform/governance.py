@@ -5,7 +5,7 @@ from typing import Any
 
 from .context import PlatformDb
 from .database import connect, last_insert_id
-from .ontology import mapping_target_codes, semantic_mapping_row
+from .ontology import business_rule_row, mapping_target_codes, semantic_mapping_row
 from .release_readiness import assess_ontology_release_readiness
 from .schema import table_exists
 from .semantic_kernel import validate_rule_expression
@@ -294,7 +294,7 @@ def list_business_rules(platform_db: PlatformDb, ontology_id: int) -> dict[str, 
         _require_ontology(conn, ontology_id)
         rows = conn.execute(
             """
-            select id, code, name, rule_type, scope_object_code, expression,
+            select id, ontology_id, code, name, rule_type, scope_object_code, expression,
                    severity, natural_language, status, priority, category,
                    effective_start, effective_end, depends_on
             from business_rule
@@ -303,7 +303,13 @@ def list_business_rules(platform_db: PlatformDb, ontology_id: int) -> dict[str, 
             """,
             (ontology_id,),
         ).fetchall()
-        return {"ontologyId": ontology_id, "items": [dict(row) for row in rows]}
+        # Through the same serializer the ontology summary uses. Returning `dict(row)` sent
+        # only the wire columns, and the rule table asks for the decoded ones -- 类型 /
+        # 适用对象 / 业务说明 were blank for every row. The serializer existed the whole
+        # time, four hundred lines away, and this endpoint did not call it. Same shape of
+        # mistake as the mapping review queue, found the same way: by giving the table a row
+        # to draw, because an empty table makes every column look correct.
+        return {"ontologyId": ontology_id, "items": [business_rule_row(row) for row in rows]}
 
 
 def get_business_rule(platform_db: PlatformDb, ontology_id: int, rule_id: int) -> dict[str, Any]:

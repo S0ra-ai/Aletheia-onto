@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1615 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1616 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -82,7 +82,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_packaging.py` | 15 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
-| `test_frontend_type_agreement.py` | 46 | The frontend's hand-written types must agree with the API they mirror, on both sides |
+| `test_frontend_type_agreement.py` | 47 | The frontend's hand-written types must agree with the API they mirror, on both sides |
 | `test_frontend_serving.py` | 4 | Same-origin production admin shell and API transport prefix |
 | `test_metrics.py` | 5 | Prometheus-compatible runtime metrics and safe re-initialisation |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |

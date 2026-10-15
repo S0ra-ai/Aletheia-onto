@@ -456,7 +456,7 @@ def summarize_ontology(conn: sqlite3.Connection, ontology_id: int) -> dict[str, 
         "attributes": [_business_attribute_row(row) for row in attributes],
         "relations": [_business_relation_row(row) for row in relations],
         "mappings": [semantic_mapping_row(row, mapping_target_codes(conn, ontology_id)) for row in mappings],
-        "rules": [_business_rule_row(row) for row in rules],
+        "rules": [business_rule_row(row) for row in rules],
     }
 
 
@@ -1414,7 +1414,14 @@ def semantic_mapping_row(
     }
 
 
-def _business_rule_row(row: sqlite3.Row) -> dict[str, Any]:
+def business_rule_row(row: sqlite3.Row) -> dict[str, Any]:
+    """One rule row, decoded for a reader.
+
+    Public for the same reason `semantic_mapping_row` is: the rule list endpoint needs
+    exactly this shape and was returning `dict(row)` instead, so the table's 类型 / 适用对象 /
+    业务说明 columns rendered blank against `rule_type` / `scope_object_code` /
+    `natural_language`.
+    """
     return {
         "id": row["id"],
         "ontologyId": row["ontology_id"],

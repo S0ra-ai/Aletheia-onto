@@ -266,6 +266,11 @@ CHARTED_RESPONSES = (
     ("/data-sources/1/schema-drift", None, ("status", "summary", "addedTables", "impacts", "nextActions")),
     # Wire spellings, normalised in `api/index.ts`.
     ("/workflows", "items", ("ontology_id", "object_code", "name", "initial_state", "status", "created_at")),
+    (
+        "/ontologies/1/rules",
+        "items",
+        ("code", "name", "ruleType", "scopeObjectCode", "expression", "severity", "naturalLanguage", "status"),
+    ),
     ("/admin/backup/list", "backups", ("name", "size", "created_at")),
 )
 
