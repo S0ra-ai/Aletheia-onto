@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1511 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1516 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -51,7 +51,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
-| `test_metadata_flow.py` | 58 | 元数据扫描、蓝图草案（含模型响应形状）与映射流程 |
+| `test_metadata_flow.py` | 59 | 元数据扫描、蓝图草案（含模型响应形状）与映射流程 |
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
@@ -66,7 +66,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
 | `test_error_messages.py` | 21 | 失败时用户读到什么：驱动与解释器原文不再直接示人 |
-| `test_backup.py` | 6 | SQLite 平台安全备份、列表与原子恢复 |
+| `test_backup.py` | 10 | SQLite 平台安全备份、列表与原子恢复 |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |

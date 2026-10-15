@@ -2071,3 +2071,19 @@ class TestTheReasoningChainNormalizer:
         assert result["usedRemoteModel"] is True
         assert result["unreadableModelFields"] == ["proposedObjects"]
         assert result["chain"]["reasoningSteps"] == ["读取元数据"]
+
+
+def test_a_file_named_docx_that_is_not_one_is_refused_with_a_reason() -> None:
+    """`docx` raises `PackageNotFoundError`, which is not a ValueError.
+
+    Every caller's `except ValueError` therefore missed it, and uploading a file that was
+    renamed to `.docx` -- or truncated in transit -- answered 500. The suffix check cannot
+    catch this: it reads the name, and the name is exactly what is wrong.
+    """
+    with pytest.raises(ValueError) as refused:
+        parse_rule_docx_bytes("rules.docx", b"this is not a Word document")
+
+    message = str(refused.value)
+    assert "Word" in message
+    assert "PackageNotFound" not in message
+    assert type(refused.value).__name__ == "ValueError"

@@ -392,8 +392,19 @@ def download_platform_backup(backup_name: str) -> FileResponse:
 
 @core_router.post("/admin/backup/restore/{backup_name}")
 def restore_platform_backup(backup_name: str) -> dict[str, object]:
-    """Restore from a backup."""
-    return restore_backup(backup_name, str(DEFAULT_PLATFORM_DB))
+    """Restore from a backup.
+
+    The same two failures `download_platform_backup` already distinguishes: a name that
+    does not exist is a 404, and a name that is not a valid backup name is a 400. Without
+    this, a mistyped name was the one path that answered 500 -- which tells the caller
+    nothing and reports a client mistake as a server fault.
+    """
+    try:
+        return restore_backup(backup_name, str(DEFAULT_PLATFORM_DB))
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @core_router.get("/health")

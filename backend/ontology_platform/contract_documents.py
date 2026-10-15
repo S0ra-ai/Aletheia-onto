@@ -83,7 +83,19 @@ def parse_rule_docx(
     except Exception as error:  # pragma: no cover
         raise ValueError("缺少 python-docx 依赖，无法解析 Word 规则文档。请安装 requirements.txt。") from error
 
-    doc = Document(str(path))
+    try:
+        doc = Document(str(path))
+    except Exception as error:
+        # `docx` raises `PackageNotFoundError` for anything that is not an OOXML package --
+        # a file renamed to `.docx`, a PDF, a truncated upload. It is not a ValueError, so
+        # every caller's `except ValueError` missed it and the uploader received a 500 for
+        # having picked the wrong file. The suffix check above cannot catch this: it sees
+        # the name, and the name is what was wrong.
+        raise ValueError(
+            "这个文件不是有效的 Word 文档（.docx）。常见情况是把别的格式改名成 .docx，"
+            "或文件在上传过程中被截断；请用 Word／WPS 另存为 .docx 后重试。"
+        ) from error
+
     paragraphs = [paragraph.text.strip() for paragraph in doc.paragraphs if paragraph.text.strip()]
     tables = _extract_tables(doc)
     table_rules = _extract_rules_from_tables(tables, default_scope)

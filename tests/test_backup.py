@@ -127,3 +127,62 @@ def test_restore_does_not_extract_archive_members_outside_the_target(tmp_path: P
 
     assert not outside.exists()
     assert target.read_bytes().startswith(b"SQLite format 3\x00")
+
+
+class TestBackupRoutesDistinguishClientErrors:
+    """A mistyped name is not a server fault.
+
+    `download_platform_backup` already answered 404 for a name that does not exist; its
+    sibling `restore_platform_backup` did not, so the one path a user reaches by mistyping
+    answered 500. That tells them nothing and files a client mistake under server faults.
+    """
+
+    @pytest.fixture
+    def client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+        platform_db = tmp_path / "platform.sqlite3"
+        sqlite3.connect(platform_db).close()
+        monkeypatch.setenv("ONTOLOGY_BACKUP_DIR", str(tmp_path / "backups"))
+        monkeypatch.setenv("ONTOLOGY_ADMIN_PASSWORD", "admin-password-123")
+        monkeypatch.setenv("ONTOLOGY_ALLOWED_ORIGINS", "http://localhost:3000")
+        monkeypatch.delenv("ONTOLOGY_AUTH_DISABLED", raising=False)
+        monkeypatch.delenv("ONTOLOGY_RATE_LIMIT_PER_MINUTE", raising=False)
+
+        import ontology_platform.api as api_module
+        import ontology_platform.backup as backup_module
+        import ontology_platform.database as database_module
+
+        database_module._platform_adapter = None
+        monkeypatch.setattr(database_module, "DEFAULT_PLATFORM_DB", platform_db)
+        monkeypatch.setattr(backup_module, "BACKUP_DIR", tmp_path / "backups")
+        reloaded = importlib.reload(api_module)
+        monkeypatch.setattr(reloaded, "DEFAULT_PLATFORM_DB", platform_db)
+        try:
+            with TestClient(reloaded.app) as test_client:
+                token = test_client.post(
+                    "/auth/login", json={"username": "admin", "password": "admin-password-123"}
+                ).json()["token"]
+                test_client.headers["Authorization"] = f"Bearer {token}"
+                yield test_client
+        finally:
+            database_module._platform_adapter = None
+
+    def test_restoring_a_missing_backup_is_a_404_not_a_500(self, client: TestClient) -> None:
+        response = client.post("/admin/backup/restore/nope-does-not-exist")
+        assert response.status_code == 404, response.text
+        assert "不存在" in response.json()["detail"]
+
+    def test_downloading_a_missing_backup_is_still_a_404(self, client: TestClient) -> None:
+        """The sibling that was already correct, kept correct."""
+        assert client.get("/admin/backup/download/nope-does-not-exist").status_code == 404
+
+    @pytest.mark.parametrize("name", [".hidden", "-leading-dash"])
+    def test_a_name_that_is_not_a_backup_name_is_a_400(self, client: TestClient, name: str) -> None:
+        """A single path segment that the backup-name pattern refuses.
+
+        Traversal attempts (`..`, `a/b`) never reach the handler -- the router rejects them
+        first -- so testing those would be testing the router. What matters here is that a
+        name which *does* reach `restore_backup` and is refused produces a 400 that says so.
+        """
+        response = client.post(f"/admin/backup/restore/{name}")
+        assert response.status_code == 400, response.text
+        assert "备份名不合法" in response.json()["detail"]

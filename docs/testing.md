@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1511 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1516 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -57,7 +57,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
-| `test_metadata_flow.py` | 58 |  |
+| `test_metadata_flow.py` | 59 |  |
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
@@ -72,7 +72,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
 | `test_error_messages.py` | 21 | What a user reads when something fails |
-| `test_backup.py` | 6 | Safe SQLite backup inventory and atomic restore |
+| `test_backup.py` | 10 | Safe SQLite backup inventory and atomic restore |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |
