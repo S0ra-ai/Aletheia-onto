@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from ontology_platform.access_policy import CAP_ADMIN, required_capability
+from ontology_platform.database import initialize_platform_db
 from ontology_platform.backup import (
     BackupError,
     backup_archive_path,
@@ -252,3 +253,33 @@ def test_a_restore_that_cannot_be_undone_does_not_happen(tmp_path: Path, monkeyp
     assert "安全快照" in str(refusal.value)
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("select value from evidence").fetchone()[0] == "current", "恢复仍然执行了"
+
+
+def test_a_backup_and_a_restore_leave_a_trace_in_the_database(tmp_path: Path) -> None:
+    """Both operations rewrite or replace the platform database, and neither was recorded.
+
+    Forty-one places in the platform write an audit row; this module wrote none. That is
+    backwards for the pair carrying the most consequence: a restore replaces the database, and
+    afterwards the audit log *inside it* is the one from the backup, with nothing saying a
+    restore happened. "When was this database replaced, and from what?" could only be answered
+    from a process log that rotates.
+
+    The restore's own row has to land in the restored database -- written after the swap,
+    because that is the copy the deployment is now using.
+    """
+    db_path = tmp_path / "platform.sqlite3"
+    backups = tmp_path / "backups"
+    initialize_platform_db(db_path)
+    create_backup(str(db_path), "runtime", backup_dir=backups)
+
+    with sqlite3.connect(db_path) as conn:
+        created = conn.execute("select action, detail from audit_log where action = 'create_backup'").fetchall()
+    assert created, "创建备份没有留下审计记录"
+    assert "runtime" in created[0][1], created[0][1]
+
+    result = restore_backup("runtime", str(db_path), backup_dir=backups)
+
+    with sqlite3.connect(db_path) as conn:
+        restored = conn.execute("select detail from audit_log where action = 'restore_backup'").fetchall()
+    assert restored, "恢复没有在被替换后的库里留下审计记录"
+    assert result["safetyCopy"] in restored[0][0], restored[0][0]

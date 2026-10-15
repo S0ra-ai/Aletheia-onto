@@ -118,12 +118,44 @@ def create_backup(
         temp_archive.unlink(missing_ok=True)
 
     logger.info("备份创建成功: %s", archive)
+    _record(platform_db, "create_backup", name, {"path": str(archive), "size": archive.stat().st_size})
     return {
         "name": name,
         "path": str(archive),
         "size": archive.stat().st_size,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _record(platform_db: PlatformDb, action: str, target: str, detail: dict[str, Any]) -> None:
+    """Leave a trace of a backup operation in the platform database's own audit log.
+
+    Both operations were invisible to it: 41 other places write an audit row and this module
+    wrote none. That is backwards for the pair that carries the most consequence -- a restore
+    *replaces* the database, and afterwards the audit log inside it is the one from the backup,
+    with nothing saying a restore happened at all. An auditor asking "when was this database
+    replaced, and with what" had only the process log, which rotates.
+
+    Never raises: the operation has already happened by the time this is called, and a failed
+    audit write must not turn a completed restore into a reported failure.
+    """
+    from .database import connect
+    from .tracing import current_request_id
+
+    try:
+        with connect(platform_db) as conn:
+            conn.execute(
+                "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+                (
+                    "admin-api",
+                    action,
+                    "backup",
+                    target,
+                    json.dumps({**detail, "requestId": current_request_id()}, ensure_ascii=False),
+                ),
+            )
+    except Exception as error:  # an audit failure must not undo the operation it describes
+        logger.warning("审计写入失败（%s %s）: %s", action, target, error)
 
 
 def list_backups(*, backup_dir: Path | str | None = None) -> list[dict[str, Any]]:
@@ -231,6 +263,9 @@ def restore_backup(
 
     restored_at = datetime.now(timezone.utc).isoformat()
     logger.info("备份恢复成功: %s -> %s（恢复前快照 %s）", name, target, safety_name)
+    # Written after the swap, so the record lives in the database that is now in use: the
+    # replacement is the one event this log itself most needs to survive.
+    _record(platform_db, "restore_backup", name, {"restoredAt": restored_at, "safetyCopy": safety_name})
     return {
         "name": name,
         "restored_at": restored_at,
