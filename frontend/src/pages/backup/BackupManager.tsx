@@ -73,9 +73,18 @@ const BackupManager: React.FC = () => {
     if (!selectedBackup) return;
     setRestoring(true);
     try {
-      await backupApi.restore(selectedBackup);
-      message.success('恢复成功，请停止服务后重启平台');
+      const result = await backupApi.restore(selectedBackup);
+      // Name the way back. The server snapshots the platform database before replacing it,
+      // because picking the wrong archive out of a list of fifty is an ordinary mistake --
+      // and the message that only said 「恢复成功」 left that snapshot invisible.
+      message.success(
+        result?.safetyCopy
+          ? `恢复成功，请停止服务后重启平台。恢复前的平台库已存为备份 ${result.safetyCopy}`
+          : '恢复成功，请停止服务后重启平台',
+        8,
+      );
       setRestoreModal(false);
+      void loadBackups();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '恢复失败');
     } finally {
@@ -157,6 +166,10 @@ const BackupManager: React.FC = () => {
           即将恢复备份 <Tag>{selectedBackup}</Tag>
         </p>
         <p>恢复会替换当前 SQLite 平台库。请先停止服务，恢复完成后重启平台。</p>
+        <p>
+          恢复前平台会自动把当前库另存为一份 <Tag>before-restore-…</Tag> 备份，
+          万一恢复的不是想要的那一份，可以用它换回来。
+        </p>
       </Modal>
     </div>
   );

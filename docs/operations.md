@@ -96,7 +96,13 @@ curl -X POST http://localhost:8000/admin/backup/restore/{backup_name} \
   -H "Authorization: Bearer $ONTOLOGY_ADMIN_TOKEN"
 ```
 
-恢复会替换当前 SQLite 平台库，应在停止服务后执行。生产参考编排使用 PostgreSQL，
+恢复会替换当前 SQLite 平台库，应在停止服务后执行。**恢复前平台会自动把当前库另存为
+一份 `before-restore-<UTC 时间戳>` 备份**，并在响应里用 `safetyCopy` 报出它的名字——
+备份列表里几十个名字相近的归档，选错一个是很平常的事，而换错的那一次必须能换回来。
+快照生成失败时**恢复会被拒绝**（fail-closed）：先弄丢现在这一份、再换上一份可能不对的，
+比不做这次恢复更糟。
+
+生产参考编排使用 PostgreSQL，
 数据库备份请使用 `pg_dump`／PITR；内置备份接口会显式拒绝服务端数据库，
 而不是生成不可恢复的物理快照。
 

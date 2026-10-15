@@ -1137,9 +1137,9 @@ export const backupApi = {
     return data as Blob;
   },
 
-  restore: async (name: string): Promise<{ name: string; restoredAt: string }> => {
+  restore: async (name: string): Promise<{ name: string; restoredAt: string; safetyCopy?: string }> => {
     const { data } = await api.post(`/admin/backup/restore/${encodeURIComponent(name)}`);
-    return data as { name: string; restoredAt: string };
+    return data as { name: string; restoredAt: string; safetyCopy?: string };
   },
 };
 

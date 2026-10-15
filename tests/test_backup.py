@@ -186,3 +186,69 @@ class TestBackupRoutesDistinguishClientErrors:
         response = client.post(f"/admin/backup/restore/{name}")
         assert response.status_code == 400, response.text
         assert "备份名不合法" in response.json()["detail"]
+
+
+def test_restoring_snapshots_what_it_is_about_to_replace(tmp_path: Path) -> None:
+    """Picking the wrong archive out of fifty is an ordinary mistake, so it is undoable.
+
+    Restore replaces the platform database outright. The confirmation dialog warned about
+    that, but nothing kept the replaced copy -- so a restore that turned out to be the wrong
+    one could not be reversed, and the only record of what was lost was a log line. The
+    snapshot is taken *before* the swap, which is the only moment it can be taken.
+    """
+    db_path = tmp_path / "platform.sqlite3"
+    backups = tmp_path / "backups"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table evidence (value text)")
+        conn.execute("insert into evidence values ('before')")
+    create_backup(str(db_path), "runtime", backup_dir=backups)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("update evidence set value = 'after'")
+
+    result = restore_backup("runtime", str(db_path), backup_dir=backups)
+
+    assert result["safetyCopy"].startswith("before-restore-"), result
+    assert any(item["name"] == result["safetyCopy"] for item in list_backups(backup_dir=backups))
+    # The restored database is the archived one, and the snapshot holds the state that was
+    # replaced -- not the archive being restored, which is what makes it a way back.
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("select value from evidence").fetchone()[0] == "before"
+    snapshot = importlib.import_module("ontology_platform.backup").backup_archive_path(
+        result["safetyCopy"], backup_dir=backups
+    )
+    with tarfile.open(snapshot, "r:gz") as tar:
+        member = tar.extractfile(f"{result['safetyCopy']}/platform.db")
+        assert member is not None
+        extracted = tmp_path / "snapshot.sqlite3"
+        extracted.write_bytes(member.read())
+    with sqlite3.connect(extracted) as conn:
+        assert conn.execute("select value from evidence").fetchone()[0] == "after"
+
+
+def test_a_restore_that_cannot_be_undone_does_not_happen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail-closed: without the snapshot, refuse rather than lose the current database.
+
+    Losing what is here *and* getting a database that may be the wrong one is worse than not
+    restoring at all, and a disk that cannot hold the snapshot is exactly the situation where
+    the platform should say so instead of proceeding.
+    """
+    from ontology_platform import backup as backup_module
+
+    db_path = tmp_path / "platform.sqlite3"
+    backups = tmp_path / "backups"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("create table evidence (value text)")
+        conn.execute("insert into evidence values ('current')")
+    create_backup(str(db_path), "runtime", backup_dir=backups)
+
+    def refuse(*args: object, **kwargs: object) -> dict:
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(backup_module, "create_backup", refuse)
+    with pytest.raises(BackupError) as refusal:
+        restore_backup("runtime", str(db_path), backup_dir=backups)
+
+    assert "安全快照" in str(refusal.value)
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("select value from evidence").fetchone()[0] == "current", "恢复仍然执行了"

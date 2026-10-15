@@ -181,6 +181,11 @@ def restore_backup(
 
     不调用 `extractall`：成员名在归档内由我们校验，不会受压缩包内路径影响。
     恢复前仍应停止服务；正在运行的进程可能持有旧数据库连接。
+
+    **恢复之前先给当前平台库留一份快照。** 恢复是不可逆的：选错了一份归档，
+    原来的库就被换掉了，而选错的方式很平凡——备份列表里有几十个名字相近的归档，
+    界面上只能凭名字与时间辨认。快照失败则**拒绝恢复**（fail-closed），
+    因为「先把现在这一份弄丢，再换上一份可能不对的」比不做这次恢复更糟。
     """
     name = _safe_name(backup_name)
     directory = _backup_directory(backup_dir)
@@ -189,6 +194,14 @@ def restore_backup(
         raise FileNotFoundError(f"备份文件不存在: {name}")
 
     target = _sqlite_path(platform_db)
+    safety_name = f"before-restore-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    try:
+        create_backup(platform_db, safety_name, backup_dir=directory)
+    except Exception as error:
+        raise BackupError(
+            f"恢复前的安全快照未能生成（{error}），因此没有执行恢复：恢复会直接替换当前平台库，先保住它才谈得上换。"
+        ) from error
+
     temp_target: Path | None = None
     try:
         with tarfile.open(archive, "r:gz") as tar:
@@ -217,5 +230,12 @@ def restore_backup(
             temp_target.unlink(missing_ok=True)
 
     restored_at = datetime.now(timezone.utc).isoformat()
-    logger.info("备份恢复成功: %s -> %s", name, target)
-    return {"name": name, "restored_at": restored_at, "database": str(target)}
+    logger.info("备份恢复成功: %s -> %s（恢复前快照 %s）", name, target, safety_name)
+    return {
+        "name": name,
+        "restored_at": restored_at,
+        "database": str(target),
+        # Named in the response so the screen can say it: the way back is only useful to
+        # somebody who knows it exists.
+        "safetyCopy": safety_name,
+    }
