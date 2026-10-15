@@ -251,18 +251,22 @@ CHARTED_RESPONSES = (
         ("objectCode", "instanceId", "source", "attributes", "aggregates", "ancestors", "timeline", "asOf"),
     ),
     ("/governance/audit-report/sections", "items", ("section", "name", "answers")),
+    # Not listed, because no screen reads them: `/units`, `/source-types` and `/axiom-kinds`
+    # are metadata endpoints for pickers that do not exist yet. Listing them would have made
+    # this table a description of the API rather than of what the UI depends on -- and the
+    # reverse check below now fails on exactly that.
     ("/auth/users", "items", ("username", "displayName", "roleCode", "capabilities", "status", "createdAt")),
     ("/tenants", "items", ("tenant", "schema")),
     ("/industry-blueprints", "items", ("id", "name", "domain", "description")),
-    ("/units", "items", ("code", "name", "dimension", "toCanonical")),
-    ("/source-types", "declared", ("sourceType", "dialect", "driver", "available")),
-    ("/axiom-kinds", "items", ("kind", "summary", "consequence")),
     ("/model/config", None, ("provider", "model", "baseUrl", "hasApiKey")),
     ("/knowledge-bases", "items", ("name", "domain", "ontologyName", "sourceType")),
     ("/data-sources/1/readiness", "checks", ("code", "name", "passed", "evidence", "remediation", "weight")),
     ("/data-sources/1/operation-bindings", "items", ("operationCode", "name", "method", "path", "semanticAction")),
     ("/data-sources/1/semantic-coverage", "objects", ("objectCode", "objectName", "sourceTable", "status", "gaps")),
     ("/data-sources/1/schema-drift", None, ("status", "summary", "addedTables", "impacts", "nextActions")),
+    # Wire spellings, normalised in `api/index.ts`.
+    ("/workflows", "items", ("ontology_id", "object_code", "name", "initial_state", "status", "created_at")),
+    ("/admin/backup/list", "backups", ("name", "size", "created_at")),
 )
 
 
@@ -299,6 +303,7 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
         system_category="database+api",
         blueprint_id="contract-management",
     )
+    from ontology_platform.backup import create_backup
     from ontology_platform.metadata import register_source_api
     from ontology_platform.ontology import generate_ontology_draft
     from ontology_platform.semantic_kernel import assess_instance
@@ -347,6 +352,20 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     record_event(platform_db, ontology_id, "contract", "1", "signed", actor="tester")
     record_attribute_version(platform_db, ontology_id, "contract", "1", "amount", 1200000, actor="tester")
     provision_tenant(PlatformContext(db_type="sqlite", connection_uri=str(platform_db)), "acme")
+
+    # A workflow and a backup archive, for the same reason as the rest: a list with no rows
+    # in it accepts any assertion about its columns. The workflow list's 业务对象 / 本体 /
+    # 初始状态 columns were blank for every row and stayed invisible exactly as long as no
+    # workflow existed.
+    from ontology_platform.workflow_permission import (
+        create_workflow,
+        init_workflow_and_permission_schema,
+    )
+
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    create_workflow(platform_db, ontology_id, "contract", "样例审批流", initial_state="draft")
+    create_backup(platform_db, backup_dir=tmp_path / "backups")
 
     api_module = importlib.reload(api_module)
     monkeypatch.setattr(api_module, "DEFAULT_PLATFORM_DB", platform_db)
@@ -408,3 +427,28 @@ def _token(client: TestClient, username: str, password: str) -> str:
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_every_contracted_field_is_still_read_by_the_frontend() -> None:
+    """The table can rot in the other direction too.
+
+    A field listed here and read by nobody is a stale entry: the endpoint can stop sending
+    it, the test stays green, and the claim that screen X reads it is no longer true. The
+    check is deliberately loose -- the name has to appear somewhere in the frontend, as a
+    `dataIndex`, a type member or a normaliser key -- because the point is to notice an
+    entry nothing uses, not to re-derive which table reads what.
+    """
+    import re as regex
+
+    sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "frontend" / "src").rglob("*.ts*")
+    )
+    unused = sorted(
+        {
+            field
+            for _path, _key, fields in CHARTED_RESPONSES
+            for field in fields
+            if not regex.search(rf"\b{regex.escape(field)}\b", sources)
+        }
+    )
+    assert not unused, f"契约表里的字段没有任何前端代码读取，条目已过期：{unused}"

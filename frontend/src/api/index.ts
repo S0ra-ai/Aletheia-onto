@@ -224,6 +224,33 @@ const normalizeSourceApi = (item: any): SourceApi => ({
  * application is this file's job, and the alternative -- correcting one page at a time --
  * is how the same defect arrived three times.
  */
+/**
+ * A workflow definition, mapped from the wire to the shape the screens use.
+ *
+ * `/workflows` sends `object_code`, `ontology_id`, `initial_state`; the definition type
+ * declared camelCase, so the list table's 业务对象 / 本体 / 初始状态 columns were blank for
+ * every row. Nothing failed -- an antd column whose `dataIndex` does not exist draws
+ * nothing -- and it stayed invisible while no workflow existed, because the check that
+ * would have caught it reads rendered rows.
+ */
+const normalizeWorkflow = (item: any): WorkflowDefinition => ({
+  ...item,
+  ontologyId: item.ontologyId ?? item.ontology_id,
+  objectCode: item.objectCode ?? item.object_code ?? '',
+  initialState: item.initialState ?? item.initial_state ?? '',
+  createdAt: item.createdAt ?? item.created_at ?? '',
+  states: item.states,
+  transitions: item.transitions,
+});
+
+const normalizeWorkflowInstance = (item: any): WorkflowInstance => ({
+  ...item,
+  workflowId: item.workflowId ?? item.workflow_id,
+  objectCode: item.objectCode ?? item.object_code ?? '',
+  instanceId: item.instanceId ?? item.instance_id ?? '',
+  currentState: item.currentState ?? item.current_state ?? '',
+});
+
 const normalizePolicy = (item: any): PermissionPolicy => ({
   id: item.id,
   roleId: item.roleId ?? item.role_id,
@@ -798,17 +825,17 @@ export const workflowApi = {
   list: async (ontologyId?: number): Promise<WorkflowDefinition[]> => {
     const params = ontologyId ? { ontologyId } : {};
     const { data } = await api.get('/workflows', { params });
-    return (data.items || []) as WorkflowDefinition[];
+    return ((data.items || []) as unknown[]).map(normalizeWorkflow);
   },
 
   get: async (id: number): Promise<WorkflowDefinition> => {
     const { data } = await api.get(`/workflows/${id}`);
-    return data as WorkflowDefinition;
+    return normalizeWorkflow(data);
   },
 
   getByObject: async (ontologyId: number, objectCode: string): Promise<WorkflowDefinition> => {
     const { data } = await api.get(`/workflows/by-object/${ontologyId}/${objectCode}`);
-    return data as WorkflowDefinition;
+    return normalizeWorkflow(data);
   },
 
   create: async (payload: {
@@ -816,7 +843,7 @@ export const workflowApi = {
     description?: string; initialState?: string;
   }): Promise<WorkflowDefinition> => {
     const { data } = await api.post('/workflows', payload);
-    return data as WorkflowDefinition;
+    return normalizeWorkflow(data);
   },
 
   delete: async (id: number): Promise<void> => {
@@ -832,7 +859,7 @@ export const workflowApi = {
 
   getInstanceState: async (workflowId: number, instanceId: string): Promise<WorkflowInstance> => {
     const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}`);
-    return data as WorkflowInstance;
+    return normalizeWorkflowInstance(data);
   },
 
   getAvailableActions: async (workflowId: number, instanceId: string): Promise<Array<{
