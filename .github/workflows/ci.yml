@@ -541,6 +541,352 @@ jobs:
 
       - name: 豁免清单必须正好覆盖「数据本来就空」的那几列
         # The allowance suppresses a finding, so a stale entry suppresses exactly what this
+        # check exists to find. The script runs the sweep once more with the allowance off and
+        # compares; it lives in `scripts/` rather than inline here because a heredoc inside a
+        # YAML block scalar needs its terminator at column zero, and this workflow failed to
+        # parse the first time it was written that way.
+        run: python scripts/check_smoke_allowance.py \
+          --base-url http://127.0.0.1:8077 --password 'CI-Smoke-Passw0rd!x'
+        env:
+          PYTHONPATH: backend
+
+  packaging:
+    name: 打包与裸装闭环（无任何 extra）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          # The floor the README claims, so "installable on the oldest supported
+          # version" is verified rather than assumed. The wheel is pure Python, so
+          # building on the floor is what the newer versions install too.
+          python-version: "3.11"
+          cache: pip
+
+      - name: 构建 wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: 在干净环境安装（不带 extra）
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+
+      - name: 校验内核确实零第三方依赖
+        # If the kernel had picked up a dependency, pip would have installed it here.
+        # Only pip's own bootstrap packages are expected.
+        run: |
+          installed=$(/tmp/clean/bin/pip list --format=freeze | grep -v -E '^(pip|setuptools|wheel|aletheia-onto)=' || true)
+          if [ -n "$installed" ]; then
+            echo "内核引入了意外的第三方依赖:"; echo "$installed"; exit 1
+          fi
+
+      - name: 裸装跑通完整闭环
+        # The strongest single check that the kernel is usable without a web server:
+        # 接入 → 建模 → 判定, with no extras installed at all.
+        run: |
+          /tmp/clean/bin/aletheia --version
+          # `--quiet` emits exactly one JSON document, so this parses without splitting
+          # a concatenated stream.
+          /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 \
+            demo --quiet --sample-db /tmp/sample.sqlite3 > /tmp/demo.json
+          cat /tmp/demo.json
+          python -c "
+          import json, sys
+          payload = json.load(open('/tmp/demo.json'))
+          assert payload['decision'] in {'approved', 'review', 'blocked'}, payload
+          print('裸装闭环通过，判定:', payload['decision'])
+          "
+
+      - name: 缺少 web extra 时给出可执行提示而非 traceback
+        run: |
+          output=$(/tmp/clean/bin/aletheia serve 2>&1 || true)
+          echo "$output"
+          echo "$output" | grep -q "web extra" || { echo "未给出安装提示"; exit 1; }
+          echo "$output" | grep -q "Traceback" && { echo "泄漏了 traceback"; exit 1; }
+          exit 0
+
+      - name: 带 web extra 时可启动
+        run: |
+          /tmp/clean/bin/pip install "$(echo dist/*.whl)[web]"
+          /tmp/clean/bin/python -c "from ontology_platform.api import app; print('HTTP 层可导入')"
+
+      - name: 裸装即可用 CSV 数据源
+        # CSV needs no driver, so it must be available without any extra. It is also the
+        # source a first evaluation uses -- getting production database credentials takes
+        # weeks, an extract takes an afternoon.
+        run: |
+          mkdir -p /tmp/extract
+          printf 'id,name,credit_status\n1,甲公司,normal\n' > /tmp/extract/customers.csv
+          printf 'id,customer_id,amount,status\n1,1,500,effective\n' > /tmp/extract/contracts.csv
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 init > /dev/null
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 \
+            connect /tmp/extract --type csv --name 导出文件 --domain 合同管理
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 model 1
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 assess 1 contract 1
+
+      - name: README 承诺的 --as-of 回溯判定可执行
+        # The README shows this command, so it is run rather than assumed. A past-tense
+        # verdict must also *echo* the moment: one that did not could be mistaken for a
+        # judgement about the present.
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          from ontology_platform.temporal import record_attribute_version
+          record_attribute_version(
+              "/tmp/platform.sqlite3", 1, "contract", "1", "amount", 99999,
+              valid_from="2026-01-01",
+          )
+          print("已写入一条历史版本")
+          PY
+          /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 \
+            assess 1 contract 1 --as-of 2026-01-31 > /tmp/asof.json
+          cat /tmp/asof.json
+          python -c "
+          import json
+          payload = json.load(open('/tmp/asof.json'))
+          assert payload['asOf'] == '2026-01-31 00:00:00', payload
+          print('回溯判定标注了时刻:', payload['asOf'])
+          "
+
+      - name: 一致性契约随包发布且可从命令行运行
+        # The contract has to be reachable by a third party. `tests/` is not in the wheel, so
+        # a contract living only there is exactly as unavailable as prose in an ADR.
+        run: |
+          /tmp/clean/bin/aletheia verify --list
+          mkdir -p /tmp/verify_src
+          printf 'id,name\n1,alpha\n' > /tmp/verify_src/things.csv
+          /tmp/clean/bin/aletheia verify data_source_adapter \
+            --source-type csv --uri /tmp/verify_src --table things
+          /tmp/clean/bin/aletheia verify retrieval_backend
+          /tmp/clean/bin/aletheia verify embedding_model
+
+      - name: 契约对不合规实现返回非零退出码
+        # Otherwise it cannot be used as a CI gate, which is most of its value.
+        run: |
+          cat > /tmp/broken_plugin.py <<'PY'
+          import sys
+          from ontology_platform.conformance import check_embedding_model
+          # Non-deterministic: two identical questions would cite different documents, so a
+          # verdict stops being reproducible.
+          import random
+          report = check_embedding_model(lambda text: [random.random()], subject="random")
+          print(report.summary())
+          sys.exit(0 if report.conformant else 1)
+          PY
+          if /tmp/clean/bin/python /tmp/broken_plugin.py; then
+            echo "不合规实现却通过了契约"; exit 1
+          fi
+          echo "契约正确拒绝了不合规实现"
+
+      - name: 部署前自检拦下免鉴权暴露
+        # The single most dangerous misconfiguration: a leftover ONTOLOGY_AUTH_DISABLED
+        # makes the whole API reachable with no token, including writeback to legacy
+        # systems. It must block, and `serve` on a non-loopback address must refuse.
+        run: |
+          touch /tmp/pf.sqlite3 && chmod 600 /tmp/pf.sqlite3
+          if ONTOLOGY_AUTH_DISABLED=1 /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 preflight; then
+            echo "认证被关闭却通过了自检"; exit 1
+          fi
+          echo "✓ 自检拦下了认证关闭"
+          if ONTOLOGY_AUTH_DISABLED=1 /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 \
+              serve --host 0.0.0.0 --port 8123; then
+            echo "serve 在不安全配置下仍然启动"; exit 1
+          fi
+          echo "✓ serve 拒绝在不安全配置下暴露"
+
+      - name: 跨源实体消解在裸装环境可用
+        # 一个对象跨两个数据源是 B 端常态（客户在 CRM、合同在 ERP）。用两个 SQLite
+        # 文件即可验证整条链路，因此无需任何 extra。
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          import pathlib, sqlite3, tempfile
+          from ontology_platform.database import connect, initialize_platform_db
+          from ontology_platform.entity_resolution import (
+              CrossSourceLink, MatchKey, declare_cross_source_link, init_entity_resolution_schema,
+          )
+          from ontology_platform.metadata import register_data_source, scan_data_source
+          from ontology_platform.ontology import generate_ontology_draft
+          from ontology_platform.semantic_kernel import build_runtime
+
+          tmp = pathlib.Path(tempfile.mkdtemp())
+          crm, erp = tmp / "crm.sqlite3", tmp / "erp.sqlite3"
+          sqlite3.connect(crm).executescript(
+              "create table customer (id integer primary key, tax_id text not null);"
+              "insert into customer values (1, 'T1');"
+          ).connection.commit()
+          sqlite3.connect(erp).executescript(
+              "create table clients (id integer primary key, taxpayer_no text not null, credit_limit numeric);"
+              "insert into clients values (9, 'T1', 500);"
+          ).connection.commit()
+
+          platform_db = tmp / "p.sqlite3"
+          initialize_platform_db(platform_db)
+          with connect(platform_db) as conn:
+              init_entity_resolution_schema(conn)
+          primary = register_data_source(platform_db, "CRM", "sqlite", str(crm), domain="客户管理")
+          scan_data_source(platform_db, primary.id)
+          secondary = register_data_source(platform_db, "ERP", "sqlite", str(erp), domain="合同管理")
+          scan_data_source(platform_db, secondary.id)
+          ontology_id = generate_ontology_draft(platform_db, primary.id)["ontology"]["id"]
+          with connect(platform_db) as conn:
+              code = conn.execute(
+                  "select bo.code from business_object bo join source_table st on st.id = bo.source_table_id"
+                  " where bo.ontology_id = ? and st.table_name = 'customer'",
+                  (ontology_id,),
+              ).fetchone()["code"]
+          declare_cross_source_link(platform_db, ontology_id, CrossSourceLink(
+              name="crm_to_erp", primary_object_code=code,
+              secondary_data_source_id=secondary.id, secondary_table="clients",
+              match_keys=(MatchKey(primary_column="tax_id", secondary_column="taxpayer_no"),),
+              prefix="erp",
+          ))
+          with connect(platform_db) as conn:
+              runtime = build_runtime(conn, ontology_id, code, "1")
+          assert runtime.record["erp_credit_limit"] == 500, runtime.record
+          # 判定必须能说出「同一实例」是按什么判定的。
+          assert "taxpayer_no" in runtime.cross_source["crm_to_erp"]["definition"]
+          print("跨源消解通过，副源字段:", runtime.record["erp_credit_limit"])
+          PY
+
+      - name: 部署前自检放行正确配置
+        # A gate nothing can pass gets bypassed rather than fixed.
+        run: |
+          ONTOLOGY_ADMIN_PASSWORD='Xk8vQ2mNp7rT4wZa' \
+          ONTOLOGY_ALLOWED_ORIGINS='https://ontology.example.com' \
+          ONTOLOGY_PLATFORM_DB_TYPE=sqlite \
+          /tmp/clean/bin/aletheia --platform-db /tmp/pf.sqlite3 preflight > /tmp/pf.json
+          python -c "
+          import json
+          payload = json.load(open('/tmp/pf.json'))
+          assert payload['ready'] is True, payload['blockers']
+          print('✓ 正确配置通过自检，检查项:', payload['checked'])
+          "
+
+      - name: doctor 说明未激活的数据源需要哪个驱动
+        # "Why is Oracle not in the list" must be answerable without reading the source.
+        run: |
+          /tmp/clean/bin/aletheia --platform-db /tmp/csv.sqlite3 doctor > /tmp/doctor.json
+          python -c "
+          import json
+          report = json.load(open('/tmp/doctor.json'))
+          declared = {item['sourceType']: item for item in report['declaredSqlSources']}
+          assert {'oracle', 'sqlserver', 'dameng', 'kingbase'} <= set(declared), declared
+          for item in declared.values():
+              assert item['available'] or item['hint'], item
+          assert 'csv' in report['sourceTypes'], report['sourceTypes']
+          print('doctor 报告完整，已声明数据源:', sorted(declared))
+          "
+
+  frontend:
+    name: 前端类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: 代码检查
+        working-directory: frontend
+        run: npm run lint
+
+      - name: 类型检查与构建
+        working-directory: frontend
+        run: npm run build
+
+  # The check for columns that render blank for every row. It lives in its own job rather
+  # than in the test suite because it needs a browser and a running server, and a suite that
+  # depends on either fails for reasons unrelated to the change. Here, a browser is the
+  # subject: if it cannot start, this job genuinely cannot do its work.
+  #
+  # It was a script run by hand, which is how eight of them -- four columns in the governance
+  # audit table, four in the model-invocation table, five in the mapping review queue, seven
+  # in the permission policy table, three in the rules table, three in the workflow list,
+  # four in the workflow transitions, eight in the tool review queue -- were found one at a
+  # time, on the days somebody happened to look.
+  ui-smoke:
+    name: 界面渲染检查（无头浏览器）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: 准备一份有数据的实例
+        # Every screen the sweep walks past needs a row, or its columns are checked against
+        # nothing -- an empty table makes every column look correct, which is how eight
+        # blank-column defects survived. `aletheia demo` covers the loop; the seeding script
+        # covers the eight screens the loop does not reach.
+        run: |
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            demo --sample-db "$RUNNER_TEMP/sample.sqlite3" --quiet
+          python scripts/seed_smoke_instance.py --platform-db "$RUNNER_TEMP/platform.sqlite3"
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            passwd --username admin --password 'CI-Smoke-Passw0rd!x'
+        env:
+          PYTHONPATH: backend
+
+      - name: 启动服务
+        run: |
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/platform.sqlite3" \
+            serve --port 8077 > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8077/health > /dev/null && exit 0
+            sleep 1
+          done
+          echo "服务未在 30 秒内就绪"; cat "$RUNNER_TEMP/server.log"; exit 1
+        env:
+          PYTHONPATH: backend
+          ONTOLOGY_ADMIN_USERNAME: admin
+          ONTOLOGY_ADMIN_PASSWORD: CI-Smoke-Passw0rd!x
+
+      - name: 逐页检查是否有整列为空的表格
+        run: |
+          TOKEN=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          USER_JSON=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}' \
+            | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["user"]))')
+          python scripts/ui_smoke.py --base-url http://127.0.0.1:8077 \
+            --token "$TOKEN" --user "$USER_JSON"
+        env:
+          PYTHONPATH: backend
+          CHROME_BIN: /usr/bin/google-chrome
+
+      - name: 豁免清单必须正好覆盖「数据本来就空」的那几列
+        # The allowance suppresses a finding, so a stale entry suppresses exactly what this
         # check exists to find: a column that used to be sparse and now renders blank for
         # another reason. Running once with no allowance turns "the allowance is honest"
         # into an assertion -- what it reports must be what the script lists.
