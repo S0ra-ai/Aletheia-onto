@@ -440,9 +440,7 @@ def test_every_contracted_field_is_still_read_by_the_frontend() -> None:
     """
     import re as regex
 
-    sources = "\n".join(
-        path.read_text(encoding="utf-8") for path in (ROOT / "frontend" / "src").rglob("*.ts*")
-    )
+    sources = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "frontend" / "src").rglob("*.ts*"))
     unused = sorted(
         {
             field
