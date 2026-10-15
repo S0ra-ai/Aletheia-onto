@@ -141,6 +141,29 @@ def _run_scenario(
             )
             break
 
+    # A workflow, entered and moved once. Without it the workflow screen is empty on a fresh
+    # install -- and it is the governance capability a reviewer most wants to see working:
+    # states, a permitted transition, and the same change appearing on the instance timeline
+    # through the mirror. An empty screen is indistinguishable from a missing feature.
+    from .workflow_permission import (
+        create_workflow,
+        enter_workflow,
+        get_available_actions,
+        init_workflow_and_permission_schema,
+        transition_instance,
+    )
+
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    workflow = create_workflow(platform_db, ontology_id, object_code, f"{domain}审批流")
+    enter_workflow(platform_db, workflow["id"], object_code, "1")
+    # The first permitted action, whatever the seeded state machine calls it: it is defined
+    # by the workflow module, not by this scenario, and naming it here would tie the demo to
+    # a detail that module is free to change.
+    actions = get_available_actions(platform_db, workflow["id"], "1")
+    if actions:
+        transition_instance(platform_db, workflow["id"], "1", actions[0]["action_code"], actor="bootstrap")
+
     return {
         "source": source,
         "samplePath": sample_path,
@@ -149,4 +172,5 @@ def _run_scenario(
         "ontologyId": ontology_id,
         "objectCode": object_code,
         "decision": (verdict.get("decision") or {}).get("status", ""),
+        "workflowId": workflow["id"],
     }

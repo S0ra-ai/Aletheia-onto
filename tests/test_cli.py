@@ -572,19 +572,27 @@ def test_the_browser_demo_produces_the_same_thing_the_terminal_one_does(capsys, 
     assert cli_payload["decision"] == result["decision"], "两条演示路径必须得出同一个结论"
     assert cli_payload["objectCode"] == result["objectCode"]
 
-    # The three capabilities the demo exists to make visible. An empty screen is
-    # indistinguishable from a missing feature, which is why the scenario writes each.
+    # The capabilities the demo exists to make visible. An empty screen is
+    # indistinguishable from a missing feature, which is why the scenario writes each --
+    # a verdict, an event, a recorded value, and a workflow that actually moves once.
     with connect(platform_db) as conn:
         ontology_id = result["ontologyId"]
         assert conn.execute("select count(*) from decision_record").fetchone()[0] == 1
         assert (
             conn.execute("select count(*) from business_event_type where ontology_id = ?", (ontology_id,)).fetchone()[0]
-            == 1
+            >= 1
         )
-        assert (
-            conn.execute("select count(*) from business_event where ontology_id = ?", (ontology_id,)).fetchone()[0] == 1
-        )
+        # One explicit event plus whatever the workflow mirrors onto the same timeline. The
+        # count is not the contract; an empty timeline is.
+        codes = {
+            row[0]
+            for row in conn.execute("select event_code from business_event where ontology_id = ?", (ontology_id,))
+        }
+        assert "signed" in codes, codes
         assert (
             conn.execute("select count(*) from attribute_version where ontology_id = ?", (ontology_id,)).fetchone()[0]
             == 1
         )
+        assert conn.execute("select count(*) from workflow_definition").fetchone()[0] == 1
+        state = conn.execute("select current_state from instance_workflow").fetchone()
+        assert state is not None and state[0] != "draft", "演示应当让实例真的流转一次"
