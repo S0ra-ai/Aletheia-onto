@@ -398,6 +398,58 @@ def change_password(platform_db: PlatformDb, username: str, current_password: st
 # -- Sessions --
 
 
+def reset_password(
+    platform_db: PlatformDb,
+    username: str,
+    new_password: str,
+    actor: str = "cli",
+) -> dict[str, Any]:
+    """Set a user's password without knowing the old one. Operator recovery.
+
+    Deliberately not reachable over HTTP. The authorization for this is access to the
+    platform database, which is the same boundary an operator already has; exposing it as an
+    endpoint would let any account holding `platform:admin` take over another administrator's
+    account, which is a privilege the role does not otherwise carry.
+
+    It exists because the first-run path can otherwise be a dead end: with no
+    `ONTOLOGY_ADMIN_PASSWORD`, `aletheia init` generates one and prints it once, and a
+    deployment that missed that line -- rotated logs, a scrolled terminal, a container that
+    restarted -- had no way back in short of editing password hashes by hand.
+
+    Strength is validated for the same reason the bootstrap path validates it: a recovery
+    command that accepts `123` is a way to leave a privileged account weak.
+    """
+    normalized = (username or "").strip().lower()
+    if not normalized:
+        raise ValueError("用户名不能为空")
+    ok, reasons = validate_password_strength(new_password)
+    if not ok:
+        raise ValueError("口令不满足强度要求: " + "、".join(reasons))
+
+    with connect(platform_db) as conn:
+        row = conn.execute("select id from platform_user where username = ?", (normalized,)).fetchone()
+        if row is None:
+            raise ValueError(f"用户不存在: {normalized}")
+        password_hash, salt, iterations = hash_password(new_password)
+        conn.execute(
+            "update platform_user set password_hash = ?, password_salt = ?, iterations = ?, updated_at = ? where id = ?",
+            (password_hash, salt, iterations, format_moment(utc_now()), int(row["id"])),
+        )
+        # A reset is what an operator does when an account may be compromised, so the sessions
+        # that account holds are exactly the ones not to keep.
+        revoked = conn.execute("update user_session set revoked = 1 where user_id = ?", (int(row["id"]),))
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            (actor, "reset_password", "platform_user", normalized, "{}"),
+        )
+    return {
+        "success": True,
+        "username": normalized,
+        "revokedSessions": int(revoked.rowcount or 0),
+        "message": f"{normalized} 的口令已重置，该账号的现有会话已全部失效。",
+    }
+
+
 def login(
     platform_db: PlatformDb,
     username: str,

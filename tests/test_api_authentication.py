@@ -21,7 +21,7 @@ from ontology_platform.auth import (
     resolve_principal,
     verify_password,
 )
-from ontology_platform.database import connect
+from ontology_platform.database import connect, initialize_platform_db
 
 ADMIN_PASSWORD = "admin-password-123"
 
@@ -383,3 +383,108 @@ def test_republishing_a_published_ontology_is_a_conflict_not_a_server_error(
     again = client.post("/demo/bootstrap", json={}, headers=headers)
     assert again.status_code == 409, again.text
     assert "派生新版本" in again.json()["detail"]
+
+
+class TestPasswordRecovery:
+    """The way back in when the one-time bootstrap password was missed.
+
+    `aletheia init` prints a generated password once. A deployment that missed it -- rotated
+    logs, a scrolled terminal, a container that restarted -- had no way back short of editing
+    password hashes by hand, which is not a documented procedure and not one anybody should
+    invent.
+    """
+
+    @staticmethod
+    def _platform_db(tmp_path: Path):
+        """A platform database initialised the way `aletheia init` initialises one.
+
+        `initialize_platform_db` alone creates the core tables; the auth schema is applied by
+        `prepare_database`, which is the list the application's startup uses. Calling only the
+        first left `platform_user` missing, which is the same mistake a deployment makes when
+        it initialises by hand.
+        """
+        from ontology_platform.bootstrap import prepare_database
+
+        platform_db = tmp_path / "platform.sqlite3"
+        initialize_platform_db(platform_db)
+        with connect(platform_db) as conn:
+            prepare_database(conn)
+        return platform_db
+
+    def test_a_reset_works_without_the_old_password(self, tmp_path: Path) -> None:
+        from ontology_platform.auth import create_user, login, reset_password
+
+        platform_db = self._platform_db(tmp_path)
+        create_user(platform_db, "operator", "Original-Pass-2026!", role_code="analyst")
+
+        result = reset_password(platform_db, "operator", "Recovered-Pass-2026!")
+
+        assert result["success"] is True
+        assert login(platform_db, "operator", "Recovered-Pass-2026!")["token"]
+
+    def test_the_old_password_stops_working(self, tmp_path: Path) -> None:
+        from ontology_platform.auth import AuthenticationError, create_user, login, reset_password
+
+        platform_db = self._platform_db(tmp_path)
+        create_user(platform_db, "operator", "Original-Pass-2026!", role_code="analyst")
+        reset_password(platform_db, "operator", "Recovered-Pass-2026!")
+
+        with pytest.raises(AuthenticationError):
+            login(platform_db, "operator", "Original-Pass-2026!")
+
+    def test_existing_sessions_are_cut_off(self, tmp_path: Path) -> None:
+        """A reset is what an operator does when an account may be compromised, so the
+        sessions it holds are exactly the ones not to keep."""
+        from ontology_platform.auth import (
+            AuthenticationError,
+            create_user,
+            login,
+            reset_password,
+            resolve_principal,
+        )
+
+        platform_db = self._platform_db(tmp_path)
+        create_user(platform_db, "operator", "Original-Pass-2026!", role_code="analyst")
+        token = login(platform_db, "operator", "Original-Pass-2026!")["token"]
+        assert resolve_principal(platform_db, token).username == "operator"
+
+        result = reset_password(platform_db, "operator", "Recovered-Pass-2026!")
+
+        assert result["revokedSessions"] >= 1
+        with pytest.raises(AuthenticationError):
+            resolve_principal(platform_db, token)
+
+    def test_a_weak_password_is_refused(self, tmp_path: Path) -> None:
+        """Recovery must not become the way to leave a privileged account weak."""
+        from ontology_platform.auth import create_user, reset_password
+
+        platform_db = self._platform_db(tmp_path)
+        create_user(platform_db, "operator", "Original-Pass-2026!", role_code="analyst")
+
+        with pytest.raises(ValueError, match="强度"):
+            reset_password(platform_db, "operator", "123")
+
+    def test_an_unknown_account_is_refused_by_name(self, tmp_path: Path) -> None:
+        from ontology_platform.auth import reset_password
+
+        platform_db = self._platform_db(tmp_path)
+
+        with pytest.raises(ValueError, match="nobody"):
+            reset_password(platform_db, "nobody", "Recovered-Pass-2026!")
+
+    def test_the_reset_is_audited(self, tmp_path: Path) -> None:
+        """A privileged action that left no trace is indistinguishable from one nobody took."""
+        from ontology_platform.auth import create_user, reset_password
+        from ontology_platform.database import connect
+
+        platform_db = self._platform_db(tmp_path)
+        create_user(platform_db, "operator", "Original-Pass-2026!", role_code="analyst")
+        reset_password(platform_db, "operator", "Recovered-Pass-2026!", actor="cli")
+
+        with connect(platform_db) as conn:
+            row = conn.execute(
+                "select actor, action, target_id from audit_log where action = 'reset_password'"
+            ).fetchone()
+
+        assert row is not None, "重置口令未写入审计"
+        assert (row["actor"], row["target_id"]) == ("cli", "operator")

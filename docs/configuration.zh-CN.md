@@ -12,7 +12,7 @@
 | 变量 | 作用 | 默认 |
 |---|---|---|
 | `ONTOLOGY_ADMIN_USERNAME` | 引导管理员用户名 | `admin` |
-| `ONTOLOGY_ADMIN_PASSWORD` | 引导管理员口令 | 未设则生成随机口令并打印 |
+| `ONTOLOGY_ADMIN_PASSWORD` | 引导管理员口令 | 未设则生成随机口令并**只打印一次**；错过了用 `aletheia passwd --username admin` 找回 |
 | `ONTOLOGY_SESSION_TTL_HOURS` | 会话有效期（小时） | `12` |
 | `ONTOLOGY_AUTH_DISABLED` | 设为 `1` 关闭全部认证，**仅限本地开发** | 未设（认证开启） |
 | `ONTOLOGY_ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔 | `http://127.0.0.1:3000,http://localhost:3000` |

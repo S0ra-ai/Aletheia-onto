@@ -396,6 +396,32 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_passwd(args: argparse.Namespace) -> int:
+    """Reset an account's password from the console.
+
+    The recovery path for a deployment whose bootstrap password was printed once and missed,
+    and for an operator who needs to cut off a session on suspicion. Console-only by design:
+    see `auth.reset_password`.
+    """
+    from .auth import reset_password
+
+    password = args.password
+    if not password:
+        # Read from the terminal rather than the command line, so the password does not land
+        # in shell history or in the process list.
+        import getpass
+
+        password = getpass.getpass(f"为 {args.username} 设置新口令: ")
+        if password != getpass.getpass("再输入一次: "):
+            return _fail("两次输入的口令不一致。")
+    try:
+        result = reset_password(_platform_db(args), args.username, password, actor=args.actor)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    except ValueError as error:
+        return _fail(str(error))
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the HTTP API."""
     try:
@@ -731,6 +757,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="只输出最终结果文档（便于脚本解析；初始化产生的引导口令仍会写入日志）",
     )
     demo.set_defaults(func=cmd_demo)
+
+    passwd = sub.add_parser("passwd", help="重置某个账号的口令（引导口令只打印一次，这是找回路径）")
+    passwd.add_argument("--username", default="admin", help="要重置的账号，默认 admin")
+    passwd.add_argument("--password", default="", help="新口令；缺省则交互式输入，避免进入 shell 历史")
+    passwd.add_argument("--actor", default="cli", help="写入审计的操作者标识")
+    passwd.set_defaults(func=cmd_passwd)
 
     serve = sub.add_parser("serve", help="启动 HTTP 服务")
     serve.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")

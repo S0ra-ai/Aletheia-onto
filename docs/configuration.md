@@ -12,7 +12,7 @@ and every one is overridable by environment variable.
 | Variable | Purpose | Default |
 |---|---|---|
 | `ONTOLOGY_ADMIN_USERNAME` | Bootstrap administrator username | `admin` |
-| `ONTOLOGY_ADMIN_PASSWORD` | Bootstrap administrator password | Unset: a random one is generated and printed once |
+| `ONTOLOGY_ADMIN_PASSWORD` | Bootstrap administrator password | Unset: a random one is generated and printed **once** — miss it and `aletheia passwd --username admin` is the way back |
 | `ONTOLOGY_SESSION_TTL_HOURS` | Session lifetime | `12` |
 | `ONTOLOGY_AUTH_DISABLED` | Set to `1` to disable all authentication. **Local development only** | Unset (authentication on) |
 | `ONTOLOGY_ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://127.0.0.1:3000,http://localhost:3000` |
