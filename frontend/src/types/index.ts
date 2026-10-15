@@ -1,5 +1,18 @@
 // 数据源相关类型
 /** What a scan reports: one entry per table, not three totals. */
+/**
+ * What `POST /data-sources/{id}/initialize` reports back.
+ *
+ * `scan` was in the payload and not in this type, so the screen that could have said
+ * 「已初始化：4 张表」 said 「已初始化」 instead -- a declared shape that omits a field is a
+ * field nobody reads.
+ */
+export interface DataSourceInitializeResult {
+  status: string;
+  scan?: { tables: number };
+  reasoningChain: ReasoningChain;
+}
+
 export interface SourceScanResult {
   dataSourceId: number;
   tables: { table: string; columns: number; foreignKeys: number }[];

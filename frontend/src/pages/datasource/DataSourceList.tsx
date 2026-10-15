@@ -4,6 +4,7 @@ import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, Th
 import { useNavigate } from 'react-router-dom';
 import { CONNECTION_STATUS, READINESS_STATUS, label } from '../../i18n/labels';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
+import { initializeReport, scanReport } from '../../i18n/text';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
 
@@ -127,22 +128,11 @@ const DataSourceList: React.FC = () => {
 
   const handleScan = async (id: number) => {
     try {
-      const result = await dataSourceApi.scan(id);
-      const tables = result?.tables?.length ?? 0;
-      const unmodelled = result?.unmodelledTables ?? [];
-      // A scan keeps the draft derived from the source rather than rebuilding it, so a source
-      // that gained a table keeps a model that has never seen it. Without this the toast said
-      // 「扫描完成」 for both cases -- and the model being out of date is the one thing the
-      // person who just scanned needs to know.
-      if (result?.modelledOntologyId && unmodelled.length) {
-        message.warning(
-          `扫描完成：${tables} 张表，其中 ${unmodelled.length} 张草案里还没有（${unmodelled.join('、')}）。` +
-            '需要时点「重新生成草案」纳入——那会清空现有草案上的规则、映射与工作流。',
-          8,
-        );
-      } else {
-        message.success(`扫描完成：${tables} 张表`);
-      }
+      // Both screens that scan report through `scanReport`, so they cannot say different
+      // things about the same response.
+      const report = scanReport(await dataSourceApi.scan(id));
+      if (report.level === 'warning') message.warning(report.text, 8);
+      else message.success(report.text);
       fetchDataSources();
     } catch (error) {
       message.error(requestErrorMessage(error, '扫描失败'));
@@ -153,8 +143,10 @@ const DataSourceList: React.FC = () => {
     setInitializingId(record.id);
     try {
       const result = await dataSourceApi.initialize(record.id);
-      message.success(`${record.name} 已初始化，可在对话模块选择`);
-      void result;
+      // `void result` was the whole use of the response: the endpoint reports how many tables
+      // it scanned and how many objects the reasoning chain has, and the message said
+      // 「已初始化」. The counts are what tell the reader it produced anything at all.
+      message.success(initializeReport(record.name, result));
       await fetchDataSources();
       navigate(`/datasource/${record.id}`);
     } catch (error) {

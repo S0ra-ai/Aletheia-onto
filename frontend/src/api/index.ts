@@ -41,6 +41,7 @@ import type {
   RuleWordImportResult,
   KnowledgeBase,
   SourceTableRows,
+  DataSourceInitializeResult,
   ReasoningChain,
   AgentRole,
   AgentChatPayload,
@@ -374,7 +375,7 @@ export const dataSourceApi = {
     return data as SourceTableRows;
   },
 
-  initialize: async (id: number): Promise<{ status: string; reasoningChain: ReasoningChain }> => {
+  initialize: async (id: number): Promise<DataSourceInitializeResult> => {
     const { data } = await api.post(`/data-sources/${id}/initialize`);
     return data;
   },

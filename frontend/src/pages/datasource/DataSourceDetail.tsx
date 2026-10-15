@@ -1,4 +1,4 @@
-import { joinSentences } from '../../i18n/text';
+import { joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   DRIFT_STATUS,
@@ -97,8 +97,11 @@ const DataSourceDetail: React.FC = () => {
     if (!id) return;
     setScanLoading(true);
     try {
-      await dataSourceApi.scan(parseInt(id));
-      message.success('扫描完成');
+      const report = scanReport(await dataSourceApi.scan(parseInt(id)));
+      // Same words as the list page: both scan, and the one that was fixed first said
+      // 「扫描完成」 while the other reported the tables. `scanReport` is where that lives now.
+      if (report.level === 'warning') message.warning(report.text, 8);
+      else message.success(report.text);
       setSchemaDrift(null);
       fetchData();
     } catch (error) {
