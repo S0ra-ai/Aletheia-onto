@@ -221,11 +221,17 @@ def cmd_publish(args: argparse.Namespace) -> int:
     from .governance import publish_ontology
 
     platform_db = _platform_db(args)
+    from .governance import ReleaseGateBlocked
+
     try:
         result = publish_ontology(platform_db, args.ontology_id, args.actor, force=args.force)
-    except ValueError as error:
-        # The gate's findings are the useful output here, not a traceback.
+    except ReleaseGateBlocked as error:
+        # Only here is force the answer. Offering it for a missing ontology -- as this used
+        # to -- points the reader at a flag that cannot help them.
         return _fail(f"发布被拒绝：{error}\n如确认要覆盖门禁，请显式传 --force（会写入审计）。")
+    except ValueError as error:
+        # The refusal's own wording is the useful output here, not a traceback.
+        return _fail(f"发布被拒绝：{error}")
     _print(result)
     return 0
 

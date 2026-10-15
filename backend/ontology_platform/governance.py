@@ -132,6 +132,15 @@ def bulk_review_semantic_mappings(
         return {"ontologyId": ontology_id, "status": status, "reviewedCount": len(rows)}
 
 
+class ReleaseGateBlocked(ValueError):
+    """Publishing was refused by a release gate, which `force=True` can override.
+
+    Distinct from the other reasons publishing is refused -- a missing ontology, a draft
+    that is not in a publishable state, unreviewed mappings. `--force` cannot fix any of
+    those, and offering it for them sends the reader to a flag that will not help.
+    """
+
+
 def publish_ontology(
     platform_db: PlatformDb,
     ontology_id: int,
@@ -168,7 +177,7 @@ def publish_ontology(
     blockers = [gate for gate in readiness["gates"] if gate["severity"] == "blocker" and not gate["passed"]]
     if blockers and not force:
         blocker_summary = "；".join(f"{gate['name']}: {gate['evidence']}" for gate in blockers[:5])
-        raise ValueError(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{blocker_summary}")
+        raise ReleaseGateBlocked(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{blocker_summary}")
 
     with connect(platform_db) as conn:
         conn.execute(

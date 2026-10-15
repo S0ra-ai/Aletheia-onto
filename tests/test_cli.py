@@ -183,12 +183,30 @@ def test_publish_refuses_when_the_gate_finds_a_blocker(capsys, platform_db, sour
 
 
 def test_the_refusal_says_what_to_do_about_it(capsys, platform_db, source_db) -> None:
+    """A refusal names the obstacle -- and offers `--force` only where `--force` applies.
+
+    The mapping review this deployment has not done is a precondition, not a gate finding:
+    `force` cannot skip it (see the note in `test_force_publish_is_audited`). The CLI offered
+    it anyway, for this and for every other refusal including a missing ontology, which sends
+    the reader to a flag that cannot help them. That is the same defect as an error naming the
+    wrong cause, one step further on.
+    """
     _json(capsys, "--platform-db", str(platform_db), "init")
     _json(capsys, "--platform-db", str(platform_db), "connect", str(source_db), "--domain", "合同管理")
     _json(capsys, "--platform-db", str(platform_db), "model", "1")
+
     _, _, error = _run(capsys, "--platform-db", str(platform_db), "publish", "1")
-    assert "--force" in error
-    assert "审核" in error or "门禁" in error
+    assert "审核" in error, error
+    assert "--force" not in error, f"强制发布对未审核映射无效，不应作为建议: {error}"
+
+
+def test_a_missing_ontology_is_not_offered_the_force_flag(capsys, platform_db) -> None:
+    """Nothing `force` does can create the ontology the caller asked for."""
+    _json(capsys, "--platform-db", str(platform_db), "init")
+    code, _, error = _run(capsys, "--platform-db", str(platform_db), "publish", "999")
+    assert code == 1
+    assert "不存在" in error, error
+    assert "--force" not in error, error
 
 
 def test_force_publish_is_audited(capsys, platform_db, source_db) -> None:

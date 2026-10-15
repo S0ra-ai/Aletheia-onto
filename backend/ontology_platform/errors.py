@@ -49,7 +49,16 @@ def describe_data_source_failure(error: Exception) -> str:
     Ordered from most specific to least, because several of these arrive as the same
     exception type with different text — `sqlite3.OperationalError` covers both "unable to
     open database file" and "no such table", which call for entirely different actions.
+
+    An exception raised by this package is passed through untouched: its message was written
+    for the user when it was raised, and restating it here produced
+    `数据源操作失败（FileSourceError）：目录不存在: /x` — the curated sentence wrapped in
+    framework wording and an internal class name. This function exists to translate text the
+    platform did *not* write: drivers, the standard library, the operating system.
     """
+    if type(error).__module__.split(".")[0] == "ontology_platform":
+        return str(error)
+
     text = str(error)
     lowered = text.lower()
 

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1521 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1522 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -47,7 +47,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_request_observability.py` | 42 | 请求标识、访问日志与结构化日志 |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 37 | The `aletheia` command line |
+| `test_cli.py` | 38 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 41 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
