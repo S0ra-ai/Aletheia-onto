@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1677 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1678 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -93,7 +93,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_ui_smoke_guards.py` | 6 | The render check's own guards, exercised without a browser |
 | `test_ci_workflow.py` | 2 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
-| `test_documented_claims.py` | 12 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 13 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
 | `test_object_service.py` | 13 | 通用业务对象浏览（HTTP 与服务层）、元数据、分页代价与行级权限过滤 |
 

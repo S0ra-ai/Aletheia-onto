@@ -129,6 +129,34 @@ def test_the_per_file_breakdown_covers_every_test_file() -> None:
     assert not wrong, f"README 分布表数量过期（文档, 实际）: {wrong}"
 
 
+def test_the_changelog_states_each_change_type_once_per_release() -> None:
+    """One `### Added` per release. The file had eleven.
+
+    Appending by hand means appending a heading, because that is what the previous round
+    left at the top of the block -- so `[Unreleased]` accumulated twenty headings, eleven
+    of them `Added`, and a reader skimming for what changed this cycle read the same
+    heading eleven times. Keep a Changelog allows one section per change type per release,
+    and nothing checked it: unlike a wrong number, a duplicated heading is not a false
+    claim, so no reader reports it and no counter catches it.
+
+    Checked per release rather than over the file, so the released sections cannot drift
+    the same way -- a heading repeated inside `[0.4.0]` is the same editing mistake.
+    """
+    seen: dict[str, list[str]] = {}
+    release = "(文件开头)"
+    for line in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            release = line[3:].strip()
+        elif line.startswith("### "):
+            seen.setdefault(release, []).append(line[4:].strip())
+
+    repeated = {name: [t for t in types if types.count(t) > 1] for name, types in seen.items()}
+    repeated = {name: sorted(set(types)) for name, types in repeated.items() if types}
+    assert not repeated, (
+        f"CHANGELOG 的同一版本下重复出现同名小节（Keep a Changelog 只允许每个版本每种类型一节）：{repeated}"
+    )
+
+
 def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
     """The endpoint count is a claim about the API's size, so it has to be a real number.
 
