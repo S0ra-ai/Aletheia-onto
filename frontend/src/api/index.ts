@@ -58,6 +58,13 @@ import type {
   Conversation,
   AnswerFeedback,
   FeedbackSummary,
+  QuotaResource,
+  TenantList,
+  TenantSummary,
+  TenantQuotas,
+  TenantStatistics,
+  SsoGroupMapping,
+  SsoStatus,
 } from '../types';
 
 const api = axios.create({
@@ -924,3 +931,60 @@ export const backupApi = {
 };
 
 export default api;
+
+export const tenancyApi = {
+  // Multi-tenancy is opt-in, so an empty list on a single-tenant deployment is the expected
+  // answer rather than a failure -- the backend says so explicitly and this passes it through.
+  list: async (): Promise<TenantList> => {
+    const { data } = await api.get('/tenants');
+    return data as TenantList;
+  },
+
+  create: async (tenant: string): Promise<TenantSummary> => {
+    const { data } = await api.post('/tenants', { tenant });
+    return data as TenantSummary;
+  },
+
+  statistics: async (tenant: string): Promise<TenantStatistics> => {
+    const { data } = await api.get(`/tenants/${encodeURIComponent(tenant)}/statistics`);
+    return data as TenantStatistics;
+  },
+
+  quotas: async (tenant: string): Promise<TenantQuotas> => {
+    const { data } = await api.get(`/tenants/${encodeURIComponent(tenant)}/quotas`);
+    return data as TenantQuotas;
+  },
+
+  quotaResources: async (): Promise<QuotaResource[]> => {
+    const { data } = await api.get('/quota-resources');
+    return ((data as { items?: QuotaResource[] }).items || []) as QuotaResource[];
+  },
+
+  setQuota: async (tenant: string, resource: string, limit: number, note = ''): Promise<unknown> => {
+    const { data } = await api.put(`/tenants/${encodeURIComponent(tenant)}/quotas`, { resource, limit, note });
+    return data;
+  },
+};
+
+export const ssoApi = {
+  status: async (): Promise<SsoStatus> => {
+    const { data } = await api.get('/auth/sso');
+    return data as SsoStatus;
+  },
+
+  listMappings: async (): Promise<SsoGroupMapping[]> => {
+    const { data } = await api.get('/auth/sso/mappings');
+    return ((data as { items?: SsoGroupMapping[] }).items || []) as SsoGroupMapping[];
+  },
+
+  // The platform decides what a group grants; the provider only asserts who the user is.
+  declare: async (providerGroup: string, roleCode: string, note = ''): Promise<unknown> => {
+    const { data } = await api.put('/auth/sso/mappings', { providerGroup, roleCode, note });
+    return data;
+  },
+
+  remove: async (providerGroup: string): Promise<unknown> => {
+    const { data } = await api.delete(`/auth/sso/mappings/${encodeURIComponent(providerGroup)}`);
+    return data;
+  },
+};

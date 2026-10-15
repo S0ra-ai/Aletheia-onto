@@ -8,6 +8,7 @@ import {
   SafetyOutlined,
   LogoutOutlined,
   UserOutlined,
+  ClusterOutlined,
   DashboardOutlined,
   ProfileOutlined,
   DeploymentUnitOutlined,
@@ -79,6 +80,7 @@ const menuItems = [
       // Not `/backup`: `/admin/backup` is an API namespace the access policy keeps out of
       // the SPA shell -- archives hold credentials -- so a page there is served raw 401
       // JSON on a refresh or a bookmark instead of the application.
+      { key: '/tenancy', icon: <ClusterOutlined />, label: '租户管理' },
       { key: '/data-backup', icon: <DatabaseOutlined />, label: '数据备份' },
       { key: '/model', icon: <SettingOutlined />, label: '模型配置' },
     ],

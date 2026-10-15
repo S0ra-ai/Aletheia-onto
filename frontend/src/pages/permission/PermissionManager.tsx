@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
-import { Card, Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, message, Tabs, Popconfirm, Badge } from 'antd';
+import { Alert, Badge, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { permissionApi, requestErrorMessage, toolApi } from '../../api';
-import type { PermissionRole, PermissionPolicy, ToolDefinition, ToolExecutionLog } from '../../types';
+import { permissionApi, requestErrorMessage, ssoApi, toolApi } from '../../api';
+import type {
+  PermissionRole,
+  PermissionPolicy,
+  SsoGroupMapping,
+  SsoStatus,
+  ToolDefinition,
+  ToolExecutionLog,
+} from '../../types';
 
 const PermissionManager: React.FC = () => {
   const [roles, setRoles] = useState<PermissionRole[]>([]);
@@ -11,6 +18,14 @@ const PermissionManager: React.FC = () => {
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [pendingReviews, setPendingReviews] = useState<ToolExecutionLog[]>([]);
   const [loading, setLoading] = useState(false);
+  // SSO lives on this page because a group mapping *is* a role assignment: it is where a
+  // provider group becomes a platform capability. It had no screen at all, so an SSO
+  // deployment had to declare it with curl -- and until one mapping existed every SSO login
+  // was refused, by design, with nothing in the product to resolve it.
+  const [sso, setSso] = useState<SsoStatus | null>(null);
+  const [ssoMappings, setSsoMappings] = useState<SsoGroupMapping[]>([]);
+  const [ssoModalOpen, setSsoModalOpen] = useState(false);
+  const [ssoForm] = Form.useForm();
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
   const [roleForm] = Form.useForm();
@@ -19,16 +34,19 @@ const PermissionManager: React.FC = () => {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [r, p, t, pr] = await Promise.all([
+      const [r, p, t, pr, ssoStatus] = await Promise.all([
         permissionApi.getRoles(),
         permissionApi.getPolicies(),
         toolApi.list(),
         toolApi.getPendingReviews(),
+        ssoApi.status().catch(() => null),
       ]);
       setRoles(r);
       setPolicies(p);
       setTools(t);
       setPendingReviews(pr);
+      setSso(ssoStatus);
+      setSsoMappings(ssoStatus?.mappings ?? []);
     } catch (error) {
       // A failure here left roles, policies, tools and pending reviews all empty with
       // nothing shown -- the whole page rendered as "there is nothing configured".
@@ -144,6 +162,30 @@ const PermissionManager: React.FC = () => {
     },
   ];
 
+  const handleDeclareSso = async (values: { providerGroup: string; roleCode: string; note?: string }) => {
+    try {
+      await ssoApi.declare(values.providerGroup.trim(), values.roleCode, values.note || '');
+      message.success('组映射已声明。未映射的身份会被拒绝，而不是给一个默认角色。');
+      setSsoModalOpen(false);
+      ssoForm.resetFields();
+      await loadAll();
+    } catch (error) {
+      // The server rejects an unknown role by name; discarding that would leave the admin
+      // guessing which role codes exist.
+      message.error(requestErrorMessage(error, '声明组映射失败'));
+    }
+  };
+
+  const handleRemoveSso = async (providerGroup: string) => {
+    try {
+      await ssoApi.remove(providerGroup);
+      message.success('组映射已移除');
+      await loadAll();
+    } catch (error) {
+      message.error(requestErrorMessage(error, '移除组映射失败'));
+    }
+  };
+
   return (
     <div>
       <Tabs items={[
@@ -175,6 +217,88 @@ const PermissionManager: React.FC = () => {
           ),
         },
         {
+          key: 'sso',
+          label: 'SSO 组映射',
+          children: (
+            <Card
+              title="单点登录"
+              extra={
+                <Button icon={<PlusOutlined />} onClick={() => setSsoModalOpen(true)} disabled={!sso?.enabled}>
+                  声明组映射
+                </Button>
+              }
+            >
+              {sso === null ? (
+                // Unknown is not "enabled". Falling through to the panel below would state
+                // that SSO is on with empty fields whenever the status request failed --
+                // the most misleading possible rendering of "we could not ask".
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="无法读取 SSO 状态"
+                  description="这不表示 SSO 已启用或已关闭，只表示这次读取失败。请刷新重试；若持续失败，查看服务端日志。"
+                />
+              ) : !sso.enabled ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="未启用 SSO"
+                  description="SSO 由环境变量配置（ONTOLOGY_SSO_ISSUER／ONTOLOGY_SSO_AUDIENCE／ONTOLOGY_SSO_SECRET），三项缺一即视为关闭。启用后在这里声明组到角色的映射。"
+                />
+              ) : (
+                <>
+                  <Alert
+                    type="success"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={`SSO 已启用：身份由提供方断言，权限由平台决定（已映射 ${sso?.mappedGroups ?? 0} 个组）`}
+                    description={
+                      <>
+                        <div>签发方：{sso?.issuer}　受众：{sso?.audience}　算法：{sso?.algorithm}（取自配置，绝不取自令牌头）</div>
+                        <div>组声明：{sso?.groupClaim}　用户标识声明：{sso?.usernameClaim}</div>
+                        <div>{sso?.note}</div>
+                      </>
+                    }
+                  />
+                  {ssoMappings.length === 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                      message="尚未声明任何组映射：所有 SSO 登录都会被拒绝"
+                      description="这是刻意设计——未映射的身份不给默认角色，否则目录里的每位员工都会被静默授予「读取平台可达的全部业务对象」。"
+                    />
+                  )}
+                  <Table
+                    dataSource={ssoMappings}
+                    rowKey="providerGroup"
+                    loading={loading}
+                    pagination={false}
+                    size="small"
+                    columns={[
+                      { title: '提供方组', dataIndex: 'providerGroup', key: 'providerGroup' },
+                      { title: '平台角色', dataIndex: 'roleCode', key: 'roleCode', render: (role: string) => <Tag color="blue">{role}</Tag> },
+                      { title: '备注', dataIndex: 'note', key: 'note' },
+                      {
+                        title: '操作',
+                        key: 'actions',
+                        width: 100,
+                        render: (_: unknown, row: SsoGroupMapping) => (
+                          <Popconfirm title="移除该组映射？未映射的组将无法登录。" onConfirm={() => handleRemoveSso(row.providerGroup)}>
+                            <Button type="link" danger>
+                              移除
+                            </Button>
+                          </Popconfirm>
+                        ),
+                      },
+                    ]}
+                  />
+                </>
+              )}
+            </Card>
+          ),
+        },
+        {
           key: 'reviews',
           label: <Badge count={pendingReviews.length} size="small">待审核</Badge>,
           children: (
@@ -184,6 +308,32 @@ const PermissionManager: React.FC = () => {
           ),
         },
       ]} />
+
+      <Modal
+        title="声明组映射"
+        open={ssoModalOpen}
+        onCancel={() => setSsoModalOpen(false)}
+        onOk={() => ssoForm.submit()}
+        width={480}
+        destroyOnClose
+      >
+        <Form form={ssoForm} layout="vertical" onFinish={handleDeclareSso}>
+          <Form.Item
+            name="providerGroup"
+            label="提供方组"
+            rules={[{ required: true, message: '请填写提供方组名' }]}
+            extra="取自令牌里的组声明，需与提供方完全一致。"
+          >
+            <Input placeholder="如 engineering" autoFocus />
+          </Form.Item>
+          <Form.Item name="roleCode" label="平台角色" rules={[{ required: true, message: '请选择角色' }]}>
+            <Select options={roles.map((role) => ({ value: role.code, label: `${role.name}（${role.code}）` }))} />
+          </Form.Item>
+          <Form.Item name="note" label="备注">
+            <Input.TextArea rows={2} placeholder="为什么这个组对应这个角色" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal title="新建角色" open={roleModalOpen} onCancel={() => setRoleModalOpen(false)} onOk={() => roleForm.submit()} width={450}>
         <Form form={roleForm} layout="vertical" onFinish={handleCreateRole}>

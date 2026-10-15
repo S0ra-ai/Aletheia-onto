@@ -109,6 +109,16 @@ An empty table says which of the two reasons applies. "Nothing is visible to you
 "your filter expression could not be evaluated" both leave no rows, and only the second is a
 misconfiguration someone can fix, so it is stated rather than left to inference.
 
+## Tenants and their quotas
+
+![Tenant management](images/12-tenants-and-quotas.png)
+
+Multi-tenancy is opt-in, so an empty list on a single-tenant deployment is the expected
+answer rather than a failure. The page says so, names the isolation model in force, and shows
+usage beside limits -- a limit without usage cannot answer the question an operator has, which
+is "is this tenant about to be blocked". A resource with no declared limit is rendered as
+不限量 rather than as a large number or as zero.
+
 ## Model configuration for custom endpoints
 
 ![Model configuration](images/08-model-config.png)

@@ -1194,3 +1194,73 @@ export interface FeedbackSummary {
   escalatedConversations: number;
   conversations: number;
 }
+
+/** One provisioned tenant, as `GET /tenants` reports it. */
+export interface TenantSummary {
+  tenant: string;
+  schema: string;
+}
+
+/** `GET /tenants`. Multi-tenancy is opt-in, so `items` is empty on a single-tenant deployment. */
+export interface TenantList {
+  items: TenantSummary[];
+  isolationModel: string;
+  dbType: string;
+}
+
+/** `GET /tenants/{tenant}/statistics` -- row counts, for verifying isolation after provisioning. */
+export interface TenantStatistics {
+  tenant: string;
+  schema: string;
+  tables: Record<string, number>;
+  totalRows: number;
+}
+
+/** One limitable resource: what it counts, and where. */
+export interface QuotaResource {
+  resource: string;
+  table: string;
+  description: string;
+}
+
+export interface QuotaState {
+  table: string;
+  description: string;
+  current: number;
+  /** `null` means unlimited, which is why it is not a large number. */
+  limit: number | null;
+  remaining: number | null;
+  exceeded: boolean;
+}
+
+/** `GET /tenants/{tenant}/quotas` -- declared limits and usage, which only mean something together. */
+export interface TenantQuotas {
+  tenant: string;
+  resources: Record<string, QuotaState>;
+  note: string;
+}
+
+/** One provider group → platform role mapping, from `GET /auth/sso/mappings`. */
+export interface SsoGroupMapping {
+  providerGroup: string;
+  roleCode: string;
+  note: string;
+}
+
+/**
+ * `GET /auth/sso` — the effective SSO state, never the secret.
+ *
+ * `mappedGroups` is part of it because SSO that verifies correctly and maps nothing rejects
+ * every login, which is otherwise indistinguishable from a signature problem.
+ */
+export interface SsoStatus {
+  enabled: boolean;
+  issuer: string;
+  audience: string;
+  algorithm: string;
+  groupClaim: string;
+  usernameClaim: string;
+  mappedGroups: number;
+  mappings: SsoGroupMapping[];
+  note: string;
+}
