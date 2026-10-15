@@ -272,7 +272,56 @@ CHARTED_RESPONSES = (
         ("code", "name", "ruleType", "scopeObjectCode", "expression", "severity", "naturalLanguage", "status"),
     ),
     ("/admin/backup/list", "backups", ("name", "size", "created_at")),
+    (
+        "/governance/audit-report?start=2020-01-01&end=2030-01-01",
+        None,
+        ("period", "decisions", "rules", "coverage", "findings"),
+    ),
+    ("/feedback", "items", ("rating", "decisionId", "status", "actor", "createdAt")),
+    ("/conversations", "items", ("title", "escalatedTo", "escalationReason", "status", "createdAt")),
+    (
+        "/ontologies/1/knowledge/documents",
+        "items",
+        ("title", "sourceName", "chunkCount", "confirmedCount", "pendingCount", "status", "createdAt"),
+    ),
+    (
+        "/ontologies/1/knowledge/entries",
+        "items",
+        ("citation", "content", "heading", "objectCode", "ruleCode", "status"),
+    ),
+    ("/tenants/acme/quotas", "resources", ("current", "limit", "remaining", "table", "description")),
+    ("/tenants/acme/statistics", None, ("tenant", "schema", "tables", "totalRows")),
+    ("/workflows/1", "transitions", ("action_code", "from_state", "to_state", "name", "guard_expression")),
+    ("/workflows/1", "states", ("code", "name", "is_terminal", "color", "sort_order")),
+    ("/workflows/1/instances/1/actions", "actions", ("action_code", "from_state", "to_state", "name")),
+    (
+        "/workflows/1/instances/1/history",
+        "items",
+        ("action_code", "from_state", "to_state", "actor", "reason", "created_at"),
+    ),
+    # Wire spellings: `/tools/pending-reviews` returns `dict(row)` and the console maps it.
+    (
+        "/tools/pending-reviews",
+        "items",
+        ("tool_code", "agent_role", "object_code", "instance_id", "status", "duration_ms", "created_at"),
+    ),
+    (
+        "/auth/sso",
+        None,
+        ("enabled", "issuer", "audience", "algorithm", "groupClaim", "usernameClaim", "mappings"),
+    ),
+    (
+        "/data-sources/1/reasoning-chain",
+        "rules",
+        ("code", "name", "ruleType", "scopeObjectCode", "severity", "naturalLanguage", "status"),
+    ),
 )
+
+# Charted, but with nothing to agree on: `/admin/backup/download/{name}` returns an archive,
+# and the table browser's columns are the *source table's*, which the page iterates rather
+# than names. Both are excluded from the coverage check below for that reason, not for
+# convenience.
+NOT_TABULAR = ("/admin/backup/download/", "/tables/")
 
 
 @pytest.fixture
@@ -364,12 +413,16 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     # workflow existed.
     from ontology_platform.workflow_permission import (
         create_workflow,
+        enter_workflow,
         init_workflow_and_permission_schema,
     )
 
     with connect(platform_db) as conn:
         init_workflow_and_permission_schema(conn)
-    create_workflow(platform_db, ontology_id, "contract", "样例审批流", initial_state="draft")
+    workflow = create_workflow(platform_db, ontology_id, "contract", "样例审批流", initial_state="draft")
+    # Entered, so the actions and history endpoints have something to return: an empty list
+    # accepts any assertion about its columns, which is the failure this file keeps meeting.
+    enter_workflow(platform_db, workflow["id"], "contract", "1")
     # `BACKUP_DIR` is read from the environment at import time and defaults to the user's
     # `~/.aletheia/backups`, so the endpoint lists whatever that machine happens to have.
     # Passing `backup_dir` to `create_backup` alone is not enough: it writes where it is
@@ -394,11 +447,58 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
             headers=headers,
             json={"roleId": 1, "objectCode": "contract", "canRead": True, "description": ""},
         ).status_code in (200, 201)
-        assert client.post(
+        registered = client.post(
             "/tools",
             headers=headers,
             json={"code": "submit", "name": "提交", "toolType": "mutation", "riskLevel": "high"},
+        )
+        assert registered.status_code in (200, 201), registered.text
+        # One execution waiting for review, so that table has a row. `/tools/pending-reviews`
+        # returns `dict(row)` and the console reads camelCase -- eight blank columns nobody
+        # saw, because on every deployment this table was empty.
+        with connect(platform_db) as conn:
+            conn.execute(
+                "insert into tool_execution_log (tool_id, tool_code, agent_role, object_code, instance_id,"
+                " input_args, result_summary, status, error, duration_ms, requires_review)"
+                " values (?, 'submit', 'reviewer', 'contract', '1', '{}', '', 'success', '', 12, 1)",
+                (int(registered.json()["id"]),),
+            )
+        # Conversations and their feedback, and one knowledge document. All three are read
+        # by screens whose tables the contract covers, and all three are empty on a fresh
+        # install -- which is what let a blank column survive in the workflow list.
+        chat = client.post(
+            "/agent/chat",
+            headers=headers,
+            json={"message": "合同的金额是多少", "objectCode": "contract", "instanceId": "1"},
+        )
+        assert chat.status_code == 200, chat.text
+        conversations = client.get("/conversations", headers=headers).json()["items"]
+        assert conversations, "聊天应当留下一条会话"
+        session_id = conversations[0]["sessionId"]
+        assert client.post(
+            "/conversations/" + session_id + "/escalate",
+            headers=headers,
+            json={"assignee": "法务部", "reason": "金额超出授权范围"},
         ).status_code in (200, 201)
+        messages = client.get(f"/conversations/{session_id}", headers=headers).json()
+        for key in ("messages", "items"):
+            if isinstance(messages, dict) and messages.get(key):
+                message_id = messages[key][-1]["id"]
+                client.post(
+                    f"/conversations/messages/{message_id}/feedback",
+                    headers=headers,
+                    json={"rating": "helpful", "note": ""},
+                )
+                break
+        assert client.post(
+            f"/ontologies/{ontology_id}/knowledge/documents",
+            headers=headers,
+            files={
+                "file": ("policy.txt", "第一条 合同金额超过一百万元的，应经部门负责人审批。".encode(), "text/plain")
+            },
+            data={"title": "合同审批制度", "objectCode": "contract"},
+        ).status_code in (200, 201)
+
         yield client
     database_module._platform_adapter = None
 
@@ -424,6 +524,11 @@ def test_the_fields_a_screen_reads_are_present_in_the_response(
         return
 
     rows = payload.get(key)
+    if isinstance(rows, dict) and rows and all(isinstance(value, dict) for value in rows.values()):
+        # A mapping of rows rather than a list of them -- the quota report is keyed by
+        # resource name and the tenant statistics by table name. The page turns either into
+        # rows with `Object.entries`, so the fields to check are the values'.
+        rows = list(rows.values())
     assert isinstance(rows, list), f"{path} 的 {key} 不是列表: {type(rows).__name__}"
     assert rows, f"{path} 没有数据行，这条契约没被真正验证到"
     missing = sorted({field for row in rows for field in fields if field not in row})
@@ -514,3 +619,85 @@ def test_no_screen_renders_a_backend_vocabulary_verbatim() -> None:
             offenders.append(f"{page.relative_to(ROOT)}:{line + 1} {{{expression}}}")
 
     assert not offenders, "界面直接渲染后端词表的值，未经 labels.ts 翻译：\n  " + "\n  ".join(offenders)
+
+
+def _api_method_paths() -> dict[str, tuple[str, str]]:
+    """`{"permissionApi.getPolicies": ("GET", "/permissions/policies")}`, from the source."""
+    import re as regex
+
+    api_source = (ROOT / "frontend" / "src" / "api" / "index.ts").read_text(encoding="utf-8")
+    urls: dict[str, tuple[str, str]] = {}
+    for obj in regex.finditer(r"export const (\w+Api) = \{(.*?)\n\};", api_source, regex.DOTALL):
+        name, body = obj.group(1), obj.group(2)
+        for method in regex.finditer(
+            r"^\s{2}(\w+):\s*(?:async\s*)?\([^)]*\)[^{]*\{(.*?)\n  \},", body, regex.DOTALL | regex.MULTILINE
+        ):
+            verb = regex.search(r"api\.(get|post|put|patch|delete)\(\s*[`'\"]([^`'\"]+)", method.group(2))
+            if verb:
+                urls[f"{name}.{method.group(1)}"] = (verb.group(1).upper(), verb.group(2))
+    return urls
+
+
+def _matches(template: str, path: str) -> bool:
+    """Whether a concrete path fills a template's slots.
+
+    Segment-wise, not string-wise: `/tenants/acme/quotas` fills
+    `/tenants/${tenant}/quotas`, and `/ontologies/1/objects/contract/instances/1/events` fills
+    the four-slot template. Rewriting one side into placeholder form would have to guess which
+    segments are values; comparing position by position does not.
+    """
+
+    def segments(value: str) -> list[str]:
+        return [part for part in value.split("?")[0].split("/") if part]
+
+    def is_slot(part: str) -> bool:
+        return part.startswith("${") or (part.startswith("{") and part.endswith("}")) or part.isdigit()
+
+    left, right = segments(template), segments(path)
+    if len(left) != len(right):
+        return False
+    return all(is_slot(a) or is_slot(b) or a == b for a, b in zip(left, right, strict=True))
+
+
+def _charted_endpoints() -> set[str]:
+    """Every GET template a page that charts a table calls, from the source.
+
+    Derived rather than listed: a page's `dataIndex` values say it charts something, and the
+    API methods it calls say what. The link runs through `api/index.ts`, where each method
+    names its URL, so a new screen is covered the moment it exists rather than when somebody
+    remembers to add it here.
+    """
+    import re as regex
+
+    urls = _api_method_paths()
+    charted: set[str] = set()
+    for page in sorted((ROOT / "frontend" / "src" / "pages").rglob("*.tsx")):
+        text = page.read_text(encoding="utf-8")
+        if "dataIndex:" not in text:
+            continue
+        for api_object, method_name in set(regex.findall(r"\b(\w+Api)\.(\w+)", text)):
+            entry = urls.get(f"{api_object}.{method_name}")
+            if entry is None or entry[0] != "GET":
+                continue
+            path = entry[1]
+            if any(marker in path for marker in NOT_TABULAR):
+                continue
+            charted.add(path)
+    return charted
+
+
+def test_every_endpoint_a_screen_charts_is_in_the_contract() -> None:
+    """The table covered what somebody remembered; this requires it to cover what is read.
+
+    Adding a field to a screen was already caught -- the endpoint has to be listed, and a
+    stale entry fails. What was not caught is adding a *screen*, or pointing an existing one
+    at an endpoint nobody had listed: the table stayed green while covering less of the
+    application than it claimed to.
+    """
+    covered = [path for path, _key, _fields in CHARTED_RESPONSES]
+    missing = sorted(
+        template for template in _charted_endpoints() if not any(_matches(template, path) for path in covered)
+    )
+    assert not missing, (
+        "以下端点有页面在读，但不在响应契约表里——它们可以停止发送某个字段而测试仍然全绿：\n  " + "\n  ".join(missing)
+    )

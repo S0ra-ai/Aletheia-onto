@@ -45,6 +45,8 @@ import type {
   AgentChatPayload,
   AgentChatResult,
   WorkflowDefinition,
+  WorkflowState,
+  WorkflowTransition,
   WorkflowInstance,
   WorkflowHistoryItem,
   PermissionRole,
@@ -233,14 +235,36 @@ const normalizeSourceApi = (item: any): SourceApi => ({
  * nothing -- and it stayed invisible while no workflow existed, because the check that
  * would have caught it reads rendered rows.
  */
+const normalizeWorkflowState = (item: any): WorkflowState => ({
+  ...item,
+  workflowId: item.workflowId ?? item.workflow_id,
+  isTerminal: item.isTerminal ?? item.is_terminal ?? 0,
+  sortOrder: item.sortOrder ?? item.sort_order ?? 0,
+});
+
+const normalizeWorkflowTransition = (item: any): WorkflowTransition => ({
+  ...item,
+  workflowId: item.workflowId ?? item.workflow_id,
+  actionCode: item.actionCode ?? item.action_code ?? '',
+  fromState: item.fromState ?? item.from_state ?? '',
+  toState: item.toState ?? item.to_state ?? '',
+  guardExpression: item.guardExpression ?? item.guard_expression ?? '',
+  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
+  reviewRole: item.reviewRole ?? item.review_role ?? '',
+  sortOrder: item.sortOrder ?? item.sort_order ?? 0,
+});
+
 const normalizeWorkflow = (item: any): WorkflowDefinition => ({
   ...item,
   ontologyId: item.ontologyId ?? item.ontology_id,
   objectCode: item.objectCode ?? item.object_code ?? '',
   initialState: item.initialState ?? item.initial_state ?? '',
   createdAt: item.createdAt ?? item.created_at ?? '',
-  states: item.states,
-  transitions: item.transitions,
+  // The nested rows go through their own normalisers. Spreading `...item` and passing
+  // `item.states` through left them in wire spelling, so the transition table's 动作 / 来源 /
+  // 目标 / 需审核 columns were blank while the definition above them was translated.
+  states: (item.states || []).map(normalizeWorkflowState),
+  transitions: (item.transitions || []).map(normalizeWorkflowTransition),
 });
 
 const normalizeWorkflowInstance = (item: any): WorkflowInstance => ({
@@ -249,6 +273,23 @@ const normalizeWorkflowInstance = (item: any): WorkflowInstance => ({
   objectCode: item.objectCode ?? item.object_code ?? '',
   instanceId: item.instanceId ?? item.instance_id ?? '',
   currentState: item.currentState ?? item.current_state ?? '',
+});
+
+const normalizeToolExecution = (item: any): ToolExecutionLog => ({
+  ...item,
+  toolId: item.toolId ?? item.tool_id,
+  toolCode: item.toolCode ?? item.tool_code ?? '',
+  agentRole: item.agentRole ?? item.agent_role ?? '',
+  objectCode: item.objectCode ?? item.object_code ?? '',
+  instanceId: item.instanceId ?? item.instance_id ?? '',
+  inputArgs: item.inputArgs ?? item.input_args ?? '',
+  resultSummary: item.resultSummary ?? item.result_summary ?? '',
+  durationMs: item.durationMs ?? item.duration_ms ?? 0,
+  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
+  reviewedBy: item.reviewedBy ?? item.reviewed_by ?? null,
+  reviewedAt: item.reviewedAt ?? item.reviewed_at ?? null,
+  reviewDecision: item.reviewDecision ?? item.review_decision ?? '',
+  createdAt: item.createdAt ?? item.created_at ?? '',
 });
 
 const normalizePolicy = (item: any): PermissionPolicy => ({
@@ -954,7 +995,7 @@ export const toolApi = {
   getPendingReviews: async (limit?: number): Promise<ToolExecutionLog[]> => {
     const params = limit ? { limit } : {};
     const { data } = await api.get('/tools/pending-reviews', { params });
-    return (data.items || []) as ToolExecutionLog[];
+    return ((data.items || []) as unknown[]).map(normalizeToolExecution);
   },
 
   reviewExecution: async (logId: number, payload: {
