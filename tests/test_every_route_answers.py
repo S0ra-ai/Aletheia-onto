@@ -22,14 +22,21 @@ value of the right type. That reaches the handlers, which is where the failures 
 The `assert_reached` below is what keeps this honest -- if a future change makes most
 requests fail validation again, the sweep says so instead of reporting zero crashes.
 
+Uploads are driven with real files
+----------------------------------
+
+`multipart/form-data` operations get a file that is actually a document, not a stub: a
+handler that parses one has a rejection path for anything else, and a sweep that trips
+that path has not tested the parser. The `.docx` is built with the same library the
+importer uses.
+
 What it does not cover
 ----------------------
 
-*Multipart* uploads are skipped rather than faked: a file that is not really a document
-exercises the rejection path, which the write contract already drives with a real file.
-And a handler can still be broken for input this generator would never produce -- a
-valid `ontologyId` that exists, an expression that parses. The response contract covers
-the thirty endpoints a screen actually calls, with the bodies those screens send.
+A handler can still be broken for input this generator would never produce -- an
+`ontologyId` that exists in a table the fixture did not seed, a rule expression that
+parses. The response contract covers the thirty endpoints a screen actually calls, with
+the bodies those screens send, which is where a value nobody could invent is written down.
 """
 
 from __future__ import annotations
@@ -101,6 +108,49 @@ def _value_for(schema: dict[str, Any], components: dict[str, Any], depth: int = 
     return {name: _value_for(properties.get(name, {}), components, depth + 1) for name in schema.get("required", [])}
 
 
+def _docx_bytes() -> bytes:
+    """A rule document the importer can actually parse.
+
+    Made with the same library the importer reads, so the handler runs its parser rather
+    than its rejection path -- a sweep that only ever trips the rejection path has not
+    tested the parser at all.
+    """
+    from io import BytesIO
+
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("自定义规则（渲染检查）")
+    table = document.add_table(rows=1, cols=7)
+    headers = ["规则编码", "规则名称", "适用对象", "规则类型", "规则表达式", "严重程度", "自然语言说明"]
+    for index, header in enumerate(headers):
+        table.rows[0].cells[index].text = header
+    row = table.add_row().cells
+    values = ["route_sweep_rule", "渲染检查规则", "contract", "校验", "amount > 0", "警告", "金额必须大于零。"]
+    for index, value in enumerate(values):
+        row[index].text = value
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def _multipart_for(schema: dict[str, Any], components: dict[str, Any]) -> tuple[dict, dict]:
+    if "$ref" in schema:
+        schema = components.get(schema["$ref"].rsplit("/", 1)[-1], {})
+    fields: dict[str, Any] = {}
+    files: dict[str, Any] = {}
+    for name, property_schema in schema.get("properties", {}).items():
+        if property_schema.get("type") == "string" and property_schema.get("format") == "binary":
+            files[name] = (
+                "route-sweep.docx",
+                _docx_bytes(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        else:
+            fields[name] = _value_for(property_schema, components)
+    return fields, files
+
+
 def test_no_route_crashes_on_a_request_built_from_its_own_schema(seeded_app: TestClient) -> None:
     import ontology_platform.api as api_module
 
@@ -125,13 +175,19 @@ def test_no_route_crashes_on_a_request_built_from_its_own_schema(seeded_app: Tes
                 if parameter.get("in") == "query" and parameter.get("required")
             }
             media = operation.get("requestBody", {}).get("content", {})
-            if media and "application/json" not in media:
-                continue  # a multipart upload, driven properly by the response contract
-            body = _value_for(media["application/json"].get("schema", {}), components) if media else None
+            extra: dict[str, Any] = {}
+            if "application/json" in media:
+                extra["json"] = _value_for(media["application/json"].get("schema", {}), components)
+            elif "multipart/form-data" in media:
+                extra["data"], extra["files"] = _multipart_for(
+                    media["multipart/form-data"].get("schema", {}), components
+                )
+            elif media:
+                continue
 
             requested += 1
             try:
-                response = seeded_app.request(method.upper(), url, params=params, json=body)
+                response = seeded_app.request(method.upper(), url, params=params, **extra)
             except Exception as error:
                 crashes.append(f"{method.upper()} {path} raised {type(error).__name__}: {error}")
                 continue
