@@ -279,11 +279,39 @@ const SemanticService: React.FC = () => {
                 </Descriptions>
                 <Divider />
                 <Title level={5}>属性</Title>
-                <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8 }}>
-                  {JSON.stringify(explainResult.attributes, null, 2)}
-                </pre>
-                <Title level={5}>解释</Title>
+                {/* This printed the attributes through `JSON.stringify` in a `<pre>`, because
+                    the response type declared them as an untyped blob. A type that says
+                    "some object" produces a renderer that treats it as one -- and the
+                    fields being thrown away (the attribute name, the source column each
+                    value was read from) are the ones that make the mapping checkable
+                    rather than asserted. */}
+                <Table
+                  size="small"
+                  rowKey="attributeCode"
+                  pagination={false}
+                  dataSource={explainResult.attributes}
+                  columns={[
+                    { title: '属性', dataIndex: 'attributeName', key: 'attributeName' },
+                    {
+                      title: '编码',
+                      dataIndex: 'attributeCode',
+                      key: 'attributeCode',
+                      render: (code: string) => <Typography.Text code>{code}</Typography.Text>,
+                    },
+                    {
+                      title: '来源列',
+                      dataIndex: 'sourceColumn',
+                      key: 'sourceColumn',
+                      render: (column: string) => <Typography.Text code>{column}</Typography.Text>,
+                    },
+                    { title: '值', dataIndex: 'value', key: 'value' },
+                  ]}
+                />
+                <Title level={5} style={{ marginTop: 16 }}>解释</Title>
                 <Alert message={explainResult.explanation} type="info" />
+                <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+                  在「对象浏览」中点击任一实例的「解释」，可以看到同一份解释加上事件历史与取值沿革。
+                </Typography.Paragraph>
               </Card>
             )}
           </Card>

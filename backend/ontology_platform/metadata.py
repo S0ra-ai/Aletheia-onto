@@ -1,17 +1,31 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
 from .context import PlatformDb
 from .credentials import redact_connection_uri
 from .database import connect, last_insert_id
 from .errors import describe_data_source_failure
+from .schema import dialect_of, quote_identifier, referencing_columns
+
+logger = logging.getLogger(__name__)
+
+
+class SourceScanRefused(ValueError):
+    """A scan that would destroy work somebody has already approved.
+
+    A distinct type because the HTTP layer maps `ValueError` to 404, and "the source does
+    not exist" is a different answer from "the source is in use by a published ontology":
+    the first sends the reader looking for a missing row, the second tells them to derive a
+    new version. One exception type for both makes the second unactionable.
+    """
 
 
 @dataclass(frozen=True)
@@ -502,6 +516,7 @@ def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, 
         except Exception as error:
             raise ValueError(f"数据源扫描失败: {describe_data_source_failure(error)}") from error
 
+        _assert_no_governed_ontology(platform, data_source_id)
         _delete_derived_drafts(platform, data_source_id)
         platform.execute(
             "delete from source_foreign_key where source_table_id in (select id from source_table where data_source_id = ?)",
@@ -1011,13 +1026,64 @@ def _row_to_source_api(row: sqlite3.Row) -> SourceApi:
     )
 
 
+def _governed_ontologies(platform: Any, data_source_id: int) -> list[Any]:
+    """Ontologies on this source that are past the draft stage.
+
+    A re-scan replaces `source_table` and `source_column` rows, so every object and
+    attribute bound to them loses its anchor. For a draft that is the point -- the model is
+    regenerated from the fresh scan. For anything a reviewer has signed off on it is
+    destruction of the artifact the governance story is built on.
+    """
+    return platform.execute(
+        """
+        select distinct o.id, o.name, o.version, o.status
+        from ontology o
+        join business_object bo on bo.ontology_id = o.id
+        join source_table st on st.id = bo.source_table_id
+        where st.data_source_id = ? and o.status <> 'draft'
+        order by o.id
+        """,
+        (data_source_id,),
+    ).fetchall()
+
+
+def _assert_no_governed_ontology(platform: Any, data_source_id: int) -> None:
+    """Refuse a re-scan that would gut an ontology somebody has already approved.
+
+    This was not refused, and it did not fail either: re-scanning a source with a published
+    ontology deleted every object, attribute, rule and mapping behind it and left the
+    ontology row in place, still marked published. The damage was therefore invisible in
+    the one place a reader looks -- the ontology list still showed the version -- and the
+    published model was gone.
+
+    Refused rather than made non-destructive, because the two are not equivalent: an
+    upsert would keep the bindings for columns that still exist and silently drop the ones
+    that do not, and a published verdict citing a dropped column must fail loudly or not at
+    all. The way out is to derive a new version, which is what the platform already asks
+    for whenever a published ontology needs to change.
+    """
+    governed = _governed_ontologies(platform, data_source_id)
+    if not governed:
+        return
+    listed = "、".join(f"{row['name']} v{row['version']}（{row['status']}）" for row in governed)
+    raise SourceScanRefused(
+        f"该数据源的来源元数据被 {listed} 引用，重新扫描会重建来源表与来源列，"
+        "使已发布或审核中的本体失去绑定。请先派生新版本再扫描，或改在草案不在的本体上执行。"
+    )
+
+
 def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) -> None:
+    # Drafts only, which is what the name says and previously was not what the code did:
+    # the query collected every ontology with an object on this source and deleted its
+    # contents, while the final statement deleted the ontology row only when it was still a
+    # draft. A published ontology was emptied and left standing.
     ontology_rows = platform.execute(
         """
         select distinct bo.ontology_id
         from business_object bo
         join source_table st on st.id = bo.source_table_id
-        where st.data_source_id = ?
+        join ontology o on o.id = bo.ontology_id
+        where st.data_source_id = ? and o.status = 'draft'
         """,
         (data_source_id,),
     ).fetchall()
@@ -1036,12 +1102,55 @@ def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) ->
         platform.execute("delete from business_rule where ontology_id = ?", (ontology_id,))
         platform.execute("delete from semantic_mapping where ontology_id = ?", (ontology_id,))
         platform.execute("delete from business_relation where ontology_id = ?", (ontology_id,))
+        object_ids = [
+            row["id"]
+            for row in platform.execute(
+                "select id from business_object where ontology_id = ?", (ontology_id,)
+            ).fetchall()
+        ]
+        # Children of the objects first, via the catalog: an attribute version, an event
+        # type or an instance event all point at the object being removed, and pointing at
+        # the ontology too does not make them safe to leave behind.
+        removed_children = _delete_referencing_rows(platform, "business_object", object_ids)
         platform.execute(
             "delete from business_attribute where object_id in (select id from business_object where ontology_id = ?)",
             (ontology_id,),
         )
         platform.execute("delete from business_object where ontology_id = ?", (ontology_id,))
+        removed_children += _delete_referencing_rows(platform, "ontology", [ontology_id])
+        if removed_children:
+            logger.debug("丢弃派生草案 %s 时一并清除了: %s", ontology_id, "、".join(removed_children))
         platform.execute("delete from ontology where id = ? and status = 'draft'", (ontology_id,))
+
+
+def _delete_referencing_rows(platform: Any, parent: str, ids: Sequence[int]) -> list[str]:
+    """Delete rows whose foreign key points at rows of `parent`, asking the catalog which.
+
+    The explicit deletes above cover what this module knows about. This covers what it does
+    not: every table a later feature module added with a foreign key to the ontology or its
+    objects. Event types, instance events and attribute versions were all added after this
+    function was written, and none of them was in the list -- so re-scanning a source whose
+    draft had any of them failed with `FOREIGN KEY constraint failed`, a message that names
+    neither the table that blocked the delete nor the feature that owns it.
+
+    Returns what it removed, so the caller can log it. Deleting from a table nobody listed
+    should be visible somewhere rather than inferred from a row count later.
+    """
+    if not ids:
+        return []
+    dialect = dialect_of(platform.raw())
+    touched: list[str] = []
+    for child, column in referencing_columns(platform.raw(), parent):
+        quoted_table = quote_identifier(child, dialect)
+        quoted_column = quote_identifier(column, dialect)
+        removed = 0
+        for parent_id in ids:
+            cursor = platform.execute(f"delete from {quoted_table} where {quoted_column} = ?", (parent_id,))
+            # `rowcount` is -1 on drivers that do not report it, and a negative is not a count.
+            removed += max(getattr(cursor, "rowcount", 0), 0)
+        if removed:
+            touched.append(f"{child}({column})x{removed}")
+    return touched
 
 
 def _store_table(platform: sqlite3.Connection, data_source_id: int, table: SourceTableInfo) -> int:

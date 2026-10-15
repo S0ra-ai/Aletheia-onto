@@ -259,3 +259,57 @@ def table_exists(conn: Any, table: str) -> bool:
     except Exception as error:  # pragma: no cover - defensive
         logger.debug("检查表 %s 是否存在失败: %s", table, error)
         return False
+
+
+def quote_identifier(name: str, dialect: str) -> str:
+    """Quote a catalog identifier for interpolation into a statement.
+
+    Names returned by a dialect's own catalog cannot contain a quote character, so this is
+    belt-and-braces: the check makes a hostile name raise rather than escape. Only ever
+    used on names this platform itself created.
+    """
+    if not name or '"' in name or "`" in name:
+        raise ValueError(f"不安全的标识符: {name!r}")
+    return f"`{name}`" if dialect == MYSQL else f'"{name}"'
+
+
+def referencing_columns(conn: Any, table: str) -> list[tuple[str, str]]:
+    """Every `(child_table, column)` whose foreign key points at `table`.
+
+    Asked of the live catalog rather than kept as a list, because a list is a claim that
+    goes stale the moment a feature module adds a table. It did: the cleanup that discards
+    a derived draft ontology deleted rules, mappings, relations, attributes, objects and
+    the ontology, and knew nothing about event types, instance events or attribute
+    versions -- all added later, all with a foreign key. Re-scanning a source then failed
+    with `FOREIGN KEY constraint failed`, a message that names neither the table that
+    blocked the delete nor the feature that owns it.
+    """
+    dialect = dialect_of(conn)
+    try:
+        if dialect == SQLITE:
+            tables = [
+                row[0]
+                for row in conn.execute(
+                    "select name from sqlite_master where type = 'table' and name not like 'sqlite_%'"
+                ).fetchall()
+            ]
+            found: list[tuple[str, str]] = []
+            for child in tables:
+                # `PRAGMA` takes no bound parameters, hence the quoting.
+                quoted = quote_identifier(child, dialect)
+                for row in conn.execute(f"pragma foreign_key_list({quoted})").fetchall():
+                    if row[2] == table:
+                        found.append((child, row[3]))
+            return found
+
+        scope = "database()" if dialect == MYSQL else "current_schema()"
+        query = (
+            "select table_name, column_name from information_schema.key_column_usage"
+            f" where referenced_table_name = %s and table_schema = {scope}"
+        )
+        with conn.cursor() as cur:
+            cur.execute(query, (table,))
+            return [(row[0], row[1]) for row in cur.fetchall()]
+    except Exception as error:  # pragma: no cover - defensive
+        logger.debug("枚举引用 %s 的外键失败: %s", table, error)
+        return []

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Card, Empty, Select, Space, Table, Tag, Typography } from 'antd';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
 import type { BusinessAttribute, BusinessObject, Ontology } from '../../types';
+import InstanceDrawer from './InstanceDrawer';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -37,6 +38,7 @@ const ObjectBrowser: React.FC = () => {
   const [rowFilterError, setRowFilterError] = useState('');
   const [sourceType, setSourceType] = useState('');
   const [resolver, setResolver] = useState<Record<string, unknown> | null>(null);
+  const [openedInstance, setOpenedInstance] = useState<string | undefined>();
 
   const loadOntologies = useCallback(async () => {
     try {
@@ -117,6 +119,18 @@ const ObjectBrowser: React.FC = () => {
         return String(value);
       },
     })),
+    {
+      title: '操作',
+      key: 'actions',
+      width: 110,
+      fixed: 'right' as const,
+      render: (_: unknown, row: InstanceRow) => (
+        // A row that does nothing when clicked is a dead end: the reader can see the values
+        // and cannot ask where any of them came from, which is the question this platform
+        // exists to answer.
+        <Typography.Link onClick={() => setOpenedInstance(row.instanceId)}>解释</Typography.Link>
+      ),
+    },
   ];
 
   return (
@@ -216,6 +230,15 @@ const ObjectBrowser: React.FC = () => {
           />
         )}
       </Card>
+
+      {openedInstance && objectCode && ontologyId && (
+        <InstanceDrawer
+          ontologyId={ontologyId}
+          objectCode={objectCode}
+          instanceId={openedInstance}
+          onClose={() => setOpenedInstance(undefined)}
+        />
+      )}
     </div>
   );
 };

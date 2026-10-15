@@ -18,6 +18,8 @@ import type {
   ReleaseReadinessResult,
   DemoBootstrapResult,
   InstanceExplainResult,
+  InstanceEventsResult,
+  InstanceVersionsResult,
   InstanceAssessResult,
   SemanticObjectInstancesResult,
   SemanticObjectInstanceResult,
@@ -508,6 +510,37 @@ export const semanticApi = {
   ): Promise<DecisionConsistencyResult> => {
     const { data } = await api.post(`/semantic/objects/${objectCode}/consistency`, payload);
     return data as DecisionConsistencyResult;
+  },
+
+  /**
+   * An instance's full event history.
+   *
+   * Separate from the `timeline` inside `explain`, which is capped at twenty entries
+   * because an explanation is read interactively. The two are not the same list, and a
+   * screen that showed the excerpt while claiming to show the history would be wrong in a
+   * way only a long-lived instance would reveal.
+   */
+  instanceEvents: async (
+    ontologyId: number,
+    objectCode: string,
+    instanceId: string,
+  ): Promise<InstanceEventsResult> => {
+    const { data } = await api.get(
+      `/ontologies/${ontologyId}/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}/events`,
+    );
+    return data as InstanceEventsResult;
+  },
+
+  /** Which value an attribute held, and when. Recorded, never derived. */
+  instanceVersions: async (
+    ontologyId: number,
+    objectCode: string,
+    instanceId: string,
+  ): Promise<InstanceVersionsResult> => {
+    const { data } = await api.get(
+      `/ontologies/${ontologyId}/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}/versions`,
+    );
+    return data as InstanceVersionsResult;
   },
 };
 

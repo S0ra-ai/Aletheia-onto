@@ -36,6 +36,7 @@ from ..knowledge_base import (
     list_knowledge_bases,
 )
 from ..metadata import (
+    SourceScanRefused,
     analyze_schema_drift,
     assess_data_source_readiness,
     check_business_api_gateway,
@@ -278,6 +279,11 @@ def download_kernel_package(data_source_id: int) -> Response:
 def scan_source(data_source_id: int) -> dict[str, object]:
     try:
         return scan_data_source(platform_db(), data_source_id)
+    except SourceScanRefused as error:
+        # 409, not 404: nothing is missing. The request conflicts with the current state --
+        # a published ontology is bound to this source -- and the reader needs to be told
+        # what to do about it rather than sent looking for a row that is not there.
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

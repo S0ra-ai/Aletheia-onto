@@ -1,6 +1,6 @@
 # Screens and output
 
-> 13 screenshots, each captioned with what it proves rather than how it looks.
+> 14 screenshots, each captioned with what it proves rather than how it looks.
 
 Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 
@@ -135,6 +135,21 @@ The findings come first, because the backend already states what is worth lookin
 away the analysis. The period has no "everything" option: a report whose coverage is unstated
 gets read as a statement about a period it does not describe, and the header repeats the
 half-open boundary so the reader never has to infer it.
+
+## One instance, explained
+
+![Instance explanation](images/14-instance-explanation.png)
+
+The platform's central claim rendered as a screen: a business object is consumed through one
+stable interface, and every conclusion about it can be traced. Each attribute names the
+column it was read from, so a wrong value is a mapping question rather than a data question.
+
+Below that sit the two questions a reader arrives with next. "How did it get that way" is
+the event history -- recorded against declared event types, because a stream of free-form
+strings can be stored but not reasoned about. "What did it say last month" is the value
+history: verdicts can be produced as of a past instant, so a reviewer who cannot see the old
+values cannot check the old verdict. Both are read-only here; recording them is a modelling
+act and belongs on a screen that says what it is doing.
 
 ## Model configuration for custom endpoints
 

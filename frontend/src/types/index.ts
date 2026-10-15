@@ -433,12 +433,99 @@ export interface BusinessRule {
 }
 
 // 语义服务相关类型
+
+/** One declared attribute of an instance, with the column it was read from. */
+export interface InstanceExplainAttribute {
+  attributeCode: string;
+  attributeName: string;
+  sourceColumn: string;
+  value: unknown;
+}
+
+/**
+ * One event in an instance's history, as `/explain` embeds it.
+ *
+ * `eventName` and `categoryLabel` are resolved server-side: an event whose type was never
+ * declared still appears, named by its code, rather than being dropped.
+ */
+export interface InstanceTimelineEntry {
+  eventCode: string;
+  eventName: string;
+  category: string;
+  categoryLabel: string;
+  actor: string;
+  occurredAt: string;
+}
+
+/**
+ * `GET /semantic/objects/{code}/instances/{id}/explain`.
+ *
+ * Every field here was read off a live response. It previously declared
+ * `attributes: Record<string, unknown>` and a `relations` array that the endpoint does not
+ * send -- and a type that describes a blob produces a renderer that treats it as one: the
+ * instance page printed the whole thing through `JSON.stringify`, discarding the attribute
+ * names, the source column of each value, and the source binding the explanation exists to
+ * establish. A vague type is not a neutral placeholder.
+ */
 export interface InstanceExplainResult {
+  ontology: { id: number; name: string; version: string };
+  object: { code: string; name: string };
   objectCode: string;
   instanceId: string;
-  attributes: Record<string, unknown>;
-  relations: Record<string, unknown>[];
+  source: { table: string; primaryKey: string; instanceId: string };
+  attributes: InstanceExplainAttribute[];
+  /** Declared ancestors, nearest first, so an explanation can say which type's rules apply. */
+  ancestors: string[];
+  timeline: InstanceTimelineEntry[];
   explanation: string;
+}
+
+/** `GET /ontologies/{o}/objects/{c}/instances/{i}/events` -- the full history, not the excerpt. */
+export interface InstanceEvent {
+  id: number;
+  eventCode: string;
+  eventName: string;
+  category: string;
+  categoryLabel: string;
+  actor: string;
+  payload: Record<string, unknown>;
+  /** Set when the payload does not match the declared fields; empty when it does. */
+  payloadWarning: string;
+  occurredAt: string;
+  recordedAt: string;
+  correlationId: string;
+}
+
+export interface InstanceEventsResult {
+  items: InstanceEvent[];
+  total: number;
+  truncated: boolean;
+}
+
+/**
+ * One recorded attribute value over a period. `validTo: null` means it is still current --
+ * the endpoint has already closed the previous version, so this is a fact rather than an
+ * inference the reader has to make.
+ */
+export interface InstanceAttributeVersion {
+  versionId: number;
+  attributeCode: string;
+  value: unknown;
+  valueType: string;
+  validFrom: string;
+  validTo: string | null;
+  recordedAt: string;
+  actor: string;
+  source: string;
+  openEnded: boolean;
+}
+
+export interface InstanceVersionsResult {
+  objectCode: string;
+  instanceId: string;
+  versions: InstanceAttributeVersion[];
+  coverage: Record<string, { earliest: string; latestFrom: string; openEnded: boolean; versionCount: number }>;
+  truncated: boolean;
 }
 
 export interface SemanticObjectAttribute {

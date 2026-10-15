@@ -20,6 +20,7 @@ from ontology_platform.contract_documents import parse_rule_docx_bytes
 from ontology_platform.coverage import build_semantic_coverage
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.decisions import list_decisions
+from ontology_platform.events import EventType, declare_event_type, init_event_schema, record_event
 from ontology_platform.governance import (
     bulk_review_semantic_mappings,
     derive_ontology_version,
@@ -64,6 +65,7 @@ from ontology_platform.operation_bindings import assess_operation_bindings
 from ontology_platform.release_readiness import assess_ontology_release_readiness
 from ontology_platform.sample_data import create_contract_sample_db, create_equipment_sample_db
 from ontology_platform.semantic_kernel import assess_decision_consistency, assess_instance, list_instance_ids
+from ontology_platform.temporal import init_temporal_schema, record_attribute_version
 
 
 def test_metadata_to_ontology_flow(tmp_path: Path) -> None:
@@ -2142,3 +2144,123 @@ def test_readiness_counts_mappings_once_per_mapping_not_once_per_object(tmp_path
     # The growth is by object count, so the assertion above is only meaningful if the two
     # numbers would differ under the old query -- which they would by exactly this factor.
     assert readiness["summary"]["pendingMappings"] != pending * object_count
+
+
+# -- Re-scanning a source is not allowed to destroy an approved model --
+
+
+def _source_with_draft_ontology(tmp_path: Path) -> tuple[Path, int, int]:
+    """A scanned source plus the draft ontology derived from it."""
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "合同管理样例系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+    ontology = generate_ontology_draft(platform_db, source.id)
+    return platform_db, source.id, ontology["id"]
+
+
+def _set_ontology_status(platform_db: Path, ontology_id: int, status: str) -> None:
+    with connect(platform_db) as conn:
+        conn.execute("update ontology set status = ? where id = ?", (status, ontology_id))
+
+
+def test_rescanning_refuses_to_destroy_a_published_ontology(tmp_path: Path) -> None:
+    """A published ontology is the artifact the governance story rests on.
+
+    It was not refused and it did not fail either: re-scanning deleted every object,
+    attribute, rule and mapping behind a published ontology and left the ontology row in
+    place, still marked published. The damage was invisible in the one place a reader
+    looks -- the ontology list still showed the version.
+    """
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    _set_ontology_status(platform_db, ontology_id, "published")
+
+    def counts() -> tuple[int, int, int]:
+        with connect(platform_db) as conn:
+            return (
+                conn.execute("select count(*) from business_object").fetchone()[0],
+                conn.execute("select count(*) from semantic_mapping").fetchone()[0],
+                conn.execute("select count(*) from business_rule").fetchone()[0],
+            )
+
+    before = counts()
+    assert before[0] > 0, "前提：草案里应当有业务对象"
+
+    with pytest.raises(ValueError) as refusal:
+        scan_data_source(platform_db, source_id)
+
+    message = str(refusal.value)
+    # Named, not merely blocked: an operator who cannot see which ontology is in the way
+    # cannot act on the refusal.
+    assert "published" in message, message
+    assert counts() == before, "被拒绝的扫描不得改动任何东西"
+
+
+def test_rescanning_discards_a_draft_and_what_later_modules_attached_to_it(tmp_path: Path) -> None:
+    """The derived draft is regenerated, so everything hanging off it goes with it.
+
+    Re-scanning a draft that had an event type attached failed with
+    `FOREIGN KEY constraint failed`: the cleanup knew about rules, mappings, relations,
+    attributes and objects, and nothing about the tables later feature modules added.
+    """
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    # The event and temporal schemas are optional feature bundles: a deployment that
+    # never uses them never creates their tables, which is why the cleanup above has to
+    # ask the catalog rather than assume they are there.
+    with connect(platform_db) as conn:
+        init_event_schema(conn)
+        init_temporal_schema(conn)
+
+    declare_event_type(
+        platform_db,
+        ontology_id,
+        EventType(code="signed", name="签订", object_code="contract"),
+        actor="test",
+    )
+    record_event(platform_db, ontology_id, "contract", "1", "signed", actor="test")
+    record_attribute_version(platform_db, ontology_id, "contract", "1", "amount", 1200000, actor="test")
+
+    scan_data_source(platform_db, source_id)
+
+    with connect(platform_db) as conn:
+        for table in ("ontology", "business_object", "business_event_type", "business_event", "attribute_version"):
+            remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
+            assert remaining == 0, f"{table} 在重新扫描后仍留有 {remaining} 行"
+
+
+def test_rescanning_a_draft_from_an_unrelated_source_leaves_it_alone(tmp_path: Path) -> None:
+    """The cleanup is scoped to the source being scanned.
+
+    A cleanup query that is too broad deletes other people's work, and the symptom is an
+    ontology that quietly loses its objects the next time somebody else's source is
+    re-scanned.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(tmp_path / "legacy_contracts.sqlite3")
+
+    # Two sources over the same database file, so both have objects on the same tables.
+    first = register_data_source(
+        platform_db, "源一", "sqlite", str(tmp_path / "legacy_contracts.sqlite3"), domain="合同"
+    )
+    second = register_data_source(
+        platform_db, "源二", "sqlite", str(tmp_path / "legacy_contracts.sqlite3"), domain="合同"
+    )
+    scan_data_source(platform_db, first.id)
+    scan_data_source(platform_db, second.id)
+    ontology = generate_ontology_draft(platform_db, first.id)
+    _set_ontology_status(platform_db, ontology["id"], "reviewing")
+
+    with pytest.raises(ValueError):
+        scan_data_source(platform_db, first.id)
+
+    # The second source has no ontology of its own, so scanning it must still work -- and
+    # must not take the reviewing ontology with it.
+    scan_data_source(platform_db, second.id)
+    with connect(platform_db) as conn:
+        assert (
+            conn.execute("select count(*) from business_object where ontology_id = ?", (ontology["id"],)).fetchone()[0]
+            > 0
+        )
