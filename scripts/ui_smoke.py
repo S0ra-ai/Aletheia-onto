@@ -59,6 +59,10 @@ from urllib.parse import quote
 # The audit report and the release gate live there, and the bugs that prompted this script
 # -- columns rendering empty for every row -- are exactly the kind that hide behind a tab.
 ROUTES = (
+    # Not `/admin/...`: the login page sits outside the authenticated layout. Swept because a
+    # login page that fails to render is a deployment nobody can enter -- and because the
+    # guard that checks the token talks to the API, not to this screen.
+    "/login",
     "/admin/workbench",
     "/admin/datasource",
     "/admin/ontology",
@@ -208,6 +212,7 @@ NO_TABLE_ROUTES = {
     "/admin/semantic": "自然语言交互：答案是正文，没有表格",
     "/admin/semantic?tab=assess": "风险研判：结论以描述列表呈现，没有表格",
     "/admin/semantic?tab=preflight": "操作预检：结果以描述列表呈现，没有表格",
+    "/login": "登录页是表单，没有表格",
     "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
     "/admin/graph": "本体图是画布，没有表格",
     "/admin/chat": "对话界面没有表格",

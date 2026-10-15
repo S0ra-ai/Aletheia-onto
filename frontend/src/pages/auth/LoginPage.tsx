@@ -52,6 +52,18 @@ const LoginPage: React.FC = () => {
           请使用平台账号登录。
         </Paragraph>
 
+        {/*
+          The bootstrap password is printed once, by `init`, in a console the person reading
+          this screen may never have seen -- a deployment's log, or somebody else's terminal.
+          Without this the login form is the end of the road: nothing here says which account
+          to use or that there is a way to reset it.
+        */}
+        <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 16 }}>
+          首次使用：管理员账号是 <Typography.Text code>admin</Typography.Text>，
+          口令在 <Typography.Text code>aletheia init</Typography.Text> 的输出里，只显示一次。
+          忘记了就在服务器上运行 <Typography.Text code>aletheia passwd</Typography.Text> 重设（会提示输入新口令）。
+        </Paragraph>
+
         {error ? (
           <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} role="alert" />
         ) : null}

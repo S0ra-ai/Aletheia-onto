@@ -424,6 +424,13 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **登录页是「用户名／密码」两个框，而没说口令从哪来**（`LoginPage.tsx`、`scripts/ui_smoke.py`）。
+  引导口令由 `init` **只打印一次**，而且打在别人可能从没看过的那个终端里（部署时是容器日志）。
+  于是登录页就是一条死路：不说用哪个账号，也不说还有找回的办法。
+  现在页面上写明：管理员账号是 `admin`，口令在 `aletheia init` 的输出里、只显示一次，
+  忘了就在服务器上运行 `aletheia passwd` 重设（缺 `--password` 时会提示输入，不进 shell 历史）。
+  同一处把 `/login` 纳入渲染检查：**一个渲染不出来的登录页，是一个谁都进不去的部署**——
+  此前那条「令牌能不能认证」的守护问的是接口，不是这一屏。
 - **演示样例库写在「当前工作目录」下，因此换一个目录就找不到它**（`sample_data.py`、`docs/configuration*.md`）。
   `DEFAULT_SAMPLE_DB = Path("data") / "legacy_contracts.sqlite3"` 是**相对路径**：
   从 `/` 启动 `serve` 时它会去建 `/data`；换个目录启动就写出**另一个文件**；

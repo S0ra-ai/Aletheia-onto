@@ -146,15 +146,17 @@ def _app_routes() -> set[str]:
     source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
     routes = set()
     for path in re.findall(r'<Route\s+path="([^"]+)"', source):
-        # `login` is not behind the authenticated layout, and `*` is the not-found page --
-        # neither is a screen with data to show. `/` is the layout itself, whose index
-        # redirects to the workbench, which is swept under its own path.
-        if path.strip("/") in ("login", "*", ""):
+        # `*` is the not-found page and `/` is the layout itself, whose index redirects to the
+        # workbench, swept under its own path. `login` is outside the authenticated layout and
+        # is still a screen the router serves -- and one a deployment cannot be entered without,
+        # which is why the sweep visits it too.
+        if path.strip("/") in ("*", ""):
             continue
-        # The layout route is `/`, and every child is relative to the `/admin` basename the
-        # production build sets.
+        # Child routes are relative and live under the `/admin` basename the production build
+        # sets; one is written absolutely (`/login`), and prefixing that one would ask for a
+        # path the router does not serve.
         normalised = path.strip("/")
-        routes.add("/admin/" + normalised if normalised else "/admin")
+        routes.add(f"/{normalised}" if path.startswith("/") else f"/admin/{normalised}")
     # A detail path is compared by shape, not by parameter name: the router writes `:id` and
     # the sweep writes `{ontology}`, and neither spelling is the thing being asserted.
     return {re.sub(r"/:[A-Za-z_]+", "/*", path) for path in routes}

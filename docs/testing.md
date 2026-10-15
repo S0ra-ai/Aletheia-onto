@@ -133,9 +133,10 @@ the change.
 
 It runs in CI as its own job, where a browser is the subject rather than an incidental
 dependency — a job that cannot start one genuinely cannot do its work. The job builds the
-frontend, loads a demo instance, and sweeps 40 routes: every screen that charts a table, every
-tab that puts one behind it, and the detail pages for the first ontology and data source,
-whose ids are read from the instance rather than written down.
+frontend, loads a demo instance, and sweeps 43 routes: every screen that charts a table, every
+tab that puts one behind it, the login page (outside the authenticated layout, and the one
+screen a deployment cannot be entered without), and the detail pages for the first
+ontology and data source, whose ids are read from the instance rather than written down.
 
 The route list is held to the router, in both directions, by `tests/test_ui_smoke_guards.py`:
 every path `App.tsx` serves must be swept, and every swept path must be one it serves. Two
