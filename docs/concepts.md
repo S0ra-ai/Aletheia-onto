@@ -108,11 +108,11 @@ forms then evaluate identically in a rule, so nobody has to memorise magic value
 The release gate checks for it, because assessing on a drifted mapping means
 assessing on unverified data.
 
-Re-scanning a source **rewrites** that metadata, so it is refused while a published or
-reviewing ontology is bound to it: every object and attribute is anchored to a scanned
-table or column, and rebuilding those rows would leave the approved model pointing at
-nothing. Derive a new version first — which is what the platform asks for whenever a
-published ontology needs to change.
+A re-scan updates that metadata **in place**: every object and attribute is anchored to a
+scanned table or column by a foreign key, so rebuilding those rows would orphan an approved
+model. A re-scan therefore keeps working on a source with a published ontology, and refuses
+only at the point of real damage — a column that disappeared while a business attribute
+still maps to it, which it names.
 
 ## Assessment and provenance
 

@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 class SourceScanRefused(ValueError):
-    """A scan that would destroy work somebody has already approved.
+    """A scan that would forget something a model still depends on.
+
+    Raised at the point of damage rather than up front: a re-scan usually changes nothing
+    that matters -- columns are added, a table is dropped -- and refusing the whole
+    operation because one column might be mapped would make the common case impossible. The
+    refusal happens where it is true, and names the column or table rather than the source.
 
     A distinct type because the HTTP layer maps `ValueError` to 404, and "the source does
-    not exist" is a different answer from "the source is in use by a published ontology":
-    the first sends the reader looking for a missing row, the second tells them to derive a
-    new version. One exception type for both makes the second unactionable.
+    not exist" is a different answer from "a business attribute still maps to the column you
+    are removing": the first sends the reader looking for a missing row, the second tells
+    them what to fix. One exception type for both makes the second unactionable.
     """
 
 
@@ -516,23 +521,18 @@ def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, 
         except Exception as error:
             raise ValueError(f"数据源扫描失败: {describe_data_source_failure(error)}") from error
 
-        _assert_no_governed_ontology(platform, data_source_id)
         _delete_derived_drafts(platform, data_source_id)
-        platform.execute(
-            "delete from source_foreign_key where source_table_id in (select id from source_table where data_source_id = ?)",
-            (data_source_id,),
-        )
-        platform.execute(
-            "delete from source_column where source_table_id in (select id from source_table where data_source_id = ?)",
-            (data_source_id,),
-        )
-        platform.execute("delete from source_table where data_source_id = ?", (data_source_id,))
+        # Metadata is updated in place rather than dropped and rebuilt. The rows have
+        # identities: `business_object.source_table_id` and
+        # `business_attribute.source_column_id` are foreign keys, so deleting a table row
+        # and inserting an equivalent one orphans every object bound to it. Rebuilding was
+        # survivable only while the cleanup also deleted those objects -- which is what made
+        # re-scanning gut a published ontology. Updating in place means an approved model
+        # keeps pointing at the same table and column rows across a re-scan.
+        _sync_source_metadata(platform, data_source_id, tables)
 
         scanned_tables = []
         for table in tables:
-            table_id = _store_table(platform, data_source_id, table)
-            _store_columns(platform, table_id, table.columns)
-            _store_foreign_keys(platform, table_id, table.foreign_keys)
             scanned_tables.append(
                 {
                     "table": table.name,
@@ -1026,52 +1026,6 @@ def _row_to_source_api(row: sqlite3.Row) -> SourceApi:
     )
 
 
-def _governed_ontologies(platform: Any, data_source_id: int) -> list[Any]:
-    """Ontologies on this source that are past the draft stage.
-
-    A re-scan replaces `source_table` and `source_column` rows, so every object and
-    attribute bound to them loses its anchor. For a draft that is the point -- the model is
-    regenerated from the fresh scan. For anything a reviewer has signed off on it is
-    destruction of the artifact the governance story is built on.
-    """
-    return platform.execute(
-        """
-        select distinct o.id, o.name, o.version, o.status
-        from ontology o
-        join business_object bo on bo.ontology_id = o.id
-        join source_table st on st.id = bo.source_table_id
-        where st.data_source_id = ? and o.status <> 'draft'
-        order by o.id
-        """,
-        (data_source_id,),
-    ).fetchall()
-
-
-def _assert_no_governed_ontology(platform: Any, data_source_id: int) -> None:
-    """Refuse a re-scan that would gut an ontology somebody has already approved.
-
-    This was not refused, and it did not fail either: re-scanning a source with a published
-    ontology deleted every object, attribute, rule and mapping behind it and left the
-    ontology row in place, still marked published. The damage was therefore invisible in
-    the one place a reader looks -- the ontology list still showed the version -- and the
-    published model was gone.
-
-    Refused rather than made non-destructive, because the two are not equivalent: an
-    upsert would keep the bindings for columns that still exist and silently drop the ones
-    that do not, and a published verdict citing a dropped column must fail loudly or not at
-    all. The way out is to derive a new version, which is what the platform already asks
-    for whenever a published ontology needs to change.
-    """
-    governed = _governed_ontologies(platform, data_source_id)
-    if not governed:
-        return
-    listed = "、".join(f"{row['name']} v{row['version']}（{row['status']}）" for row in governed)
-    raise SourceScanRefused(
-        f"该数据源的来源元数据被 {listed} 引用，重新扫描会重建来源表与来源列，"
-        "使已发布或审核中的本体失去绑定。请先派生新版本再扫描，或改在草案不在的本体上执行。"
-    )
-
-
 def _delete_derived_drafts(platform: sqlite3.Connection, data_source_id: int) -> None:
     # Drafts only, which is what the name says and previously was not what the code did:
     # the query collected every ontology with an object on this source and deleted its
@@ -1164,29 +1118,162 @@ def _store_table(platform: sqlite3.Connection, data_source_id: int, table: Sourc
     return last_insert_id(platform)
 
 
+def _upsert_table(platform: Any, data_source_id: int, table: SourceTableInfo, existing_id: int | None) -> int:
+    if existing_id is None:
+        return _store_table(platform, data_source_id, table)
+    platform.execute(
+        "update source_table set row_count = ?, primary_key = ? where id = ?",
+        (table.row_count, table.primary_key, existing_id),
+    )
+    return existing_id
+
+
+def _upsert_columns(platform: Any, table_id: int, columns: list[SourceColumnInfo]) -> None:
+    existing = {
+        row["column_name"]: row["id"]
+        for row in platform.execute(
+            "select id, column_name from source_column where source_table_id = ?", (table_id,)
+        ).fetchall()
+    }
+    scanned = {column.name for column in columns}
+    for name, column_id in existing.items():
+        if name in scanned:
+            continue
+        # A column that disappeared. Deleting it is the point of a re-scan, but an
+        # attribute mapped to it is not ours to delete -- if a published or draft model
+        # still points here the foreign key refuses, and that refusal is the correct
+        # outcome: forgetting a column somebody maps to would leave a rule reading nothing.
+        try:
+            platform.execute("delete from source_column where id = ?", (column_id,))
+        except Exception as error:
+            raise SourceScanRefused(
+                f"来源表的列 {name} 已不存在，但仍有业务属性映射到它，因此无法删除。"
+                f"请先处理这些属性的映射，或改在草案不在的本体上执行。（{error}）"
+            ) from error
+
+    for column in columns:
+        if column.name in existing:
+            platform.execute(
+                """
+                update source_column set data_type = ?, nullable = ?, ordinal = ?, is_primary_key = ?,
+                       sample_values = ?, null_ratio = ?, distinct_count = ?, enum_candidate = ?
+                where id = ?
+                """,
+                (
+                    column.data_type,
+                    1 if column.nullable else 0,
+                    column.ordinal,
+                    1 if column.is_primary_key else 0,
+                    json.dumps(column.profile.samples, ensure_ascii=False, default=str),
+                    column.profile.null_ratio,
+                    column.profile.distinct_count,
+                    1 if column.profile.enum_candidate else 0,
+                    existing[column.name],
+                ),
+            )
+        else:
+            _store_column(platform, table_id, column)
+
+
+def _store_column(platform: Any, table_id: int, column: SourceColumnInfo) -> None:
+    platform.execute(
+        """
+        insert into source_column (
+            source_table_id, column_name, data_type, nullable, ordinal,
+            is_primary_key, sample_values, null_ratio, distinct_count, enum_candidate
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            table_id,
+            column.name,
+            column.data_type,
+            1 if column.nullable else 0,
+            column.ordinal,
+            1 if column.is_primary_key else 0,
+            json.dumps(column.profile.samples, ensure_ascii=False, default=str),
+            column.profile.null_ratio,
+            column.profile.distinct_count,
+            1 if column.profile.enum_candidate else 0,
+        ),
+    )
+
+
+def _upsert_foreign_keys(platform: Any, table_id: int, foreign_keys: list[SourceForeignKeyInfo]) -> None:
+    key = lambda item: (item[0], item[1], item[2])  # noqa: E731 - a three-tuple key, nothing more
+    existing = {
+        key((row["column_name"], row["target_table"], row["target_column"])): row["id"]
+        for row in platform.execute(
+            "select id, column_name, target_table, target_column from source_foreign_key where source_table_id = ?",
+            (table_id,),
+        ).fetchall()
+    }
+    scanned = {key((item.column_name, item.target_table, item.target_column)) for item in foreign_keys}
+    for stored, foreign_key_id in existing.items():
+        if stored in scanned:
+            continue
+        # `business_relation.source_foreign_key_id` points here, so a relation on a
+        # still-present column keeps its binding; only the ones that vanished are removed,
+        # and a relation that needs a vanished key blocks the delete rather than losing it.
+        try:
+            platform.execute("delete from source_foreign_key where id = ?", (foreign_key_id,))
+        except Exception as error:
+            raise SourceScanRefused(
+                f"来源表的外键 {stored[0]} → {stored[1]} 已不存在，但仍有业务关系引用它，因此无法删除。"
+                f"请先处理这些关系。（{error}）"
+            ) from error
+    for foreign_key in foreign_keys:
+        if key((foreign_key.column_name, foreign_key.target_table, foreign_key.target_column)) not in existing:
+            platform.execute(
+                """
+                insert into source_foreign_key (source_table_id, column_name, target_table, target_column)
+                values (?, ?, ?, ?)
+                """,
+                (table_id, foreign_key.column_name, foreign_key.target_table, foreign_key.target_column),
+            )
+
+
+def _sync_source_metadata(platform: Any, data_source_id: int, tables: list[SourceTableInfo]) -> None:
+    """Bring the stored source metadata in line with a fresh scan, keeping row identities."""
+    existing = {
+        row["table_name"]: row["id"]
+        for row in platform.execute(
+            "select id, table_name from source_table where data_source_id = ?", (data_source_id,)
+        ).fetchall()
+    }
+    scanned = {table.name for table in tables}
+    for name, table_id in existing.items():
+        if name in scanned:
+            continue
+        # Columns first: they are children of this table and their own dependents (mapped
+        # attributes) have to refuse before the table row is attempted, so the message
+        # names the column rather than the table.
+        for row in platform.execute(
+            "select id, column_name from source_column where source_table_id = ?", (table_id,)
+        ).fetchall():
+            try:
+                platform.execute("delete from source_column where id = ?", (row["id"],))
+            except Exception as error:
+                raise SourceScanRefused(
+                    f"来源表 {name} 已不存在，但其列 {row['column_name']} 仍被业务属性映射，因此无法删除。"
+                    f"请先处理这些属性的映射。（{error}）"
+                ) from error
+        try:
+            platform.execute("delete from source_table where id = ?", (table_id,))
+        except Exception as error:
+            raise SourceScanRefused(
+                f"来源表 {name} 已不存在，但仍有业务对象绑定到它，因此无法删除。（{error}）"
+            ) from error
+
+    for table in tables:
+        table_id = _upsert_table(platform, data_source_id, table, existing.get(table.name))
+        _upsert_columns(platform, table_id, table.columns)
+        _upsert_foreign_keys(platform, table_id, table.foreign_keys)
+
+
 def _store_columns(platform: sqlite3.Connection, table_id: int, columns: list[SourceColumnInfo]) -> None:
     for column in columns:
-        platform.execute(
-            """
-            insert into source_column (
-                source_table_id, column_name, data_type, nullable, ordinal,
-                is_primary_key, sample_values, null_ratio, distinct_count, enum_candidate
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                table_id,
-                column.name,
-                column.data_type,
-                1 if column.nullable else 0,
-                column.ordinal,
-                1 if column.is_primary_key else 0,
-                json.dumps(column.profile.samples, ensure_ascii=False, default=str),
-                column.profile.null_ratio,
-                column.profile.distinct_count,
-                1 if column.profile.enum_candidate else 0,
-            ),
-        )
+        _store_column(platform, table_id, column)
 
 
 def _store_foreign_keys(platform: sqlite3.Connection, table_id: int, foreign_keys: list[SourceForeignKeyInfo]) -> None:

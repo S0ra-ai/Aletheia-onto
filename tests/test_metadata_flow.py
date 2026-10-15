@@ -2166,36 +2166,62 @@ def _set_ontology_status(platform_db: Path, ontology_id: int, status: str) -> No
         conn.execute("update ontology set status = ? where id = ?", (status, ontology_id))
 
 
-def test_rescanning_refuses_to_destroy_a_published_ontology(tmp_path: Path) -> None:
+def test_rescanning_keeps_a_published_ontology_intact(tmp_path: Path) -> None:
     """A published ontology is the artifact the governance story rests on.
 
-    It was not refused and it did not fail either: re-scanning deleted every object,
-    attribute, rule and mapping behind a published ontology and left the ontology row in
-    place, still marked published. The damage was invisible in the one place a reader
-    looks -- the ontology list still showed the version.
+    Re-scanning used to delete every object, attribute, rule and mapping behind it and
+    leave the ontology row standing, still marked published -- so the damage was invisible
+    in the one place a reader looks. The bindings are foreign keys, which is why the fix is
+    to update the scanned rows in place rather than rebuild them: rebuilding orphans every
+    object anchored to them.
     """
     platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
     _set_ontology_status(platform_db, ontology_id, "published")
 
-    def counts() -> tuple[int, int, int]:
+    def fingerprint() -> tuple:
         with connect(platform_db) as conn:
             return (
                 conn.execute("select count(*) from business_object").fetchone()[0],
-                conn.execute("select count(*) from semantic_mapping").fetchone()[0],
+                conn.execute("select count(*) from business_attribute").fetchone()[0],
                 conn.execute("select count(*) from business_rule").fetchone()[0],
+                conn.execute("select count(*) from semantic_mapping").fetchone()[0],
+                conn.execute("select id, status from ontology").fetchone()[:],
+                # The identities matter as much as the counts: an object whose
+                # `source_table_id` now points at nothing is a broken binding that a count
+                # would not show.
+                conn.execute("select source_table_id from business_object order by id").fetchall()[:],
             )
 
-    before = counts()
+    before = fingerprint()
     assert before[0] > 0, "前提：草案里应当有业务对象"
+
+    scan_data_source(platform_db, source_id)
+
+    assert fingerprint() == before, "重新扫描不得改动已发布本体的任何绑定"
+
+
+def test_a_scan_still_refuses_to_forget_a_column_a_model_maps_to(tmp_path: Path) -> None:
+    """Forgetting a mapped column is the one thing a re-scan must not do silently.
+
+    Refused at the point of damage rather than up front, which is what lets the ordinary
+    re-scan -- same schema, or a new column -- proceed on a source that has a published
+    ontology at all.
+    """
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    _set_ontology_status(platform_db, ontology_id, "published")
+
+    # Drop a column the published model maps, and remove it from the metadata the way a
+    # re-scan would after the source really lost it.
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+    with sqlite3.connect(legacy_db) as raw:
+        raw.execute("alter table contract drop column title")
 
     with pytest.raises(ValueError) as refusal:
         scan_data_source(platform_db, source_id)
 
     message = str(refusal.value)
-    # Named, not merely blocked: an operator who cannot see which ontology is in the way
-    # cannot act on the refusal.
-    assert "published" in message, message
-    assert counts() == before, "被拒绝的扫描不得改动任何东西"
+    assert "title" in message, message
+    assert "业务属性" in message, message
 
 
 def test_rescanning_discards_a_draft_and_what_later_modules_attached_to_it(tmp_path: Path) -> None:
@@ -2206,9 +2232,9 @@ def test_rescanning_discards_a_draft_and_what_later_modules_attached_to_it(tmp_p
     attributes and objects, and nothing about the tables later feature modules added.
     """
     platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
-    # The event and temporal schemas are optional feature bundles: a deployment that
-    # never uses them never creates their tables, which is why the cleanup above has to
-    # ask the catalog rather than assume they are there.
+    # The event and temporal schemas are optional feature bundles: a deployment that never
+    # uses them never creates their tables, which is why the cleanup has to ask the catalog
+    # rather than assume they are there.
     with connect(platform_db) as conn:
         init_event_schema(conn)
         init_temporal_schema(conn)
@@ -2251,16 +2277,12 @@ def test_rescanning_a_draft_from_an_unrelated_source_leaves_it_alone(tmp_path: P
     scan_data_source(platform_db, first.id)
     scan_data_source(platform_db, second.id)
     ontology = generate_ontology_draft(platform_db, first.id)
-    _set_ontology_status(platform_db, ontology["id"], "reviewing")
+    _set_ontology_status(platform_db, ontology["id"], "published")
 
-    with pytest.raises(ValueError):
-        scan_data_source(platform_db, first.id)
-
-    # The second source has no ontology of its own, so scanning it must still work -- and
-    # must not take the reviewing ontology with it.
     scan_data_source(platform_db, second.id)
+
     with connect(platform_db) as conn:
-        assert (
-            conn.execute("select count(*) from business_object where ontology_id = ?", (ontology["id"],)).fetchone()[0]
-            > 0
-        )
+        kept = conn.execute("select count(*) from business_object where ontology_id = ?", (ontology["id"],)).fetchone()[
+            0
+        ]
+    assert kept > 0, "扫描另一个数据源不得动到这个本体"
