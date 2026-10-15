@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
-import { Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
+import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { dataSourceApi, industryBlueprintApi, ontologyApi, requestErrorMessage } from '../../api';
@@ -41,8 +41,15 @@ const OntologyList: React.FC = () => {
 
   const handleCreateDraft = async (values: OntologyDraftCreate) => {
     try {
-      await ontologyApi.createDraft(values);
-      message.success('本体草案生成成功');
+      const draft = await ontologyApi.createDraft(values);
+      // Say what the rebuild cost. 「本体草案生成成功」 was the whole message while a draft's
+      // hand-written rules and workflows were being deleted: the operation is destructive by
+      // design, and a user who asked for a rebuild still deserves to know what it took.
+      if (draft?.discardedSummary) {
+        message.warning(`草案已重新生成；原有 ${draft.discardedSummary} 已随之清除`, 6);
+      } else {
+        message.success('本体草案生成成功');
+      }
       setModalVisible(false);
       form.resetFields();
       fetchData();
@@ -188,6 +195,13 @@ const OntologyList: React.FC = () => {
           layout="vertical"
           onFinish={handleCreateDraft}
         >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="重新生成会清空原有草案"
+            description="草案由当前扫描结果重建。若该数据源已有草案，挂在它上面的规则、映射、关系、工作流与知识文档会随之清除——生成后会告诉你清除了什么。"
+          />
           <Form.Item
             name="dataSourceId"
             label="选择数据源"

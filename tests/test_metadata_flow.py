@@ -2527,3 +2527,62 @@ def test_regenerating_a_draft_clears_what_later_modules_attached_to_it(tmp_path:
             conn.execute("select count(*) from workflow_state where workflow_id = ?", (workflow["id"],)).fetchone()[0]
             == 0
         )
+
+
+def test_regenerating_says_what_it_deleted(tmp_path: Path) -> None:
+    """The response names what the rebuild removed, because the screen reports only success.
+
+    Regeneration is destructive by design -- it rebuilds the model from the current scan --
+    but `POST /ontologies/draft` answered with the new summaries and nothing about the old
+    ones, so the page said 「本体草案生成成功」 while a user's hand-written rules and
+    workflows disappeared behind it. A caller that cannot report the cost cannot offer the
+    choice either.
+    """
+    from ontology_platform.workflow_permission import create_workflow, init_workflow_and_permission_schema
+
+    platform_db, source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    create_workflow(platform_db, ontology_id, "contract", "审批流", initial_state="draft")
+    upsert_business_rule(
+        platform_db,
+        ontology_id,
+        "hand_written_rule",
+        "人工规则",
+        "validation",
+        "contract",
+        "amount > 0",
+        "warning",
+        "金额必须大于零。",
+        actor="tester",
+    )
+
+    regenerated = generate_ontology_draft(platform_db, source_id)
+
+    assert regenerated["discarded"]["workflows"] == 1
+    assert regenerated["discarded"]["rules"] >= 1, "人工规则没有被计入"
+    assert "工作流" in regenerated["discardedSummary"], regenerated["discardedSummary"]
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from workflow_definition").fetchone()[0] == 0
+        assert conn.execute("select count(*) from business_rule where code = 'hand_written_rule'").fetchone()[0] == 0
+
+
+def test_a_first_draft_reports_nothing_discarded(tmp_path: Path) -> None:
+    """Creating a draft removes nothing, and the response says so rather than inventing zeros.
+
+    The screen branches on this: a rebuild it cannot report is a rebuild the user cannot
+    consent to, and a fresh draft warned about losses that did not happen would teach them
+    to ignore the warning.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    legacy_db = tmp_path / "legacy_contracts.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(legacy_db)
+    source = register_data_source(platform_db, "新系统", "sqlite", str(legacy_db), domain="合同管理")
+    scan_data_source(platform_db, source.id)
+
+    draft = generate_ontology_draft(platform_db, source.id)
+
+    assert draft["objects"], "新草案应当产出对象"
+    assert draft["discarded"] == {}
+    assert "discardedSummary" not in draft

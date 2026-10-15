@@ -382,6 +382,14 @@ export interface OntologyDetail {
   relations: BusinessRelation[];
   mappings: SemanticMapping[];
   rules: BusinessRule[];
+  /**
+   * What regenerating this draft removed. Present only when it rebuilt an existing draft:
+   * a draft is rebuilt from the current scan, so hand-written rules, mappings, relations,
+   * workflows and knowledge documents attached to it go with it. The screen has to say so,
+   * because the alternative is a success message and a silent loss.
+   */
+  discarded?: Record<string, number>;
+  discardedSummary?: string;
 }
 
 export interface ReleaseReadinessGate {

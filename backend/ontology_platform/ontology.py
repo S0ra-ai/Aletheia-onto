@@ -56,7 +56,7 @@ def generate_ontology_draft(
         )
         resolved_domain = domain or data_source["domain"] or blueprint.domain
         resolved_name = name or f"{resolved_domain}本体"
-        ontology_id = _create_ontology(conn, resolved_name, resolved_domain)
+        ontology_id, discarded = _create_ontology(conn, resolved_name, resolved_domain)
         object_ids: dict[int, int] = {}
         # Labels contributed by every registered blueprint, including user
         # imported ones. This replaces a built-in table of industry terms, so a
@@ -94,6 +94,11 @@ def generate_ontology_draft(
         )
         summary = summarize_ontology(conn, ontology_id)
         summary["blueprint"] = blueprint.to_dict()
+        # What this regeneration removed, so a caller can say it. Empty when the draft was
+        # created rather than rebuilt, which is the common case on a fresh source.
+        summary["discarded"] = discarded
+        if discarded:
+            summary["discardedSummary"] = describe_discarded(discarded)
         return summary
 
 
@@ -703,12 +708,20 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
+def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> tuple[int, dict[str, int]]:
+    """The ontology row to build into, and what regenerating it destroyed.
+
+    The second half is returned so the caller can *say* what it removed. Regenerating a
+    draft is destructive by design -- it rebuilds the model from the current scan -- but a
+    caller that reports only 「本体草案生成成功」 is announcing a rebuild while a user's
+    hand-written rules and workflows disappear behind it.
+    """
     existing = conn.execute("select id, status from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
     if existing:
         if existing["status"] == "published":
             raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
         ontology_id = int(existing["id"])
+        discarded = _count_attached_rows(conn, ontology_id)
         # Through the catalog, to any depth. A hand-written list of tables was correct when it
         # was written and stopped being correct the first time a feature module added one:
         # regenerating a draft on a source that had a workflow, an event or a knowledge
@@ -719,13 +732,46 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> int:
         delete_referencing_rows(conn, "business_object", _object_ids(conn, ontology_id))
         conn.execute("delete from business_object where ontology_id = ?", (ontology_id,))
         delete_referencing_rows(conn, "ontology", [ontology_id])
-        return ontology_id
+        return ontology_id, discarded
 
     conn.execute(
         "insert into ontology (name, domain, version, status) values (?, ?, ?, ?)",
         (name, domain, "0.1.0", "draft"),
     )
-    return last_insert_id(conn)
+    return last_insert_id(conn), {}
+
+
+# What a regeneration takes with it, and what to call each in a message to the person who
+# asked for it. Counted before the deletes rather than inferred from them: `business_rule` is
+# cleared by a catalog-driven sweep that returns table names, and "3 tables" is not an answer
+# to "did I lose my rules".
+_ATTACHED = (
+    ("business_rule", "rules", "条规则"),
+    ("semantic_mapping", "mappings", "条映射"),
+    ("business_relation", "relations", "条关系"),
+    ("workflow_definition", "workflows", "个工作流"),
+    ("knowledge_document", "documents", "份知识文档"),
+)
+
+
+def _count_attached_rows(conn: sqlite3.Connection, ontology_id: int) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for table, key, _label in _ATTACHED:
+        try:
+            total = conn.execute(f"select count(*) from {table} where ontology_id = ?", (ontology_id,)).fetchone()[0]
+        except sqlite3.OperationalError:
+            # An optional feature bundle the deployment never installed. Its absence is not a
+            # reason to fail the regeneration, and it is not a count of zero either.
+            continue
+        if total:
+            counts[key] = int(total)
+    return counts
+
+
+def describe_discarded(counts: dict[str, int]) -> str:
+    """`{"rules": 3, "workflows": 1}` as 「3 条规则、1 个工作流」, for a message to a person."""
+    labels = {key: label for _table, key, label in _ATTACHED}
+    return "、".join(f"{total} {labels.get(key, key)}" for key, total in counts.items())
 
 
 def _object_ids(conn: sqlite3.Connection, ontology_id: int) -> list[int]:
