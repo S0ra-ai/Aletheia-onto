@@ -6,6 +6,7 @@ from .axioms import check_axioms
 from .context import PlatformDb
 from .coverage import build_semantic_coverage
 from .database import connect
+from .errors import describe_data_source_failure
 from .metadata import analyze_schema_drift, assess_data_source_readiness
 
 
@@ -203,7 +204,7 @@ def _data_source_report(platform_db: PlatformDb, data_source_id: int) -> dict[st
     try:
         drift = analyze_schema_drift(platform_db, data_source_id)
     except ValueError as error:
-        drift = {"status": "error", "error": str(error)}
+        drift = {"status": "error", "error": describe_data_source_failure(error)}
     return {
         "dataSourceId": data_source_id,
         "readiness": assess_data_source_readiness(platform_db, data_source_id),

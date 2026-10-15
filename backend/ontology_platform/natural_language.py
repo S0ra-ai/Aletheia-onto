@@ -11,6 +11,7 @@ from .automation import preflight_operation
 from .config import RESOLUTION_CONFIDENCE
 from .context import PlatformDb
 from .database import connect
+from .errors import describe_model_failure
 from .knowledge_base import build_reasoning_chain
 from .knowledge_documents import load_confirmed_entries
 from .model_client import OpenRouterClient, OpenRouterConfig
@@ -336,7 +337,7 @@ def _interpret_with_model(
         parsed["_usedModel"] = True
         return parsed
     except Exception as error:
-        return {"_usedModel": False, "_fallbackReason": str(error)}
+        return {"_usedModel": False, "_fallbackReason": describe_model_failure(error)}
 
 
 def _client_with_timeout(client: OpenRouterClient, timeout_seconds: float) -> OpenRouterClient:

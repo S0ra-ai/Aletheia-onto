@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
-import { semanticApi, automationApi } from '../../api';
+import { automationApi, requestErrorMessage, semanticApi } from '../../api';
 import type { InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
@@ -35,7 +35,7 @@ const SemanticService: React.FC = () => {
       });
       setNaturalLanguageResult(result);
     } catch (error) {
-      message.error('自然语言语义问答失败');
+      message.error(requestErrorMessage(error, '自然语言语义问答失败'));
     } finally {
       setLoading(false);
     }
@@ -47,7 +47,7 @@ const SemanticService: React.FC = () => {
       const result = await semanticApi.explain(values.objectCode, values.instanceId, values.ontologyId);
       setExplainResult(result);
     } catch (error) {
-      message.error('语义解释失败');
+      message.error(requestErrorMessage(error, '语义解释失败'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ const SemanticService: React.FC = () => {
       const result = await semanticApi.assess(values.objectCode, values.instanceId, values.ontologyId);
       setAssessResult(result);
     } catch (error) {
-      message.error('语义研判失败');
+      message.error(requestErrorMessage(error, '语义研判失败'));
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,7 @@ const SemanticService: React.FC = () => {
       });
       setPreflightResult(result);
     } catch (error) {
-      message.error('操作预检失败');
+      message.error(requestErrorMessage(error, '操作预检失败'));
     } finally {
       setLoading(false);
     }

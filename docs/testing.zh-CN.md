@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1488 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
+**1511 个测试**，全绿。其中 2 个按环境跳过：无本地 MySQL／PostgreSQL 服务时对应用例自动跳过。
 
 CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不执行的版本，
 会先在用户环境里出问题**：Python 保持语法兼容，但会移除标准库模块、改变默认行为，
@@ -34,7 +34,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
-| `test_documentation_links.py` | 124 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_documentation_links.py` | 126 | Documentation links resolve, and the entry points a newcomer needs exist |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -65,6 +65,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
+| `test_error_messages.py` | 21 | 失败时用户读到什么：驱动与解释器原文不再直接示人 |
 | `test_backup.py` | 6 | SQLite 平台安全备份、列表与原子恢复 |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
@@ -100,7 +101,7 @@ cd frontend && npm run build
 
 ## 规模
 
-84 个后端模块约 34400 行，156 个 API 端点，45 张平台表，前端 React + antd。
+85 个后端模块约 35300 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `quickstart` job，在干净环境重跑 README 的快速开始链路，
 并校验此处声明的测试数量与实际收集数一致。

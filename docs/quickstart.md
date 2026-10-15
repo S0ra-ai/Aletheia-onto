@@ -33,6 +33,33 @@ aletheia model 1
 aletheia assess 1 contract 1
 ```
 
+### What your first verdict on your own schema looks like
+
+`model` drafts an ontology from your metadata and infers an industry blueprint, then
+`assess` runs immediately -- there is no separate publish step in the way, because a draft
+is usable for assessment. Two things about that first output are worth knowing before you
+see them, since both look like faults and neither is:
+
+**Some rules will report that they could not be evaluated.** A blueprint contributes rules
+written for its own domain, and your schema may not have the associations they reference:
+
+```
+rule payment_plan_amount_match -> 表达式引用了此处不可用的名称「payment_plan」。
+    常见原因是该规则来自行业蓝图而本对象没有这个关联，或该字段尚未映射到本对象
+```
+
+That is fail-closed working as designed ([ADR-0002](adr/0002-rule-engine-fail-closed.md)):
+a rule whose precondition cannot be checked must not count as passing, or a renamed column
+would silently disable a blocking control. The extension guide's
+[§13](extending.md#13-a-consequence-on-csv-and-rest-sources) covers the three ways to deal
+with it; the shortest is to review the draft and delete or rescope the rules that do not
+apply to you.
+
+**The draft's mappings are `pending`.** You can assess with them, but `aletheia publish` is
+gated until someone reviews them, and unreviewed mappings cannot be forced through. That is
+the point: a verdict derived from a mapping nobody looked at is a verdict nobody can
+account for.
+
 **Sources are not limited to databases.** When production credentials are weeks away, an
 extract or an API runs the same pipeline:
 
@@ -44,7 +71,7 @@ aletheia doctor        # available source types, and which driver the inactive o
 Oracle / SQL Server / 达梦 / 人大金仓 / openGauss ship as declarations with their dialects;
 installing the driver makes them appear. Adding a SQL database that is *not* declared does
 not require writing an adapter — four lines of declaration, see
-[the extension guide](extending.md#10-接一个新的-sql-数据库).
+[the extension guide](extending.md#10-connecting-a-new-sql-database).
 
 **Assess as of a past moment.** A compliance audit usually asks about the past:
 

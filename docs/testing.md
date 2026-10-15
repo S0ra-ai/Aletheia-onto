@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1488 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1511 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -40,7 +40,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 
 | File | Count | Covers |
 |---|--:|---|
-| `test_documentation_links.py` | 124 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_documentation_links.py` | 126 | Documentation links resolve, and the entry points a newcomer needs exist |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -71,6 +71,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
+| `test_error_messages.py` | 21 | What a user reads when something fails |
 | `test_backup.py` | 6 | Safe SQLite backup inventory and atomic restore |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |

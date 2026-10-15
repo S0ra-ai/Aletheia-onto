@@ -11,6 +11,7 @@ from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, g
 from .context import PlatformDb
 from .credentials import redact_connection_uri
 from .database import connect, last_insert_id
+from .errors import describe_data_source_failure
 
 
 @dataclass(frozen=True)
@@ -492,7 +493,7 @@ def scan_data_source(platform_db: PlatformDb, data_source_id: int) -> dict[str, 
         try:
             tables = adapter.scan(source["connection_uri"])
         except Exception as error:
-            raise ValueError(f"数据源扫描失败: {error}") from error
+            raise ValueError(f"数据源扫描失败: {describe_data_source_failure(error)}") from error
 
         _delete_derived_drafts(platform, data_source_id)
         platform.execute(

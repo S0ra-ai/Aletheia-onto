@@ -262,15 +262,25 @@ def _llm_agent_chat(
             "toolCalls": tool_calls,
             "roleId": role.id,
         }
-    except Exception as exc:
+    except Exception:
+        # The exception goes to the log, not into the answer. This answer is prose a
+        # business user reads, and an exception's text carries filesystem paths, SQL
+        # fragments and occasionally row values -- the same reason the 500 handler keeps
+        # its traceback out of the response body. The request id on the response header
+        # ties this answer to the log line that explains it, and `_record_model_invocation`
+        # already keeps a durable record for the admin UI.
+        logger.exception("智能体会话失败 role=%s", role.id)
         return {
-            "answer": f"抱歉，我在处理你的问题时遇到了一些困难：{exc}。请稍后重试，或尝试换一种方式提问。",
+            "answer": (
+                "抱歉，处理这个问题时服务端出错了。请重试；若持续失败，"
+                "请将响应头 X-Request-Id 中的请求号提供给管理员以便定位。"
+            ),
             "intent": INTENT_UNKNOWN,
-            "confidence": 0.1,
+            "confidence": ANSWER_CONFIDENCE.ungrounded,
             "resolved": {"dataSourceId": data_source_id, "objectCode": object_code},
             "evidence": {},
-            "nextActions": ["重试或检查模型配置"],
-            "model": {"configured": model_client.configured, "name": model_client.config.model, "error": str(exc)},
+            "nextActions": ["稍后重试；若持续失败，把 X-Request-Id 提供给管理员"],
+            "model": {"configured": model_client.configured, "name": model_client.config.model, "failed": True},
             "toolCalls": [],
             "roleId": role.id,
         }
@@ -315,19 +325,40 @@ def _fallback_agent_chat(
             "toolCalls": [],
             "roleId": role.id,
         }
-    except Exception as exc:
+    except ValueError as error:
+        # The heuristic path raises ValueError with a curated message that names the real
+        # obstacle -- "尚未建模任何业务对象", for instance. Reporting that as "the model
+        # service is not configured" sent the user to configure an API key, which would not
+        # have helped: the cause and the prescribed action were both wrong, and the message
+        # looked authoritative while being so.
+        logger.info("智能体无模型回退路径未完成 role=%s: %s", role.id, error)
+        return {
+            "answer": f"你好，我是{role.name}。{error}",
+            "intent": INTENT_UNKNOWN,
+            "confidence": ANSWER_CONFIDENCE.ungrounded,
+            "resolved": {"dataSourceId": data_source_id, "objectCode": object_code},
+            "evidence": {},
+            # No next actions: the message above states what is missing, and inventing
+            # actions for a condition this function did not diagnose is how the previous
+            # wording came to recommend the wrong one.
+            "nextActions": [],
+            "model": {"configured": False, "fallbackReason": "heuristic_path_unavailable"},
+            "toolCalls": [],
+            "roleId": role.id,
+        }
+    except Exception:
+        logger.exception("智能体无模型回退路径失败 role=%s", role.id)
         return {
             "answer": (
-                f"你好，我是{role.name}。目前模型服务未配置，我暂时无法进行深度语义研判。\n"
-                "你可以在设置中配置 OpenRouter API Key 来启用完整的智能体能力。\n"
-                "现在我可以基于规则引擎进行基础的业务研判，请告诉我你想了解什么。"
+                f"你好，我是{role.name}。目前模型服务未配置，基于规则引擎的回退路径也未能完成。\n"
+                "请重试；若持续失败，请将响应头 X-Request-Id 中的请求号提供给管理员。"
             ),
             "intent": INTENT_UNKNOWN,
             "confidence": ANSWER_CONFIDENCE.ungrounded,
             "resolved": {"dataSourceId": data_source_id, "objectCode": object_code},
             "evidence": {},
-            "nextActions": ["配置 OpenRouter API Key 以启用完整智能体"],
-            "model": {"configured": False, "fallbackReason": str(exc)},
+            "nextActions": ["稍后重试；若持续失败，把 X-Request-Id 提供给管理员"],
+            "model": {"configured": False, "fallbackReason": "heuristic_path_failed"},
             "toolCalls": [],
             "roleId": role.id,
         }

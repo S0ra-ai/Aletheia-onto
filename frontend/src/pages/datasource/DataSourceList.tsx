@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi } from '../../api';
+import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
 
@@ -43,7 +43,7 @@ const DataSourceList: React.FC = () => {
       const data = await dataSourceApi.list();
       setDataSources(data);
     } catch (error) {
-      message.error('获取数据源列表失败');
+      message.error(requestErrorMessage(error, '获取数据源列表失败'));
     } finally {
       setLoading(false);
     }
@@ -130,7 +130,7 @@ const DataSourceList: React.FC = () => {
       message.success('扫描完成');
       fetchDataSources();
     } catch (error) {
-      message.error('扫描失败');
+      message.error(requestErrorMessage(error, '扫描失败'));
     }
   };
 
@@ -163,7 +163,7 @@ const DataSourceList: React.FC = () => {
         message.warning(result.remoteError ? `已回退到本地推理：${result.remoteError}` : '已使用本地启发式推理');
       }
     } catch (error) {
-      message.error('生成本体推理链失败，请先扫描数据源');
+      message.error(requestErrorMessage(error, '生成本体推理链失败，请先扫描数据源'));
     } finally {
       setReasoningLoading(false);
     }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
-import { ontologyApi } from '../../api';
+import { ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, SemanticMapping } from '../../types';
 
 const { Title } = Typography;
@@ -18,7 +18,7 @@ const MappingList: React.FC = () => {
       const items = await ontologyApi.list();
       setOntologies(items as Ontology[]);
     } catch (error) {
-      message.error('获取本体列表失败');
+      message.error(requestErrorMessage(error, '获取本体列表失败'));
     }
   };
 

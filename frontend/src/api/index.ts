@@ -70,6 +70,34 @@ const api = axios.create({
 
 // Attach the bearer token to every request, and surface auth failures in one
 // place instead of at each call site.
+/**
+ * An error whose message was written for the user, not for a developer.
+ *
+ * The server sends a curated reason in `detail`; the interceptor below puts it on the
+ * Error. Callers cannot tell that apart from a rejection axios produced itself --
+ * `Network Error`, `timeout of 10000ms exceeded`, `Request failed with status code 500` --
+ * by looking at the message, and those are English internals rather than something to show
+ * a user. A marker type makes the distinction exact instead of a guess about wording.
+ */
+export class ApiError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * The message to show a user for a failed request.
+ *
+ * Prefers the server's curated reason, falling back to the caller's own sentence about
+ * what it was trying to do. Every caller used to show only its own generic sentence,
+ * discarding the one message actually written for the user: a permission failure explained
+ * as "获取数据源列表失败" tells them nothing they can act on.
+ */
+export function requestErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError && error.message ? error.message : fallback;
+}
+
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -89,17 +117,19 @@ api.interceptors.response.use(
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login');
       }
-      return Promise.reject(new Error(detail || '登录已失效，请重新登录。'));
+      return Promise.reject(new ApiError(detail || '登录已失效，请重新登录。'));
     }
     if (status === 403) {
       const capability = error?.response?.data?.requiredCapability;
       return Promise.reject(
-        new Error(detail || `当前角色无权执行该操作${capability ? `（需要 ${capability}）` : ''}。`),
+        new ApiError(detail || `当前角色无权执行该操作${capability ? `（需要 ${capability}）` : ''}。`),
       );
     }
     if (detail) {
-      return Promise.reject(new Error(detail));
+      return Promise.reject(new ApiError(detail));
     }
+    // Rejected as-is: there is no curated message, and the caller's fallback is the better
+    // thing to show than axios's own wording.
     return Promise.reject(error);
   },
 );

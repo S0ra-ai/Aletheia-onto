@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { SendOutlined, UserOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { agentApi, conversationApi, knowledgeBaseApi } from '../../api';
+import { agentApi, conversationApi, knowledgeBaseApi, requestErrorMessage } from '../../api';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { AgentRole, AgentChatResult, KnowledgeBase } from '../../types';
 
@@ -123,12 +123,19 @@ const OntologyChat: React.FC = () => {
 
   const quickPrompts = buildQuickPrompts(selectedKnowledgeBase);
 
+  // Message ids come from a counter rather than `Date.now()`. The id is both the React key
+  // and the key the feedback update matches on, so two messages created within one
+  // millisecond would collide: React would merge the rows, and a rating could be written to
+  // the wrong message. A clock is the wrong source for an identity.
+  const nextMessageId = useRef(0);
+  const localMessageId = (prefix: string) => `${prefix}-local-${(nextMessageId.current += 1)}`;
+
   const ask = async (text?: string) => {
     const content = (text ?? question).trim();
     if (!content) return;
 
     const userMessage: ChatMessage = {
-      id: `u-${Date.now()}`,
+      id: localMessageId('u'),
       role: 'user',
       content,
     };
@@ -153,7 +160,7 @@ const OntologyChat: React.FC = () => {
       setMessages(prev => [
         ...prev,
         {
-          id: `a-${Date.now()}`,
+          id: localMessageId('a'),
           role: 'assistant',
           content: result.answer,
           result,
@@ -162,11 +169,11 @@ const OntologyChat: React.FC = () => {
         },
       ]);
     } catch (error) {
-      message.error('对话失败，请检查模型配置或数据源本体是否已生成');
+      message.error(requestErrorMessage(error, '对话失败，请检查模型配置或数据源本体是否已生成'));
       setMessages(prev => [
         ...prev,
         {
-          id: `a-${Date.now()}`,
+          id: localMessageId('a'),
           role: 'assistant',
           content: '我暂时无法完成这次语义研判。请确认已接入数据源并生成本体，或在模型配置中测试 OpenRouter 连接。',
           roleId: selectedRoleId,

@@ -65,6 +65,7 @@ from .adapters import (
     register_adapter,
 )
 from .config import QUERY_LIMITS
+from .errors import describe_data_source_failure
 from .instance_key import InstanceKey, parse_key_columns
 
 logger = logging.getLogger(__name__)
@@ -332,7 +333,7 @@ class CSVAdapter:
         try:
             directory = resolve_directory(connection_uri)
         except FileSourceError as error:
-            return connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", describe_data_source_failure(error))
         files = _table_files(directory)
         if not files:
             return connection_status(

@@ -3,6 +3,26 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+
+    // Off deliberately, so the findings that matter stay visible.
+    //
+    // Every occurrence in this codebase is the same shape:
+    //
+    //   const load = useCallback(async () => { setLoading(true); ... }, [id]);
+    //   useEffect(() => { void load(); }, [load]);
+    //
+    // which is React's documented pattern for fetching on a dependency change. The rule
+    // fires on the `setLoading(true)` that runs synchronously on the effect's first pass,
+    // and the "cascading render" it warns about *is* the loading state -- turning it on
+    // would mean either dropping the spinner on reload or moving to an initial-state
+    // workaround that only sets loading for the first fetch.
+    //
+    // Leaving eighteen permanent warnings on was the worse option: a warning that is
+    // always there is one nobody reads, and the four real defects that sat beside these
+    // (a discarded server message in fourteen handlers, a clock used as an identity, a
+    // callback read before initialisation, two stale closures) survived review for exactly
+    // that reason.
+    "react/set-state-in-effect": "off"
   }
 }

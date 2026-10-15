@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Typography, Tabs, Tag, Button, message } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { governanceApi } from '../../api';
+import { governanceApi, requestErrorMessage } from '../../api';
 import type { AuditLogItem, ModelInvocationItem, DecisionRecordItem } from '../../types';
 
 const { Title } = Typography;
@@ -25,7 +25,7 @@ const Governance: React.FC = () => {
       setModelInvocations(invocations);
       setDecisions(decisionItems);
     } catch (error) {
-      message.error('获取审计数据失败');
+      message.error(requestErrorMessage(error, '获取审计数据失败'));
     } finally {
       setLoading(false);
     }

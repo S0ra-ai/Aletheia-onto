@@ -1,53 +1,69 @@
-# 扩展 Aletheia
+# Extending Aletheia
 
-无需 fork 平台即可扩展。四个扩展点已开放为运行时注册表：
-数据源适配器、规则函数、路由权限策略、写回执行器。
+No fork required. Ten extension points are open as runtime registries: data source
+adapters, rule functions, route policies, writeback executors, retrieval backends,
+embedding models, instance resolvers, units, SQL dialects and database writeback targets.
 
-> ⚠️ **稳定性：全部为实验性。** 1.0 之前签名可能在小版本间变更，
-> 变更会记入 [CHANGELOG](../CHANGELOG.md)。理由见
-> [ADR-0007](adr/0007-extension-registry-without-api-stability.md)。
+> ⚠️ **Stability: all of these are experimental.** Signatures may change between minor
+> releases before 1.0, and changes are recorded in the [CHANGELOG](../CHANGELOG.md). The
+> reasoning is in [ADR-0007](adr/0007-extension-registry-without-api-stability.md).
 >
-> 自证合规的方式：对你的实现跑 `tests/test_extension_registry.py`。
-> 我们改签名时，这套测试会同时暴露所有受影响的实现点。
+> **To prove your implementation conforms, run the conformance contract** — it ships with
+> the package, so you do not need this repository or pytest:
+>
+> ```bash
+> aletheia verify --list
+> aletheia verify data_source_adapter --source-type mydb --uri "mydb://host/db" --table contracts
+> ```
+>
+> This replaced an earlier instruction to run `tests/test_extension_registry.py`. A test
+> file is not in the wheel, so telling an integrator to run it was telling them to obtain
+> the platform's source — the thing ADR-0016 exists to avoid. See
+> [§14](#14-verify-your-implementation-the-conformance-contract).
 
-两种注册方式：
+Two ways to register:
 
-- **进程内直接注册** —— 在你的应用启动代码里调用 `register_*()`
-- **打包为插件** —— 通过 entry points 声明，安装即生效，平台自动发现
+- **In-process** — call `register_*()` from your application's startup code
+- **As a plugin** — declare entry points; installing it is enough, the platform discovers
+  it. See [Packaging as a plugin](#packaging-as-a-plugin-entry-points).
 
 ---
 
-## 1. 数据源适配器
+## 1. Data source adapters
 
-接入平台尚不支持的数据库（Oracle、SQL Server、达梦、人大金仓等）。
+For a database the platform does not support yet.
 
 ```python
 from ontology_platform.adapters import register_adapter
 
 class OracleAdapter:
     def test_connection(self, connection_uri: str) -> dict:
-        # 返回 {"sourceType","reachable","status","message"}
+        # returns {"sourceType", "reachable", "status", "message"}
         ...
 
     def scan(self, connection_uri: str) -> list:
-        # 返回 SourceTableInfo 列表：表、列、外键
+        # returns SourceTableInfo entries: tables, columns, foreign keys
         ...
 
     def runtime(self, connection_uri: str):
-        # 上下文管理器，yield 一个 RuntimeDatabase
+        # context manager yielding a RuntimeDatabase
         ...
 
 register_adapter("oracle", OracleAdapter, aliases=("ora",))
 ```
 
-需实现 `DatabaseAdapter` 协议（见 `adapters.py`）。注册传入的是**工厂**
-而非实例——适配器构造开销很小，每次调用视为独立对象。
+Implement the `DatabaseAdapter` protocol (see `adapters.py`). What you register is a
+**factory**, not an instance — construction is cheap and every call is treated as an
+independent object.
 
-查询已注册项：`supported_source_types()`
+> For a new *SQL* database you almost certainly do not want this: see
+> [§10](#10-connecting-a-new-sql-database), where the whole integration is a declaration.
 
-## 2. 规则函数
+Registered names: `supported_source_types()`
 
-让业务规则表达式能调用领域特定谓词。
+## 2. Rule functions
+
+So a business rule expression can call domain-specific predicates.
 
 ```python
 from ontology_platform.semantic_kernel import register_rule_function
@@ -56,70 +72,78 @@ def days_between(start, end) -> int:
     ...
 
 register_rule_function("days_between", days_between)
-# 之后规则可写：days_between(sign_date, today) <= 15
+# rules may now write: days_between(sign_date, today) <= 15
 ```
 
-**约束与理由：**
+**Constraints, and why each one exists:**
 
-- 名称必须是合法标识符且不以下划线开头。沙箱按 `ast.Name` 解析，
-  带点的名字永远绑定不上，下划线前缀会与沙箱内部名冲突。
-- **注册只授予「可被调用」的权限，不放宽 AST 白名单。** 注册后依然禁止
-  dunder 属性访问、lambda、推导式、条件表达式与关键字参数。
-- **实现应当是纯函数且不抛异常。** 规则引擎是 fail-closed 的
-  （[ADR-0002](adr/0002-rule-engine-fail-closed.md)）：函数抛异常会让
-  该规则判为「未通过」，进而阻断作用对象的**所有实例**。
-- 注册函数在合并顺序上优先于行数据，因此名为 `sum` 的列不会遮蔽 `sum` 函数。
+- The name must be a valid identifier and must not start with an underscore. The sandbox
+  resolves `ast.Name` nodes, so a dotted name can never bind; an underscore prefix would
+  collide with the sandbox's own internal names.
+- **Registration grants the right to be called; it does not widen the AST allowlist.**
+  Dunder attribute access, lambdas, comprehensions, conditional expressions and keyword
+  arguments stay forbidden.
+- **Your function must be pure and must not raise.** The rule engine is fail-closed
+  ([ADR-0002](adr/0002-rule-engine-fail-closed.md)): a function that raises makes the rule
+  count as *not passed*, which blocks **every instance** of the object it scopes.
+- Registered functions take precedence over row data when the two are merged, so a column
+  named `sum` cannot shadow the `sum` function.
 
-查询已注册项：`allowed_rule_function_names()`
+Registered names: `allowed_rule_function_names()`
 
-## 3. 路由权限策略
+## 3. Route policies
 
-**如果你的插件新增了 API 端点，必须注册策略。** 否则这些端点会落入
-「未登记路由默认仅管理员」的兜底规则，对非管理员用户表现为不可用。
+**If your plugin adds API endpoints, you must register a policy for them.** Otherwise they
+fall through to the "unregistered routes are admin-only" default, which looks to a
+non-admin user like the endpoint does not exist.
 
 ```python
 from ontology_platform.access_policy import register_route_policy
 from ontology_platform.auth import CAP_READ, CAP_EXECUTE
 
-register_route_policy(["GET"], r"/oracle/tables.*", CAP_READ, "Oracle 表浏览")
-register_route_policy(["POST"], r"/oracle/sync", CAP_EXECUTE, "触发同步")
+register_route_policy(["GET"], r"/oracle/tables.*", CAP_READ, "Browse Oracle tables")
+register_route_policy(["POST"], r"/oracle/sync", CAP_EXECUTE, "Trigger a sync")
 ```
 
-路径为正则，自动锚定首尾。插件规则**先于**内置表匹配，未命中的仍会
-落到内置表、最后落到管理员兜底——deny-by-default 不因插件而失效。
+Paths are regular expressions, anchored automatically. Plugin rules are matched **before**
+the built-in table; anything they miss still falls through to the built-in table and
+finally to the admin default — deny-by-default does not weaken because a plugin exists.
 
-能力取值：`platform:read`、`platform:write`、`governance:review`、
-`governance:publish`、`automation:execute`、`platform:admin`。
-传入未知能力会在注册时立即报错。
+Capabilities: `platform:read`, `platform:write`, `governance:review`, `governance:publish`,
+`automation:execute`, `platform:admin`. An unknown capability is rejected at registration
+time rather than silently matching nothing.
 
-查询生效策略：`describe_policy()`，每行标注 `builtin` 或 `plugin`。
+Effective policies: `describe_policy()`, each row marked `builtin` or `plugin`.
 
-## 4. 写回执行器
+## 4. Writeback executors
 
-HTTP 之外的写回通道（消息队列、RPC、直写库、存储过程）。
+A writeback channel other than HTTP — a message queue, RPC, direct database write, a
+stored procedure.
 
 ```python
 from ontology_platform.automation import ExecutionRequest, register_executor
 
 def publish_to_mq(request: ExecutionRequest) -> dict:
     # request.target / .plan / .timeout_seconds / .headers
-    # 返回值会原样写入决策记录的 execution.remote，请包含审计所需信息
+    # The return value is written verbatim into the decision record's execution.remote,
+    # so it should carry what an auditor will need.
     return {"published": True, "messageId": "..."}
 
 register_executor("amqp", publish_to_mq)
 ```
 
-按数据源 `apiBaseUrl` 的 scheme 分发。返回值进入决策留痕，
-因此**应包含审计者需要的信息**。
+Dispatch is by the scheme of the data source's `apiBaseUrl`. Because the return value
+becomes part of the decision trail, it **has to be what an auditor needs** — not a debug
+dump and not an empty `{}`.
 
-查询已注册项：`supported_executor_schemes()`
+Registered names: `supported_executor_schemes()`
 
 ---
 
-## 打包为插件（entry points）
+## Packaging as a plugin (entry points)
 
 ```toml
-# 你的插件项目的 pyproject.toml
+# your plugin project's pyproject.toml
 [project.entry-points."aletheia.adapters"]
 oracle = "my_plugin.adapters:OracleAdapter"
 
@@ -133,35 +157,28 @@ amqp = "my_plugin.channels:publish_to_mq"
 oracle = "my_plugin.policies:route_policies"
 ```
 
-`aletheia.access_policies` 的目标应是一个可调用对象，
-返回 `(methods, path_regex, capability, description)` 元组序列。
+The target of `aletheia.access_policies` is a callable returning a sequence of
+`(methods, path_regex, capability, description)` tuples.
 
-安装后平台在导入时自动发现。**单个插件加载失败只记日志，不阻断平台启动**——
-一个坏插件不应让整个系统起不来。
+Installing the package is enough; the platform discovers it at import time. **A plugin that
+fails to load is logged and skipped, never fatal** — one broken plugin must not stop the
+whole system from starting, and a platform that refuses to boot is harder to diagnose than
+a feature that reports itself as unavailable.
 
-| entry point 组 | 注册目标 |
+| Entry point group | What you register |
 |---|---|
-| `aletheia.adapters` | 数据源适配器工厂 |
-| `aletheia.rule_functions` | 规则函数 |
-| `aletheia.executors` | 写回执行器 |
-| `aletheia.access_policies` | 返回策略元组的可调用对象 |
-| `aletheia.retrieval_backends` | 检索后端 |
-| `aletheia.embedding_models` | 嵌入模型 |
-| `aletheia.instance_resolvers` | 实例解析器 |
+| `aletheia.adapters` | data source adapter factory |
+| `aletheia.rule_functions` | rule function |
+| `aletheia.executors` | writeback executor |
+| `aletheia.access_policies` | callable returning policy tuples |
+| `aletheia.retrieval_backends` | retrieval backend |
+| `aletheia.embedding_models` | embedding model |
+| `aletheia.instance_resolvers` | instance resolver |
 
-## 验证你的实现
+## 5. Retrieval backends and embedding models
 
-```bash
-python -m pytest tests/test_extension_registry.py -v
-```
-
-这套测试既约束平台自身（开放扩展点后未削弱 deny-by-default 授权、
-规则沙箱、fail-closed 语义），也是第三方的合规样板。
-
-## 5. 检索后端与嵌入模型
-
-默认实现为**零外部依赖**（BM25 + 哈希 n-gram），保证 clone 下来就能跑。
-追求召回质量的部署可注册自己的后端。
+The defaults are **zero-dependency** (BM25 + hashed n-grams) so a fresh clone runs. A
+deployment that needs better recall registers its own.
 
 ```python
 from ontology_platform.retrieval import (
@@ -169,23 +186,25 @@ from ontology_platform.retrieval import (
 )
 
 def rank_with_pgvector(query: str, entries, limit: int) -> list[RetrievalHit]:
-    # entries 已按本体锚定收窄，后端不能越过锚定扩大候选集——
-    # 这正是引用可归因的前提（ADR-0009）。
+    # `entries` has already been narrowed by ontology anchoring. A backend may not widen the
+    # candidate set past that anchoring -- it is the precondition for a citation being
+    # attributable at all (ADR-0009).
     ...
 
 register_retrieval_backend("pgvector", rank_with_pgvector)
 register_embedding_model("bge-m3", lambda text: my_model.encode(text).tolist())
 ```
 
-**关键约束：** 后端收到的是**已锚定过滤**的候选集。后端只负责排序，
-不能自行扩大候选范围，否则引用会退化为「相似」而非「有据」。
+**The key constraint:** you receive an **already anchored** candidate set. Your job is to
+order it. Widening it turns citations from "supported by" into "looks similar", which is the
+distinction the whole product rests on.
 
-查询已注册项：`supported_retrieval_backends()`、`supported_embedding_models()`
+Registered names: `supported_retrieval_backends()`, `supported_embedding_models()`
 
-## 6. 多租户上下文
+## 6. Multi-tenant context
 
-扩展若要访问平台数据，应通过上下文而非硬编码路径，否则在多租户部署下会读到
-错误的租户数据。
+An extension that reads platform data must go through the context rather than a hardcoded
+path, or in a multi-tenant deployment it will read the wrong tenant's data.
 
 ```python
 from ontology_platform.context import use_context
@@ -193,19 +212,19 @@ from ontology_platform.tenancy import tenant_context, require_tenant, scope_quer
 
 ctx = tenant_context(base_context, "acme")
 with use_context(ctx):
-    tenant = require_tenant()          # 无法确定租户时抛错，而非猜测
+    tenant = require_tenant()          # raises when the tenant cannot be determined
     query, params = scope_query("select * from data_source", ())
     with ctx.connect() as conn:
         rows = conn.execute(query, params).fetchall()
 ```
 
-**要点：** `require_tenant()` 是 fail-closed 的。若你的扩展在无上下文时也要能跑，
-请显式处理 `TenantError`，不要退化为「读所有租户」。
+**`require_tenant()` is fail-closed.** If your extension must also run without a context,
+handle `TenantError` explicitly — never degrade to "read every tenant".
 
-## 7. 实例解析器
+## 7. Instance resolvers
 
-决定「哪些行是这个业务对象的实例」。内置四种：`single_table`（默认）、
-`joined_tables`、`discriminated`、`custom_sql`。
+Decides *which rows are instances of this business object*. Four ship in the box:
+`single_table` (the default), `joined_tables`, `discriminated`, `custom_sql`.
 
 ```python
 from ontology_platform.instance_resolver import (
@@ -216,42 +235,46 @@ class CrossSourceResolver(InstanceResolver):
     kind = "cross_source"
 
     def validate(self) -> None:
-        ...  # 构造时校验配置，避免错误配置在研判时才暴露
+        ...  # check the configuration at construction, not when a verdict needs it
 
     def fetch(self, runtime, instance_id):
-        ...  # 返回一条完整记录或 None
+        ...  # a complete record, or None
 
     def list_ids(self, runtime, limit=50):
-        ...  # 返回的 token 必须能被 fetch() 接受
+        ...  # tokens that fetch() must accept
 
     def columns(self, runtime):
-        ...  # 规则可引用的全部名称
+        ...  # every name a rule may reference
 
 register_resolver("cross_source", CrossSourceResolver)
 ```
 
-**契约中最易写错的一点：`list_ids()` 与 `fetch()` 必须往返闭合。**
-批量研判依赖它——若 `list_ids` 返回了 `fetch` 不接受的 id，批量评估会得到
-「实例不存在」而非结论。
+**The part of the contract most often got wrong: `list_ids()` and `fetch()` must round-trip.**
+Batch assessment depends on it — if `list_ids` returns an id your `fetch` refuses, the batch
+reports "instance not found" instead of a verdict, while single-instance assessment looks
+perfectly healthy. The contract checks every pair explicitly for that reason.
 
-对你的实现跑 `tests/test_instance_resolvers.py` 即可验证合规。
+Verify: `aletheia verify instance_resolver` (see [§14](#14-verify-your-implementation-the-conformance-contract)).
 
-### 标识符必须校验，不能只加引号
+### Identifiers must be validated, not merely quoted
 
-解析器配置由运维提供并进入 SQL 文本（join 子句、判别列）。
-请使用 `validate_identifier()`——**加了引号但未校验的名字进入 join 子句仍是隐患**。
+Resolver configuration is supplied by an operator and ends up inside SQL text (join
+clauses, discriminator columns). Use `validate_identifier()` — **a quoted-but-unvalidated
+name in a join clause is still a hazard**.
 
-### `custom_sql` 的信任边界
+### The trust boundary of `custom_sql`
 
-`custom_sql` 执行运维提供的 SQL，**以数据源自身的权限运行**。
-平台只做三项限制：必须以 `select`/`with` 开头、不含分号、标识列名经校验。
-这是**刻意的信任决定**:接入遗留系统时建议使用只读账号。
+`custom_sql` executes operator-supplied SQL **with the data source's own privileges**. The
+platform imposes exactly three restrictions: it must begin with `select`/`with`, it must
+contain no semicolon, and any identifier columns are validated. This is a **deliberate
+trust decision** — use a read-only account when connecting a legacy system.
 
-## 8. 单位与量纲
+## 8. Units and dimensions
 
-属性可以声明单位，同量纲比较自动换算。内置单位覆盖货币刻度、时长、
-质量、长度与比率——刻意保持小而领域中立，
-行业专有单位由部署方注册，理由同 [ADR-0003](adr/0003-no-builtin-domain-vocabulary.md)。
+An attribute may declare a unit; comparison within a dimension converts automatically. The
+built-in set covers currency scales, durations, mass, length and ratios — deliberately
+small and domain-neutral, because a shipped industry-specific unit list is the same mistake
+as a shipped industry vocabulary ([ADR-0003](adr/0003-no-builtin-domain-vocabulary.md)).
 
 ```python
 from ontology_platform.derived_attributes import Unit, register_unit
@@ -259,23 +282,27 @@ from ontology_platform.derived_attributes import Unit, register_unit
 register_unit(Unit(code="jin", name="斤", dimension="mass", to_canonical=500.0))
 ```
 
-`to_canonical` 是「1 个该单位等于多少个该量纲的规范单位」。
-换算统一经规范单位而非两两系数：N 个单位只需 N 个系数而不是 N²，
-且只有一处需要核对。
+`to_canonical` is "how many canonical units of this dimension is one of mine". Conversion
+always goes through the canonical unit rather than pairwise factors: N units need N factors
+instead of N², and there is one place to check.
 
-覆盖已有单位必须显式传 `replace=True`——**静默重定义「吨」
-会改变所有已存值的含义，且不留任何记录**。
+Overriding an existing unit requires an explicit `replace=True` — **silently redefining
+"tonne" changes the meaning of every value already stored, and leaves no record of having
+done so**.
 
-新量纲需要恰好一个 `to_canonical == 1.0` 的单位，否则该量纲无法换算。
+A new dimension needs exactly one unit with `to_canonical == 1.0`; without it nothing in
+that dimension can be converted.
 
-### 跨量纲不会被换算
+### Cross-dimension conversion is refused
 
-`convert(1, "day", "kilogram")` 抛错而不是返回 1。
-这通常意味着建模有误，静默透传数字会让由此得出的判定看起来完全有效。
+`convert(1, "day", "kilogram")` raises rather than returning 1. It almost always means the
+model is wrong, and silently passing the number through would make every verdict derived
+from it look entirely valid.
 
-## 9. 建表：SchemaBundle
+## 9. Tables: `SchemaBundle`
 
-插件自带的表通过 `SchemaBundle` 声明，而不是自己写「按方言挑 DDL 再执行」的循环。
+A plugin's own tables are declared through `SchemaBundle`, not by writing another
+"pick the DDL by dialect and execute it" loop.
 
 ```python
 from ontology_platform.schema import SchemaBundle
@@ -293,40 +320,42 @@ SCHEMA = SchemaBundle(
         {
             "sqlite": "create index if not exists idx_my_table_note on my_table (note)",
             "postgresql": "create index if not exists idx_my_table_note on my_table (note)",
-            # MySQL 没有 `create index if not exists`
+            # MySQL has no `create index if not exists`
             "mysql": "create index idx_my_table_note on my_table (note)",
         },
     ),
     table_names=("my_table",),
 )
-SCHEMA.verify_declared_names()   # 导入时校验声明与 DDL 一致
+SCHEMA.verify_declared_names()   # checks the declaration against the DDL at import
 
 
 def init_my_schema(conn):
     SCHEMA.apply(conn)
 ```
 
-### 为什么表和索引分开声明
+### Why tables and indexes are declared separately
 
-两者的失败方式不同：`create table if not exists` 在三方言上都幂等，
-而 MySQL 没有 `create index if not exists`，重跑会抛错。
-放在一个列表里会迫使每个调用方去嗅探语句文本来判断错误是否预期——
-而这正是此前在 8 个模块副本之间漂移掉的那个检查。
+They fail differently. `create table if not exists` is idempotent on all three dialects,
+while MySQL has no `create index if not exists` and errors on a second run. Putting both in
+one list forces every caller to sniff statement text to decide whether an error was
+expected — and that sniffing is exactly the check that drifted between eight copies of this
+code.
 
-### 表存在性用目录探测，不要捕获异常
+### Probe for a table; do not catch the exception
 
-特性 schema 可选时，用 `SCHEMA.has_tables(conn)` 而不是 `try/except`。
-PostgreSQL 上一条失败语句会中止整个事务，
-同一连接上后续每条命令都会以 `InFailedSqlTransaction` 失败
-（同 [ADR-0004](adr/0004-three-platform-dialects.md)）。
+Where a feature's schema is optional, use `SCHEMA.has_tables(conn)` rather than
+`try/except`. On PostgreSQL a failed statement aborts the entire transaction, so every
+subsequent command on that connection fails with `InFailedSqlTransaction`
+(see [ADR-0004](adr/0004-three-platform-dialects.md)).
 
-`verify_declared_names()` 防的是另一种错：改了 DDL 却忘改 `table_names`，
-会让探测对存在的表报「未配置」，**于是功能静默返回空结果而不是报错**。
+`verify_declared_names()` guards a different mistake: changing the DDL and forgetting
+`table_names` makes the probe report "not configured" for a table that exists, so **the
+feature silently returns empty results instead of failing**.
 
-## 10. 接一个新的 SQL 数据库
+## 10. Connecting a new SQL database
 
-**不需要写适配器。** `information_schema` 是标准，扫描器完全共用；
-差异只有 6 个，声明为 `SqlDialect`：
+**You do not need to write an adapter.** `information_schema` is a standard and the scanner
+is fully shared; the differences are six, and they are declared as a `SqlDialect`:
 
 ```python
 from ontology_platform.generic_sql_adapter import DriverSpec, register_sql_source
@@ -334,52 +363,54 @@ from ontology_platform.sql_dialects import SqlDialect, get_dialect, register_dia
 
 register_dialect(SqlDialect(
     name="gaussdb",
-    current_schema_expression="current_schema()",  # 或 database()／sys_context(...)
+    current_schema_expression="current_schema()",  # or database() / sys_context(...)
     quote_open='"', quote_close='"',
-    paramstyle="format",                            # format(%s)／qmark(?)／numeric(:1)
-    row_limit_style="limit_offset",                 # 或 fetch_first（Oracle／SQL Server／达梦）
-    catalog_uppercases_identifiers=False,           # Oracle／达梦 为 True
-    foreign_keys_via_referenced_columns=False,      # MySQL 为 True
+    paramstyle="format",                            # format(%s) / qmark(?) / numeric(:1)
+    row_limit_style="limit_offset",                 # or fetch_first (Oracle / SQL Server / 达梦)
+    catalog_uppercases_identifiers=False,           # True for Oracle / 达梦
+    foreign_keys_via_referenced_columns=False,      # True for MySQL
 ))
 
 register_sql_source(DriverSpec(
     source_type="gaussdb",
     dialect=get_dialect("gaussdb"),
     module="psycopg2",
-    install_hint="GaussDB 接入需要安装 psycopg2。",
-    passes_uri_positionally=True,   # 驱动把整个连接串作为第一个位置参数
+    install_hint="Connecting GaussDB requires psycopg2.",
+    passes_uri_positionally=True,   # the driver takes the whole URI as its first positional
 ))
 ```
 
-这就是全部。它随即获得元数据扫描、列剖析、外键发现、实例解析、
-全部规则能力与运行时读取。
+That is the whole integration. Metadata scanning, column profiling, foreign key discovery,
+instance resolution, every rule capability and runtime reads all follow from it.
 
-### 三个容易踩的点
+### Three things that are easy to get wrong
 
-**`catalog_uppercases_identifiers` 写错的后果是静默的。**
-Oracle 与达梦在目录里把未加引号的标识符折成大写，
-查 `contracts` 匹配不到任何行——于是表看起来**没有列**，而不是报错。
+**Getting `catalog_uppercases_identifiers` wrong fails silently.** Oracle and 达梦
+upper-case unquoted identifiers in the catalog, so a lookup for `contracts` matches nothing
+— the table then appears to have **no columns** rather than raising.
 
-**分页语法。** 硬编码 `limit n` 在 Oracle／SQL Server／达梦上会失败，
-而列剖析会吞掉查询异常，于是每一列都会「剖析为空」而不是抛错。
+**Row limiting syntax.** A hardcoded `limit n` fails on Oracle, SQL Server and 达梦, and
+column profiling swallows query errors — so every column profiles as empty instead of
+raising.
 
-**连接串的参数名各驱动不同**：psycopg 叫 `conninfo`、oracledb 叫 `dsn`、
-sqlite3 是位置参数。猜错会得到 `invalid connection option "dsn"`，
-看起来像配置错误而不是声明错误。因此有 `passes_uri_positionally`。
+**The connection-string parameter name differs per driver:** psycopg calls it `conninfo`,
+oracledb calls it `dsn`, sqlite3 takes it positionally. Guessing wrong yields
+`invalid connection option "dsn"`, which reads like a misconfiguration rather than a wrong
+declaration. Hence `passes_uri_positionally`.
 
-### 内置声明
+### Bundled declarations
 
-Oracle／SQL Server／达梦／人大金仓／openGauss 已在
-`generic_sql_adapter.BUNDLED_SPECS` 中声明，驱动装上后
-`register_bundled_sql_sources()` 即会激活。
-`aletheia doctor` 会列出每个的驱动与安装提示。
+Oracle, SQL Server, 达梦, KingbaseES and openGauss are declared in
+`generic_sql_adapter.BUNDLED_SPECS`; `register_bundled_sql_sources()` activates them once
+the driver is installed, and `aletheia doctor` lists each one's driver and install hint.
 
-> ⚠️ 这些声明**未在 CI 中实测**：驱动与客户端库无法在 CI 环境安装。
-> 通用路径本身以真实 PostgreSQL 做了「声明式接入一个无专用适配器的库」的实证。
+> ⚠️ These declarations are **not exercised in CI**: the drivers and client libraries cannot
+> be installed there. The generic path itself is proven against a real PostgreSQL as "a
+> database the platform has no dedicated adapter for".
 
-## 11. 数据库写回执行器
+## 11. Database writeback targets
 
-这是最危险的扩展点，因此约束最严。
+The most dangerous extension point, so it carries the strictest constraints.
 
 ```python
 from ontology_platform.db_executors import DatabaseTarget, SqlWriteback, register_database_target
@@ -399,29 +430,32 @@ register_database_target(DatabaseTarget(
 ))
 ```
 
-此后 `orders://` 成为可用的写回协议，操作路径末段选择写回名。
+`orders://` is now an available writeback scheme, and the last segment of the operation path
+selects the writeback by name.
 
-### 平台会拒绝什么
+### What the platform refuses
 
-| 拒绝 | 理由 |
+| Refused | Why |
 |---|---|
-| 无 `keyColumns` 的 update／delete | 缺 WHERE 会改写整张表，而事后从判定记录看不出这一点 |
-| 含分号或多语句 | 绕过单语句审计 |
-| DDL 与权限语句（drop／alter／grant…） | 自动化用于推进业务状态，不用于变更结构 |
-| 未显式 `allowDelete=True` 的删除 | 销毁数据需要单独的授权决定 |
-| 缺失的参数值 | 静默变成 NULL 是「更新时把不该动的列清空」的成因 |
-| 请求提供的连接串 | 那会让调用方把自动化指向任何可达的数据库 |
+| update/delete without `keyColumns` | a missing WHERE rewrites the whole table, and the decision record would not show that it did |
+| a semicolon, or multiple statements | bypasses single-statement auditing |
+| DDL and privilege statements (drop/alter/grant…) | automation advances business state; it does not change structure |
+| delete without an explicit `allowDelete=True` | destroying data deserves its own authorisation decision |
+| a missing parameter value | silently becoming NULL is how "the update cleared a column it should not have touched" happens |
+| a connection string supplied by the request | that would let a caller point automation at any reachable database |
 
-**语句由声明提供标识符，由请求提供值，且值一律绑定。**
-从操作载荷拼 SQL 会造出一个从 HTTP 请求体可达的注入面。
+**The statement supplies identifiers, the request supplies values, and values are always
+bound.** Building SQL from an operation payload creates an injection surface reachable from
+an HTTP request body.
 
-**影响 0 行默认按失败处理**：UPDATE 匹配到 0 行意味着目标实例不在或条件写错。
-确实幂等的写回显式声明 `requireAffectedRows=False`。
+**Zero affected rows counts as failure by default**: an UPDATE matching nothing means the
+target instance is absent or the condition is wrong. A genuinely idempotent writeback
+declares `requireAffectedRows=False` explicitly.
 
-## 12. 声明一个 REST 数据源
+## 12. Declaring a REST data source
 
-REST 响应没有可发现的模式，因此字段必须声明——
-从一次响应采样出的模式会随响应变化，引用它的判定不可复现。
+A REST response has no discoverable schema, so fields must be declared — a schema sampled
+from one response changes with the next, and a verdict citing it cannot be reproduced.
 
 ```python
 from ontology_platform.rest_adapter import RestResource, RestSpec, register_rest_source
@@ -436,57 +470,61 @@ register_rest_source(RestSpec(
             primary_key="id",
             fields=("id", "name", "credit_status"),
             field_types={"id": "integer"},
-            items_path="data.items",   # 响应被包裹时指明行列表位置
+            items_path="data.items",   # where the row list sits when the response is wrapped
         ),
     ),
 ))
 ```
 
-已有 OpenAPI 文档时用 `register_openapi_source(source_type, document)`——
-那仍然是声明，只是由 API 的所有者写的。
+With an existing OpenAPI document, use `register_openapi_source(source_type, document)` —
+that is still a declaration, just one written by the API's owner.
 
-**未声明的字段不会下发**：声明就是契约，
-把响应里的一切透传会让规则可用的名字取决于当下的载荷。
+**Undeclared fields are not exposed**: the declaration is the contract, and passing through
+whatever the response happens to contain would make the names available to rules depend on
+today's payload.
 
-## 13. CSV／REST 源上的一个必然后果
+## 13. A consequence on CSV and REST sources
 
-这两类源不推断外键，因此**引用关联对象的规则会 fail-closed**。
-例如合同管理蓝图自带的
+Neither source type infers foreign keys, so **a rule that references a related object
+fails closed**. The contract-management blueprint ships
 
 ```
 customer.credit_status != 'blacklist'
 ```
 
-在 CSV 源上会以 `name 'customer' is not defined` 记为「未通过」，
-而不是静默通过。
+On a CSV source that evaluates to `name 'customer' is not defined` and is recorded as *not
+passed*, rather than passing quietly.
 
-**这是正确行为，不是缺陷。** 规则引用了一个此处不存在的关联，
-静默通过等于在未验证的数据上放行（ADR-0002）。
+**That is correct behaviour, not a defect.** The rule references an association that does not
+exist here, and passing silently would be clearing data that was never checked
+([ADR-0002](adr/0002-rule-engine-fail-closed.md)).
 
-处理方式有三种，按推荐顺序：
+Three ways to deal with it, in order of preference:
 
-1. 声明真实的关系——`describe_file_source()` 会给出外键候选，
-   由建模人员确认后建立
-2. 把该规则的作用域改到确实有该关联的对象上
-3. 给规则设生效期或改用 `guard_expression`，使其只在具备条件时参与判定
+1. Declare the real relationship — `describe_file_source()` proposes foreign key candidates
+   for a modeller to confirm
+2. Move the rule's scope to an object that does have the association
+3. Give the rule a validity period, or use a `guard_expression`, so it participates only
+   when its precondition holds
 
-`aletheia assess` 会在 `evaluationError` 里写明是哪个名字不存在，
-因此这类情形可以被发现，而不是变成一个说不清的判定。
+`aletheia assess` names the missing identifier in `evaluationError`, so this case is
+discoverable rather than turning into an inexplicable verdict.
 
-## 14. 验证你的实现：一致性契约
+## 14. Verify your implementation: the conformance contract
 
-**先跑契约，再上生产。** 契约随包发布，不需要 clone 本仓库、也不需要 pytest：
+**Run the contract before production.** It ships with the package — no clone, no pytest:
 
 ```bash
-aletheia verify --list                                    # 全部契约与对应扩展点
+aletheia verify --list                                    # every contract and its extension point
 aletheia verify data_source_adapter --source-type mydb --uri "mydb://host/db" --table contracts
 aletheia verify retrieval_backend --name pgvector
 aletheia verify embedding_model --name my-model
 ```
 
-失败时退出码为 1，因此可以直接当 CI 门禁用。
+It exits non-zero on failure, so it works directly as a CI gate.
 
-需要活的被测对象的契约（实例解析器、写回执行器）在代码中调用：
+Contracts that need a live subject (instance resolvers, writeback executors) are called in
+code:
 
 ```python
 from ontology_platform.conformance import check_instance_resolver
@@ -496,51 +534,46 @@ with get_adapter("sqlite").runtime("/path/to/db.sqlite3") as runtime:
     report = check_instance_resolver(MyResolver(spec), runtime, subject="my_resolver")
 
 print(report.summary())
-report.raise_for_failures()   # 抛 ConformanceError（继承 AssertionError），可直接用在测试里
+report.raise_for_failures()   # raises ConformanceError (an AssertionError), usable in tests
 ```
 
-### 契约检查的是什么
+### What the contracts actually check
 
-**只检查内核真正依赖的属性。** 每一项都对应一个具体的错误后果，
-失败信息会把后果一起说出来——不该让实现者去猜某条规则为什么重要。
+**Only properties the kernel truly depends on.** Each one corresponds to a concrete wrong
+outcome, and a failure states that outcome — an implementer should never have to guess why a
+rule matters.
 
-| 契约 | 检查项数 | 最容易写错的一项 |
+| Contract | Checks | The one most often got wrong |
 |---|:--:|---|
-| `instance_resolver` | 9 | `list_ids()` 的 token 必须能被自己的 `fetch()` 接受 |
-| `data_source_adapter` | 9 | `fetch_primary_keys()` 给出的键必须能被 `fetch_one()` 取回 |
-| `retrieval_backend` | 6 | 不得返回候选集之外的条目 |
-| `embedding_model` | 4 | 同一输入必须返回同一向量 |
-| `writeback_executor` | 3 | 结果必须表明写回效果 |
+| `instance_resolver` | 9 | tokens from `list_ids()` must be accepted by your own `fetch()` |
+| `data_source_adapter` | 9 | keys from `fetch_primary_keys()` must be retrievable by `fetch_one()` |
+| `retrieval_backend` | 6 | must not return entries outside the candidate set |
+| `embedding_model` | 4 | the same input must produce the same vector |
+| `writeback_executor` | 3 | the result must state what the writeback did |
 
-### 为什么往返闭合被单独强调
+### Required versus advisory
 
-适配器上真正会发生的 bug 不是崩溃，而是**不对称**：
+A `required` failure means **wrong results under normal operation**; `advisory` means it
+works but is missing a capability (a non-tabular source cannot report `tables()`, so drift
+detection does not cover it). The two are kept apart deliberately: mixing them produces a
+report unusable for deciding whether to ship.
 
-`list_ids()` 发出的 token 自己的 `fetch()` 不接受——这能通过实现者想得到的每一个单元测试，
-然后在批量研判时**静默地什么都不返回**，而单实例研判看起来完全正常。
-这类失败最难定位，因此契约把每一对往返都显式检查。
+### The contract is not an API stability promise
 
-### 必需项与建议项
+The registries remain experimental
+([ADR-0007](adr/0007-extension-registry-without-api-stability.md)). What is stable is the
+**behaviour you are required to have**, not the signature that requires it.
 
-`required` 失败意味着**正常运行下会产出错误结果**；
-`advisory` 意味着能用但少了一项能力（例如非表数据源无法报告 `tables()`，
-于是漂移检测覆盖不到它）。
-两者刻意区分：混在一起会让报告无法用于「能不能上线」的判断。
+> Every implementation inside the kernel (the four resolvers, the SQLite/CSV adapters, the
+> BM25 and embedding retrieval backends, the database writeback executors) runs the same
+> contracts in CI. A contract that only holds for its author's example drifts into
+> demanding something the platform itself does not do — and then the first integrator to run
+> it is failed by our own doing.
 
-### 契约不是 API 稳定承诺
+## 15. One object across two data sources
 
-注册表仍是实验性的（[ADR-0007](adr/0007-extension-registry-without-api-stability.md)）。
-稳定的是**被要求的行为**，不是要求它的函数签名。
-
-> 内核自身的全部实现（4 种解析器、SQLite／CSV 适配器、BM25／嵌入检索后端、
-> 数据库写回执行器）都在 CI 中跑同一套契约。
-> 只对作者自己的例子成立的契约会漂移成「要求平台自己都不做的事」，
-> 那样第一个跑它的集成方拿到的失败是我们造成的。
-
-## 15. 让一个对象跨两个数据源
-
-客户主数据在 CRM、合同在 ERP，两边都有「客户」但主键不同。
-声明它们靠什么对应：
+Customer master data in the CRM, contracts in the ERP, both with a "customer" but different
+primary keys. Declare what makes them the same:
 
 ```python
 from ontology_platform.entity_resolution import (
@@ -549,65 +582,69 @@ from ontology_platform.entity_resolution import (
 
 declare_cross_source_link(platform_db, ontology_id, CrossSourceLink(
     name="crm_to_erp",
-    primary_object_code="customer",          # 主源：实例身份来自它
-    secondary_data_source_id=2,              # 副源
+    primary_object_code="customer",          # primary source: identity comes from it
+    secondary_data_source_id=2,              # secondary source
     secondary_table="clients",
     match_keys=(MatchKey(primary_column="tax_id", secondary_column="taxpayer_no"),),
-    prefix="erp",                            # 副源字段挂成 erp_credit_limit
+    prefix="erp",                            # secondary columns appear as erp_credit_limit
 ))
 ```
 
-此后规则可以直接写 `erp_credit_limit > 0`。
+Rules may now write `erp_credit_limit > 0` directly.
 
-跨源聚合同理，在 `AggregateSpec` 上指明目标源：
+Cross-source aggregates work the same way, naming the target source on `AggregateSpec`:
 
 ```python
 AggregateSpec(
     name="erp_order_total", function="sum",
     target_table="orders", target_column="client_taxpayer_no",
     group_column="tax_id", value_column="amount",
-    target_data_source_id=2,        # 0（默认）表示本源
+    target_data_source_id=2,        # 0 (the default) means this source
 )
 ```
 
-### 为什么必须声明匹配键
+### Why matching keys must be declared
 
-跨源判定会把「这两行是同一实例」写进判定链。
-**若那个判断不可核验，基于它的每个结论都不可解释**——
-「为什么这份合同被阻断」的答案会变成「因为我们认为这两行是同一个客户」。
+A cross-source verdict puts "these two rows are the same instance" into its decision chain.
+**If that judgement cannot be interrogated, every conclusion resting on it is
+unexplainable** — the answer to "why was this contract blocked" becomes "because we believe
+these two rows are the same customer".
 
-因此平台**不做**相似度匹配、编辑距离、机器学习实体链接：
-那些会让判定结论随阈值变化，且无法回答「为什么这两行是同一个」。
+So the platform does **not** do similarity matching, edit distance or ML entity linking:
+those make the verdict move with a threshold, and none of them can answer "why are these two
+the same".
 
-规范化只做确定性的部分：去空白、统一大小写、统一转字符串
-（CRM 存 varchar 而 ERP 存 bigint 时，按原类型比较会一个都匹配不上）。
+Normalisation covers only the deterministic part: trim, case-fold, and render as text (a
+`varchar` in the CRM compared against a `bigint` in the ERP matches nothing if compared in
+native types).
 
-### 三条会让你意外的拒绝
+### Three refusals that will surprise you
 
-| 情形 | 平台行为 | 理由 |
+| Situation | What the platform does | Why |
 |---|---|---|
-| 副源匹配到多行 | **拒绝**，不挑第一行 | 挑一行会让判定作用在任意选中的记录上，而结果看起来正常 |
-| 两侧同名字段取值不同 | **标记冲突**，规则引用它会 fail-closed | 没人能说清该用哪一侧的值 |
-| 匹配失败 | **不注入任何字段** | 注入 None 会让 `erp_x > 0` 为假，与真实违规无法区分 |
+| the secondary matches several rows | **refuses** rather than taking the first | taking one applies the verdict to an arbitrarily chosen record, and the result looks normal |
+| both sides have a same-named field with different values | **marks a conflict**; a rule referencing it fails closed | nobody can say which side is right |
+| matching fails | **injects nothing** | injecting None makes `erp_x > 0` false, indistinguishable from a real violation |
 
-确实允许取任一行时声明 `require_unique=False`；
-确实要取某一侧时声明 `merge_strategy="prefer_primary"`／`"prefer_secondary"`——
-但选择会留痕，否则事后无法解释用了哪个值。
+Where taking any row is genuinely acceptable, declare `require_unique=False`; where one side
+should win, declare `merge_strategy="prefer_primary"` / `"prefer_secondary"` — the choice is
+recorded, because otherwise nobody can explain afterwards which value was used.
 
-### 不做传递推导
+### No transitive inference
 
-声明了 A↔B 与 B↔C，平台**不会**自动得出 A↔C。
-那会引入一条没人声明过的对应关系，而它同样会进入判定链。
-需要 A↔C 就显式声明它。
+Declaring A↔B and B↔C does **not** produce A↔C. That would introduce a correspondence nobody
+declared, and it would enter the decision chain just the same. Declare A↔C explicitly if you
+need it.
 
-完整取舍见 [ADR-0018](adr/0018-cross-source-entity-resolution.md)。
+Full reasoning in [ADR-0018](adr/0018-cross-source-entity-resolution.md).
 
-## 16. 给插件的表加字段
+## 16. Adding a column to a plugin's table
 
-`create table if not exists` 对**已存在的表什么都不做**，
-因此新增字段只对全新部署生效——功能在开发机上能用、升级后不能用，且不会报错。
+`create table if not exists` does **nothing** to a table that already exists, so a new field
+applies only to fresh deployments — it works on the machine it was developed on, stops
+working after an upgrade, and reports nothing.
 
-用 `ColumnAddition` 声明：
+Declare it with `ColumnAddition`:
 
 ```python
 from ontology_platform.schema import ColumnAddition, SchemaBundle
@@ -627,29 +664,31 @@ SCHEMA = SchemaBundle(
 )
 ```
 
-**默认值必须等于既有行为**，否则升级会改变已有数据的含义。
+**The default must equal the existing behaviour**, or the upgrade changes the meaning of
+data already stored.
 
-加列先查目录再执行 DDL，因此幂等且不依赖驱动的错误文本——
-捕获异常判断「列是否已存在」在 PostgreSQL 上会中止整个事务（同 ADR-0004）。
+Adding a column probes the catalog first and then runs the DDL, so it is idempotent and does
+not depend on a driver's error text — catching an exception to decide whether a column
+exists aborts the whole transaction on PostgreSQL (as in ADR-0004).
 
-## 尚未开放的扩展点
+## Extension points not yet open
 
-以下在 [ROADMAP](../ROADMAP.md) 中，目前**没有**扩展机制：
+The following are in the [ROADMAP](../ROADMAP.md) and have **no** extension mechanism:
 
-- 跨源实例解析（一个对象跨两个数据源）—— 需先回答「两个源里哪两行是同一个业务实例」，
-  且该判断本身必须可核验，否则跨源判定无法解释
-- 认证后端（SSO／LDAP）
-- 事件钩子
-- 渠道接入
-- 关系分类策略（目前是固定的结构化规则，见
-  [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md)）
-- 聚合函数（`sum`／`count`／`min`／`max`／`avg`，需要窗口函数请改用
-  `custom_sql` 解析器）
+- Cross-source *instance resolution* — see [§15](#15-one-object-across-two-data-sources),
+  where the declaration-based form is available
+- Authentication backends (SSO / LDAP)
+- Event hooks
+- Channel integrations
+- Relation classification strategy (currently a fixed structural rule — see
+  [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md))
+- Aggregate functions (`sum`/`count`/`min`/`max`/`avg`; use a `custom_sql` resolver when you
+  need window functions)
 
-> **事件钩子刻意不开放。** 事件是记录而非触发器：能触发自动化的事件
-> 会让回放历史重新执行业务动作。需要「事件驱动动作」请走
-> `automation.py` 的写回执行器，由决策驱动
-> （[ADR-0014](adr/0014-type-hierarchy-and-business-events.md)）。
+> **Event hooks are withheld on purpose.** Events are a record, not a trigger: an event that
+> triggers automation would make replaying history re-execute business actions. If you want
+> event-driven action, go through `automation.py`'s writeback executors, driven by a decision
+> ([ADR-0014](adr/0014-type-hierarchy-and-business-events.md)).
 
-这些的形状取决于第二个真实用例，过早冻结会产生错误 API
-（[ADR-0001](adr/0001-three-repo-distribution.md) Consequences）。
+Their shape depends on a second real use case, and freezing it now would produce the wrong
+API ([ADR-0001](adr/0001-three-repo-distribution.md) Consequences).

@@ -67,6 +67,7 @@ from .adapters import (
     register_adapter,
     scan_information_schema,
 )
+from .errors import describe_data_source_failure
 from .sql_dialects import DAMENG, KINGBASE, ORACLE, POSTGRESQL, SQLSERVER, SqlDialect
 
 logger = logging.getLogger(__name__)
@@ -288,6 +289,8 @@ class GenericSQLAdapter:
         try:
             self.spec.load_driver()
         except DriverError as error:
+            # `load_driver` raises with the install hint AS its message, so this is already
+            # curated text ("请安装 X") rather than an ImportError repr.
             return connection_status(self.source_type, False, "driver_missing", str(error))
         try:
             conn = self._connect(connection_uri, with_timeout=True)
@@ -299,7 +302,7 @@ class GenericSQLAdapter:
                 conn.close()
             return connection_status(self.source_type, True, "ok", f"{self.source_type} 数据库连接成功。")
         except Exception as error:
-            return connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", describe_data_source_failure(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         conn = self._connect(connection_uri)

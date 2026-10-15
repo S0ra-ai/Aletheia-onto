@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { ontologyApi, dataSourceApi, industryBlueprintApi } from '../../api';
+import { dataSourceApi, industryBlueprintApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, DataSource, OntologyDraftCreate, IndustryBlueprint } from '../../types';
 
 const { Title } = Typography;
@@ -28,7 +28,7 @@ const OntologyList: React.FC = () => {
       const allOntologies = await ontologyApi.list();
       setOntologies(allOntologies as Ontology[]);
     } catch (error) {
-      message.error('获取本体列表失败');
+      message.error(requestErrorMessage(error, '获取本体列表失败'));
     } finally {
       setLoading(false);
     }
@@ -46,7 +46,7 @@ const OntologyList: React.FC = () => {
       form.resetFields();
       fetchData();
     } catch (error) {
-      message.error('生成失败');
+      message.error(requestErrorMessage(error, '生成失败'));
     }
   };
 

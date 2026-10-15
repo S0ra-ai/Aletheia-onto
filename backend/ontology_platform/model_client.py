@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .config import MODEL_PROVIDER_DEFAULTS
 from .context import PlatformDb
 from .database import connect
+from .errors import describe_model_failure
 from .industry_blueprints import coerce_hints, rule_is_readable
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
@@ -342,7 +343,7 @@ def generate_semantic_suggestions(
             "usedRemoteModel": False,
             "content": _local_suggestions(metadata),
             "openrouter": model_client.status(),
-            "remoteError": str(error),
+            "remoteError": describe_model_failure(error),
         }
 
 
@@ -412,7 +413,7 @@ def generate_blueprint_draft(
             "usedRemoteModel": False,
             "blueprint": local,
             "openrouter": model_client.status(),
-            "remoteError": str(error),
+            "remoteError": describe_model_failure(error),
         }
 
 
@@ -478,7 +479,7 @@ def generate_ontology_reasoning_chain(
             "usedRemoteModel": False,
             "chain": local,
             "openrouter": model_client.status(),
-            "remoteError": str(error),
+            "remoteError": describe_model_failure(error),
         }
 
 
@@ -622,7 +623,7 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
         }
     except Exception as error:
         _record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
-        return {"success": False, "message": str(error), "status": status}
+        return {"success": False, "message": describe_model_failure(error), "status": status}
 
 
 def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:

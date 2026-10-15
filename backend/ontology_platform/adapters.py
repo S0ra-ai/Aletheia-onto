@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol, Union
 from urllib.parse import urlparse
 
 from .config import QUERY_LIMITS
+from .errors import describe_data_source_failure
 from .instance_key import InstanceKey, parse_key_columns
 from .registry import Registry, RegistryError, load_entry_point_plugins
 from .sql_dialects import (
@@ -202,7 +203,7 @@ class SQLiteAdapter:
                 conn.execute("select 1").fetchone()
             return connection_status(self.source_type, True, "ok", "SQLite 数据库连接成功。")
         except sqlite3.Error as error:
-            return connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", describe_data_source_failure(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         with sqlite3.connect(Path(connection_uri)) as conn:
@@ -231,7 +232,7 @@ class PostgreSQLAdapter:
                     cursor.fetchone()
             return connection_status(self.source_type, True, "ok", "PostgreSQL 数据库连接成功。")
         except Exception as error:
-            return connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", describe_data_source_failure(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         psycopg = _optional_import("psycopg", "PostgreSQL 接入需要安装 psycopg。")
@@ -262,7 +263,7 @@ class MySQLAdapter:
                     cursor.fetchone()
             return connection_status(self.source_type, True, "ok", "MySQL 数据库连接成功。")
         except Exception as error:
-            return connection_status(self.source_type, False, "connection_error", str(error))
+            return connection_status(self.source_type, False, "connection_error", describe_data_source_failure(error))
 
     def scan(self, connection_uri: str) -> list[SourceTableInfo]:
         pymysql = _optional_import("pymysql", "MySQL 接入需要安装 PyMySQL。")

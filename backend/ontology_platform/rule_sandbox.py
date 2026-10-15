@@ -251,7 +251,122 @@ def evaluate_expression_value(expression: str, context: dict[str, Any]) -> tuple
         value = eval(compile(tree, "<business-rule>", "eval"), {"__builtins__": {}}, _allowed_names(context))
         return value, None
     except Exception as error:
-        return None, str(error)
+        return None, _describe_evaluation_failure(error)
+
+
+_NAME_NOT_DEFINED = re.compile(r"name '([^']+)' is not defined")
+
+
+def _describe_evaluation_failure(error: Exception) -> str:
+    """A rule-evaluation failure, described for the person who has to fix the rule.
+
+    The exception's own text used to be the entire message, and this message is not an edge
+    case: §13 of the extension guide describes a rule referencing an unavailable association
+    as an expected outcome, so `name 'signed_date' is not defined` was routinely the first
+    thing a new deployment read in its first verdict. That is a true statement about a Python
+    namespace and a useless one about a business rule.
+
+    Each branch names what the modeller can act on. The identifier is kept, because it is how
+    they find the rule; the framing says what its absence usually means, because "not defined"
+    invites the reader to look for a typo when the usual cause is a blueprint rule applied to
+    an object that never had that association.
+    """
+    if isinstance(error, NameError):
+        name = getattr(error, "name", "") or (_NAME_NOT_DEFINED.search(str(error)) or [None, ""])[1]
+        if name:
+            return (
+                f"表达式引用了此处不可用的名称「{name}」。"
+                "常见原因是该规则来自行业蓝图而本对象没有这个关联，或该字段尚未映射到本对象；"
+                "可按扩展指南第 13 节处理。"
+            )
+        return "表达式引用了此处不可用的名称。"
+    if isinstance(error, SyntaxError):
+        return f"表达式语法不合法：{error.msg}"
+    if isinstance(error, ZeroDivisionError):
+        return "表达式除以零，无法得出判定。"
+    if isinstance(error, TypeError):
+        # The second common case: a column holding text compared as a number, or a
+        # comparison against a field whose value is absent. CPython's own wording names the
+        # two types, and which two clashed is exactly what the modeller needs -- so the
+        # types are translated rather than dropped, and the sentence around them is ours.
+        clash = next((p.search(str(error)) for p in _COMPARISON_PATTERNS if p.search(str(error))), None)
+        if clash:
+            left, right = _type_name(clash.group(1)), _type_name(clash.group(2))
+            # The explanation has to follow the types, not be attached to the branch: a
+            # comparison against an empty value and a text-versus-number comparison are
+            # fixed differently, and asserting the wrong cause is worse than asserting none.
+            if "空值" in (left, right):
+                cause = "常见原因是所引用的字段在该实例上为空值；请确认该字段是否必填，或在表达式里先处理空值。"
+            elif "文本" in (left, right):
+                cause = "常见原因是该字段存的是文本却按数字参与比较；请核对所引用字段的实际取值类型后改写表达式。"
+            else:
+                cause = "请核对所引用字段的实际取值类型后改写表达式。"
+            return f"表达式中的值类型不匹配：无法在「{left}」与「{right}」之间比较。{cause}"
+        return (
+            "表达式中的值类型不匹配：参与运算的值，其实际类型与表达式假定的不一致。"
+            "请核对所引用字段的实际取值类型后改写表达式。"
+        )
+    if isinstance(error, LookupError):
+        # A registered rule function's own KeyError/IndexError: the text is its author's, so
+        # it is quoted rather than replaced, with the fact that it came from a function.
+        return f"表达式求值缺少所需数据（{type(error).__name__}）：{error}"
+    if isinstance(error, (ValueError, ArithmeticError)):
+        return f"表达式无法求值：{_readable_value_error(error)}"
+    # Anything else is a defect in the sandbox or in a registered rule function rather than
+    # a property of the rule text, so the message names the type and the detail goes to the
+    # log instead of into every verdict that rule appears in.
+    logger.warning("规则求值出现非预期异常：%s: %s", type(error).__name__, error)
+    return f"表达式求值失败（{type(error).__name__}），请查看服务端日志。"
+
+
+# `'<' not supported between instances of 'str' and 'int'` and its arithmetic sibling. The
+# two types are the useful part, and the part that is not in the reader's language.
+_COMPARISON_PATTERNS = (
+    re.compile(r"not supported between instances of '(\w+)' and '(\w+)'"),
+    re.compile(r"unsupported operand type\(s\) for [-+*/%]+: '(\w+)' and '(\w+)'"),
+)
+
+# `could not convert string to float: 'abc'` / `invalid literal for int() with base 10: 'x'`
+_CONVERSION_PATTERNS = (
+    re.compile(r"could not convert string to (\w+): '([^']*)'"),
+    re.compile(r"invalid literal for (\w+)\(\) with base \d+: '([^']*)'"),
+)
+
+_TYPE_NAMES = {
+    "str": "文本",
+    "int": "整数",
+    "float": "小数",
+    "bool": "布尔值",
+    "NoneType": "空值",
+    "Decimal": "小数",
+    "datetime": "日期时间",
+    "date": "日期",
+    "list": "列表",
+    "dict": "对象",
+    "tuple": "列表",
+    "set": "集合",
+}
+
+
+def _type_name(python_type: str) -> str:
+    return _TYPE_NAMES.get(python_type, python_type)
+
+
+def _readable_value_error(error: Exception) -> str:
+    """A ValueError's text, with the idiom that actually occurs rewritten.
+
+    Converting a text column is what produces most of these, so the conversion messages are
+    the ones a modeller meets. Everything else is passed through unchanged rather than
+    guessed at — a registered rule function's own ValueError is its author's wording, and
+    restating it would be overwriting someone else's message with ours.
+    """
+    text = str(error)
+    for pattern in _CONVERSION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            target, value = _type_name(match.group(1).lower()), match.group(2)
+            return f"无法把「{value}」当作{target}参与计算；该字段存的是文本，而表达式按数值使用它。"
+    return text
 
 
 def _normalize_expression(expression: str) -> str:

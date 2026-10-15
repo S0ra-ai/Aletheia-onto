@@ -44,6 +44,7 @@ def _evaluate_guard(
     ontology_id: int,
     object_code: str,
     instance_id: str,
+    subject: str = "守卫表达式",
 ) -> dict[str, Any]:
     """Evaluate a transition guard against the instance's live data.
 
@@ -70,18 +71,18 @@ def _evaluate_guard(
         return {
             "expression": expression,
             "passed": False,
-            "reason": f"守卫求值失败（已按未通过处理）: {error}",
+            "reason": f"{subject}求值失败（已按未通过处理）：{error}",
         }
     if error is not None:
         return {
             "expression": expression,
             "passed": False,
-            "reason": f"守卫表达式无法求值（已按未通过处理）: {error}",
+            "reason": f"{subject}无法求值（已按未通过处理）：{error}",
         }
     return {
         "expression": expression,
         "passed": bool(passed),
-        "reason": "守卫条件满足。" if passed else "守卫条件不满足。",
+        "reason": f"{subject}满足。" if passed else f"{subject}不满足。",
     }
 
 
@@ -1096,6 +1097,10 @@ def check_permission(
         ontology_id=resolved_ontology or 0,
         object_code=object_code,
         instance_id=instance_id,
+        # Not a transition guard: this is the role's row-level *visibility* filter, and the
+        # user who has to fix it configured it on a permission policy. Calling it a guard
+        # sent them looking in the workflow they never touched.
+        subject="行级访问过滤表达式",
     )
     result["filterApplied"] = True
     result["instanceId"] = instance_id

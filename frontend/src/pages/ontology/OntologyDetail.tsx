@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
-import { ontologyApi } from '../../api';
+import { ontologyApi, requestErrorMessage } from '../../api';
 import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
 
 const { Title } = Typography;
@@ -14,10 +14,17 @@ const OntologyDetailPage: React.FC = () => {
   const [ontology, setOntology] = useState<OntologyDetail | null>(null);
   const [releaseReadiness, setReleaseReadiness] = useState<ReleaseReadinessResult | null>(null);
   const [loading, setLoading] = useState(false);
+  // Kept apart from "loaded and there is nothing": both leave `ontology` null, and showing
+  // the same "未找到本体数据" for a failed read told the user the data does not exist when
+  // the real cause was a permission or a server failure.
+  const [loadError, setLoadError] = useState('');
 
-  const fetchOntology = async () => {
+  // `useCallback` so the effect below can list its real dependency instead of capturing the
+  // first render's closure and warning about it.
+  const fetchOntology = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setLoadError('');
     try {
       const [data, readiness] = await Promise.all([
         ontologyApi.get(parseInt(id)),
@@ -26,18 +33,32 @@ const OntologyDetailPage: React.FC = () => {
       setOntology(data);
       setReleaseReadiness(readiness);
     } catch (error) {
-      console.error('Failed to fetch ontology:', error);
+      // Was `console.error` only, so a failed read was indistinguishable from an empty one
+      // to anyone not holding the developer console.
+      setLoadError(requestErrorMessage(error, '读取本体失败'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     fetchOntology();
-  }, [id]);
+  }, [fetchOntology]);
 
   if (loading) {
     return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  }
+
+  if (loadError) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="读取本体失败"
+        description={loadError}
+        action={<Button onClick={fetchOntology}>重试</Button>}
+      />
+    );
   }
 
   if (!ontology) {

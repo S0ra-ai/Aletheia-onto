@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
-import { aiApi, dataSourceApi, ontologyApi } from '../../api';
+import { aiApi, dataSourceApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
 
 const { Title } = Typography;
@@ -48,7 +48,7 @@ const DataSourceDetail: React.FC = () => {
   const [reasoningChain, setReasoningChain] = useState<ReasoningChain | null>(null);
   const [openApiForm] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
@@ -77,15 +77,10 @@ const DataSourceDetail: React.FC = () => {
       const source = sources.find(s => s.id === parseInt(id));
       if (source) setDataSource(source);
     } catch (error) {
-      message.error('获取数据详情失败');
+      message.error(requestErrorMessage(error, '获取数据详情失败'));
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-    loadReasoningChain();
   }, [id]);
 
   const handleScan = async () => {
@@ -97,7 +92,7 @@ const DataSourceDetail: React.FC = () => {
       setSchemaDrift(null);
       fetchData();
     } catch (error) {
-      message.error('扫描失败');
+      message.error(requestErrorMessage(error, '扫描失败'));
     } finally {
       setScanLoading(false);
     }
@@ -169,11 +164,25 @@ const DataSourceDetail: React.FC = () => {
     }
   };
 
-  const loadReasoningChain = async () => {
+  const loadReasoningChain = useCallback(async () => {
     if (!id) return;
-    try { setReasoningChain(await dataSourceApi.getReasoningChain(parseInt(id))); }
-    catch { message.error('加载本体推理链失败'); }
-  };
+    try {
+      setReasoningChain(await dataSourceApi.getReasoningChain(parseInt(id)));
+    } catch (error) {
+      // The server's reason was discarded here (the catch had no binding), so a permission
+      // or server failure read as a generic "加载…失败".
+      message.error(requestErrorMessage(error, '加载本体推理链失败'));
+    }
+  }, [id]);
+
+  // Declared after both loaders: reading a `const` callback from an effect above its
+  // declaration is what the initialisation-order warning was about, and listing the real
+  // dependencies is what the stale-closure warning was about.
+  useEffect(() => {
+    fetchData();
+    loadReasoningChain();
+  }, [fetchData, loadReasoningChain]);
+
 
   const handleImportRulesFromWord = async (file: File) => {
     const ontologyId = Array.from(new Set(semanticCoverage?.objects.map(item => item.ontologyId) || []))[0];
