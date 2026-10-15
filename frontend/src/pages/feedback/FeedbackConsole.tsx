@@ -250,7 +250,7 @@ const FeedbackConsolePage: React.FC = () => {
                 width: 90,
                 render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(FEEDBACK_STATUS, status)}</Tag>,
               },
-              { title: '时间', dataIndex: 'createdAt', width: 160, ellipsis: true },
+              { title: '时间（UTC）', dataIndex: 'createdAt', width: 160, ellipsis: true },
               {
                 title: '',
                 key: 'action',

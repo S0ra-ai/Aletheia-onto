@@ -150,7 +150,7 @@ const PermissionManager: React.FC = () => {
     { title: '实例', dataIndex: 'instanceId', key: 'instanceId' },
     { title: '状态', dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'success' ? 'green' : 'red'}>{v}</Tag> },
     { title: '耗时', dataIndex: 'durationMs', key: 'durationMs', render: (v: number) => `${v}ms` },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt' },
+    { title: '创建时间（UTC）', dataIndex: 'createdAt', key: 'createdAt' },
     {
       title: '操作', key: 'action', width: 160,
       render: (_: any, record: ToolExecutionLog) => (

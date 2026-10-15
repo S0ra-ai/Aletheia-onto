@@ -99,7 +99,7 @@ const AuditReportPanel: React.FC = () => {
     { title: '目标类型', dataIndex: 'target_type', key: 'target_type' },
     { title: '目标ID', dataIndex: 'target_id', key: 'target_id' },
     { title: '详情', dataIndex: 'detail', key: 'detail', ellipsis: true },
-    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 170 },
+    { title: '时间（UTC）', dataIndex: 'created_at', key: 'created_at', width: 170 },
   ];
 
   const blockedColumns = [
@@ -108,7 +108,7 @@ const AuditReportPanel: React.FC = () => {
     { title: '业务对象', dataIndex: 'object_code', key: 'object_code' },
     { title: '实例ID', dataIndex: 'instance_id', key: 'instance_id' },
     { title: '操作者', dataIndex: 'actor', key: 'actor' },
-    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 170 },
+    { title: '时间（UTC）', dataIndex: 'created_at', key: 'created_at', width: 170 },
   ];
 
   return (

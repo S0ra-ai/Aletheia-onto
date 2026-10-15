@@ -100,11 +100,16 @@ const BackupManager: React.FC = () => {
       ellipsis: true,
     },
     {
-      title: '创建时间',
+      // The archive was written at that instant and the platform records instants in UTC, so
+      // the string has to say so before it is parsed: `new Date("2026-10-15 19:12:07")` is
+      // read by the browser as *local* time, and every row was then displayed shifted by the
+      // reader's offset. Labelled 本地 because that is what is being shown.
+      title: '创建时间（本地）',
       dataIndex: 'created_at',
       key: 'createdAt',
       width: 210,
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) =>
+        value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString() : '',
     },
     {
       title: '大小',

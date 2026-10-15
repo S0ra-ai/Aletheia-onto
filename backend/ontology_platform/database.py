@@ -409,6 +409,14 @@ class MySQLPlatformAdapter:
         options["connect_timeout"] = 5
         options["cursorclass"] = pymysql.cursors.DictCursor
         options["charset"] = "utf8mb4"
+        # Every timestamp column defaults to `current_timestamp`, and in MySQL that is the
+        # *session's* time zone: with the default (SYSTEM) a row's `created_at` is in the
+        # database server's local time, while the same column on SQLite is UTC. One column
+        # meaning two different things depending on the deployment is worse than either
+        # convention alone, and it is invisible -- an audit log off by the server's offset
+        # still reads as a plausible time. An offset needs no time-zone tables, so this
+        # cannot fail for want of them.
+        options["init_command"] = "SET time_zone = '+00:00'"
         # MySQL's isolation unit is the database, so route by connecting to the
         # tenant's database directly rather than issuing `use` afterwards -- that
         # leaves no window where the connection points at the wrong place.

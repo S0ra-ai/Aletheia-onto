@@ -311,3 +311,40 @@ def test_auth_schema_and_sessions_work_on_mysql(mysql_platform_db: str) -> None:
 def test_auth_schema_and_sessions_work_on_postgresql(postgres_platform_db: str) -> None:
     database_module.configure_platform_db("postgresql", postgres_platform_db)
     _exercise_auth_lifecycle()
+
+
+def test_a_mysql_connection_is_pinned_to_utc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`current_timestamp` is the *session's* time zone, and the default is the server's.
+
+    Every timestamp column in the platform database defaults to it, so without this the same
+    `created_at` means UTC on SQLite (what the platform documents, and what its own backup
+    routine names files after) and the database server's local time on MySQL. That failure is
+    invisible: an audit log off by the server's offset still reads as a plausible time.
+
+    Asserted on the connection options rather than against a live MySQL, because the point is
+    what the platform asks for -- the server's own zone is not something a test can arrange.
+    """
+    import importlib
+
+    recorded: dict[str, Any] = {}
+
+    class _Cursor:
+        pass
+
+    class _FakePyMySQL:
+        cursors = type("cursors", (), {"DictCursor": _Cursor})
+
+        @staticmethod
+        def connect(**options: Any) -> Any:
+            recorded.update(options)
+            return object()
+
+    real_import = importlib.import_module
+    monkeypatch.setattr(
+        importlib, "import_module", lambda name: _FakePyMySQL if name == "pymysql" else real_import(name)
+    )
+
+    adapter = database_module.MySQLPlatformAdapter("mysql://root:secret@localhost:3306/ontology_platform")
+    adapter.connect()
+
+    assert recorded["init_command"] == "SET time_zone = '+00:00'"

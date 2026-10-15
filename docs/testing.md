@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1693 tests**, all passing. A case that needs something this machine does not have skips
+**1694 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -92,7 +92,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
 | `test_data_source_knowledge_base.py` | 13 |  |
-| `test_platform_database_dialects.py` | 10 | Platform database durability and dialect tests |
+| `test_platform_database_dialects.py` | 11 | Platform database durability and dialect tests |
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |

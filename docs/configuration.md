@@ -96,6 +96,14 @@ a real outage shape, so the bootstrap admin keeps its password.
 > investigation then starts at the writes, and the one thing it does not look like is a path
 > mismatch.
 
+**Every timestamp is UTC**, of the form `2026-01-05 09:30:00` (no offset suffix). All three
+dialects default those columns to `current_timestamp`, which is the *session's* time zone:
+UTC on SQLite, an instant with an offset on PostgreSQL, and the server's local time on MySQL
+— so the same column meant different things on different deployments, invisibly, because an
+audit log that is hours off still reads as a plausible time. A MySQL connection now pins
+`SET time_zone = '+00:00'`, which makes the convention true on all three. Screens label the
+columns they show in UTC; the backup list shows local time and says so.
+
 ## Thresholds and naming
 
 | Group | Contents | Env prefix |

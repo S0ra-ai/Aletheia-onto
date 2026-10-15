@@ -206,7 +206,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
   ];
 
   const eventColumns = [
-    { title: '时间', dataIndex: 'occurredAt', key: 'occurredAt', width: 180 },
+    { title: '时间（UTC）', dataIndex: 'occurredAt', key: 'occurredAt', width: 180 },
     {
       title: '事件',
       key: 'event',
@@ -266,7 +266,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         </Text>
       ),
     },
-    { title: '记录时间', dataIndex: 'recordedAt', key: 'recordedAt', width: 180 },
+    { title: '记录时间（UTC）', dataIndex: 'recordedAt', key: 'recordedAt', width: 180 },
     { title: '记录人', dataIndex: 'actor', key: 'actor', width: 120 },
   ];
 

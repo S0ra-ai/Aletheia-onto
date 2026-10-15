@@ -70,7 +70,7 @@ const Governance: React.FC = () => {
       ellipsis: true,
     },
     {
-      title: '时间',
+      title: '时间（UTC）',
       dataIndex: 'created_at',
       key: 'created_at',
     },
@@ -116,7 +116,7 @@ const Governance: React.FC = () => {
       ),
     },
     {
-      title: '时间',
+      title: '时间（UTC）',
       dataIndex: 'created_at',
       key: 'created_at',
     },
@@ -169,7 +169,7 @@ const Governance: React.FC = () => {
       ellipsis: true,
     },
     {
-      title: '时间',
+      title: '时间（UTC）',
       dataIndex: 'createdAt',
       key: 'createdAt',
     },

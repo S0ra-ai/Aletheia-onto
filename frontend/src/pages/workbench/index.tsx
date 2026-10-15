@@ -236,7 +236,7 @@ const WorkbenchPage: React.FC = () => {
                   { title: '对象', dataIndex: 'objectCode', width: 140, ellipsis: true },
                   { title: '实例', dataIndex: 'instanceId', width: 120, ellipsis: true },
                   { title: '类型', dataIndex: 'decisionType', ellipsis: true },
-                  { title: '时间', dataIndex: 'createdAt', width: 160, ellipsis: true },
+                  { title: '时间（UTC）', dataIndex: 'createdAt', width: 160, ellipsis: true },
                 ]}
               />
             )}
