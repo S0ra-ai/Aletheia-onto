@@ -13,7 +13,7 @@ pip install -e .
 python -m {{package}} init      # 建库 + 引导管理员（口令只打印一次）
 python -m {{package}} serve     # 非本机监听时会强制部署前自检
 ```
-
+{{install_note}}
 用 `python -m {{package}}` 而非 `aletheia`：后者**不会**加载本项目注册的扩展。
 
 ## 接入你的系统

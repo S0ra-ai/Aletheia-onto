@@ -208,6 +208,27 @@ def _platform_version() -> str:
     return __version__
 
 
+def _platform_source() -> str:
+    """The checkout the running platform came from, or "" when it is an installed package.
+
+    A generated project pins `aletheia-onto[web]==<version>`, which resolves once the
+    package is on an index and resolves to nothing before then. Since the only way anybody
+    runs this today is from a checkout, the generated README has to say so -- otherwise its
+    first documented command (`pip install -e .`) fails with "no matching distribution", and
+    the reader concludes the tool is broken rather than that the package is unpublished.
+
+    Detected from the loaded module's path rather than from an environment variable: what
+    matters is where this process is actually running from.
+    """
+    import ontology_platform
+
+    package_dir = Path(ontology_platform.__file__).resolve().parent
+    checkout = package_dir.parent.parent
+    if (checkout / "pyproject.toml").is_file() and (checkout / "backend").is_dir():
+        return str(checkout)
+    return ""
+
+
 def _init_module(package: str, extensions: tuple[str, ...]) -> str:
     if extensions:
         registration = "    from .extensions import register_all\n\n    register_all()"
@@ -240,11 +261,22 @@ def _extension_module(point: str) -> str:
 
 
 def _pyproject(package: str) -> str:
+    source = _platform_source()
     return _render(
         "pyproject_toml.tpl",
         package=package,
         dist=package.replace("_", "-"),
         version=_platform_version(),
+        local_source=source,
+        source_hint=(
+            "# 本机尚未发布 aletheia-onto 到任何索引，因此这一行解析不到。\n"
+            f"# 直接从正在运行的那份源码安装：\n"
+            f'#     pip install -e "{source}[web]"\n'
+            "# 然后再 `pip install -e . --no-deps`，或把下面这行临时改成：\n"
+            f'#     "aletheia-onto[web] @ file://{source}"'
+            if source
+            else ""
+        ),
     )
 
 
@@ -286,9 +318,30 @@ def _readme(package: str, extensions: tuple[str, ...], domain: str) -> str:
         )
     else:
         listed = "（未生成任何扩展点。用 `aletheia new --list-extensions` 查看可选项。）"
+    source = _platform_source()
+    # The first documented command has to work, or the reader concludes the tool is broken
+    # rather than that the package is unpublished. The generator knows which it is.
+    install_note = (
+        f"""
+> **`pip install -e .` 会报 "no matching distribution found for aletheia-onto"**：
+> 平台尚未发布到任何包索引，而这份骨架依赖它。本机那份源码在 `{source}`，
+> 先从这里装：
+>
+> ```bash
+> pip install -e "{source}[web]"
+> pip install -e . --no-deps
+> ```
+>
+> 平台一旦发布，把 `pyproject.toml` 里那行换回
+> `aletheia-onto[web]=={_platform_version()}` 即可，其余不必改。
+"""
+        if source
+        else ""
+    )
     return _render(
         "readme_md.tpl",
         package=package,
         domain=domain or "合同管理",
         extension_list=listed,
+        install_note=install_note,
     )

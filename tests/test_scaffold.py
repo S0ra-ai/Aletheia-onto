@@ -269,3 +269,62 @@ def _env_with_backend() -> dict[str, str]:
     backend = str(ROOT / "backend")
     environment["PYTHONPATH"] = f"{backend}{os.pathsep}{existing}" if existing else backend
     return environment
+
+
+def test_the_readme_says_what_to_do_when_the_package_is_not_published(tmp_path: Path) -> None:
+    """The generated project's first documented command has to work, or say why it does not.
+
+    `pip install -e .` resolves `aletheia-onto[web]==<version>` -- and the package is not on
+    any index, so that command fails with "no matching distribution found" for every reader
+    who follows the README. A generated project whose first step is a dead end teaches the
+    reader that the tool is broken.
+
+    When the platform is running from a checkout -- the only way it runs today -- the
+    generated README carries the install that does work, with the path filled in.
+    """
+    from ontology_platform.scaffold import create_project
+
+    result = create_project(tmp_path / "proj", project_name="acme_onto", domain="合同管理")
+    readme = (tmp_path / "proj" / "README.md").read_text(encoding="utf-8")
+    pyproject = (tmp_path / "proj" / "pyproject.toml").read_text(encoding="utf-8")
+
+    source = _platform_checkout()
+    if source:
+        assert "no matching distribution" in readme, readme[:400]
+        assert source in readme, "生成的 README 应当给出本机源码路径"
+        assert f'pip install -e "{source}[web]"' in readme, "生成的 README 应当给出可用的安装命令"
+        assert source in pyproject, "pyproject 的注释应当指出本机源码位置"
+    assert result["files"], "生成结果应当列出文件"
+    entry = (tmp_path / "proj" / "acme_onto" / "__main__.py").read_text(encoding="utf-8")
+    assert 'os.environ.setdefault("ONTOLOGY_PROGRAM_NAME", "python -m acme_onto")' in entry, (
+        "包装入口应当声明自己的名字，否则平台的提示会让读者去用不加载扩展的 `aletheia`"
+    )
+
+
+def _platform_checkout() -> str:
+    from ontology_platform.scaffold import _platform_source
+
+    return _platform_source()
+
+
+def test_the_cli_names_the_command_that_was_actually_run(monkeypatch) -> None:
+    """A scaffolded project wraps this CLI so its extensions load.
+
+    Its README says in as many words that the bare `aletheia` command does *not* load them.
+    Printing `aletheia model 1` at the end of that project's own `connect` sends the reader to
+    the one command the project told them not to use.
+    """
+    import sys
+
+    from ontology_platform.cli import program_name
+
+    # Nothing declared: the platform's own name, whatever the host process is called. Guessing
+    # from `sys.argv[0]` was the first attempt and it prefixed every message under pytest with
+    # `python -m pytest:`.
+    monkeypatch.delenv("ONTOLOGY_PROGRAM_NAME", raising=False)
+    monkeypatch.setattr(sys, "argv", ["/somewhere/pytest"])
+    assert program_name() == "aletheia"
+
+    # Declared by the wrapper, which is the only thing that knows.
+    monkeypatch.setenv("ONTOLOGY_PROGRAM_NAME", "python -m acme_onto")
+    assert program_name() == "python -m acme_onto"

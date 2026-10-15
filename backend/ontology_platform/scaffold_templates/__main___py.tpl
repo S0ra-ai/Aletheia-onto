@@ -8,9 +8,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from ontology_platform.cli import main as platform_main
+
+# 平台在提示与错误里用这个名字自称。不声明的话它会说 `aletheia model 1`——
+# 而上面刚写清楚：直接用 `aletheia` 不会加载本项目的扩展。
+os.environ.setdefault("ONTOLOGY_PROGRAM_NAME", "python -m {{package}}")
 
 from . import setup
 from .config import PLATFORM_DB

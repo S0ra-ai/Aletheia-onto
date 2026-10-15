@@ -47,6 +47,41 @@ from typing import Any, Optional, Sequence
 PROGRAM = "aletheia"
 
 
+def program_name() -> str:
+    """What to call this CLI in the hints it prints.
+
+    A scaffolded project wraps this CLI so its extensions load, and its README says in as
+    many words that the bare `aletheia` command does *not* load them. Printing
+    `aletheia model 1` at the end of that project's own `connect` sends the reader to the one
+    command the project told them not to use.
+
+    The wrapper declares it, through a module attribute or the environment. Guessing from
+    `sys.argv[0]` was the first attempt and it was wrong: under `pytest` every message came
+    out prefixed `python -m pytest:`, which the CLI tests caught. A process can look like
+    anything; the one thing that knows what it is, is the code that started it.
+    """
+    import os
+    import sys
+
+    declared = os.environ.get("ONTOLOGY_PROGRAM_NAME") or ""
+    if not declared:
+        main_module = sys.modules.get("__main__")
+        declared = getattr(main_module, "PROGRAM_NAME", "") if main_module else ""
+    return declared or PROGRAM
+
+
+def _with_init_hint(message: str) -> str:
+    """Say what to do when the platform database has not been initialised.
+
+    Every command that touches the platform DB before `init` reports the storage engine's own
+    sentence -- `no such table: data_source` -- which names an internal table and none of the
+    command the reader has to run. `doctor` had this hint and nothing else did.
+    """
+    if "no such table" in message:
+        return f"{message}\n平台库尚未初始化，请先运行 {program_name()} init"
+    return message
+
+
 def _print(payload: Any) -> None:
     """Emit a result as JSON.
 
@@ -57,7 +92,7 @@ def _print(payload: Any) -> None:
 
 
 def _fail(message: str) -> int:
-    print(f"{PROGRAM}: {message}", file=sys.stderr)
+    print(f"{program_name()}: {message}", file=sys.stderr)
     return 1
 
 
@@ -148,7 +183,7 @@ def cmd_connect(args: argparse.Namespace) -> int:
             "dataSourceId": source.id,
             "name": source.name,
             "scanned": scan,
-            "next": f"{PROGRAM} model {source.id}",
+            "next": f"{program_name()} model {source.id}",
         }
     )
     return 0
@@ -370,7 +405,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
             "ontologyId": result["ontologyId"],
             "objectCode": result["objectCode"],
             "decision": result["decision"],
-            "next": f"{PROGRAM} serve  # 打开 http://127.0.0.1:8000/docs",
+            "next": f"{program_name()} serve  # 打开 http://127.0.0.1:8000/docs",
         }
     )
     return 0
@@ -794,7 +829,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except Exception as error:
         # A stack trace is the wrong output for an operator running a command; the
         # message is. `--verbose`-style tracebacks belong to the library's callers.
-        return _fail(str(error))
+        return _fail(_with_init_hint(str(error)))
 
 
 if __name__ == "__main__":  # pragma: no cover

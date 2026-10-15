@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1663 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
+**1665 tests**, all passing. Two skip by environment: the MySQL/PostgreSQL cases skip when
 no server is reachable.
 
 CI runs the full suite on 3.11, 3.12 and 3.13. A version that is claimed but never executed
@@ -74,7 +74,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_error_messages.py` | 21 | What a user reads when something fails |
 | `test_backup.py` | 10 | Safe SQLite backup inventory and atomic restore |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
-| `test_scaffold.py` | 19 | Project scaffolding: generated code must actually run |
+| `test_scaffold.py` | 21 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |
 | `test_rule_engine_safety.py` | 34 | Rule engine safety and release gate tests |
 | `test_codegen.py` | 16 | Code generation from a published ontology |

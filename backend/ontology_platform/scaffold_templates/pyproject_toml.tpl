@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 
 # 固定而非区间。规则引擎依赖的一次传递升级可以改变判定结论，
 # 而判定是本平台要负责的东西。
+{{source_hint}}
 dependencies = [
     "aletheia-onto[web]=={{version}}",
 ]

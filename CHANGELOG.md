@@ -35,6 +35,31 @@
   「生成本体草案」会 500。现在两处共用同一个目录驱动的清理函数（并因此提升为公开名字，
   否则模块边界测试会拒绝那次导入——那条测试是对的）。
 
+### Fixed
+
+- **`aletheia new` 生成的第一个命令就跑不通**（`scaffold.py`、模板、`cli.py`）。
+  生成的 `pyproject.toml` 固定依赖 `aletheia-onto[web]==0.5.0`，
+  而**包没有发布到任何索引**——我实际跑了一遍：`ERROR: Could not find a version that
+  satisfies the requirement aletheia-onto==0.5.0 (from versions: none)`。
+  于是这份骨架的第一条文档命令（`pip install -e .`）对每个照做的读者都失败，
+  而失败信息指向索引，不指向「这个包还没发布」——**读者会认为工具坏了**。
+  现在生成器知道自己是从哪跑起来的：如果是从源码 checkout 跑的（今天唯一的方式），
+  README 会直接写明这个包尚未发布、本机源码在哪、以及**可用的那条命令**
+  （`pip install -e "<path>[web]"`，我在临时 venv 里实测过它能装上），
+  `pyproject.toml` 里也有一行注释给出同样的出路。发布之后把那行换回来即可，其余不必改。
+
+- **生成的骨架把自己的命令叫成 `aletheia`**（`cli.py`、`__main___py.tpl`）。
+  平台的提示与错误都用常量 `PROGRAM = "aletheia"` 自称，而骨架的 README 明确写着
+  **直接用 `aletheia` 不会加载本项目的扩展**——于是它自己的 `connect` 在最后一行
+  把读者指向了它刚警告过不要用的命令。
+  包装入口现在显式声明自己的名字（`ONTOLOGY_PROGRAM_NAME`）。
+  我第一版是从 `sys.argv[0]` 猜的，**CLI 测试当场抓出**：在 pytest 下每条消息都变成了
+  `python -m pytest: ...`。猜一个进程像什么是做不到的；知道它是什么的，只有启动它的那段代码。
+
+- **`connect` 在 `init` 之前给出 `no such table: data_source`**（`cli.py`）。
+  这句话点名了一张内部表，却一个字都没提读者该跑什么命令。`doctor` 早就有这条提示，
+  其余命令都没有；现在所有命令共用它。
+
 ### Added
 
 - **每条路由都至少被调用一次**（`tests/test_every_route_answers.py`）。
