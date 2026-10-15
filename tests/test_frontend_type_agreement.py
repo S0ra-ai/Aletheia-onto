@@ -230,6 +230,39 @@ CHARTED_RESPONSES = (
         ("decisionId", "decisionType", "status", "objectCode", "instanceId", "createdAt"),
     ),
     ("/workbench", None, ("dataSources", "ontologies", "governance", "rules", "decisions", "actionItems", "summary")),
+    ("/ontologies/1/graph", "nodes", ("code", "name", "sourceTable", "attributeCount", "ruleCount", "degree")),
+    ("/ontologies/1/graph", "edges", ("code", "name", "source", "target", "relationType", "foreignKey")),
+    ("/ontologies/1/release-readiness", "gates", ("code", "name", "passed", "severity", "evidence", "remediation")),
+    ("/ontologies/1/event-types", "items", ("code", "name", "objectCode", "category", "payloadFields")),
+    (
+        "/ontologies/1/objects/contract/instances/1/events",
+        "items",
+        ("eventCode", "eventName", "category", "actor", "occurredAt"),
+    ),
+    (
+        "/ontologies/1/objects/contract/instances/1/versions",
+        "versions",
+        ("attributeCode", "value", "validFrom", "validTo", "recordedAt"),
+    ),
+    ("/semantic/objects/contract/instances", "items", ("instanceId", "record")),
+    (
+        "/semantic/objects/contract/instances/1/explain",
+        None,
+        ("objectCode", "instanceId", "source", "attributes", "aggregates", "ancestors", "timeline", "asOf"),
+    ),
+    ("/governance/audit-report/sections", "items", ("section", "name", "answers")),
+    ("/auth/users", "items", ("username", "displayName", "roleCode", "capabilities", "status", "createdAt")),
+    ("/tenants", "items", ("tenant", "schema")),
+    ("/industry-blueprints", "items", ("id", "name", "domain", "description")),
+    ("/units", "items", ("code", "name", "dimension", "toCanonical")),
+    ("/source-types", "declared", ("sourceType", "dialect", "driver", "available")),
+    ("/axiom-kinds", "items", ("kind", "summary", "consequence")),
+    ("/model/config", None, ("provider", "model", "baseUrl", "hasApiKey")),
+    ("/knowledge-bases", "items", ("name", "domain", "ontologyName", "sourceType")),
+    ("/data-sources/1/readiness", "checks", ("code", "name", "passed", "evidence", "remediation", "weight")),
+    ("/data-sources/1/operation-bindings", "items", ("operationCode", "name", "method", "path", "semanticAction")),
+    ("/data-sources/1/semantic-coverage", "objects", ("objectCode", "objectName", "sourceTable", "status", "gaps")),
+    ("/data-sources/1/schema-drift", None, ("status", "summary", "addedTables", "impacts", "nextActions")),
 )
 
 
@@ -293,6 +326,27 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     draft = generate_ontology_draft(platform_db, source_id)
     assess_instance(platform_db, ontology_id, "contract", "1")
     del draft
+
+    # The optional feature bundles: events, value history, tenancy. Seeded because a list
+    # with no rows in it accepts any assertion about its columns, and this guard exists to
+    # check columns.
+    from ontology_platform.context import PlatformContext
+    from ontology_platform.events import EventType, declare_event_type, init_event_schema, record_event
+    from ontology_platform.temporal import init_temporal_schema, record_attribute_version
+    from ontology_platform.tenancy import provision_tenant
+
+    with connect(platform_db) as conn:
+        init_event_schema(conn)
+        init_temporal_schema(conn)
+    declare_event_type(
+        platform_db,
+        ontology_id,
+        EventType(code="signed", name="签订", object_code="contract"),
+        actor="tester",
+    )
+    record_event(platform_db, ontology_id, "contract", "1", "signed", actor="tester")
+    record_attribute_version(platform_db, ontology_id, "contract", "1", "amount", 1200000, actor="tester")
+    provision_tenant(PlatformContext(db_type="sqlite", connection_uri=str(platform_db)), "acme")
 
     api_module = importlib.reload(api_module)
     monkeypatch.setattr(api_module, "DEFAULT_PLATFORM_DB", platform_db)

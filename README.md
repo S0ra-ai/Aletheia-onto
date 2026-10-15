@@ -10,7 +10,7 @@ and make every verdict answer *why*.
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1553%20passing-brightgreen.svg)](docs/testing.md)
+[![Tests](https://img.shields.io/badge/tests-1574%20passing-brightgreen.svg)](docs/testing.md)
 
 English · [简体中文](README.zh-CN.md)
 
@@ -129,7 +129,7 @@ Stated plainly, because it builds more trust than a feature list.
 
 ## Project status
 
-1553 tests, green on Python 3.11 / 3.12 / 3.13. The kernel has **zero third-party
+1574 tests, green on Python 3.11 / 3.12 / 3.13. The kernel has **zero third-party
 dependencies** — verified in CI on a bare install, so the ontology, rule engine and
 decision records can be embedded in someone else's application.
 
