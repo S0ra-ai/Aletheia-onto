@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1682 tests**, all passing. A case that needs something this machine does not have skips
+**1688 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -96,8 +96,9 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 8 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 10 | The render check's own guards, exercised without a browser |
 | `test_ci_workflow.py` | 2 | The workflow GitHub runs is the workflow the file describes |
+| `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
 | `test_documented_claims.py` | 13 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
@@ -147,6 +148,11 @@ A route that renders no table now fails the sweep unless `NO_TABLE_ROUTES` lists
 reason, and a listed route that *does* render one fails as well. Both directions are asserted
 because the two failures are different: the first is a screen that stopped working, the second
 is an allowance that outlived its reason and started hiding one.
+
+Every route is also read for the text the application renders when a screen did not load
+(「页面加载失败」 from the error boundary, 「页面不存在」 from the catch-all route). Without
+that, a page that throws in render and a page that has no table by design produce the same
+line — and the second is on an exemption list.
 
 Columns that are empty because the *data* has nothing in them are listed in `KNOWN_SPARSE`
 and printed on every run. The script cannot tell those from a field-name mismatch, and a

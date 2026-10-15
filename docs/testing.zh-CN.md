@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1682 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1688 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -90,8 +90,9 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_credential_protection.py` | 8 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 8 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 10 | The render check's own guards, exercised without a browser |
 | `test_ci_workflow.py` | 2 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
+| `test_smoke_seeding.py` | 4 | 渲染检查的种子数据真的给每个页面填了行，且只报告它做过的事 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
 | `test_documented_claims.py` | 13 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
@@ -136,6 +137,10 @@ linter 看到的是一个合法字符串，mypy 看到的是合法 `string`。
 **没有渲染出表格的路由现在会让扫描失败**，除非它连同理由列在 `NO_TABLE_ROUTES` 里；
 而列在那里的路由一旦渲染出了表格，同样失败。两个方向都要断言，因为它们是两种不同的失效：
 前者是页面坏了，后者是豁免过期了、开始掩盖真问题。
+
+每条路由还会被读一遍「页面没加载出来时应用会渲染的那句话」
+（错误边界的「页面加载失败」、兜底路由的「页面不存在」）。
+没有这一步，**渲染时抛错的页面与本来就没有表格的页面印出的是同一行**——而后者正躺在那张豁免清单上。
 
 **因数据为空而整列为空的列**写在 `KNOWN_SPARSE` 里，并且每次运行都打印出来。
 job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单里那几条——

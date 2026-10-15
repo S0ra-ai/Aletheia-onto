@@ -31,8 +31,10 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.backup import create_backup
 from ontology_platform.context import PlatformContext
+from ontology_platform.conversations import append_message, ensure_conversation, submit_feedback
 from ontology_platform.database import connect
 from ontology_platform.knowledge_base import initialize_knowledge_base
+from ontology_platform.knowledge_documents import ingest_document, review_knowledge_entry
 from ontology_platform.tenancy import provision_tenant
 from ontology_platform.workflow_permission import (
     create_role,
@@ -51,12 +53,53 @@ POLICY_DOCUMENT = """合同审批制度
 def seed(platform_db: Path) -> dict[str, object]:
     done: dict[str, object] = {}
 
-    # A knowledge base, which also gives the ontology detail page a document and an entry.
+    # A knowledge base, and the document that makes it visible. `initialize_knowledge_base`
+    # only builds the chain between a source and its ontology -- it creates no document, so
+    # the knowledge screen and the ontology's knowledge tab stayed empty while this script
+    # reported success. It also reported `knowledgeEntry: true` when the entry insert was
+    # skipped for want of a document to hang it on, which is the failure this script exists to
+    # prevent, committed by the script itself.
     ontology_id = _first_ontology_id(platform_db)
     if ontology_id is None:
         raise SystemExit("平台库还没有本体：先运行 `aletheia demo`")
     initialize_knowledge_base(platform_db, _first_source_id(platform_db))
     done["knowledgeBase"] = True
+
+    with connect(platform_db) as conn:
+        document = conn.execute("select id from knowledge_document order by id limit 1").fetchone()
+    if document is None:
+        ingested = ingest_document(
+            platform_db,
+            ontology_id,
+            "合同审批制度（渲染检查）",
+            POLICY_DOCUMENT.strip(),
+            source_name="render-check.txt",
+            object_code="contract",
+            actor="smoke",
+        )
+        document_id = int(ingested["documentId"])
+        with connect(platform_db) as conn:
+            entry_ids = [
+                int(row[0])
+                for row in conn.execute(
+                    "select id from knowledge_entry where document_id = ? order by ordinal", (document_id,)
+                ).fetchall()
+            ]
+        # One entry confirmed, so the screen shows both states at once and the confirmed path
+        # -- the one that can be cited as evidence -- has a row.
+        if entry_ids:
+            review_knowledge_entry(platform_db, entry_ids[0], "confirmed", object_code="contract", reviewer="smoke")
+        done["knowledgeDocument"] = document_id
+        done["knowledgeEntries"] = len(entry_ids)
+    else:
+        # Counted rather than assumed: this reported `true` for a step that had inserted
+        # nothing, which is the shape of claim this script is supposed to make impossible.
+        with connect(platform_db) as conn:
+            entries = conn.execute(
+                "select count(*) from knowledge_entry where document_id = ?", (int(document[0]),)
+            ).fetchone()[0]
+        done["knowledgeDocument"] = int(document[0])
+        done["knowledgeEntries"] = f"已有 {entries} 条，未重复导入"
 
     with connect(platform_db) as conn:
         init_workflow_and_permission_schema(conn)
@@ -110,18 +153,7 @@ def seed(platform_db: Path) -> dict[str, object]:
     done["backup"] = str(backup_dir)
 
     with connect(platform_db) as conn:
-        document = conn.execute("select id from knowledge_document order by id limit 1").fetchone()
-        has_entry = conn.execute("select 1 from knowledge_entry limit 1").fetchone() is not None
         has_invocation = conn.execute("select 1 from model_invocation limit 1").fetchone() is not None
-    if document is not None and not has_entry:
-        with connect(platform_db) as conn:
-            conn.execute(
-                "insert into knowledge_entry (document_id, ordinal, citation, heading, content,"
-                " object_code, rule_code, status, reviewer)"
-                " values (?, 1, '第 1 段', '合同审批制度', ?, 'contract', '', 'confirmed', 'smoke')",
-                (int(document[0]), POLICY_DOCUMENT.strip()),
-            )
-    done["knowledgeEntry"] = True
 
     if not has_invocation:
         # The model-invocation table is where four columns once rendered blank for every row,
@@ -135,6 +167,31 @@ def seed(platform_db: Path) -> dict[str, object]:
                 " 120, 40, 160, 'success', '')"
             )
     done["modelInvocation"] = True
+
+    with connect(platform_db) as conn:
+        has_feedback = conn.execute("select 1 from answer_feedback limit 1").fetchone() is not None
+    if not has_feedback:
+        # A turn and its verdict, through the platform's own API rather than by inserting rows:
+        # the feedback console renders its table only once there is an item, so its columns
+        # were in the same position as the model-invocation ones -- unexamined because empty.
+        conversation = ensure_conversation(platform_db, ontology_id=ontology_id, actor="smoke")
+        message = append_message(
+            platform_db,
+            str(conversation["sessionId"]),
+            "assistant",
+            "合同 1 的金额为 1,200,000 元，未发现阻断级问题。（渲染检查用）",
+            decision_id="smoke-decision",
+            actor="smoke",
+        )
+        submit_feedback(
+            platform_db,
+            int(message["messageId"]),
+            "incorrect",
+            comment="金额单位在来源库里是分，不是元。（渲染检查用）",
+            object_code="contract",
+            actor="smoke",
+        )
+    done["feedback"] = True
 
     return done
 

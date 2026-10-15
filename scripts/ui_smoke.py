@@ -189,8 +189,6 @@ NO_TABLE_ROUTES = {
     "/admin/semantic?tab=assess": "同上：研判结论由表单提交触发",
     "/admin/semantic?tab=consistency": "同上：一致性问题表来自一次一致性检查",
     "/admin/semantic?tab=preflight": "同上：检查结果由表单提交触发",
-    "/admin/knowledge": "文档表要先在页面上选定本体；种子实例里有知识库，但页面不读 URL 上的本体 id",
-    "/admin/feedback": "反馈条目表在没有条目时渲染为空状态；种子实例里没有反馈",
     "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
     "/admin/graph": "本体图是画布，没有表格",
     "/admin/chat": "对话界面没有表格",
@@ -295,6 +293,28 @@ def empty_columns(headers: list[str], rows: list[list[str]]) -> list[str]:
     return empty
 
 
+# What the application renders when a screen did not load. Asserted for *every* route, because
+# a crashed page and a page with no table by design produce the same line in this report:
+# `/admin/graph` has no table on purpose, and a `/admin/graph` that throws in render has no
+# table either. Without this, the second case is an entry in `NO_TABLE_ROUTES` that quietly
+# becomes true.
+FAILURE_MARKERS = ("页面加载失败", "页面不存在")
+
+
+def failure_marker(html: str) -> str:
+    """The failure text a dumped page contains, if any.
+
+    Read from the rendered text rather than from a marker element: the error boundary renders
+    either a full-page `Result` or an inline `Alert` depending on where it caught the error,
+    and the two have no common attribute.
+    """
+    text = re.sub(r"<[^>]+>", " ", html)
+    for marker in FAILURE_MARKERS:
+        if marker in text:
+            return marker
+    return ""
+
+
 def seed_is_the_build_just_written(entry: str) -> str:
     """Empty when the instance serves the file we just wrote, a reason otherwise.
 
@@ -395,6 +415,7 @@ def main() -> int:
     findings = 0
     rows_seen = 0
     tableless: list[str] = []
+    broken_pages: list[str] = []
     if allowed:
         print("已知因数据为空而整列为空的列（不是缺陷）:")
         for pair in sorted(allowed):
@@ -406,6 +427,12 @@ def main() -> int:
             page_tables = tables(html)
             examined = sum(len(rows) for _, rows in page_tables)
             rows_seen += examined
+            # A page that failed to render is a finding on its own, and the first thing to
+            # report: whatever its table count says is then meaningless.
+            broken = failure_marker(html)
+            if broken:
+                findings += 1
+                broken_pages.append(route)
             # A per-route line, because a silent run and a run that found nothing look
             # identical otherwise -- and "no findings" is only meaningful if the pages were
             # actually reached. A route behind a tab that ignored the query would otherwise
@@ -429,6 +456,8 @@ def main() -> int:
             if not page_tables:
                 tableless.append(route)
             detail = f"  EMPTY: {'; '.join(empty_here)}" if empty_here else ""
+            if broken:
+                detail = f"  PAGE FAILED: {broken}"
             if not page_tables:
                 detail = f"  NO TABLE{': ' + NO_TABLE_ROUTES[route] if route in NO_TABLE_ROUTES else ''}"
             print(f"{route:44s} {len(page_tables):2d} table(s), {examined:4d} row(s){detail}")
@@ -466,6 +495,12 @@ def main() -> int:
         )
         return 1
     if findings:
+        if broken_pages:
+            print(
+                "\n以下路由渲染的是失败页（前端错误边界或「页面不存在」），它们上面的表格计数没有意义：\n  "
+                + "\n  ".join(broken_pages),
+                file=sys.stderr,
+            )
         print(f"\n{findings} table(s) with a column that is empty in every row.")
         print("A sparse column is normal; a column empty in *every* row usually means the")
         print("`dataIndex` does not match the field name the endpoint returns.")

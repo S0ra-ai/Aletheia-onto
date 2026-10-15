@@ -194,3 +194,25 @@ def test_every_swept_route_is_a_screen_the_router_serves() -> None:
     """
     unknown = _swept_routes() - _app_routes()
     assert not unknown, f"渲染检查在扫这些路径，但它们不是前端路由：{sorted(unknown)}"
+
+
+def test_a_page_that_failed_to_render_is_recognised() -> None:
+    """A crashed screen and a tableless screen print the same line, unless this is read.
+
+    `/admin/graph` has no table on purpose; a `/admin/graph` whose render throws has no table
+    either. Both are `0 table(s), 0 row(s)`, and one of them is a defect -- so the sweep reads
+    the text the application renders when a screen did not load, and reports it as its own
+    finding rather than leaving it to the table count.
+    """
+    module = _load_script()
+    assert module.failure_marker('<div class="ant-result-title">页面加载失败</div>') == "页面加载失败"
+    assert module.failure_marker("<h1>页面不存在</h1>") == "页面不存在"
+    assert module.failure_marker('<table class="ant-table"><th>备份名称</th></table>') == ""
+
+
+def test_every_excused_route_is_one_the_sweep_visits() -> None:
+    """A key that matches no route excuses nothing -- the route it was meant for fails as
+    unexpected instead, and the reason written beside it describes a path that is not swept."""
+    module = _load_script()
+    unknown = set(module.NO_TABLE_ROUTES) - set(module.ROUTES) - set(module.ID_ROUTES)
+    assert not unknown, f"NO_TABLE_ROUTES 里这些键不对应任何被扫的路由：{sorted(unknown)}"
