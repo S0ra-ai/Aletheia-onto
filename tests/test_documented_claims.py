@@ -434,3 +434,42 @@ def test_every_location_the_capability_matrix_names_exists() -> None:
 
         assert checked > 50, f"{name} 里只解析到 {checked} 个实现位置，格式或已改变"
         assert not missing, f"{name} 指向了不存在的文件：{missing}"
+
+
+# Modules with no test file that names them, and why that is fine. Each is exercised through
+# the module that imports it; naming that here is the point -- an allowance with a reason is
+# a statement somebody can check, and a missing entry is a module nobody has tried.
+COVERED_TRANSITIVELY = {
+    # Imported by `api.py` and driven through the app by `test_frontend_serving.py`, which
+    # asks for the SPA routes rather than for these two functions.
+    "frontend_runtime",
+}
+
+
+def test_every_module_is_named_somewhere_in_the_suite() -> None:
+    """Which modules have no test is a question the repository can answer.
+
+    I have twice written down what was "not covered" from memory and been wrong both times --
+    once claiming the export, codegen and extension-combination paths had no check, when they
+    have twenty-two tests between them. A claim about coverage that nobody verified is the
+    same defect as a claim about a test count that nobody counted, and this file exists for
+    that shape.
+
+    The assertion is weak on purpose: a module *named* in a test file is not a module that is
+    tested well. What it catches is the module that arrives with nothing at all, which is how
+    a feature module with no test gets merged.
+    """
+    import re as regex
+
+    tested_text = "\n".join(path.read_text(encoding="utf-8") for path in TESTS.glob("test_*.py"))
+    modules = sorted(
+        path.stem for path in (ROOT / "backend" / "ontology_platform").glob("*.py") if path.stem != "__init__"
+    )
+    assert len(modules) > 50, f"只枚举到 {len(modules)} 个模块"
+
+    unnamed = {name for name in modules if not regex.search(rf"\b{regex.escape(name)}\b", tested_text)}
+    unexpected = sorted(unnamed - COVERED_TRANSITIVELY)
+    assert not unexpected, (
+        "以下模块没有任何测试文件提到过——要么给它一个测试，"
+        f"要么在 COVERED_TRANSITIVELY 里写明它经由谁被覆盖：{unexpected}"
+    )
