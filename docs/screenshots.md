@@ -1,6 +1,6 @@
 # Screens and output
 
-> 14 screenshots, each captioned with what it proves rather than how it looks.
+> 15 screenshots, each captioned with what it proves rather than how it looks.
 
 Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 
@@ -150,6 +150,23 @@ strings can be stored but not reasoned about. "What did it say last month" is th
 history: verdicts can be produced as of a past instant, so a reviewer who cannot see the old
 values cannot check the old verdict. Both are read-only here; recording them is a modelling
 act and belongs on a screen that says what it is doing.
+
+## Declaring what can happen to an object
+
+![Modelling extensions](images/15-modelling-extensions.png)
+
+Event types are the reason this screen exists. Recording an event whose code was never
+declared is refused — deliberately, so that «驳回», «拒绝» and «rejected» cannot become three
+unrelated facts and history stays queryable. The consequence is that a fresh deployment
+records nothing, and until now the console offered no way to declare one: the instance
+drawer said "declare an event type first" and pointed at nothing.
+
+The split with the instance drawer is deliberate. Declaring a *kind* of event is a modelling
+act and belongs here, next to the object it describes. Recording that *this* instance was
+signed is an operational fact and belongs beside the instance. Payload fields are declared
+as an expectation rather than a validation — a producer that omits one gets a note on the
+event, not a rejected write, because refusing to record what actually happened is the one
+thing an audit trail must never do.
 
 ## Model configuration for custom endpoints
 

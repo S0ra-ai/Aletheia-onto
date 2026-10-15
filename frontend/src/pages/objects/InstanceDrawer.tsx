@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, Descriptions, Drawer, Empty, Space, Table, Tag, Typography } from 'antd';
-import { requestErrorMessage, semanticApi } from '../../api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Button, Descriptions, Drawer, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
+import { EVENT_CATEGORY, label } from '../../i18n/labels';
 import type {
+  EventTypeDeclaration,
   InstanceAttributeVersion,
   InstanceEvent,
   InstanceExplainAttribute,
@@ -43,10 +46,24 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
   const [explain, setExplain] = useState<InstanceExplainResult | null>(null);
   const [events, setEvents] = useState<InstanceEvent[] | null>(null);
   const [versions, setVersions] = useState<InstanceVersionsResult | null>(null);
+  const [eventTypes, setEventTypes] = useState<EventTypeDeclaration[]>([]);
   const [explainError, setExplainError] = useState('');
   const [eventsError, setEventsError] = useState('');
   const [versionsError, setVersionsError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordForm] = Form.useForm();
+
+  const loadEvents = useCallback(async () => {
+    try {
+      const result = await semanticApi.instanceEvents(ontologyId, objectCode, instanceId);
+      setEvents(result.items ?? []);
+    } catch (error) {
+      setEvents(null);
+      setEventsError(requestErrorMessage(error, '读取事件历史失败'));
+    }
+  }, [ontologyId, objectCode, instanceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,11 +91,46 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       .instanceVersions(ontologyId, objectCode, instanceId)
       .then((result) => !cancelled && setVersions(result))
       .catch((error) => !cancelled && setVersionsError(requestErrorMessage(error, '读取取值沿革失败')));
+    // Declared event codes, so recording offers only what the server will accept: an
+    // undeclared code is refused, and a free-text box would turn that refusal into a
+    // mysterious failure at submit time.
+    ontologyApi
+      .eventTypes(ontologyId, objectCode)
+      .then((items) => !cancelled && setEventTypes(items ?? []))
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
     };
   }, [ontologyId, objectCode, instanceId]);
+
+  const handleRecord = async (values: { eventCode: string; occurredAt?: string; payload?: string }) => {
+    setRecording(true);
+    try {
+      let payload: Record<string, unknown> = {};
+      if (values.payload?.trim()) {
+        try {
+          payload = JSON.parse(values.payload);
+        } catch {
+          message.error('载荷必须是合法 JSON');
+          return;
+        }
+      }
+      await semanticApi.recordInstanceEvent(ontologyId, objectCode, instanceId, {
+        eventCode: values.eventCode,
+        payload,
+        occurredAt: values.occurredAt?.trim() || '',
+      });
+      message.success('事件已记录');
+      setRecordOpen(false);
+      recordForm.resetFields();
+      await loadEvents();
+    } catch (error) {
+      message.error(requestErrorMessage(error, '记录事件失败'));
+    } finally {
+      setRecording(false);
+    }
+  };
 
   const attributeColumns = [
     {
@@ -235,9 +287,20 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         </>
       )}
 
-      <Text strong>事件历史</Text>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text strong>事件历史</Text>
+        <Button
+          size="small"
+          icon={<PlusOutlined />}
+          disabled={eventTypes.length === 0}
+          onClick={() => setRecordOpen(true)}
+        >
+          记录事件
+        </Button>
+      </Space>
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
         解释里只带最近 20 条：解释是交互阅读的，而完整历史在这里。
+        {eventTypes.length === 0 && ' 该对象尚未声明事件类型，因此无法记录事件——请先到本体详情的「建模扩展」中声明。'}
       </Paragraph>
       {eventsError ? (
         <Alert type="error" showIcon style={{ marginBottom: 24 }} message="读取事件历史失败" description={eventsError} />
@@ -277,6 +340,48 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
         />
       )}
+
+      <Modal
+        title={`记录事件：${objectCode} / ${instanceId}`}
+        open={recordOpen}
+        onCancel={() => setRecordOpen(false)}
+        onOk={() => recordForm.submit()}
+        confirmLoading={recording}
+        destroyOnClose
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="记录事件不会触发任何动作"
+          description="它只把「发生了什么」写进历史，因此它是可复核的凭据，而不是一条自动化指令。"
+        />
+        <Form form={recordForm} layout="vertical" onFinish={handleRecord}>
+          <Form.Item name="eventCode" label="事件" rules={[{ required: true, message: '请选择事件' }]}>
+            <Select
+              placeholder="选择已声明的事件类型"
+              options={eventTypes.map((item) => ({
+                value: item.code,
+                label: `${item.name}（${label(EVENT_CATEGORY, item.category)}）`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="occurredAt"
+            label="发生时间"
+            extra="留空表示「现在」。历史是补记的常见情形，因此这里可以填过去的时间。"
+          >
+            <Input placeholder="2026-01-05 10:00:00" />
+          </Form.Item>
+          <Form.Item
+            name="payload"
+            label="载荷"
+            extra="可选，JSON 对象。与已声明的载荷字段不一致时平台会在事件上标注，而不是拒绝写入。"
+          >
+            <Input.TextArea rows={3} placeholder='{"party": "甲方"}' />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 };

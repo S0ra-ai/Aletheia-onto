@@ -7,6 +7,7 @@ import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
+import ModellingExtensions from './ModellingExtensions';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -284,6 +285,13 @@ const OntologyDetailPage: React.FC = () => {
               dataSource={releaseReadiness?.gates || []}
               rowKey="code"
               pagination={false}
+            />
+          </TabPane>
+          <TabPane tab="建模扩展" key="extensions">
+            <ModellingExtensions
+              ontologyId={ontology.ontology.id}
+              objects={ontology.objects ?? []}
+              readOnly={['published', 'reviewing'].includes(ontology.ontology.status)}
             />
           </TabPane>
         </Tabs>

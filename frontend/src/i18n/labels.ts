@@ -72,6 +72,15 @@ export const READINESS_STATUS: Record<string, string> = {
   error: '检查失败',
 };
 
+/** The categories `events.EVENT_CATEGORIES` accepts, in the same words it uses. */
+export const EVENT_CATEGORY: Record<string, string> = {
+  lifecycle: '生命周期',
+  state_change: '状态变更',
+  attribute_change: '属性变更',
+  interaction: '业务交互',
+  external: '外部事件',
+};
+
 /**
  * Release-gate severity, which is a different scale from rule severity: a gate is
  * `blocker` or `warning`, a rule is `blocking` or `warning`. They share one word and not the

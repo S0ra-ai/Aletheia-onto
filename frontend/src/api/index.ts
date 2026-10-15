@@ -18,6 +18,7 @@ import type {
   ReleaseReadinessResult,
   DemoBootstrapResult,
   InstanceExplainResult,
+  EventTypeDeclaration,
   InstanceEventsResult,
   InstanceVersionsResult,
   InstanceAssessResult,
@@ -431,6 +432,28 @@ export const ontologyApi = {
     return data;
   },
 
+  /**
+   * The kinds of event declared for an object.
+   *
+   * Reading this is what makes "no history yet" actionable: an instance with no events has
+   * either never had anything happen to it or a producer whose event codes were never
+   * declared, and only the declared list tells the two apart.
+   */
+  eventTypes: async (ontologyId: number, objectCode?: string): Promise<EventTypeDeclaration[]> => {
+    const params = objectCode ? { objectCode } : {};
+    const { data } = await api.get(`/ontologies/${ontologyId}/event-types`, { params });
+    return ((data as { items?: EventTypeDeclaration[] }).items || []) as EventTypeDeclaration[];
+  },
+
+  declareEventType: async (
+    ontologyId: number,
+    objectCode: string,
+    payload: { code: string; name: string; category: string; payloadFields?: string[]; description?: string },
+  ): Promise<unknown> => {
+    const { data } = await api.put(`/ontologies/${ontologyId}/objects/${objectCode}/event-types`, payload);
+    return data;
+  },
+
   /** `jsonld`/`turtle` are this platform's vocabulary; `owl`/`shacl` are the standard ones. */
   exportUrl: (
     ontologyId: number,
@@ -541,6 +564,26 @@ export const semanticApi = {
       `/ontologies/${ontologyId}/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}/versions`,
     );
     return data as InstanceVersionsResult;
+  },
+
+  /**
+   * Append one event to an instance's history.
+   *
+   * An undeclared code is refused by the server: accepting it would let «驳回», «拒绝» and
+   * «rejected» become three unrelated facts and history would stop being queryable. The
+   * drawer therefore offers only codes that were declared.
+   */
+  recordInstanceEvent: async (
+    ontologyId: number,
+    objectCode: string,
+    instanceId: string,
+    payload: { eventCode: string; payload?: Record<string, unknown>; occurredAt?: string },
+  ): Promise<unknown> => {
+    const { data } = await api.post(
+      `/ontologies/${ontologyId}/objects/${encodeURIComponent(objectCode)}/instances/${encodeURIComponent(instanceId)}/events`,
+      payload,
+    );
+    return data;
   },
 };
 

@@ -331,6 +331,25 @@ export interface BusinessObject {
   sourceTable: string;
 }
 
+/**
+ * A declared kind of thing that happens to instances of one object.
+ *
+ * Declared rather than free-form: an event stream of arbitrary strings can be stored but
+ * not reasoned about, and «驳回» / «拒绝» / «rejected» would become three unrelated facts.
+ * Recording an event with an undeclared code is refused, which is why this screen has to
+ * exist before the instance timeline can be populated from the UI at all.
+ */
+export interface EventTypeDeclaration {
+  code: string;
+  name: string;
+  objectCode: string;
+  category: string;
+  categoryLabel: string;
+  /** Field names the payload is expected to carry. Advisory, and reported on when absent. */
+  payloadFields: string[];
+  description: string;
+}
+
 export interface BusinessAttribute {
   id: number;
   objectId: number;
