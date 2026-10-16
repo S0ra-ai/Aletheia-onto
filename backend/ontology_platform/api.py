@@ -49,7 +49,7 @@ from .governance import (
     upsert_business_rule,
 )
 from .graph_view import build_ontology_graph
-from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal
+from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, current_principal, enforce_quota
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .logging_config import setup_logging
 from .metrics import expose_metrics, init_metrics
@@ -59,6 +59,7 @@ from .ontology import (
     explain_instance,
     export_ontology_asset,
     generate_ontology_draft,
+    has_draft_for_source,
     list_ontologies,
     resolve_ontology_for_object,
     summarize_ontology,
@@ -453,6 +454,12 @@ def bootstrap_equipment_demo() -> dict[str, object]:
 @core_router.post("/ontologies/draft")
 def create_ontology_draft(payload: OntologyDraftCreate) -> dict[str, object]:
     try:
+        # A rebuild of an existing draft adds no row, so it only has to respect a limit the
+        # tenant is already over -- refusing it would block fixing the very thing the limit
+        # was set for.
+        enforce_quota(
+            "ontologies", requested=0 if has_draft_for_source(DEFAULT_PLATFORM_DB, payload.dataSourceId) else 1
+        )
         return generate_ontology_draft(
             DEFAULT_PLATFORM_DB, payload.dataSourceId, payload.name, payload.domain, payload.blueprintId
         )
@@ -577,6 +584,8 @@ def derive_ontology_draft(
     principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
     try:
+        # A derived version is a new ontology row by definition.
+        enforce_quota("ontologies")
         return derive_ontology_version(DEFAULT_PLATFORM_DB, ontology_id, payload.version, principal.actor)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -597,6 +606,17 @@ def create_or_update_business_rule(
     principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
     try:
+        # `upsert_business_rule` is an upsert: editing a rule the tenant already has must not
+        # be refused by a limit they have already reached.
+        with connect(DEFAULT_PLATFORM_DB) as conn:
+            already_exists = (
+                conn.execute(
+                    "select 1 from business_rule where ontology_id = ? and code = ?",
+                    (ontology_id, payload.code),
+                ).fetchone()
+                is not None
+            )
+        enforce_quota("business_rules", requested=0 if already_exists else 1)
         return upsert_business_rule(
             DEFAULT_PLATFORM_DB,
             ontology_id,
@@ -832,6 +852,9 @@ def assess_object_instance(
         resolved = (
             ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
         )
+        # Every assessment of an instance records a decision, which is what the
+        # `decision_records` quota counts.
+        enforce_quota("decision_records")
         return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
     except TemporalError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -925,6 +948,15 @@ def chat_with_agent(
     principal: Principal = Depends(current_principal),
 ) -> dict[str, object]:
     try:
+        # The first turn of a session creates the conversation; later turns do not.
+        with connect(DEFAULT_PLATFORM_DB) as conn:
+            session_exists = (
+                conn.execute("select 1 from conversation where session_id = ?", (payload.sessionId,)).fetchone()
+                is not None
+                if payload.sessionId
+                else False
+            )
+        enforce_quota("conversations", requested=0 if session_exists else 1)
         return agent_chat(
             DEFAULT_PLATFORM_DB,
             payload.message,

@@ -45,6 +45,7 @@ Stability: experimental (ADR-0007).
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from .context import PlatformContext
@@ -205,30 +206,32 @@ def tenant_quotas(base: PlatformContext, tenant: str) -> dict[str, int]:
 def quota_usage(base: PlatformContext, tenant: str) -> dict[str, Any]:
     """Current usage against declared limits, for one tenant.
 
-    Counted from the tenant's own tables rather than from a stored counter. A counter
-    drifts from the rows it counts, and a drifted counter either blocks a tenant who is
-    under their limit or lets one past it -- both are worse than a count that costs a
-    query.
+    Counted from the rows themselves rather than from a stored counter. A counter drifts from
+    the rows it counts, and a drifted counter either blocks a tenant who is under their limit
+    or lets one past it -- both are worse than a count that costs a query.
+
+    Counted from the same store `check_quota` counts, which is the store the application
+    writes to. These two disagreed once: the report read the tenant's own store and showed
+    「当前 0」 while the check counted ten rows in the platform store, so an administrator
+    sizing a limit was reading a number that described a database nobody was writing to.
     """
     tenant = validate_tenant(tenant)
     limits = tenant_quotas(base, tenant)
-    context = tenant_context(base, tenant)
 
     usage: dict[str, Any] = {}
-    with context.connect() as conn:
-        for resource, (table, description) in sorted(QUOTA_RESOURCES.items()):
-            current = _count(conn, table)
-            limit = limits.get(resource)
-            usage[resource] = {
-                "table": table,
-                "description": description,
-                "current": current,
-                "limit": limit,
-                # `remaining` is None for an unlimited resource rather than a large
-                # number, so a caller cannot render "unlimited" as a misleading figure.
-                "remaining": None if limit is None else max(0, limit - current),
-                "exceeded": limit is not None and current > limit,
-            }
+    for resource, (table, description) in sorted(QUOTA_RESOURCES.items()):
+        current = _tenant_rows(base, tenant, table)
+        limit = limits.get(resource)
+        usage[resource] = {
+            "table": table,
+            "description": description,
+            "current": current,
+            "limit": limit,
+            # `remaining` is None for an unlimited resource rather than a large
+            # number, so a caller cannot render "unlimited" as a misleading figure.
+            "remaining": None if limit is None else max(0, limit - current),
+            "exceeded": limit is not None and current > limit,
+        }
 
     return {"tenant": tenant, "resources": usage}
 
@@ -258,27 +261,99 @@ def check_quota(
         return
 
     table = QUOTA_RESOURCES[resource][0]
-    context = tenant_context(base, tenant)
-    with context.connect() as conn:
-        current = _count(conn, table)
+    current = _tenant_rows(base, tenant, table)
 
     if current + requested > limit:
         raise QuotaExceeded(tenant, resource, limit, current, requested)
 
 
-def _count(conn: Any, table: str) -> int:
+def _tenant_rows(base: PlatformContext, tenant: str, table: str) -> int:
+    """How many rows of `table` this tenant has, counted wherever they are.
+
+    Two stores can hold them, and the ceiling has to see both:
+
+    - the store the caller handed in -- the platform database for every HTTP route, which is
+      where the application writes. Counting only the tenant's own store made the quota
+      decorative: **a limit of one permitted three data sources**, and only a limit of zero
+      ever refused anything, because `0 + 1 > 0`.
+    - the tenant's own store (`tenant_context`): for SQLite a separate file, for the server
+      dialects a schema. That is where the library API writes when its caller passes a tenant
+      context, and where `add_workflow_state`-style embedded callers have always written.
+
+    Summed rather than chosen between, because the two mistakes are not equal: over-counting a
+    tenant refuses a write they could have made and tells them why, while under-counting lets
+    one tenant fill the shared database -- which is what this ceiling exists to prevent.
+
+    A table carrying `tenant_id` (a shared-schema deployment that added the column) is filtered
+    by it, so one tenant's rows are not counted against another's allowance.
+    """
+    total = 0
+    with base.connect() as conn:
+        total += _count(conn, table, tenant=tenant)
+
+    scoped = tenant_context(base, tenant)
+    if scoped.connection_uri != base.connection_uri or scoped.schema != base.schema:
+        # A SQLite tenant store is a file, and opening one that is not there *creates* it --
+        # so a read-only usage report would leave an empty `platform-<tenant>.sqlite3` behind
+        # for every tenant an administrator merely looked at. An absent file is zero rows,
+        # which is what the handler below would have answered anyway.
+        if scoped.db_type == "sqlite" and not Path(scoped.connection_uri).exists():
+            return total
+        try:
+            with scoped.connect() as conn:
+                # Unfiltered: the store is wholly this tenant's -- its own file, or its own
+                # schema -- so every row in it belongs to the tenant the ceiling is for. The
+                # filter above exists for a *shared* store, where the column is what separates
+                # one tenant's rows from another's; applying it here would miss the rows an
+                # embedded caller wrote through a plain path, which carry no tenant stamp.
+                total += _count(conn, table)
+        except Exception as error:
+            # A tenant that was never provisioned has no store; that is zero rows, not a
+            # failure to answer -- and a quota check that errors is a quota check that gets
+            # removed.
+            logger.debug("配额统计跳过租户库 %s: %s", tenant, error)
+    return total
+
+
+def _count(conn: Any, table: str, *, tenant: str = "") -> int:
     """Row count, or 0 when the table is absent.
 
     A missing table means the feature was never used, which is zero rows -- not an
     error. Raising here would make a quota check fail on a tenant provisioned before the
     table existed, and a quota check that errors is a quota check that gets removed.
+
+    `tenant` filters the count when the table has a `tenant_id` column: a shared-schema
+    deployment that added it must not count one tenant's rows against another's allowance.
+    Where the column is absent -- every SQLite deployment, and any server deployment that
+    never provisioned tenants -- the store itself belongs to one tenant, so all of its rows
+    are that tenant's.
     """
     try:
-        row = conn.execute(f"select count(*) as total from {table}").fetchone()
+        if tenant and _has_column(conn, table, "tenant_id"):
+            row = conn.execute(f"select count(*) as total from {table} where tenant_id = ?", (tenant,)).fetchone()
+        else:
+            row = conn.execute(f"select count(*) as total from {table}").fetchone()
     except Exception as error:
         logger.debug("配额统计跳过表 %s: %s", table, error)
         return 0
     return int(row["total"]) if row else 0
+
+
+def _has_column(conn: Any, table: str, column: str) -> bool:
+    """Whether the table has this column, across the three dialects.
+
+    Asked of the live catalog rather than of a list in this file: the column is added by
+    `tenancy._ensure_tenant_columns` on a deployment that provisions tenants, and a list here
+    would be right on exactly the deployments where somebody remembered to update it.
+    """
+    try:
+        rows = conn.execute(f"select * from {table} limit 0")
+        description = getattr(rows, "description", None)
+        if description:
+            return any(getattr(entry, "name", entry[0]) == column for entry in description)
+    except Exception:
+        return False
+    return False
 
 
 def verify_resources_are_tenant_scoped() -> None:

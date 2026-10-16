@@ -730,6 +730,17 @@ def _draft_for_source(conn: sqlite3.Connection, data_source_id: int) -> sqlite3.
     ).fetchone()
 
 
+def has_draft_for_source(platform_db: PlatformDb, data_source_id: int) -> bool:
+    """Whether this source already has a draft derived from it.
+
+    Public because the HTTP layer needs the same answer to decide whether a draft request
+    would *create* an ontology -- which is what the `ontologies` quota counts. Asking the
+    identity question in one place is what keeps the quota from refusing a rebuild.
+    """
+    with connect(platform_db) as conn:
+        return _draft_for_source(conn, data_source_id) is not None
+
+
 def _create_ontology(
     conn: sqlite3.Connection, data_source_id: int, name: str, domain: str
 ) -> tuple[int, dict[str, int]]:

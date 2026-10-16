@@ -46,6 +46,7 @@ from ..knowledge_documents import (
     list_documents,
     list_entries,
     review_knowledge_entry,
+    split_into_chunks,
 )
 from ..retrieval import supported_embedding_models, supported_retrieval_backends
 
@@ -119,6 +120,9 @@ async def upload_knowledge_document(
         # unsure what actually landed. Document ingestion is also the write most able to
         # fill a shared platform database, which is what makes it the one worth gating.
         enforce_quota("knowledge_documents")
+        # Extraction is pure text handling, and it runs before the entries check rather than
+        # after it because that check has to be asked in the rows the document will really
+        # write -- one entry per clause. See below.
         if name.lower().endswith(".docx"):
             text = extract_text_from_docx(content)
         else:
@@ -128,10 +132,21 @@ async def upload_knowledge_document(
                 text = content.decode("utf-8")
             except UnicodeDecodeError as error:
                 raise ValueError("仅支持 .docx 或 UTF-8 文本文件。") from error
+        title = title.strip() or Path(name).stem
+        # `knowledge_entries` is a resource an administrator can declare on its own, so it is
+        # asked for separately. Asking for one slot per upload left the ceiling porous: a
+        # document with one place left in the allowance and two hundred clauses in its body
+        # passed the check and wrote all two hundred. A ceiling on entries has to be asked in
+        # entries. The splitter runs twice, here and inside `ingest_document`; the
+        # alternative is a quota that holds only for documents short enough not to need one.
+        enforce_quota(
+            "knowledge_entries",
+            requested=max(1, len(split_into_chunks(text, title=title).chunks)),
+        )
         return ingest_document(
             platform_db(),
             ontology_id,
-            title.strip() or Path(name).stem,
+            title,
             text,
             source_name=name,
             object_code=objectCode,

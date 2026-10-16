@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1714 tests**, all passing. A case that needs something this machine does not have skips
+**1723 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -83,6 +83,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_rule_engine_safety.py` | 34 | Rule engine safety and release gate tests |
 | `test_codegen.py` | 16 | Code generation from a published ontology |
 | `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
+| `test_quota_enforcement.py` | 9 | A declared quota binds to the rows the platform actually writes |
 | `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
