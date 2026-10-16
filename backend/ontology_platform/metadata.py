@@ -6,8 +6,9 @@ import sqlite3
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
+from . import advice
 from .adapters import SourceColumnInfo, SourceForeignKeyInfo, SourceTableInfo, get_adapter, test_connection
 from .context import PlatformDb
 from .credentials import redact_connection_uri
@@ -336,10 +337,13 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
     api_gateway_ready = not requires_api_gateway or _is_http_url(api_base_url)
     if api_base_url:
         api_gateway_evidence = f"业务 API 基址已配置为 {api_base_url}。"
+        api_gateway_state = "configured"
     elif requires_api_gateway:
         api_gateway_evidence = "系统分类声明了 API 能力，但尚未配置业务 API 基址。"
+        api_gateway_state = "missing"
     else:
         api_gateway_evidence = "系统分类未声明 API 能力，业务 API 基址不是必填项。"
+        api_gateway_state = "not_required"
 
     checks = [
         _readiness_check(
@@ -357,6 +361,7 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"已扫描 {len(tables)} 张表、{len(columns)} 个字段。",
             "执行元数据扫描，获取表、字段、主键和外键。",
             20,
+            numbers={"tables": len(tables), "columns": len(columns)},
         ),
         _readiness_check(
             "primary_keys",
@@ -365,6 +370,7 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"{sum(1 for row in tables if row['primary_key'])}/{len(tables)} 张表具备主键。",
             "为缺少主键的表配置实例标识，否则无法稳定解释单个业务对象实例。",
             15,
+            numbers={"withKey": sum(1 for row in tables if row["primary_key"]), "tables": len(tables)},
         ),
         _readiness_check(
             "relations",
@@ -373,6 +379,7 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"识别到 {len(foreign_keys)} 条外键关系。",
             "补充外键或关系映射，形成业务对象之间的语义关联。",
             10,
+            numbers={"foreignKeys": len(foreign_keys)},
         ),
         _readiness_check(
             "ontology",
@@ -381,6 +388,7 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"已有 {len(ontology_rows)} 个关联本体版本。",
             "基于扫描结果和行业蓝图生成本体草案。",
             15,
+            numbers={"ontologies": len(ontology_rows)},
         ),
         _readiness_check(
             "mapping_governance",
@@ -389,6 +397,10 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"已确认 {_mapping_count(mapping_counts, 'confirmed')} 条映射，待审核 {_mapping_count(mapping_counts, 'pending')} 条。",
             "组织业务专家审核语义映射，至少确认关键对象和关键字段。",
             15,
+            numbers={
+                "confirmed": _mapping_count(mapping_counts, "confirmed"),
+                "pending": _mapping_count(mapping_counts, "pending"),
+            },
         ),
         _readiness_check(
             "api_gateway",
@@ -397,6 +409,8 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             api_gateway_evidence,
             "为数据库+API 或 API 类传统系统配置 HTTP/HTTPS 业务 API 基址。",
             10,
+            status=api_gateway_state,
+            text=api_base_url,
         ),
         _readiness_check(
             "business_apis",
@@ -405,9 +419,16 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
             f"已登记 {len(apis)} 个业务 API，其中 {sum(1 for row in apis if row['semantic_action'])} 个具备语义动作。",
             "登记传统业务系统 API，并为每个操作绑定语义动作。",
             5,
+            numbers={
+                "apis": len(apis),
+                "semanticActions": sum(1 for row in apis if row["semantic_action"]),
+            },
         ),
     ]
     gaps = [item for item in checks if not item["passed"]]
+    # The check's own sentence and its advice code, kept together so the two fields the
+    # response carries cannot drift: `split` is the only thing that builds either.
+    readiness_texts, readiness_codes = advice.split([(str(item["code"]), str(item["remediation"])) for item in gaps])
     score = sum(item["weight"] for item in checks if item["passed"])
     status = "ready" if not gaps else "partial" if score >= 45 else "blocked"
     return {
@@ -429,7 +450,8 @@ def assess_data_source_readiness(platform_db: PlatformDb, data_source_id: int) -
         },
         "checks": checks,
         "gaps": gaps,
-        "nextActions": [item["remediation"] for item in gaps],
+        "nextActions": readiness_texts,
+        "nextActionCodes": readiness_codes,
     }
 
 
@@ -621,6 +643,7 @@ def analyze_schema_drift(platform_db: PlatformDb, data_source_id: int) -> dict[s
                 "changedTables": [],
                 "impacts": {"objects": [], "mappings": [], "rules": []},
                 "nextActions": ["先执行元数据扫描，建立传统系统结构基线。"],
+                "nextActionCodes": [advice.SCAN_METADATA_FIRST],
             }
 
         adapter = get_adapter(source["source_type"])
@@ -663,6 +686,7 @@ def analyze_schema_drift(platform_db: PlatformDb, data_source_id: int) -> dict[s
             impacted_rules=len(impacts["rules"]),
         )
         has_drift = any(summary[key] for key in ("addedTables", "removedTables", "changedTables"))
+        drift_texts, drift_codes = advice.split(_schema_drift_next_actions(summary, impacts))
 
         return {
             "dataSourceId": data_source_id,
@@ -672,7 +696,8 @@ def analyze_schema_drift(platform_db: PlatformDb, data_source_id: int) -> dict[s
             "removedTables": removed_tables,
             "changedTables": changed_tables,
             "impacts": impacts,
-            "nextActions": _schema_drift_next_actions(summary, impacts),
+            "nextActions": drift_texts,
+            "nextActionCodes": drift_codes,
         }
 
 
@@ -715,8 +740,24 @@ def _data_source_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _readiness_check(
-    code: str, name: str, passed: bool, evidence: str, remediation: str, weight: int
+    code: str,
+    name: str,
+    passed: bool,
+    evidence: str,
+    remediation: str,
+    weight: int,
+    *,
+    status: str = "",
+    numbers: Optional[dict[str, int]] = None,
+    text: str = "",
 ) -> dict[str, Any]:
+    """One onboarding check, with its sentence and the facts behind it.
+
+    `status`, `numbers` and `text` are what the console composes its own sentence from. The
+    Chinese `name`, `evidence` and `remediation` are kept for the CLI and for clients that do
+    not know these codes; the console reads the code and says it in the reader's language,
+    which it cannot do from a sentence that already has the numbers baked into it.
+    """
     return {
         "code": code,
         "name": name,
@@ -724,6 +765,11 @@ def _readiness_check(
         "evidence": evidence,
         "remediation": remediation,
         "weight": weight,
+        "status": status,
+        "numbers": numbers or {},
+        # A value the sentence quotes that is not a count: the configured API base URL, or the
+        # system category that decides whether a gateway is required at all.
+        "text": text,
     }
 
 
@@ -998,16 +1044,22 @@ def _drift_summary(
     }
 
 
-def _schema_drift_next_actions(summary: dict[str, int], impacts: dict[str, list[dict[str, Any]]]) -> list[str]:
+def _schema_drift_next_actions(summary: dict[str, int], impacts: dict[str, list[dict[str, Any]]]) -> advice.PAIRS:
+    """What to do about the drift, as (code, sentence) pairs.
+
+    Pairs rather than sentences because the response carries both halves: the CLI prints the
+    sentence, the console looks up the code and says it in the reader's language. Building them
+    together is what keeps the two fields in step.
+    """
     if not any(summary.values()):
-        return ["当前业务系统结构与最近一次扫描基线一致。"]
-    actions = ["评估漂移影响后再执行重新扫描，避免直接覆盖可追溯基线。"]
+        return [(advice.DRIFT_IN_SYNC, "当前业务系统结构与最近一次扫描基线一致。")]
+    actions: advice.PAIRS = [(advice.DRIFT_RESCAN, "评估漂移影响后再执行重新扫描，避免直接覆盖可追溯基线。")]
     if summary["removedTables"] or summary["removedColumns"] or summary["changedColumns"]:
-        actions.append("对受影响对象、映射和规则发起业务专家复核。")
+        actions.append((advice.DRIFT_REVIEW, "对受影响对象、映射和规则发起业务专家复核。"))
     if impacts["objects"] or impacts["mappings"] or impacts["rules"]:
-        actions.append("派生新本体版本并重新确认关键语义映射。")
+        actions.append((advice.DRIFT_DERIVE, "派生新本体版本并重新确认关键语义映射。"))
     if summary["addedTables"] or summary["addedColumns"]:
-        actions.append("将新增表字段纳入行业蓝图或本体草案增量建模。")
+        actions.append((advice.DRIFT_MODEL_ADDITIONS, "将新增表字段纳入行业蓝图或本体草案增量建模。"))
     return actions
 
 

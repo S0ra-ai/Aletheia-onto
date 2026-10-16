@@ -34,6 +34,155 @@ export const datasource: Record<string, MessageEntry> = {
   'severity': { zh: '严重程度', en: 'Severity' },
 
   'initializeButton': { zh: '初始化知识库', en: 'Initialise the knowledge base' },
+  // The advice the server computes, keyed by the code it sends beside each sentence. The
+  // server's own Chinese is the fallback for a code this build does not know, which is what
+  // keeps a panel readable when the backend learns a new piece of advice before the console
+  // does. Readiness, drift, coverage and operation bindings all speak this way.
+  // The onboarding-checks table. Its `code` is the same one the advice list uses, so the
+  // remediation column reads `advice.<code>` above -- one sentence per check, said once.
+  'check.connection.name': { zh: '连接配置', en: 'Connection' },
+  'check.connection.evidence': { zh: '已登记数据源连接配置。', en: 'A connection is recorded for this source.' },
+  'check.metadata_scan.name': { zh: '元数据扫描', en: 'Metadata scan' },
+  'check.metadata_scan.evidence': {
+    zh: '已扫描 {tables} 张表、{columns} 个字段。',
+    en: 'Scanned {tables} tables and {columns} columns.',
+  },
+  'check.primary_keys.name': { zh: '实例定位', en: 'Instance identity' },
+  'check.primary_keys.evidence': {
+    zh: '{withKey}/{tables} 张表具备主键。',
+    en: '{withKey} of {tables} tables have a primary key.',
+  },
+  'check.relations.name': { zh: '关系识别', en: 'Relation detection' },
+  'check.relations.evidence': {
+    zh: '识别到 {foreignKeys} 条外键关系。',
+    en: '{foreignKeys} foreign-key relations found.',
+  },
+  'check.ontology.name': { zh: '本体草案', en: 'Ontology draft' },
+  'check.ontology.evidence': { zh: '已有 {ontologies} 个关联本体版本。', en: '{ontologies} related ontology versions exist.' },
+  'check.mapping_governance.name': { zh: '映射治理', en: 'Mapping governance' },
+  'check.mapping_governance.evidence': {
+    zh: '已确认 {confirmed} 条映射，待审核 {pending} 条。',
+    en: '{confirmed} mappings confirmed, {pending} awaiting review.',
+  },
+  'check.api_gateway.name': { zh: '业务 API 网关', en: 'Business API gateway' },
+  'check.api_gateway.evidence.configured': {
+    zh: '业务 API 基址已配置为 {url}。',
+    en: 'The API base URL is configured as {url}.',
+  },
+  'check.api_gateway.evidence.missing': {
+    zh: '系统分类声明了 API 能力，但尚未配置业务 API 基址。',
+    en: 'The system category declares API capability, but no API base URL is configured.',
+  },
+  'check.api_gateway.evidence.not_required': {
+    zh: '系统分类未声明 API 能力，业务 API 基址不是必填项。',
+    en: 'The system category declares no API capability, so the API base URL is not required.',
+  },
+  'check.business_apis.name': { zh: '业务 API', en: 'Business APIs' },
+  'check.business_apis.evidence': {
+    zh: '已登记 {apis} 个业务 API，其中 {semanticActions} 个具备语义动作。',
+    en: '{apis} APIs registered, {semanticActions} of them with a semantic action.',
+  },
+  'advice.connection': { zh: '登记数据源连接地址和类型。', en: 'Record the source\'s connection address and type.' },
+  'advice.metadata_scan': {
+    zh: '执行元数据扫描，获取表、字段、主键和外键。',
+    en: 'Run a metadata scan to read the tables, columns, primary keys and foreign keys.',
+  },
+  'advice.primary_keys': {
+    zh: '为缺少主键的表配置实例标识，否则无法稳定解释单个业务对象实例。',
+    en: 'Give the tables without a primary key an instance identity, or a single business object instance cannot be explained consistently.',
+  },
+  'advice.relations': {
+    zh: '补充外键或关系映射，形成业务对象之间的语义关联。',
+    en: 'Add foreign keys or relation mappings to connect the business objects to each other.',
+  },
+  'advice.ontology': {
+    zh: '基于扫描结果和行业蓝图生成本体草案。',
+    en: 'Generate an ontology draft from the scan results and an industry blueprint.',
+  },
+  'advice.mapping_governance': {
+    zh: '组织业务专家审核语义映射，至少确认关键对象和关键字段。',
+    en: 'Have a business expert review the semantic mappings, confirming at least the key objects and fields.',
+  },
+  'advice.api_gateway': {
+    zh: '为数据库+API 或 API 类传统系统配置 HTTP/HTTPS 业务 API 基址。',
+    en: 'Configure the HTTP/HTTPS API base URL for a database+API or API-only legacy system.',
+  },
+  'advice.business_apis': {
+    zh: '登记传统业务系统 API，并为每个操作绑定语义动作。',
+    en: 'Register the legacy system\'s APIs and bind a semantic action to each operation.',
+  },
+  'advice.scan_metadata_first': {
+    zh: '先执行元数据扫描，建立传统系统结构基线。',
+    en: 'Run a metadata scan first, to establish a baseline of the legacy system\'s structure.',
+  },
+  'advice.drift_rescan': {
+    zh: '评估漂移影响后再执行重新扫描，避免直接覆盖可追溯基线。',
+    en: 'Assess the drift impact before re-scanning, so the traceable baseline is not simply overwritten.',
+  },
+  'advice.drift_review': {
+    zh: '对受影响对象、映射和规则发起业务专家复核。',
+    en: 'Send the affected objects, mappings and rules for business-expert review.',
+  },
+  'advice.drift_derive': {
+    zh: '派生新本体版本并重新确认关键语义映射。',
+    en: 'Derive a new ontology version and re-confirm the key semantic mappings.',
+  },
+  'advice.drift_model_additions': {
+    zh: '将新增表字段纳入行业蓝图或本体草案增量建模。',
+    en: 'Bring the new tables and columns into the blueprint, or model them as a draft increment.',
+  },
+  'advice.drift_in_sync': {
+    zh: '当前业务系统结构与最近一次扫描基线一致。',
+    en: 'The source structure matches the last scan baseline.',
+  },
+  'advice.coverage_scan_first': {
+    zh: '先扫描元数据并生成本体草案，建立业务对象与传统表的语义映射。',
+    en: 'Scan the metadata and generate an ontology draft first, which is what connects business objects to legacy tables.',
+  },
+  'advice.coverage_pending_mappings': {
+    zh: '优先审核待确认语义映射，提升决策证据确定性。',
+    en: 'Review the pending semantic mappings first: they are what makes a verdict\'s evidence certain.',
+  },
+  'advice.coverage_missing_rules': {
+    zh: '为缺少规则的业务对象补充准入、风险、自动化放行等业务规则。',
+    en: 'Add admission, risk or automation-release rules to the objects that have none.',
+  },
+  'advice.coverage_register_apis': {
+    zh: '登记传统业务系统 API，并用语义动作绑定到业务对象。',
+    en: 'Register the legacy APIs and bind them to business objects with semantic actions.',
+  },
+  'advice.coverage_semantic_actions': {
+    zh: '为未绑定语义动作的 API 补充 object.action 形式的语义动作。',
+    en: 'Give the unbound APIs a semantic action of the form object.action.',
+  },
+  'advice.coverage_instance_keys': {
+    zh: '为缺少主键的传统表补充实例标识策略。',
+    en: 'Decide an instance-identity strategy for the legacy tables without a primary key.',
+  },
+  'advice.coverage_closed_loop': {
+    zh: '语义覆盖已形成闭环，可进入运行期监控、漂移分析和版本治理。',
+    en: 'Semantic coverage is closed. Move on to runtime monitoring, drift analysis and version governance.',
+  },
+  'advice.bindings_invalid_actions': {
+    zh: '为缺少或格式错误的 API 补充 object.action 形式语义动作。',
+    en: 'Give the APIs with a missing or malformed semantic action one of the form object.action.',
+  },
+  'advice.bindings_unbound_objects': {
+    zh: '将 API 语义动作中的对象编码绑定到当前数据源本体对象。',
+    en: 'Bind the object code inside each API\'s semantic action to an object in this source\'s ontology.',
+  },
+  'advice.bindings_incomplete': {
+    zh: '补齐已确认映射、发布态规则和实例主键后再开放自动化执行。',
+    en: 'Complete the confirmed mappings, published rules and instance keys before opening up automated execution.',
+  },
+  'advice.bindings_register_apis': {
+    zh: '登记传统业务系统 API，并绑定语义动作。',
+    en: 'Register the legacy APIs and bind their semantic actions.',
+  },
+  'advice.bindings_ready': {
+    zh: 'API 语义动作已完成绑定，可进入预检和执行治理。',
+    en: 'Every API has a bound semantic action. Move on to preflight and execution governance.',
+  },
   'scanButton': { zh: '扫描', en: 'Scan' },
   // The scan's own report, composed by `i18n/text.ts`. It was the last Chinese sentence the
   // English interface still printed verbatim -- two screens' worth of it.

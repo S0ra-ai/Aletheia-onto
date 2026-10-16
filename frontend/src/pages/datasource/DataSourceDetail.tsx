@@ -1,4 +1,4 @@
-import { joinSentences, scanReport } from '../../i18n/text';
+import { adviceTexts, joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RELATION_KIND, RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi, ontologyApi, requestErrorMessage } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
+import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, ReadinessCheck, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title } = Typography;
@@ -333,11 +333,36 @@ const DataSourceDetail: React.FC = () => {
     },
   ];
 
+  /**
+   * One onboarding check's sentence, in the reader's language.
+   *
+   * Same shape as the release gate: the server sends the code, whether it passed, and the
+   * facts (`numbers`, `status`, `text`) beside its own Chinese. The remediation column is the
+   * check's advice, so it reads `advice.<code>` -- one sentence per check, said once, and the
+   * same one the panel above shows.
+   */
+  const checkText = (check: ReadinessCheck, field: 'name' | 'evidence'): string => {
+    const params = {
+      ...(check.numbers ?? {}),
+      url: check.text ?? '',
+      tables: check.numbers?.tables ?? 0,
+      columns: check.numbers?.columns ?? 0,
+    };
+    const key =
+      field === 'evidence' && check.status
+        ? `datasource.check.${check.code}.evidence.${check.status}`
+        : `datasource.check.${check.code}.${field}`;
+    const translated = t(key as never, params);
+    if (translated && !translated.startsWith('⟦')) return translated;
+    return check[field];
+  };
+
   const readinessColumns = [
     {
       title: t('datasource.checkItem'),
       dataIndex: 'name',
       key: 'name',
+      render: (_: string, check: ReadinessCheck) => checkText(check, 'name'),
     },
     {
       title: t('datasource.status'),
@@ -349,11 +374,16 @@ const DataSourceDetail: React.FC = () => {
       title: t('datasource.evidence'),
       dataIndex: 'evidence',
       key: 'evidence',
+      render: (_: string, check: ReadinessCheck) => checkText(check, 'evidence'),
     },
     {
       title: t('datasource.remediation'),
       dataIndex: 'remediation',
       key: 'remediation',
+      render: (_: string, check: ReadinessCheck) => {
+        const translated = t(`datasource.advice.${check.code}` as never);
+        return translated && !translated.startsWith('⟦') ? translated : check.remediation;
+      },
     },
     {
       title: t('datasource.weight'),
@@ -567,7 +597,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
               message={t('datasource.governanceAdvice')}
-              description={joinSentences(semanticCoverage.nextActions)}
+              description={joinSentences(adviceTexts(semanticCoverage.nextActions, semanticCoverage.nextActionCodes, t))}
             />
           )}
         </div>
@@ -647,7 +677,7 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
               message={t('datasource.suggestedActions')}
-              description={joinSentences(schemaDrift.nextActions)}
+              description={joinSentences(adviceTexts(schemaDrift.nextActions, schemaDrift.nextActionCodes, t))}
             />
           )}
           <Table
@@ -754,7 +784,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={readiness.status === 'blocked' ? 'error' : 'warning'}
               message={t('datasource.nextActions')}
-              description={joinSentences(readiness.nextActions)}
+              description={joinSentences(adviceTexts(readiness.nextActions, readiness.nextActionCodes, t))}
             />
           )}
         </Card>
@@ -820,7 +850,7 @@ const DataSourceDetail: React.FC = () => {
                     style={{ marginTop: 16 }}
                     type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
                     message={t('datasource.bindingAdvice')}
-                    description={joinSentences(operationBindings.nextActions)}
+                    description={joinSentences(adviceTexts(operationBindings.nextActions, operationBindings.nextActionCodes, t))}
                   />
                 )}
               </div>

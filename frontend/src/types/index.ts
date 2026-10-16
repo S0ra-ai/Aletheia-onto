@@ -115,6 +115,15 @@ export interface ReadinessCheck {
   evidence: string;
   remediation: string;
   weight: number;
+  /**
+   * The facts the check's sentence is about, sent beside the server's Chinese wording so the
+   * console can say it in the reader's language: `numbers` for the counts, `status` for a
+   * sentence that reads differently depending on it (the API gateway has three), and `text`
+   * for a value it quotes (the configured base URL).
+   */
+  status?: string;
+  numbers?: Record<string, number>;
+  text?: string;
 }
 
 export interface DataSourceReadiness {
@@ -135,6 +144,12 @@ export interface DataSourceReadiness {
   checks: ReadinessCheck[];
   gaps: ReadinessCheck[];
   nextActions: string[];
+  /**
+   * The advice codes, in the same order as `nextActions` -- see
+   * `backend/ontology_platform/advice.py`. The console renders its own sentence for a code it
+   * knows and the server's for one it does not, which is how these panels speak English.
+   */
+  nextActionCodes?: string[];
 }
 
 export interface SchemaDriftSummary {
@@ -214,6 +229,12 @@ export interface SchemaDriftResult {
     rules: SchemaDriftImpactItem[];
   };
   nextActions: string[];
+  /**
+   * The advice codes, in the same order as `nextActions` -- see
+   * `backend/ontology_platform/advice.py`. The console renders its own sentence for a code it
+   * knows and the server's for one it does not, which is how these panels speak English.
+   */
+  nextActionCodes?: string[];
 }
 
 export interface SemanticCoverageSummary {
@@ -272,6 +293,12 @@ export interface SemanticCoverageResult {
   objects: SemanticCoverageObject[];
   operations: SemanticCoverageOperation[];
   nextActions: string[];
+  /**
+   * The advice codes, in the same order as `nextActions` -- see
+   * `backend/ontology_platform/advice.py`. The console renders its own sentence for a code it
+   * knows and the server's for one it does not, which is how these panels speak English.
+   */
+  nextActionCodes?: string[];
 }
 
 export interface OperationBindingItem {
@@ -301,6 +328,12 @@ export interface OperationBindingResult {
   };
   items: OperationBindingItem[];
   nextActions: string[];
+  /**
+   * The advice codes, in the same order as `nextActions` -- see
+   * `backend/ontology_platform/advice.py`. The console renders its own sentence for a code it
+   * knows and the server's for one it does not, which is how these panels speak English.
+   */
+  nextActionCodes?: string[];
 }
 
 // 元数据相关类型

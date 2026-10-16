@@ -115,6 +115,13 @@ ID_ROUTES = (
     "/admin/datasource/{source}?tab=tables",
     "/admin/datasource/{source}?tab=apis",
     "/admin/datasource/{source}?tab=coverage",
+    # Three tabs that were in neither this list nor the i18n audit's, and the reason both
+    # tools missed the same screen: the route guards check *pages* against `App.tsx`, and a tab
+    # is not a route. The onboarding-checks table lives here -- eight checks rendered from the
+    # server's own wording -- and nothing had ever looked at it.
+    "/admin/datasource/{source}?tab=rules",
+    "/admin/datasource/{source}?tab=reasoning-chain",
+    "/admin/datasource/{source}?tab=readiness",
     # The two semantic tabs whose tables appear only after a request. The page reads the
     # query from the URL, so the request is made by arriving -- which is also what makes an
     # explanation something you can paste into a ticket.
@@ -211,6 +218,10 @@ NO_TABLE_ROUTES = {
     # a submit; the other three render prose or a description list and have no table at all.
     # Stated per tab rather than as one sentence covering all five, because a reason that is
     # approximately right is the kind of entry that stops being read.
+    # The reasoning chain is a vertical list of steps, not a grid: the tab renders `Steps`, and
+    # the tables that *are* on it (relations, rules) sit inside, which is why this one route is
+    # excused rather than the tab being dropped.
+    "/admin/datasource/{id}?tab=reasoning-chain": "推理链是步骤列表，没有表格",
     "/admin/semantic": "自然语言交互：答案是正文，没有表格",
     "/admin/semantic?tab=assess": "风险研判：结论以描述列表呈现，没有表格",
     "/admin/semantic?tab=preflight": "操作预检：结果以描述列表呈现，没有表格",
@@ -595,8 +606,15 @@ def main() -> int:
     # rendered. Reported on its own, and first, because it is the more serious finding -- and
     # because this `return` used to happen before the failure-page message was ever printed.
     broken_routes = sorted(route for route in broken_pages if route in routes)
-    unexpected = sorted(route for route in tableless if route not in NO_TABLE_ROUTES and route not in broken_pages)
-    stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and route not in tableless)
+    # Ids normalised on both sides, as the empty-column allowance does. Without it a *detail*
+    # route can never be excused: the sweep visits `/admin/datasource/1?tab=reasoning-chain`
+    # and the list holds the template, so the two never met -- and the first detail route that
+    # needed an exemption failed the job instead. No detail route had needed one before, which
+    # is why this went unnoticed rather than hurting.
+    unexpected = sorted(
+        route for route in tableless if _normalise_route(route) not in NO_TABLE_ROUTES and route not in broken_pages
+    )
+    stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and _normalise_route(route) not in tableless)
     if skipped:
         # A route that was dropped is not a route that passed. Reported with the same weight
         # as an unexamined screen, because from the outside the two are the same thing.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from . import advice
 from .context import PlatformDb
 from .database import connect
 
@@ -25,6 +26,7 @@ def build_semantic_coverage(platform_db: PlatformDb, data_source_id: int) -> dic
                 "objects": [],
                 "operations": _operation_rows(conn, data_source_id),
                 "nextActions": ["先扫描元数据并生成本体草案，建立业务对象与传统表的语义映射。"],
+                "nextActionCodes": [advice.COVERAGE_SCAN_FIRST],
             }
 
         coverage_objects = [_object_coverage(conn, row) for row in objects]
@@ -43,6 +45,7 @@ def build_semantic_coverage(platform_db: PlatformDb, data_source_id: int) -> dic
             executable_operations=sum(1 for item in operations if item["automationReady"]),
         )
         score = _coverage_score(summary, coverage_objects, operations)
+        coverage_texts, coverage_codes = advice.split(_next_actions(summary, coverage_objects, operations))
         return {
             "dataSourceId": data_source_id,
             "name": source["name"],
@@ -52,7 +55,8 @@ def build_semantic_coverage(platform_db: PlatformDb, data_source_id: int) -> dic
             "summary": summary,
             "objects": coverage_objects,
             "operations": operations,
-            "nextActions": _next_actions(summary, coverage_objects, operations),
+            "nextActions": coverage_texts,
+            "nextActionCodes": coverage_codes,
         }
 
 
@@ -239,18 +243,19 @@ def _coverage_status(score: int, summary: dict[str, int]) -> str:
 
 def _next_actions(
     summary: dict[str, int], objects: list[dict[str, Any]], operations: list[dict[str, Any]]
-) -> list[str]:
-    actions: list[str] = []
+) -> advice.PAIRS:
+    """What to close next, as (code, sentence) pairs -- see `advice`."""
+    actions: advice.PAIRS = []
     if summary["pendingMappings"]:
-        actions.append("优先审核待确认语义映射，提升决策证据确定性。")
+        actions.append((advice.COVERAGE_PENDING_MAPPINGS, "优先审核待确认语义映射，提升决策证据确定性。"))
     if any(item["ruleCount"] == 0 for item in objects):
-        actions.append("为缺少规则的业务对象补充准入、风险、自动化放行等业务规则。")
+        actions.append((advice.COVERAGE_MISSING_RULES, "为缺少规则的业务对象补充准入、风险、自动化放行等业务规则。"))
     if not operations:
-        actions.append("登记传统业务系统 API，并用语义动作绑定到业务对象。")
+        actions.append((advice.COVERAGE_REGISTER_APIS, "登记传统业务系统 API，并用语义动作绑定到业务对象。"))
     elif summary["semanticOperations"] < len(operations):
-        actions.append("为未绑定语义动作的 API 补充 object.action 形式的语义动作。")
+        actions.append((advice.COVERAGE_SEMANTIC_ACTIONS, "为未绑定语义动作的 API 补充 object.action 形式的语义动作。"))
     if any(not item["primaryKey"] for item in objects):
-        actions.append("为缺少主键的传统表补充实例标识策略。")
+        actions.append((advice.COVERAGE_INSTANCE_KEYS, "为缺少主键的传统表补充实例标识策略。"))
     if not actions:
-        actions.append("语义覆盖已形成闭环，可进入运行期监控、漂移分析和版本治理。")
+        actions.append((advice.COVERAGE_CLOSED_LOOP, "语义覆盖已形成闭环，可进入运行期监控、漂移分析和版本治理。"))
     return actions

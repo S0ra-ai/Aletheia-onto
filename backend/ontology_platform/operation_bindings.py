@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from . import advice
 from .context import PlatformDb
 from .database import connect
 
@@ -46,13 +47,15 @@ def assess_operation_bindings(platform_db: PlatformDb, data_source_id: int) -> d
         if summary["boundOperations"]
         else "blocked"
     )
+    binding_texts, binding_codes = advice.split(_next_actions(items))
     return {
         "dataSourceId": data_source_id,
         "name": source["name"],
         "status": status,
         "summary": summary,
         "items": items,
-        "nextActions": _next_actions(items),
+        "nextActions": binding_texts,
+        "nextActionCodes": binding_codes,
     }
 
 
@@ -122,16 +125,17 @@ def _parse_semantic_action(semantic_action: str) -> tuple[str, str]:
     return object_code.strip(), action_code.strip()
 
 
-def _next_actions(items: list[dict[str, Any]]) -> list[str]:
-    actions: list[str] = []
+def _next_actions(items: list[dict[str, Any]]) -> advice.PAIRS:
+    """What stands between these bindings and automation, as (code, sentence) pairs."""
+    actions: advice.PAIRS = []
     if any(item["status"] == "invalid" for item in items):
-        actions.append("为缺少或格式错误的 API 补充 object.action 形式语义动作。")
+        actions.append((advice.BINDINGS_INVALID_ACTIONS, "为缺少或格式错误的 API 补充 object.action 形式语义动作。"))
     if any(item["status"] == "unbound" for item in items):
-        actions.append("将 API 语义动作中的对象编码绑定到当前数据源本体对象。")
+        actions.append((advice.BINDINGS_UNBOUND_OBJECTS, "将 API 语义动作中的对象编码绑定到当前数据源本体对象。"))
     if any(item["status"] == "incomplete" for item in items):
-        actions.append("补齐已确认映射、发布态规则和实例主键后再开放自动化执行。")
+        actions.append((advice.BINDINGS_INCOMPLETE, "补齐已确认映射、发布态规则和实例主键后再开放自动化执行。"))
     if not items:
-        actions.append("登记传统业务系统 API，并绑定语义动作。")
+        actions.append((advice.BINDINGS_REGISTER_APIS, "登记传统业务系统 API，并绑定语义动作。"))
     if not actions:
-        actions.append("API 语义动作已完成绑定，可进入预检和执行治理。")
+        actions.append((advice.BINDINGS_READY, "API 语义动作已完成绑定，可进入预检和执行治理。"))
     return actions

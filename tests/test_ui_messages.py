@@ -241,3 +241,115 @@ def test_every_release_gate_and_audit_finding_has_a_sentence() -> None:
         and f"governance.finding.{code}.finding.one" not in declared
     )
     assert not singular, f"这些发现带 {{{{count}}}} 却没有英文单数形式：{singular}"
+
+
+def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Path) -> None:
+    """The advice lists, driven rather than listed.
+
+    `nextActions` was seven modules' worth of Chinese sentences, and the console printed them
+    verbatim -- there was nothing to key a translation on. Each is now emitted with a code
+    beside it (`backend/ontology_platform/advice.py`), and this walks the producers to collect
+    what they can actually say rather than trusting the registry: a code that nothing emits is
+    a sentence nobody will read, and a code that is emitted but not registered is a Chinese
+    line in an English panel.
+
+    Walking the branches is what makes it a check: `operation_bindings` and `coverage` both have
+    a "nothing to do" branch and a "several things to do" branch, and only driving both would
+    notice one of them going missing.
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform import advice
+    from ontology_platform.coverage import _next_actions as coverage_actions
+    from ontology_platform.coverage import build_semantic_coverage
+    from ontology_platform.database import connect, initialize_platform_db
+    from ontology_platform.metadata import (
+        _schema_drift_next_actions,
+        analyze_schema_drift,
+        assess_data_source_readiness,
+        register_data_source,
+        scan_data_source,
+    )
+    from ontology_platform.operation_bindings import _next_actions as binding_actions
+    from ontology_platform.sample_data import create_contract_sample_db
+
+    emitted: set[str] = set()
+
+    def collect(pairs: list[tuple[str, str]]) -> None:
+        emitted.update(code for code, _text in pairs)
+
+    collect(_schema_drift_next_actions({}, {"objects": [], "mappings": [], "rules": []}))
+    collect(
+        _schema_drift_next_actions(
+            {
+                "addedTables": 1,
+                "removedTables": 1,
+                "changedTables": 0,
+                "addedColumns": 1,
+                "removedColumns": 1,
+                "changedColumns": 1,
+            },
+            {"objects": [1], "mappings": [1], "rules": [1]},
+        )
+    )
+    empty_summary = dict.fromkeys(("pendingMappings", "semanticOperations", "operations", "business_objects"), 0)
+    collect(coverage_actions({**empty_summary, "pendingMappings": 2}, [{"ruleCount": 0, "primaryKey": ""}], []))
+    collect(coverage_actions({**empty_summary, "semanticOperations": 1, "operations": 3}, [], [{"id": 1}] * 3))
+    collect(
+        coverage_actions(
+            {**empty_summary, "semanticOperations": 1, "operations": 1},
+            [{"ruleCount": 1, "primaryKey": "id"}],
+            [{"id": 1}],
+        )
+    )
+    collect(binding_actions([]))
+    collect(binding_actions([{"status": "invalid"}, {"status": "unbound"}, {"status": "incomplete"}]))
+    collect(binding_actions([{"status": "ready"}]))
+
+    # Readiness is the one that needs an instance, because its advice *is* its failing checks.
+    # Both halves are collected -- `nextActionCodes` is the failing ones, and the checks table
+    # renders every check's remediation, passing or not, which is why `connection` is on the
+    # registry even though its check can never fail.
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    sample = tmp_path / "sample.sqlite3"
+    create_contract_sample_db(sample)
+    for name, category in (("未扫描", "database"), ("已扫描", "database+api")):
+        source = register_data_source(
+            platform_db, name, "sqlite", str(sample), domain="合同管理", system_category=category
+        )
+        if name == "已扫描":
+            scan_data_source(platform_db, source.id)
+        readiness = assess_data_source_readiness(platform_db, source.id)
+        emitted.update(readiness["nextActionCodes"])
+        # Every check's remediation is rendered, passing or not -- the table shows the check
+        # that passed and what it would have asked for. That is why `connection`, whose check
+        # can never fail, is on the registry at all.
+        emitted.update(check["code"] for check in readiness["checks"])
+        # Drift before any scan, and coverage before any modelling: the two "nothing to compare
+        # against yet" branches, which are only reachable in these states.
+        emitted.update(analyze_schema_drift(platform_db, source.id)["nextActionCodes"])
+        emitted.update(build_semantic_coverage(platform_db, source.id)["nextActionCodes"])
+
+    # A source with tables but no foreign keys, for the one check that needs that shape.
+    bare_sql = tmp_path / "bare.sqlite3"
+    with connect(bare_sql) as raw:
+        raw.execute("create table alpha (id integer primary key, name text)")
+        raw.execute("create table beta (id integer primary key, label text)")
+    unrelated = register_data_source(platform_db, "无外键", "sqlite", str(bare_sql), domain="合同管理")
+    scan_data_source(platform_db, unrelated.id)
+    readiness = assess_data_source_readiness(platform_db, unrelated.id)
+    emitted.update(check["code"] for check in readiness["checks"])
+
+    assert emitted == set(advice.ADVICE_CODES), (
+        "服务端能给出的建议与登记表对不上；"
+        f"只发不登记: {sorted(emitted - set(advice.ADVICE_CODES))}；"
+        f"登记但无人发: {sorted(set(advice.ADVICE_CODES) - emitted)}"
+    )
+
+    declared = set(_entries())
+    missing = sorted(
+        f"datasource.advice.{code}" for code in advice.ADVICE_CODES if f"datasource.advice.{code}" not in declared
+    )
+    assert not missing, f"字典里缺少这些建议，英文界面上会露出服务端的中文：{missing}"

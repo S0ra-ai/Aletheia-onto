@@ -243,7 +243,20 @@ def test_every_excused_route_is_one_the_sweep_visits() -> None:
     """A key that matches no route excuses nothing -- the route it was meant for fails as
     unexpected instead, and the reason written beside it describes a path that is not swept."""
     module = _load_script()
-    unknown = set(module.NO_TABLE_ROUTES) - set(module.ROUTES) - set(module.ID_ROUTES)
+
+    def template(route: str) -> str:
+        """Placeholders written the way the check matches them.
+
+        The sweep fills a detail route with what the instance has and matches the allowance
+        through `_normalise_route` (ids to `{id}`), while `ID_ROUTES` is written with names
+        (`{source}`, `{ontology}`). Both spellings mean the same route, and comparing them raw
+        would report a correct entry as unknown.
+        """
+        return re.sub(r"\{(ontology|source|object|instance)\}", "{id}", route)
+
+    unknown = {template(route) for route in module.NO_TABLE_ROUTES} - {
+        template(route) for route in (*module.ROUTES, *module.ID_ROUTES)
+    }
     assert not unknown, f"NO_TABLE_ROUTES 里这些键不对应任何被扫的路由：{sorted(unknown)}"
 
 

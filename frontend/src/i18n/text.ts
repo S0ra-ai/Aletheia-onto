@@ -108,3 +108,27 @@ export const discardedReport = (
     })
     .join(t('shell.common.listSeparator'));
 };
+
+/**
+ * The server's advice, in the reader's language.
+ *
+ * `nextActions` is a list of sentences the platform computed, and `nextActionCodes` is the
+ * same list's identities -- see `backend/ontology_platform/advice.py`, where the two are built
+ * from one expression so they cannot drift. A code this build knows is rendered from the
+ * dictionary; a code it does not know falls back to that entry's own sentence, which is why
+ * the fallback is taken by *index* and not from the payload as a whole.
+ *
+ * `actions` is tolerated as a plain list of strings, because the payloads that predate the
+ * codes still read that way and the console should not render a panel empty for it.
+ */
+export const adviceTexts = (
+  actions: readonly string[] | undefined,
+  codes: readonly string[] | undefined,
+  t: Translate,
+): string[] =>
+  (actions ?? []).map((action, index) => {
+    const code = codes?.[index];
+    if (!code) return action;
+    const translated = t(`datasource.advice.${code}` as MessageKey);
+    return translated.startsWith('⟦') ? action : translated;
+  });

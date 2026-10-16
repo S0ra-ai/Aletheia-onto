@@ -134,25 +134,6 @@ KNOWN_BACKEND_PROSE = (
         r"样本决策全部通过",
         "一致性结论与建议由服务端给出",
     ),
-    # `nextActions` across five modules: metadata (readiness), coverage, operation_bindings and
-    # the kernel's recommendation. These are the last block, and they are a project of their
-    # own -- each list is built from the findings it answers, so it needs the same treatment the
-    # release gates got: a code per sentence and the numbers beside it.
-    (
-        "/admin/datasource",
-        r"组织业务专家审核语义映射|为数据库\+API 或 API 类传统系统配置",
-        "接入准备度的 nextActions（`metadata.assess_data_source_readiness`）",
-    ),
-    (
-        "/admin/datasource",
-        r"优先审核待确认语义映射|为缺少规则的业务对象补充",
-        "语义覆盖的 nextActions（`coverage._next_actions`）",
-    ),
-    (
-        "/admin/datasource",
-        r"补齐已确认映射、发布态规则和实例主键",
-        "操作绑定的 nextActions（`operation_bindings`）",
-    ),
     (
         "/admin/governance",
         r"未发现阻断或风险规则",
