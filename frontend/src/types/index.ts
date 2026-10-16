@@ -940,7 +940,15 @@ export interface ModelInvocationItem {
 export interface DemoBootstrapResult {
   dataSource: DataSource;
   scan: ScanResult;
-  ontology: Ontology;
+  /**
+   * The draft summary the scenario produced: the ontology's own row (`id`, `name`, …) with the
+   * objects, attributes, relations, mappings and rules it created alongside it.
+   *
+   * `discardedSummary` is present only when the run rebuilt a draft that already existed --
+   * which is what pressing the button a second time does. A rebuild clears the rules,
+   * mappings and workflows attached to the old draft, so the screen has to say so.
+   */
+  ontology: Ontology & { discarded?: Record<string, number>; discardedSummary?: string };
   /**
    * The verdict the scenario produced, so the success panel can say what happened rather
    * than only what was created. It is the point of the demo: the sample system is modelled

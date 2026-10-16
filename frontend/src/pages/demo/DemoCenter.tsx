@@ -102,6 +102,18 @@ const DemoCenter: React.FC = () => {
       {result && (
         <>
           <Divider />
+          {/* Pressing the button a second time re-drafts a source that already has a draft, and
+              a rebuild clears the rules, mappings and workflows attached to the old one. The
+              backend has reported that since the rebuild landed; this screen answered with a
+              green tick, which is a silent loss wearing a success message. */}
+          {result.ontology.discardedSummary && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t('ontology.draftRebuilt', { summary: result.ontology.discardedSummary })}
+            />
+          )}
           <Result
             status="success"
             title={t('demo.successTitle')}

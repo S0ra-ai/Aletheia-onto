@@ -471,6 +471,16 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **「一键体验」第二次按下时，删掉了规则、映射和工作流，然后显示一个绿色的成功**（`DemoCenter.tsx`、
+  `types/index.ts`、`tests/test_demo_bootstrap.py`）。
+  演示场景会注册数据源、扫描、生成本体草案——而**为已有草案的数据源再生成一次就是重建**，
+  重建会清掉挂在旧草案上的规则、映射、关系与工作流。后端从重建那次改动起就随响应返回了这件事
+  （`discardedSummary`），本体列表页也在用；**演示中心没用**，它把同一个响应渲染成一个对勾。
+  实测第二次点击清掉的是「9 条规则、32 条映射、3 条关系、1 个工作流」——
+  这行字就躺在被忽略的那个字段里。现在它在成功面板上方以警告形式出现。
+  新测试钉住的是**HTTP 这一层**：库层的契约（`generate_ontology_draft` 返回什么）已有测试，
+  而路由把字段丢掉的话那些测试全绿、按钮照旧只报成功——屏幕读的正是这一层。
+
 - **「重置为默认」一键删掉 API Key，既不问一句，事后也无从知道删了什么**（`ModelConfig.tsx`、
   `model_client.py`、`routers/model_governance_routes.py`、`tests/test_credential_protection.py`）。
   那个按钮就在「保存」「测试连接」旁边，标着红色、挨着鼠标，**点一下就把库里保存的模型配置连同 API Key 一起删掉**，
