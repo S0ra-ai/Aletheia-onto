@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1730 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1731 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -94,7 +94,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_ui_smoke_guards.py` | 13 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | 表格列不许把枚举原样打印出来，必须走标签映射 |
 | `test_demo_bootstrap.py` | 2 | 演示按钮第二次按下时，报告它清掉了什么 |
-| `test_ui_messages.py` | 3 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键 |
+| `test_ui_messages.py` | 4 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键 |
 | `test_ci_workflow.py` | 3 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_smoke_seeding.py` | 4 | 渲染检查的种子数据真的给每个页面填了行，且只报告它做过的事 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |

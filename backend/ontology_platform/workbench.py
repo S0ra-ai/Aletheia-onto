@@ -255,6 +255,25 @@ def _feedback_counts(conn: Any) -> dict[str, Any]:
     }
 
 
+# Every code `_action_items` can emit, declared as data so the console's dictionary can be
+# checked against it. The code is what the frontend keys its translation on; an item whose
+# code the console does not know renders the server's Chinese sentence instead, which is why
+# a code added on this side without a matching entry is a gap and not a crash.
+ACTION_ITEM_CODES = (
+    "no_data_source",
+    "unscanned_data_source",
+    "no_ontology",
+    "pending_mappings",
+    "unbound_objects",
+    "no_rules",
+    "objects_without_rules",
+    "reviewable_transitions",
+    "incorrect_answers_reported",
+    "escalated_conversations",
+    "open_feedback",
+)
+
+
 def _action_items(
     data_sources: dict[str, Any],
     ontologies: dict[str, Any],

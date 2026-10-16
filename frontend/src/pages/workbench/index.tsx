@@ -26,6 +26,24 @@ const SEVERITY_META: Record<WorkbenchActionItem['severity'], { color: string; la
   info: { color: 'blue', labelKey: 'workbench.severity.info' },
 };
 
+// The server sends each item's sentence in Chinese and a stable `code` beside it. A code
+// this console knows is rendered in the reader's language; one it does not know keeps the
+// server's sentence, which is the right default -- a sentence in the wrong language beats a
+// ⟦workbench.item.something.title⟧ in any language.
+const ITEM_CODES: Record<string, { title: string; detail: string }> = {
+  no_data_source: { title: 'workbench.item.no_data_source.title', detail: 'workbench.item.no_data_source.detail' },
+  unscanned_data_source: { title: 'workbench.item.unscanned_data_source.title', detail: 'workbench.item.unscanned_data_source.detail' },
+  no_ontology: { title: 'workbench.item.no_ontology.title', detail: 'workbench.item.no_ontology.detail' },
+  pending_mappings: { title: 'workbench.item.pending_mappings.title', detail: 'workbench.item.pending_mappings.detail' },
+  unbound_objects: { title: 'workbench.item.unbound_objects.title', detail: 'workbench.item.unbound_objects.detail' },
+  no_rules: { title: 'workbench.item.no_rules.title', detail: 'workbench.item.no_rules.detail' },
+  objects_without_rules: { title: 'workbench.item.objects_without_rules.title', detail: 'workbench.item.objects_without_rules.detail' },
+  reviewable_transitions: { title: 'workbench.item.reviewable_transitions.title', detail: 'workbench.item.reviewable_transitions.detail' },
+  incorrect_answers_reported: { title: 'workbench.item.incorrect_answers_reported.title', detail: 'workbench.item.incorrect_answers_reported.detail' },
+  escalated_conversations: { title: 'workbench.item.escalated_conversations.title', detail: 'workbench.item.escalated_conversations.detail' },
+  open_feedback: { title: 'workbench.item.open_feedback.title', detail: 'workbench.item.open_feedback.detail' },
+};
+
 const DECISION_COLOR: Record<string, string> = {
   approved: 'green',
   review: 'orange',
@@ -36,6 +54,13 @@ const WorkbenchPage: React.FC = () => {
   const navigate = useNavigate();
   const t = useT();
   const label = useLabel();
+
+  /** The item's sentence in the reader's language, or the server's when the code is new. */
+  const itemText = (item: WorkbenchActionItem, field: 'title' | 'detail'): string => {
+    const keys = ITEM_CODES[item.code];
+    if (!keys) return item[field];
+    return t(keys[field] as never, { count: item.count });
+  };
   const [data, setData] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -147,8 +172,8 @@ const WorkbenchPage: React.FC = () => {
               >
                 <List.Item.Meta
                   avatar={<Tag color={SEVERITY_META[item.severity].color}>{t(SEVERITY_META[item.severity].labelKey as never)}</Tag>}
-                  title={item.title}
-                  description={item.detail}
+                  title={itemText(item, 'title')}
+                  description={itemText(item, 'detail')}
                 />
               </List.Item>
             )}

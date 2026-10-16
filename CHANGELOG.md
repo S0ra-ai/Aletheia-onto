@@ -471,6 +471,20 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **工作台那句「该做什么」在英文界面里是中文的**（`workbench.py`、`workbench/index.tsx`、
+  `i18n/messages/workbench.ts`、`tests/test_ui_messages.py`）。
+  那批事项的句子由服务端拼（它才知道计数），一直只有中文——
+  于是**登录后第一屏，除了那一列「下一步做什么」以外全是英文**。
+  每一条本来就带着稳定的 `code`，现在前端按 code 用自己的字典说同一句话，
+  **遇到不认识的 code 就保留服务端那句**：一句语言不对的话，好过任何语言里的 `⟦workbench.item.…⟧`。
+  守护测试从两头对齐这份词表：
+  后端能发而前端叫不出名字的 code（英文界面中间夹着一列中文），
+  以及前端翻译了而后端永远不会发的 code——这正是 `CONSISTENCY_STATUS` 里那个
+  `inconsistent` 已经栽过一次的坑。
+  词表不是读常量表了事的：**它把构造函数在各种计数组合下走了一遍**，
+  于是发现 `open_feedback` 与 `escalated_conversations` 是同一个 `if/elif` 的两支——
+  两个都非零时只会出第一条，只列两个状态的矩阵会把另一条报成「构造不出来」。
+
 - **十一张表格列把后端枚举原样打了出来**（`i18n/labels.ts`、`governance/`、`workbench/`、`permission/`、
   `semantic/`、`mapping/`、`ontology/`、`datasource/`、`workflow/`、`tests/test_frontend_enum_rendering.py`）。
   `label()` 在没有词条时会**回退成原值**——这是故意的，扩展自己定义的词汇至少还看得见。

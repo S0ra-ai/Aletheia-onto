@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1730 tests**, all passing. A case that needs something this machine does not have skips
+**1731 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -100,7 +100,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_ui_smoke_guards.py` | 13 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | No table column prints an enum value itself; it goes through the label maps |
 | `test_demo_bootstrap.py` | 2 | The demo buttons, and what they report having destroyed |
-| `test_ui_messages.py` | 3 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
+| `test_ui_messages.py` | 4 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |

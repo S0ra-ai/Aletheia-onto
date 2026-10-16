@@ -74,4 +74,68 @@ export const workbench: Record<string, MessageEntry> = {
   'column.createdAt': { zh: '时间（UTC）', en: 'Time (UTC)' },
 
   'generatedAt': { zh: '统计生成于 {time}', en: 'Statistics generated at {time}' },
+
+  // What to do next. The server builds these sentences -- it is the half that knows the
+  // counts -- and sends them in Chinese, which meant the first screen a reader sees was
+  // English everywhere except the list of things it was telling them to do. Each item already
+  // carries a stable `code`, so the console can say the same thing in the reader's language
+  // and fall back to the server's sentence for a code it does not know yet.
+  'item.no_data_source.title': { zh: '尚未接入任何数据源', en: 'No data source connected yet' },
+  'item.no_data_source.detail': {
+    zh: '平台的全部能力都从元数据扫描开始，先接入一个业务库。',
+    en: 'Everything the platform does starts from a metadata scan. Connect a business database first.',
+  },
+  'item.unscanned_data_source.title': { zh: '{count} 个数据源尚未扫描元数据', en: '{count} data sources have not been scanned' },
+  'item.unscanned_data_source.detail': {
+    zh: '未扫描的数据源无法生成本体草案。',
+    en: 'An unscanned source cannot produce an ontology draft.',
+  },
+  'item.no_ontology.title': { zh: '已接入数据源但尚无本体', en: 'No ontology yet, though a source is connected' },
+  'item.no_ontology.detail': {
+    zh: '生成本体草案后才能配置规则与输出判定。',
+    en: 'Rules and verdicts come after the ontology draft exists.',
+  },
+  'item.pending_mappings.title': { zh: '{count} 条语义映射待审核', en: '{count} semantic mappings await review' },
+  'item.pending_mappings.detail': {
+    zh: '存在待审映射时发布门禁不会通过。',
+    en: 'The release gate does not pass while mappings are pending.',
+  },
+  'item.unbound_objects.title': { zh: '{count} 个业务对象未绑定来源表', en: '{count} business objects have no source table' },
+  'item.unbound_objects.detail': {
+    zh: '未绑定来源表的对象无法解析实例，也无法参与研判。',
+    en: 'An object with no source table cannot resolve instances or take part in an assessment.',
+  },
+  'item.no_rules.title': { zh: '尚未配置任何业务规则', en: 'No business rules configured' },
+  'item.no_rules.detail': {
+    zh: '没有规则就没有判定结论，平台只能做元数据浏览。',
+    en: 'Without rules there are no verdicts; the platform can only browse metadata.',
+  },
+  'item.objects_without_rules.title': { zh: '{count} 个业务对象没有任何规则', en: '{count} business objects have no rules' },
+  'item.objects_without_rules.detail': {
+    zh: '这些对象不会产出判定结论。',
+    en: 'These objects will not produce a verdict.',
+  },
+  'item.reviewable_transitions.title': {
+    zh: '{count} 个实例处于需复核的流转状态',
+    en: '{count} instances are waiting for a review before they can move on',
+  },
+  'item.reviewable_transitions.detail': {
+    zh: '这些实例等待人工确认后才能继续流转。',
+    en: 'They stay where they are until a person confirms the transition.',
+  },
+  'item.incorrect_answers_reported.title': { zh: '{count} 条回答被标记为错误', en: '{count} answers were marked incorrect' },
+  'item.incorrect_answers_reported.detail': {
+    zh: '用户认为判定结论有误，应复核相关规则或知识条目。',
+    en: 'Readers judged the verdict wrong. Review the rules or the knowledge entries behind it.',
+  },
+  'item.escalated_conversations.title': { zh: '{count} 个会话已转人工', en: '{count} conversations were escalated' },
+  'item.escalated_conversations.detail': {
+    zh: '这些会话等待人工接手处理。',
+    en: 'They are waiting for a person to take them over.',
+  },
+  'item.open_feedback.title': { zh: '{count} 条反馈待处理', en: '{count} feedback items are open' },
+  'item.open_feedback.detail': {
+    zh: '包含未处理的满意度反馈与纠正建议。',
+    en: 'Unresolved satisfaction ratings and correction suggestions.',
+  },
 };
