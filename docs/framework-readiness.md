@@ -32,6 +32,7 @@ its row with it rather than leaving a promise behind.
 | The kernel installs with **zero** third-party dependencies | `pyproject.toml` | `tests/test_packaging.py` |
 | Scaffold a project that *depends* on the platform rather than copying it | `backend/ontology_platform/scaffold.py` | `tests/test_scaffold.py` |
 | Generate typed models for **your** ontology — relations typed as the object they point at | `backend/ontology_platform/codegen.py` | `tests/test_codegen.py` |
+| The console's own response types are described from observed payloads, not written by hand | `frontend/src/types/generated.ts` | `tests/test_generated_types.py` |
 | A path from nothing to a verdict that a newcomer can follow | `docs/quickstart.md` | `tests/test_documentation_links.py` |
 
 ## Extend
@@ -92,7 +93,7 @@ project.
 
 | Gap | What it costs a third party |
 |---|---|
-| **Frontend types are hand-mirrored from the backend** (`frontend/src/types/index.ts`). The request side is checked against the API models; the response side is not generated, because every endpoint returns `dict[str, object]` and a generator would emit `unknown`. | A backend field rename is caught by a test, not by the compiler. Four "column blank for every row" defects arrived this way. |
+| **Response types are generated but not yet *used* by the screens.** `frontend/src/types/generated.ts` is described from observed responses and a stale file fails CI; `frontend/src/types/index.ts` is still hand-written and still what the screens import. | A renamed field is now a diff on a generated file rather than a test nobody runs — but nothing yet forces a screen to move to the generated declaration. |
 | **Component tests cover two tables, not every screen.** `src/components/TableColumns.test.tsx` renders the mapping and rule lists and asserts every cell has text; the rest are covered by the browser sweep. | A blank column on a screen nobody wrote a test for is still found by a browser, if somebody runs one. |
 | **Untranslated refusals remain**: 51 of 101 single-sentence Chinese refusals carry a code the console can translate. The rest are internal invariants a reader cannot reach. | An English console can still show a Chinese sentence for an unusual failure. |
 | **The API's own sentences stay Chinese even in English mode** — in the CLI as well as the console, which fall back to them for a code they do not know. | Deliberate: the payload's shape and vocabulary are the contract a pipeline parses, and translating it would make the same response say different things to different callers. |

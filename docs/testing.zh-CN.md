@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1826 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1834 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -45,6 +45,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_connection_pool.py` | 14 | 池化连接绝不会交给 schema 或数据库不同的上下文，也绝不会带着未结束的事务被归还 |
 | `test_framework_readiness.py` | 9 | 框架成熟度那一页上的每条引用仍然成立，且缺口清单还在 |
 | `test_cli_language.py` | 12 | CLI 自己的句子双语，包括「由解析器产出、而 `--lang` 也由它解析」的帮助文本 |
+| `test_generated_types.py` | 8 | 生成的响应类型是最新的，且生成器自身的命名规则被钉住 |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |

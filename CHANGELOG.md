@@ -10,6 +10,27 @@
 
 ### Added
 
+- **响应类型由生成器产出，并由 CI 判定是否过期**（`scripts/generate_types.py`、
+  `frontend/src/types/generated.ts`、`tests/test_generated_types.py`、`.github/workflows/ci.yml`）。
+  「前端类型手写镜像」是这份文档里最老的一条限制，理由是每个端点都返回 `dict[str, object]`，
+  OpenAPI 没有响应 schema，生成器只能吐 `unknown`。**那个理由是对的，而且它说的是其中一条路。**
+  另一条不需要任何 schema：调用端点、看回来什么、把形状写下来。
+  生成器建一份有种子数据的实例，逐个调用读端点，按响应推断接口，并写入 `frontend/src/types/generated.ts`。
+  提交的文件与 API 不再一致时测试失败——后台改一次字段名，变成生成文件上的 diff，
+  而不是一张安静渲染成空白的表。CI 跑 `--check`。
+
+  **生成器第一版是有害的，而且类型检查通过。** 嵌套接口按**键名**命名，
+  而这些端点**每一个都有 `items` 列表**——于是 21 个接口塌成一个叫 `Items` 的，
+  装着整个 API 的字段并集。它会告诉读者审计条目有 `confidence`。
+  两条单元测试现在把命名规则与空列表的情形直接钉住：空列表是 `unknown[]` 而不是 `null[]`，
+  后者是在断言元素为 null，而样本对此毫无依据。
+
+  顺带修掉生成器自身的一次全局状态泄漏：它重绑了 `DEFAULT_PLATFORM_DB` 却不还原，
+  于是同进程里另一个打包测试失败——那种会记在别人名下的 flake。
+
+  **没做的是最后一步**：界面 import 的仍是手写那份 `types/index.ts`，
+  它还承载生成器完全不了解的视图模型。把界面迁到生成声明上才是收口，这件事写在限制里。
+
 - **模型供应商有契约了，而且它的失败路径是被考的对象**（`conformance.py`、`model_client.py`、
   `cli.py`、`docs/extending.md`、`tests/test_conformance_suites.py`）。
   模型供应商是唯一一处**失败得很安静**的扩展点：别处实现写错就抛异常、请求失败；

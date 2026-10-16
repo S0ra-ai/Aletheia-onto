@@ -130,42 +130,20 @@ By design, not bugs. These are the next phase's work.
   remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
   edges rather than a domain, and moving them would give a reader one more file to open to find
   where the SPA is served from.
-- **`frontend/src/types/index.ts` hand-mirrors backend models**, and the convention is not
-  uniform: `decisions._decision_row` deliberately emits both spellings, while
-  `/governance/audit-log` and `/governance/model-invocations` return `dict(row)` — snake_key
-  only. Three columns of the audit table and four of the model-invocation table asked for
-  camelCase against those payloads and rendered **empty for every row**, which no test and no
-  linter reports: an antd column whose `dataIndex` does not exist is simply blank. The fix
-  here was to match each table to its own endpoint; the real fix is for one naming
-  convention to win.
+- **Response types are generated now; the screens still import the hand-written ones.**
+  `frontend/src/types/generated.ts` is produced by `scripts/generate_types.py`, which builds a
+  seeded instance, calls each read endpoint and writes down the shape that came back — the route
+  that needs no annotations, where OpenAPI has none to offer because every endpoint returns
+  `dict[str, object]`. `tests/test_generated_types.py` fails when the committed file stops
+  matching the API, so a renamed field is a diff on a generated file rather than a table that
+  quietly renders empty. What is *not* done is the last step: `frontend/src/types/index.ts` is
+  still hand-written, still what the screens import, and still carries view models the generator
+  knows nothing about. Moving the screens onto the generated declarations is the work that would
+  close this, and it is the next thing rather than a corner left unturned.
 
-  **It keeps recurring.** Found afterwards: all seven columns of `/permissions/policies`,
-  the type and risk columns of `/tools`, and five of seven on `/ontologies/{id}/mappings` —
-  where the more galling part is that the serializer producing exactly the right fields
-  already existed in the same repository and the endpoint simply did not call it. Those three
-  are now normalised in `api/index.ts`, because mapping the wire onto the application's shape
-  is that file's job, and correcting one page at a time is how the same defect arrived four
-  times.
-
-  Response-side consistency is now checked in two places, neither of them complete.
-  `tests/test_frontend_type_agreement.py` lists the fields each screen reads and asserts the
-  endpoint still sends them — a written-down contract, per screen, not generated agreement.
-  It covers the endpoints a screen charts; an endpoint no screen reads is not covered, and
-  adding a field to a screen without adding it there is not caught.
-  It also reads the *wire* fields an endpoint still sends — not the fields a screen consumes.
-  `/workflows/{id}/instances/{id}/actions` and `.../history` were charted with their wire
-  spellings (`action_code`, `to_state`) and tested, while the client merely `as`-cast them to
-  camelCase: the transition buttons showed no target state and always answered 422, the history
-  timeline rendered 「初始 → 」, and both the chart and its reverse check stayed green (those
-  words appear in an unrelated normaliser). What would catch it is a behavioural test of the
-  client. That last gap is closed now -- see the frontend test runner below -- which is what
-  made the missing normalisation testable rather than merely documented.
-  `scripts/ui_smoke.py` covers the rest by inspection, reporting columns that are empty in
-  every row; it needs a browser and a live instance, which is why it is a diagnostic rather
-  than a gate. It has just had three blind spots closed — tabs (a page must put its active
-  tab in the URL), tables that render only after a click, and cells holding an icon rather
-  than text, which were reported as empty forever. A diagnostic that reports a standing
-  false positive is teaching its reader to skim past the real findings.
+  The hand-written file's other problem is recorded below and unchanged: **the naming convention
+  is not uniform.** \(The rest of the original entry, kept because it is still true of the file
+  the screens actually read.)
 - **The interface is bilingual, and most of what the server says can be translated with it; what is
   left is the CLI, and the refusals nobody has named yet.** Nineteen screens read from
   `i18n/messages/`; the sentences the server composes -- advice, gate verdicts, audit findings, the

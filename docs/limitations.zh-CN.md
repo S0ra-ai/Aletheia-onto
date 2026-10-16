@@ -114,7 +114,19 @@
   剩下这些不是一条待清空的队列：外壳与备份端点属于应用自己的边缘而不是某个领域，
   把它们挪走只会让「单页应用是从哪儿发出的」多一个文件要翻。
   共享运行时下沉到 `http_runtime.py`，避免 `api ↔ routers` 成环。
-- 前端 `types/index.ts` **手写**镜像后端模型，而**命名约定并不统一**：
+- **响应类型现在由生成器产出；但界面读的仍是手写那一份。**
+  `frontend/src/types/generated.ts` 由 `scripts/generate_types.py` 生成——它建一份有种子数据的实例、
+  逐个调用读端点、把回来的形状写下来。这是**不需要标注**的那条路（OpenAPI 那条没有标注可依，
+  因为每个端点都返回 `dict[str, object]`）。`tests/test_generated_types.py` 在提交的文件与 API 不再一致时失败，
+  于是一次字段改名变成生成文件上的 diff，而不是一张安静渲染成空白的表。
+  **没做的是最后一步**：`frontend/src/types/index.ts` 仍是手写、仍是界面 import 的那一份，
+  并且还承载生成器完全不了解的视图模型。把界面迁到生成声明上才是收口这件事的那一步，
+  它是下一件事，而不是被略过的角落。
+
+  手写那份的另一个问题记录在下方，且没有变化：**命名约定并不统一**。（以下保留原文——
+  它对界面真正读取的那份文件仍然成立。）
+
+
   `decisions._decision_row` 刻意双发两种拼写，而 `/governance/audit-log` 与
   `/governance/model-invocations` 直接 `dict(row)`，**只有 snake_case**。
   审计表的 3 列与模型调用表的 4 列按 camelCase 取值，于是**每一行都渲染成空白**——

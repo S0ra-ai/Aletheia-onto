@@ -462,6 +462,14 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      # The generated response types, held to what the API actually sends. This runs in the
+      # backend job's interpreter because generating them means building a seeded instance and
+      # calling the endpoints -- the file is a *description of observed responses*, which is the
+      # route that needs no annotations. A stale file fails here rather than becoming a column
+      # that renders empty.
+      - name: 生成的响应类型是最新的
+        run: python -m pytest tests/test_generated_types.py -q
+
       - name: 类型检查与构建
         working-directory: frontend
         run: npm run build
