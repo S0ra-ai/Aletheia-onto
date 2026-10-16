@@ -348,3 +348,35 @@ def test_the_fresh_install_pass_asks_a_different_question() -> None:
     assert "broken = failure_marker(html) or not_the_app(html)" in source
     # And the pass reports what it skipped rather than passing silently.
     assert "新装实例" in source
+
+
+# -- What counts as an empty column --
+
+
+def test_a_column_of_dashes_is_reported_as_empty() -> None:
+    """The half that was missing, and the reason it matters.
+
+    `render: (domain) => domain || '-'` draws a dash in every row after a field rename. The cell
+    has text, so this sweep reported nothing -- and so did the component test, which was found by
+    planting a rename on the ontology list's domain column and watching both stay green. A column
+    of dashes carries exactly as much information as a column of blanks.
+    """
+    empty_columns = _load_script().empty_columns
+
+    assert empty_columns(["名称", "业务领域"], [["甲", "-"], ["乙", "—"]]) == ["业务领域"]
+
+
+def test_a_column_with_any_real_value_is_not_reported() -> None:
+    """The other half, so the change cannot turn a sparse column into a standing finding."""
+    empty_columns = _load_script().empty_columns
+
+    assert empty_columns(["名称", "业务领域"], [["甲", "-"], ["乙", "合同管理"]]) == []
+    # One row with text is enough, in a table of any size.
+    assert empty_columns(["a"], [["-"], ["-"], ["值"], ["-"]]) == []
+
+
+def test_a_genuinely_blank_column_is_still_reported() -> None:
+    """The rule it started with, unchanged: an empty column is the defect this looks for."""
+    empty_columns = _load_script().empty_columns
+
+    assert empty_columns(["名称", "描述"], [["甲", ""], ["乙", "   "]]) == ["描述"]

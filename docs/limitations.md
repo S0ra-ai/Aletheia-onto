@@ -139,14 +139,18 @@ By design, not bugs. These are the next phase's work.
   remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
   edges rather than a domain, and moving them would give a reader one more file to open to find
   where the SPA is served from.
-- **A column with a render fallback hides a rename from both checks.** `render: (x) => x || '-'`
-  is never blank, so neither `TableColumns.test.tsx` nor `scripts/ui_smoke.py` reports it -- found
-  by planting a rename on one and watching both stay green. The fallback is right for a field that
-  is genuinely optional and wrong for one that was renamed, and nothing at runtime tells those
-  apart. The generated types do: the row types that come from the wire are aliases of
-  `generated.ts`, so a rename fails `tsc` before it can render as a column of dashes. The checks
-  are complementary rather than redundant, and this is the gap between them.
+- **The object browser shows every related table's columns in one grid.** A row from one table
+  has a dash in every column belonging to another, so the contract instance view has fourteen
+  columns that are dashes for every row. Nothing is misnamed -- the sweep's allowance lists each
+  of those columns with that reason, and a stale entry fails CI -- but a reader looking at that
+  screen cannot tell which columns belong to the row they are reading. Rendering only the columns
+  of the tables an instance actually came from would fix it, and that is a change to the screen
+  rather than to a field name.
 
+  This is what ruled out a *fallback* column from being invisible: `render: (x) => x || '-'` used
+  to defeat both the component tests and the browser sweep, because a dash is text. Both treat
+  the placeholder set (`-`, `—`, `暂无`, `N/A`) as empty now, which is how these fourteen were
+  found at all.
 - **Response types are generated, and the screens read them where they can.** Seven row types
   (`Ontology`, `SemanticMapping`, `BusinessRule`, `PermissionRole`, `AuditLogItem`,
   `ModelInvocationItem`, `DecisionRecordItem`) are aliases of declarations in

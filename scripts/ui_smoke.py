@@ -215,6 +215,54 @@ KNOWN_SPARSE = (
     # which is what the assertion is for: an allowance outlives its reason and then suppresses
     # the finding it was never meant to cover.
     ("/admin/ontology/{id}?tab=attributes", "描述"),
+    # -- Surfaced when a column of dashes started counting as empty --
+    #
+    # Before the placeholder rule, these were invisible: a cell drawn as `-` has text, so the
+    # sweep reported nothing. Each is a column whose *data* has nothing in it on a fresh
+    # instance, and each is listed with the reason rather than inferred -- the script cannot tell
+    # a sparse column from a renamed one, and CI asserts this list matches exactly what a run
+    # with the allowance off would report, so an entry goes stale loudly.
+    ("/admin/mapping", "审核人"),  # every mapping in the seed is pending; nobody has reviewed one
+    ("/admin/governance?tab=decisions", "操作码"),  # the seed's decision is an assessment, not an operation
+    ("/admin/feedback", "纠正"),  # seeded feedback carries a rating and no correction
+    ("/admin/tenancy", "剩余"),  # limits are undeclared, so there is no remaining to report
+    ("/admin/semantic?tab=consistency&object=contract&ontology=1&instance=1", "失败规则"),  # nothing failed
+    # -- Structural rather than sparse, and worth saying so --
+    #
+    # The object browser renders one row per related source table and shows every table's
+    # columns, so a column belonging to one table is a dash in every row of another. Nothing is
+    # misnamed and there is no field to point at instead. What it does mean is that the screen is
+    # hard to read once an object has several related tables -- visible here as fourteen columns
+    # that are dashes for every row -- and that is a design observation this sweep cannot act on.
+    #
+    # Listed one column at a time because that is the shape the allowance takes; the reason above
+    # covers all of them.
+    ("/admin/objects", "Contract Id"),
+    ("/admin/objects", "付款日期"),
+    ("/admin/objects", "付款计划编号"),
+    ("/admin/objects", "信用状态"),
+    ("/admin/objects", "创建时间"),
+    ("/admin/objects", "到期日期"),
+    ("/admin/objects", "发票编号"),
+    ("/admin/objects", "发票金额"),
+    ("/admin/objects", "客户名称"),
+    ("/admin/objects", "已付金额"),
+    ("/admin/objects", "开票日期"),
+    ("/admin/objects", "行业"),
+    ("/admin/objects", "计划金额"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "Contract Id"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "付款计划编号"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "信用状态"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "创建时间"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "到期日期"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "发票编号"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "发票金额"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "客户名称"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "已付金额"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "开票日期"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "行业"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "计划金额"),
+    ("/admin/objects?ontology=1&object=contract&instance=1", "单位"),
 )
 
 # Routes that render no table in the seeded instance, and why. Every other route must render
@@ -323,9 +371,23 @@ def dump_dom(browser: str, url: str) -> str:
 _ICON = re.compile(r'<span[^>]*class="[^"]*anticon[^"]*"')
 
 
+# What a screen draws when a cell has no value to draw.
+#
+# A column whose every cell is one of these carries exactly as much information as an empty one,
+# and the fallback is what hides it: `render: (domain) => domain || '-'` draws a dash in every row
+# after a field rename, and this sweep reported nothing because the cell has text. Found by
+# planting a rename on the ontology list's domain column and watching both this and the component
+# test stay green.
+#
+# An excuse still exists for a column that is genuinely all-dashes -- `KNOWN_SPARSE` -- which is
+# the same escape a column that is genuinely empty has, and it has to be written down with its
+# reason.
+_PLACEHOLDER_CELLS = frozenset({"", "-", "—", "–", "‑", "暂无", "暂无数据", "N/A"})
+
+
 def _cell_text(cell: str) -> str:
     if _ICON.search(cell):
-        return "\u2713"
+        return "✓"
     return re.sub(r"<[^>]+>", "", cell).strip()
 
 
@@ -364,10 +426,14 @@ def tables(html: str) -> list[tuple[list[str], list[list[str]]]]:
 
 
 def empty_columns(headers: list[str], rows: list[list[str]]) -> list[str]:
+    """Columns that carry nothing in any row -- blank *or* nothing but a placeholder.
+
+    The placeholder half is the one that was missing. See `_PLACEHOLDER_CELLS`.
+    """
     width = max(len(row) for row in rows)
     empty = []
     for index in range(min(width, len(headers))):
-        if all(not (row[index].strip() if index < len(row) else "") for row in rows):
+        if all((row[index] if index < len(row) else "").strip() in _PLACEHOLDER_CELLS for row in rows):
             empty.append(headers[index] or f"column {index}")
     return empty
 

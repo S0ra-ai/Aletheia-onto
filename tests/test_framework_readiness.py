@@ -26,8 +26,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "docs" / "framework-readiness.md"
 
-# A row's third column names a test module, optionally with `::test_name`.
-CITATION = re.compile(r"`(tests/[A-Za-z0-9_/]+\.py)(?:::([A-Za-z0-9_]+))?`")
+# A row's third column names the thing that holds the capability, optionally with `::test_name`.
+#
+# `scripts/` as well as `tests/`: several capabilities are held by a script the CI job runs
+# directly -- the render sweep, the allowance assertion, the i18n audit. They are checks in every
+# sense that matters, and the first version of this pattern required a `tests/` path, so a row
+# citing one was reported as a capability nobody verifies.
+CITATION = re.compile(r"`((?:tests|scripts)/[A-Za-z0-9_/]+\.py)(?:::([A-Za-z0-9_]+))?`")
 ARTIFACT = re.compile(r"`((?:backend|frontend|deploy)/[A-Za-z0-9_./-]+)`")
 
 

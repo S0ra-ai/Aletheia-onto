@@ -159,6 +159,22 @@ async function waitForRows(): Promise<RenderedTable> {
  * blank. A column holding a control rather than text is excluded by name -- a cell with a button
  * in it legitimately has no text, and counting it would be a standing false positive.
  */
+/**
+ * What a cell shows when it has no value to show.
+ *
+ * A column whose every cell is one of these carries exactly as little information as a column
+ * that is empty -- and the fallback is what hides it. `render: (domain) => domain || '-'` draws a
+ * dash in every row when the field was renamed, and the first version of this file reported
+ * nothing: the cell has text. Planting a rename on the ontology list's domain column and watching
+ * both this and `scripts/ui_smoke.py` stay green is how the blind spot was found, and both now
+ * treat these as empty.
+ *
+ * `ANTD_SKELETON` is the same idea for the other direction: a cell still showing antd's own
+ * placeholder has not finished loading, and counting it as content would hide a column that never
+ * gets one.
+ */
+const PLACEHOLDERS = new Set(['', '-', '—', '–', '‑', '暂无', '暂无数据', 'N/A']);
+
 function blankColumns(table: RenderedTable): string[] {
   const { headers, rows } = table;
   const cellCount = rows[0]?.querySelectorAll('td').length ?? 0;
@@ -166,7 +182,7 @@ function blankColumns(table: RenderedTable): string[] {
   for (let index = 0; index < cellCount; index += 1) {
     const cells = rows.map((row) => row.querySelectorAll('td')[index]);
     if (cells.some((cell) => cell?.querySelector('button, .ant-switch'))) continue;
-    if (cells.every((cell) => (cell?.textContent ?? '').trim() === '')) {
+    if (cells.every((cell) => PLACEHOLDERS.has((cell?.textContent ?? '').trim()))) {
       blank.push(headers[index] ?? `#${index + 1}`);
     }
   }
