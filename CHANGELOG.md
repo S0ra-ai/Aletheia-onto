@@ -632,6 +632,32 @@
   文件本来就有约定（`user’s`、`document’s`、`assertion’s` 用的是印刷体 `’`），所以修复从来不是转义，
   而是用文件其他地方在用的那个字符。现在有一条引号扫描守卫在测试里点名到行。
   它自己也配了反例：`mysql://host/db` 这种「值里带斜杠」的行不许被误报。
+
+- **「加一个测试」不再是改六个文件**（`scripts/sync_test_counts.py`、
+  `tests/test_documented_claims.py`、`docs/testing.md`、`docs/testing.zh-CN.md`）。
+  测试数量声明在六个地方：两个 README 徽章、两个 README 正文句子、两页测试文档的总数与每文件一列。
+  检查是对的——但它把一件机械的事变成了六次「改到一半就停」的机会，而每一轮加测试都要走一遍。
+  现在有一条命令，模式与仓库里既有的 `generate_types.py` 一致：
+
+  ```
+  python scripts/sync_test_counts.py            # 更新
+  python scripts/sync_test_counts.py --check    # 只报告，不改
+  ```
+
+  它**不写散文**：少了一行测试文件时报告而不是插入（数量是机械的，旁边那句话不是），
+  文件已经不在的那一行同理——删掉它是对文档的判断，不是填一个数字。
+  匹配式只存在于脚本里一处：**同一个正则的两份拷贝正是这件苦差事的来源**，
+  两份一旦漂开，脚本会报告「无事可做」，而检查会在一个它刚称之为最新的文件上失败。
+  所以有一条测试拿脚本自己的输出反过来断言已提交的文档，冲突时先把命令打出来。
+
+- **`docs/limitations.md` 里关于 `api.py` 的那句话，三处全漂了**（两种语言、
+  `tests/test_documented_claims.py`）。它写着「156 个端点，其中 **31 个仍在 `api.py` 里**——
+  应用外壳（`/`、`/admin/*`、`/health`、`/files`、`/metrics`）、备份、演示引导」。
+  实际是 **4 个**；`/health`、`/files`、`/metrics` 和演示引导**早就在 `routers/` 里**；
+  而那个「其中」从来就不成立——`declared_routes()` 数的是 `routers/`，根本不包含 app 自己声明的路由。
+  检查只从一个语言里读一个数字，所以三处都没看见。
+  现在两个数字、两种语言都被数出来并断言。**数字对、周围的句子错**，是更难发现的那种失败，
+  因为计数器检查的那样东西确实是正确的。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

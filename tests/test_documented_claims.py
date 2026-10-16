@@ -105,28 +105,127 @@ def test_the_per_file_breakdown_covers_every_test_file() -> None:
     Both directions matter. A row for a deleted file describes coverage that is gone; a
     file with no row is coverage the reader cannot find, which is how a suite ends up
     with two modules testing the same thing.
+
+    **And a row with no `Covers` cell is the same failure with the number kept** -- which is
+    what `docs/testing.md` had for `test_metadata_flow.py`, eighty tests described by nothing.
     """
     counts = _collected_counts()
     # The table moved out of the README when the entry point was shortened. Both language
     # versions carry it, and both are checked: a breakdown that is right in one language and
     # stale in the other is worse than one place being wrong, because the reader who checks
     # the stale copy has no reason to suspect the other exists.
-    testing = "\n".join(
-        (ROOT / "docs" / name).read_text(encoding="utf-8") for name in ("testing.zh-CN.md", "testing.md")
-    )
-    documented = {
-        name: int(count) for name, count in re.findall(r"^\| `(test_\S+\.py)` \| (\d+) \|", testing, re.MULTILINE)
-    }
-
     actual = {Path(path).name: count for path, count in counts.items()}
+    problems: list[str] = []
 
-    assert set(documented) == set(actual), (
-        f"README 分布表与实际测试文件不一致；仅文档有: {sorted(set(documented) - set(actual))}；"
-        f"仅代码有: {sorted(set(actual) - set(documented))}"
+    for name in ("testing.md", "testing.zh-CN.md"):
+        documented = {
+            row["name"]: (int(row["count"]), row["covers"].strip())
+            for row in (
+                re.match(r"^\| `(?P<name>test_\S+\.py)` \| (?P<count>\d+) \| (?P<covers>.*) \|$", line)
+                for line in (ROOT / "docs" / name).read_text(encoding="utf-8").splitlines()
+            )
+            if row
+        }
+        for missing_name in sorted(set(actual) - set(documented)):
+            problems.append(f"{name}: 缺少 {missing_name} 的行——这个测试套件读者找不到")
+        for gone in sorted(set(documented) - set(actual)):
+            problems.append(f"{name}: {gone} 这一行的测试文件不存在了——它描述的是已经不在的覆盖")
+        for shared, (count, covers) in sorted(documented.items()):
+            if shared in actual and actual[shared] != count:
+                problems.append(f"{name}: {shared} 写着 {count}，实际 {actual[shared]}")
+            if not covers:
+                problems.append(f"{name}: {shared} 的「覆盖」一栏是空的——数字留下了，句子没有了")
+
+    assert not problems, "两份分布表与实际测试文件不符：\n  " + "\n  ".join(problems)
+
+
+def _sync_module():
+    """Import `scripts/sync_test_counts.py` by path: it is a script, not a package module."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "sync_test_counts_under_test", ROOT / "scripts" / "sync_test_counts.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_sync_script_writes_exactly_what_the_checks_above_require() -> None:
+    """One copy of the patterns, because two copies is how this chore came about.
+
+    Adding a test used to mean editing six places by hand, and the checks above would fail until
+    all six agreed. `scripts/sync_test_counts.py` does the six, which is the right home for a
+    mechanical edit -- but only if the script and the checks cannot disagree. A script whose
+    pattern stops matching a reworded badge would report "nothing to do" and exit 0, the next
+    person would believe it, and the check would then fail on a file the script had just called
+    current.
+
+    So the script is the authority and this asserts against its own output: running it over the
+    committed files must change nothing, and it must not report anything for a person either.
+    The failure message names the command rather than the six edits.
+    """
+    module = _sync_module()
+    per_file = _collected_counts()
+    total = sum(per_file.values())
+    problems: list[str] = []
+
+    for filename in module.documents():
+        current = (ROOT / filename).read_text(encoding="utf-8")
+        wanted, unresolved = module.sync(current, filename, {Path(p).name: n for p, n in per_file.items()}, total)
+        if wanted != current:
+            problems.append(f"{filename}: 数量不是最新的")
+        # `unresolved` is the half a script must not guess at: a test file with no row needs a
+        # sentence, and a row for a file that is gone needs a decision about the document.
+        problems.extend(unresolved)
+
+    assert not problems, (
+        "文档里的测试数量与 `scripts/sync_test_counts.py` 应当写出的不一致。"
+        "这个脚本就是这件事的归口，所以先运行它，再回来看这里：\n"
+        "    python scripts/sync_test_counts.py\n  " + "\n  ".join(problems)
     )
 
-    wrong = {name: (count, actual[name]) for name, count in documented.items() if actual[name] != count}
-    assert not wrong, f"README 分布表数量过期（文档, 实际）: {wrong}"
+
+def test_the_sync_script_changes_a_stale_number_and_refuses_to_invent_prose() -> None:
+    """The check above passes trivially if `sync` never changes anything.
+
+    Same shape as the quote scanner in `tests/test_error_codes.py`: a text-rewriting function
+    that has quietly stopped matching looks exactly like a file that is up to date. So it is run
+    against a doctored count on both sides -- one that must move, and one that must be reported
+    instead of written.
+    """
+    module = _sync_module()
+    grown = {"test_alpha.py": 12, "test_beta.py": 5}
+
+    # A whole-enough page: the total sentence *and* the table. Both are claims the script knows
+    # how to update, and passing only the table would report the missing sentence -- correctly,
+    # since a pattern that stops matching is what `--check` exists to catch.
+    table = "**17 tests**, all passing.\n\n| File | Count | Covers |\n|---|--:|---|\n"
+    table += "| `test_alpha.py` | 9 | 甲 |\n| `test_beta.py` | 5 | 乙 |\n"
+
+    wanted, unresolved = module.sync(table, "docs/testing.md", grown, 17)
+    assert "| `test_alpha.py` | 12 | 甲 |" in wanted, wanted
+    assert "| `test_beta.py` | 5 | 乙 |" in wanted, wanted
+    assert not unresolved, unresolved
+
+    # A new file: the number is mechanical, the sentence is not, and a script that wrote one
+    # would be writing documentation nobody read.
+    wanted, unresolved = module.sync(table, "docs/testing.md", {**grown, "test_gamma.py": 3}, 20)
+    assert "test_gamma" not in wanted
+    assert any("test_gamma.py" in note for note in unresolved), unresolved
+
+    # A row for a file that is gone: reported, not deleted -- removing it is a judgement about
+    # the document rather than a number to fill in.
+    wanted, unresolved = module.sync(table, "docs/testing.md", {"test_beta.py": 5}, 5)
+    assert "test_alpha.py" in wanted
+    assert any("test_alpha.py" in note for note in unresolved), unresolved
+
+    # And a reworded badge is reported rather than silently skipped -- the whole point of
+    # `--check`, since a pattern that stops matching looks exactly like a current file.
+    _wanted, unresolved = module.sync("no badge here\n", "README.md", grown, 17)
+    assert len(unresolved) == 2, unresolved  # the badge and the prose sentence
 
 
 def test_each_distribution_table_has_a_sentence_in_its_own_language() -> None:
@@ -201,18 +300,54 @@ def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
     only saw routes declared on `app`, so moving routes onto an `APIRouter` made the
     number drop without any endpoint disappearing -- the measurement tracked the file
     layout instead of the surface it claimed to describe.
+
+    **Both numbers, in both languages, and that is the fix rather than the ceremony.** The
+    sentence used to read "156 endpoints, of which **31 are still declared in `api.py`** -- the
+    app shell, `/health`, `/files`, `/metrics`, backups, and the demo bootstrap". All three
+    parts had drifted and the check saw none of them, because it read one number out of one
+    language: there are four app-level routes rather than 31, `/health`, `/files`, `/metrics`
+    and the demo bootstrap all live in `routers/` now, and the 156 was never *of which* anything
+    -- `declared_routes()` does not include the app's own routes at all. A number that is
+    right and a sentence around it that is wrong is the harder failure to see, because the
+    thing a counter checks is correct.
     """
-    import sys
-
     sys.path.insert(0, str(ROOT / "backend"))
-    from ontology_platform.api import declared_routes
+    from fastapi.routing import APIRoute
+    from ontology_platform.api import app, declared_routes
 
-    routes = len(declared_routes())
+    routed = len(declared_routes())
+    # What the app declares for itself: the single-page shell, and nothing else. Counted from
+    # the app rather than from a list here, so a route added to `api.py` moves the number.
+    shell = len([route for route in app.routes if isinstance(route, APIRoute)])
 
-    limitations = (ROOT / "docs" / "limitations.zh-CN.md").read_text(encoding="utf-8")
-    claimed = {int(found) for found in re.findall(r"(\d+)\s*个端点", limitations)}
-    assert claimed, "docs/limitations.zh-CN.md 未声明端点数量"
-    assert routes in claimed, f"文档声明 {sorted(claimed)} 个端点，实际 {routes}"
+    problems: list[str] = []
+    for name, routed_pattern, shell_pattern in (
+        ("docs/limitations.md", r"has (\d+) endpoints", r"Four more are declared on the app itself"),
+        ("docs/limitations.zh-CN.md", r"共 (\d+) 个端点", r"另有 (\d+) 个直接声明在 app 上"),
+    ):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        match = re.search(routed_pattern, text)
+        if not match:
+            problems.append(f"{name}: 找不到端点总数的句子（{routed_pattern}）")
+        elif int(match.group(1)) != routed:
+            problems.append(f"{name}: 声明 {match.group(1)} 个端点，实际 {routed}")
+
+        # The shell count is stated in the same sentence; the Chinese side names it, the English
+        # side says "Four" in words. Asserted as text on the English side so a change from 4 to
+        # 5 fails here rather than passing on the word "Four" still being present.
+        if name.endswith("zh-CN.md"):
+            match = re.search(shell_pattern, text)
+            if not match:
+                problems.append(f"{name}: 找不到直接声明在 app 上的端点数量（{shell_pattern}）")
+            elif int(match.group(1)) != shell:
+                problems.append(f"{name}: 声明 {match.group(1)} 个直接路由，实际 {shell}")
+        else:
+            assert shell_pattern in text, f"{name}: 找不到直接声明在 app 上的端点的描述"
+            assert "Four more are declared" in text and shell == 4, (
+                f"英文页用文字写的「Four」与实际 {shell} 个直接路由不符——请同时改句子的措辞和这里"
+            )
+
+    assert not problems, "端点数量的描述与实际 HTTP 层不符：\n  " + "\n  ".join(problems)
 
 
 def test_every_claimed_python_version_is_actually_tested() -> None:

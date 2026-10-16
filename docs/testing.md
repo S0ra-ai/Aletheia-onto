@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1849 tests**, all passing. A case that needs something this machine does not have skips
+**1851 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -111,7 +111,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
-| `test_documented_claims.py` | 15 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 17 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
 | `test_object_service.py` | 14 | Generic business-object browsing over HTTP and in the service, metadata, pagination cost, row-level permission filtering |
 
@@ -271,8 +271,29 @@ CI also has a `scaffold` job that walks the path a *new* deployment takes --
 `aletheia new`, install, `init`, `connect`, `model`, `verify.py` -- because three
 defects in that path were found by walking it by hand rather than by any check.
 
-CI also has a `quickstart` job that replays the README quick start in a clean environment and
-verifies that the test count stated here matches what pytest collects.
+CI also has a `quickstart` job that replays the README quick start in a clean environment --
+install, serve, log in, ask one question -- because a documented path that stopped working is
+a defect a reader meets before a maintainer does.
+
+**The numbers here are written by a script, not by hand.** `scripts/sync_test_counts.py`
+collects the tests and rewrites every place the count is stated: the two README badges, the two
+README sentences, and the total and per-file columns on these two pages. Adding one test used to
+mean editing six documents, each of them a chance to stop halfway, and `tests/test_documented_claims.py`
+would fail until all six agreed -- correct, and a chore. Now it is one command:
+
+```
+python scripts/sync_test_counts.py            # update the documents
+python scripts/sync_test_counts.py --check    # report what is stale, change nothing
+```
+
+What it will not write is prose. A test file with no row here is **reported**, not inserted: the
+number is mechanical and the sentence beside it is not, and a script that invented 「覆盖什么」
+would be writing documentation nobody read. The same goes for a row whose file is gone -- deleting
+it is a judgement about this page rather than a number to fill in.
+
+The pattern for each claim lives in that script and nowhere else, because two copies of the same
+regular expression is how the chore came about in the first place: one that drifted from the
+other would report "nothing to do" while the check failed on a file it had just called current.
 
 The workflow file is checked as well, because it is written by hand and two hand-written
 mistakes reached GitHub with nothing local objecting. A `run:` continued with a shell

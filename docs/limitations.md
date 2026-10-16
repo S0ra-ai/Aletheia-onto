@@ -132,13 +132,18 @@ By design, not bugs. These are the next phase's work.
 - `platform_db` signatures are **all widened to `PlatformDb`** (context, path or string).
   The former `Path | str` annotation rejected contexts in type checkers even though
   runtime accepted it ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
-- The HTTP layer has 156 endpoints, of which **31 are still declared in `api.py`** -- the app
-  shell (`/`, `/admin/*`, `/health`, `/files`, `/metrics`), backups, and the demo bootstrap.
-  Everything else is in `routers/`, grouped by concern: auth, data sources, knowledge,
-  metamodel, model governance, semantic/agent/automation, tenancy, workflow/permission. The
-  remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
-  edges rather than a domain, and moving them would give a reader one more file to open to find
-  where the SPA is served from.
+- The HTTP layer has 156 endpoints, all of them in `routers/`, grouped by concern: auth, data
+  sources, knowledge, metamodel, model governance, semantic/agent/automation, tenancy,
+  workflow/permission. Four more are declared on the app itself and are not in that count --
+  `/`, `/admin`, `/admin/` and `/admin/{frontend_path:path}`, which is the single-page shell
+  and nothing else. This paragraph said "of which **31 are still declared in `api.py`** -- the
+  app shell (`/`, `/admin/*`, `/health`, `/files`, `/metrics`), backups, and the demo
+  bootstrap", and every part of that had drifted: the number, the list, and the distinction.
+  `/health`, `/files`, `/metrics` and the demo bootstrap are in `routers/` now, and the count
+  could not move with them because it was prose. The shell is what is genuinely the app's own
+  edge rather than a domain, and keeping it here is a decision rather than a queue to be
+  emptied: moving it would give a reader one more file to open to find where the SPA is served
+  from. `tests/test_documented_claims.py` counts both numbers now, in both languages.
 - **The object browser shows every related table's columns in one grid.** A row from one table
   has a dash in every column belonging to another, so the contract instance view has fourteen
   columns that are dashes for every row. Nothing is misnamed -- the sweep's allowance lists each
