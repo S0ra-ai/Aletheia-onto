@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1704 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1706 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -59,7 +59,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
-| `test_api_authentication.py` | 55 | End-to-end authentication and authorization tests |
+| `test_api_authentication.py` | 57 | End-to-end authentication and authorization tests |
 | `test_inert_fields_activated.py` | 29 | Three fields that were stored but never evaluated |
 | `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |

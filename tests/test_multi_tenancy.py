@@ -352,12 +352,21 @@ def test_isolation_holds_on_server_dialects(env_var, db_type, database, tmp_path
 
 
 def test_tenant_endpoints_have_sensible_capabilities() -> None:
-    """Provisioning creates schemas and tables, so it is strictly administrative."""
+    """Provisioning creates schemas and tables, so it is strictly administrative.
+
+    Reading *one* tenant's counters is administrative too, and this assertion used to say the
+    opposite. The tenant is named by the caller -- `GET /tenants/acme/statistics` where `acme`
+    is whatever the caller typed -- and nothing ties the caller to it, so `platform:read` let
+    any reader of one tenant enumerate the others and read each one's row counts, quota limits
+    and consumption. Listing tenants stays readable (knowing which tenants exist is not a
+    secret in this product); reading inside one is not.
+    """
     from ontology_platform.access_policy import required_capability
 
     assert required_capability("POST", "/tenants") == "platform:admin"
     assert required_capability("GET", "/tenants") == "platform:read"
-    assert required_capability("GET", "/tenants/acme/statistics") == "platform:read"
+    assert required_capability("GET", "/tenants/acme/statistics") == "platform:admin"
+    assert required_capability("GET", "/tenants/acme/quotas") == "platform:admin"
 
 
 def test_listing_tenants_on_a_single_tenant_deployment_is_not_an_error(

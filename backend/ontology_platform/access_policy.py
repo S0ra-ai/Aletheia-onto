@@ -119,6 +119,9 @@ RULES: tuple[Rule, ...] = (
     _rule(("GET",), r"/model/config(/test)?", CAP_ADMIN, "查看模型层配置"),
     _rule(ANY_METHOD, r"/permissions/roles.*", CAP_ADMIN, "角色管理"),
     _rule(("POST",), r"/permissions/policies", CAP_ADMIN, "权限策略管理"),
+    # 读也要 admin：这是对象级权限矩阵本身（哪些角色能读/写/执行/删除哪些对象），
+    # 还带着行级过滤表达式——它透露数据是怎么划分的。兄弟端点 /permissions/roles 一直是 admin。
+    _rule(("GET",), r"/permissions/policies", CAP_ADMIN, "读取权限策略"),
     _rule(("POST",), r"/tools", CAP_ADMIN, "注册智能体工具"),
     _rule(("POST",), r"/tools/authorize", CAP_ADMIN, "授权智能体工具"),
     _rule(("POST",), r"/demo/bootstrap.*", CAP_ADMIN, "初始化演示数据"),
@@ -144,7 +147,6 @@ RULES: tuple[Rule, ...] = (
     _rule(("POST",), r"/ai/.*", CAP_WRITE, "AI 建模建议"),
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/data-sources.*", CAP_WRITE, "数据源与元数据写入"),
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/onboarding/.*", CAP_WRITE, "接入流水线"),
-    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/ontologies.*", CAP_WRITE, "本体与规则写入"),
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/industry-blueprints.*", CAP_WRITE, "行业蓝图写入"),
     _rule(("POST", "PUT", "PATCH", "DELETE"), r"/workflows.*", CAP_WRITE, "工作流定义写入"),
     # -- Everything readable --
@@ -165,6 +167,9 @@ RULES: tuple[Rule, ...] = (
     # 配额是平台对租户设的上限，不是租户自己的设置。若租户能改，上限就不成立——
     # 因此写操作要求 platform:admin，与开通租户同级。
     _rule(("PUT",), r"/tenants/[^/]+/quotas", CAP_ADMIN, "设置租户配额"),
+    # 读配额与统计同样是平台级操作：路径里的租户名由调用方给出，没有任何东西把调用方与它绑在一起，
+    # 于是一个租户的读者可以枚举所有租户、读出每个租户的行数与配额。写要 admin，读也要。
+    _rule(("GET",), r"/tenants/[^/]+/(statistics|quotas)$", CAP_ADMIN, "读取某个租户的统计与配额"),
     # Changing how an object resolves its instances alters what every rule for
     # that object evaluates against, so it is a modelling write.
     _rule(("PUT",), r"/ontologies/[0-9]+/objects/[^/]+/resolver", CAP_WRITE, "配置实例解析器"),
@@ -208,6 +213,10 @@ RULES: tuple[Rule, ...] = (
         CAP_WRITE,
         "记录属性历史版本",
     ),
+    # 本体写入的兜底规则。放在所有 `/ontologies/...` 具体规则**之后**：这张表先匹配先赢，
+    # 而它曾经排在它们前面——于是「删除公理需要发布权限」这类规则成了永远读不到的文本，判定一律落到 write。
+    # **一条永远不会生效的规则比没有规则更危险：它读起来像防护。**
+    _rule(("POST", "PUT", "PATCH", "DELETE"), r"/ontologies.*", CAP_WRITE, "本体与规则写入（兜底）"),
     _rule(("GET",), r"/.*", CAP_READ, "平台读取"),
 )
 

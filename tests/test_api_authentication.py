@@ -8,6 +8,7 @@ that anonymous access is rejected and that roles are actually enforced.
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 from typing import Iterator
 
@@ -553,3 +554,80 @@ def test_the_backup_namespace_stays_protected_under_every_spelling(client: TestC
     for path in ("/admin/backup/list", "/admin/backup%2flist", "/admin/backup/./list", "/ADMIN/BACKUP/LIST"):
         response = client.get(path)
         assert response.status_code in (401, 403), f"{path} -> {response.status_code} {response.text[:80]}"
+
+
+# -- The policy table itself is a governed artifact --
+
+
+def _routes() -> list[tuple[str, str]]:
+    """Every route the application serves, as (method, concrete path).
+
+    Path templates are materialised: a policy regex spells `\\d+`, and `{ontology_id}` is not
+    a digit. Comparing the two without substituting reports every rule as dead -- which is
+    exactly what the first version of this check did, and it looked like a catastrophe.
+    """
+    from ontology_platform.api import app
+
+    routes = []
+    for path, operations in app.openapi()["paths"].items():
+        concrete = re.sub(r"\{[^}]+\}", "1", path)
+        for method in operations:
+            if method.upper() in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+                routes.append((method.upper(), concrete))
+    return routes
+
+
+def test_every_capability_rule_decides_at_least_one_route() -> None:
+    """A rule no route ever reaches is worse than no rule: it reads like protection.
+
+    The table is first-match-wins, so a specific rule placed after a broader one is dead
+    text. That was not hypothetical: `DELETE /ontologies/{id}/axioms/{code}` asked for
+    `governance:publish` and got `platform:write`, because `POST|PUT|PATCH|DELETE
+    /ontologies.*` sat above it -- so a role deliberately denied publish could delete the
+    axioms that gate publication. Eleven more rules were dead the same way (harmlessly, since
+    they wanted the same capability the broad rule granted -- which is precisely why nobody
+    noticed).
+    """
+    from ontology_platform import access_policy
+
+    rules = (*access_policy._PLUGIN_RULES, *access_policy.RULES)
+    decides: set[int] = set()
+    for method, path in _routes():
+        for index, rule in enumerate(rules):
+            if method in rule.methods and rule.pattern.match(
+                access_policy.strip_version_prefix(path).rstrip("/") or "/"
+            ):
+                decides.add(index)
+                break
+
+    dead = [
+        f"[{index}] {','.join(sorted(rules[index].methods))} {rules[index].pattern.pattern}"
+        f" -> {rules[index].capability}"
+        for index in range(len(rules))
+        if index not in decides
+    ]
+    assert not dead, (
+        "以下能力规则永远不会生效（被更早的规则顶掉，或没有对应路由）——"
+        "它们看起来像防护，实际上不是：\n  " + "\n  ".join(dead)
+    )
+
+
+def test_the_governance_actions_that_had_been_shadowed_now_need_their_capability() -> None:
+    """The routes whose intent was being lost, stated as the capability each one needs.
+
+    The general check above says no rule is dead; this one says each of these means what the
+    comments beside it claim, because "the rule fires" and "it fires for the right route with
+    the right capability" are different claims.
+    """
+    from ontology_platform.auth import CAP_ADMIN, CAP_PUBLISH
+
+    assert required_capability("DELETE", "/ontologies/1/axioms/contract_amount_positive") == CAP_PUBLISH
+    assert required_capability("POST", "/ontologies/1/publish") == CAP_PUBLISH
+    assert required_capability("POST", "/ontologies/1/derive") == CAP_PUBLISH
+    # Reading the permission matrix is administrative, and so is reading *one* tenant's
+    # counters: the tenant in the path is supplied by the caller, and nothing else ties the
+    # caller to it. Listing which tenants exist stays readable -- that is a deliberate
+    # decision of its own, asserted in tests/test_multi_tenancy.py.
+    assert required_capability("GET", "/permissions/policies") == CAP_ADMIN
+    assert required_capability("GET", "/tenants/acme/statistics") == CAP_ADMIN
+    assert required_capability("GET", "/tenants/acme/quotas") == CAP_ADMIN
