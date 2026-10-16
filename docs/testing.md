@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1713 tests**, all passing. A case that needs something this machine does not have skips
+**1714 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -58,7 +58,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
 | `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
 | `test_cli.py` | 41 | The `aletheia` command line |
-| `test_conversations_and_feedback.py` | 42 | Conversation persistence and the feedback loop |
+| `test_conversations_and_feedback.py` | 43 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
 | `test_metadata_flow.py` | 80 |  |

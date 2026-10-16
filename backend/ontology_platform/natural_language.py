@@ -14,7 +14,7 @@ from .database import connect
 from .errors import describe_model_failure
 from .knowledge_base import build_reasoning_chain
 from .knowledge_documents import load_confirmed_entries
-from .model_client import OpenRouterClient, OpenRouterConfig
+from .model_client import OpenRouterClient, OpenRouterConfig, record_model_invocation
 from .ontology import explain_instance
 from .retrieval import filter_entries_for_role, retrieve
 from .semantic_kernel import assess_decision_consistency, assess_instance
@@ -264,6 +264,7 @@ def query_natural_language(
     used_model_summary = False
     if use_model and model_client.configured and evidence:
         summarized = _summarize_with_model(
+            platform_db,
             _client_with_timeout(model_client, 12),
             normalized_question,
             answer,
@@ -333,10 +334,12 @@ def _interpret_with_model(
     ]
     try:
         result = client.chat(messages, purpose="natural_language_understanding", session_id="ontology-chat")
+        record_model_invocation(platform_db, result, "natural_language_understanding", "success")
         parsed = _extract_json_object(result.content)
         parsed["_usedModel"] = True
         return parsed
     except Exception as error:
+        record_model_invocation(platform_db, None, "natural_language_understanding", "error", str(error), client)
         return {"_usedModel": False, "_fallbackReason": describe_model_failure(error)}
 
 
@@ -346,6 +349,7 @@ def _client_with_timeout(client: OpenRouterClient, timeout_seconds: float) -> Op
 
 
 def _summarize_with_model(
+    platform_db: PlatformDb,
     client: OpenRouterClient,
     question: str,
     deterministic_answer: str,
@@ -388,8 +392,10 @@ def _summarize_with_model(
     ]
     try:
         result = client.chat(messages, purpose="natural_language_summary", session_id="ontology-chat")
+        record_model_invocation(platform_db, result, "natural_language_summary", "success")
         return result.content.strip() or deterministic_answer
-    except Exception:
+    except Exception as error:
+        record_model_invocation(platform_db, None, "natural_language_summary", "error", str(error), client)
         return ""
 
 

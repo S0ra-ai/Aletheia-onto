@@ -327,7 +327,7 @@ def generate_semantic_suggestions(
     ]
     try:
         result = model_client.chat(messages, purpose="ontology_suggestions", session_id=f"ontology-{data_source_id}")
-        _record_model_invocation(platform_db, result, "ontology_suggestions", "success")
+        record_model_invocation(platform_db, result, "ontology_suggestions", "success")
         return {
             "provider": result.provider,
             "model": result.model,
@@ -336,7 +336,7 @@ def generate_semantic_suggestions(
             "openrouter": model_client.status(),
         }
     except Exception as error:
-        _record_model_invocation(platform_db, None, "ontology_suggestions", "error", str(error), model_client)
+        record_model_invocation(platform_db, None, "ontology_suggestions", "error", str(error), model_client)
         return {
             "provider": "local-heuristic",
             "model": "metadata-profile",
@@ -389,7 +389,7 @@ def generate_blueprint_draft(
     ]
     try:
         result = model_client.chat(messages, purpose="blueprint_draft", session_id=f"blueprint-{data_source_id}")
-        _record_model_invocation(platform_db, result, "blueprint_draft", "success")
+        record_model_invocation(platform_db, result, "blueprint_draft", "success")
         parsed = _extract_json_object(result.content)
         blueprint, unreadable = _normalize_blueprint(parsed, local)
         response = {
@@ -406,7 +406,7 @@ def generate_blueprint_draft(
             response["unreadableModelFields"] = unreadable
         return response
     except Exception as error:
-        _record_model_invocation(platform_db, None, "blueprint_draft", "error", str(error), model_client)
+        record_model_invocation(platform_db, None, "blueprint_draft", "error", str(error), model_client)
         return {
             "provider": "local-heuristic",
             "model": "metadata-profile",
@@ -458,7 +458,7 @@ def generate_ontology_reasoning_chain(
         result = model_client.chat(
             messages, purpose="ontology_reasoning_chain", session_id=f"reasoning-{data_source_id}"
         )
-        _record_model_invocation(platform_db, result, "ontology_reasoning_chain", "success")
+        record_model_invocation(platform_db, result, "ontology_reasoning_chain", "success")
         parsed = _extract_json_object(result.content)
         chain, unreadable = _normalize_reasoning_chain(parsed, local)
         response = {
@@ -472,7 +472,7 @@ def generate_ontology_reasoning_chain(
             response["unreadableModelFields"] = unreadable
         return response
     except Exception as error:
-        _record_model_invocation(platform_db, None, "ontology_reasoning_chain", "error", str(error), model_client)
+        record_model_invocation(platform_db, None, "ontology_reasoning_chain", "error", str(error), model_client)
         return {
             "provider": "local-heuristic",
             "model": "metadata-profile",
@@ -614,7 +614,7 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
             purpose="model_config_test",
             session_id="model-config-test",
         )
-        _record_model_invocation(platform_db, result, "model_config_test", "success")
+        record_model_invocation(platform_db, result, "model_config_test", "success")
         return {
             "success": True,
             "message": f"{client.provider} 连接测试成功。",
@@ -622,7 +622,7 @@ def test_model_config(platform_db: PlatformDb) -> dict[str, Any]:
             "status": status,
         }
     except Exception as error:
-        _record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
+        record_model_invocation(platform_db, None, "model_config_test", "error", str(error), client)
         return {"success": False, "message": describe_model_failure(error), "status": status}
 
 
@@ -1021,7 +1021,7 @@ def _slug(value: str) -> str:
     return normalized or "industry"
 
 
-def _record_model_invocation(
+def record_model_invocation(
     platform_db: PlatformDb,
     result: ModelResult | None,
     purpose: str,

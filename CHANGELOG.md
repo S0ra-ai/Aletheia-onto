@@ -471,6 +471,16 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **人触发的模型调用从不进台账**（`model_client.py`、`agent.py`、`natural_language.py`、
+  `tests/test_conversations_and_feedback.py`）。
+  `record_model_invocation` 只被四处**非交互**路径调用（建模建议、蓝图草案、推理链、模型连通性测试），
+  而 `agent.py` 的 except 分支里那句注释写着它「already keeps a durable record for the admin UI」——
+  **注释说的是尚未发生的事**。于是「哪些回答动用了模型」这个问题的答案里，
+  恰好缺了**人点出来的那些调用**，以及**失败的那些**，
+  而模型调用台账正是这套可核验叙事用来回答这个问题的表。
+  现在四条交互路径（会话理解、会话续答、自然语言理解、自然语言润色）的成功与失败都写台账，
+  记录器也提为公开名字（跨模块引用私有名正是模块边界测试禁止的）。
+  测试同时断言失败路径：**一条看不见的失败，是一次无法交代的调用。**
 - **通往「转人工会话」的两个入口，都指向一个不存在的路由**（`FeedbackConsole.tsx`、`OntologyChat.tsx`、
   `workbench.py`、`tests/test_conversations_and_feedback.py`）。
   反馈控制台的「查看」跳 `/conversations?session=…`，工作台那件「N 个会话已转人工」的事项由后端给出

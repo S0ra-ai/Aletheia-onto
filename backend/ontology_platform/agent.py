@@ -13,7 +13,7 @@ from .context import PlatformDb
 from .conversations import append_message, ensure_conversation, load_history
 from .database import connect
 from .knowledge_base import build_reasoning_chain, list_knowledge_bases
-from .model_client import OpenRouterClient, OpenRouterConfig
+from .model_client import OpenRouterClient, OpenRouterConfig, record_model_invocation
 from .natural_language import (
     INTENT_COMPLIANCE,
     INTENT_CONSISTENCY,
@@ -210,6 +210,9 @@ def _llm_agent_chat(
     try:
         timeout_client = _client_with_timeout(model_client, 30)
         result = timeout_client.chat(messages, purpose="agent_chat", session_id=session_id or "ontology-agent")
+        # Recorded here rather than inside `chat()`: the client is also used as a library with
+        # no platform database at all, and the ledger is the *deployment's* record.
+        record_model_invocation(platform_db, result, "agent_chat", "success")
         raw_content = result.content.strip()
 
         tool_calls = _extract_tool_calls(raw_content)
@@ -232,6 +235,7 @@ def _llm_agent_chat(
                 followup = timeout_client.chat(
                     followup_messages, purpose="agent_chat_followup", session_id=session_id or "ontology-agent"
                 )
+                record_model_invocation(platform_db, followup, "agent_chat_followup", "success")
                 if followup.content.strip():
                     clean_answer = followup.content.strip()
 
@@ -262,13 +266,15 @@ def _llm_agent_chat(
             "toolCalls": tool_calls,
             "roleId": role.id,
         }
-    except Exception:
+    except Exception as error:
         # The exception goes to the log, not into the answer. This answer is prose a
         # business user reads, and an exception's text carries filesystem paths, SQL
         # fragments and occasionally row values -- the same reason the 500 handler keeps
         # its traceback out of the response body. The request id on the response header
-        # ties this answer to the log line that explains it, and `_record_model_invocation`
-        # already keeps a durable record for the admin UI.
+        # ties this answer to the log line that explains it, and the ledger keeps a durable
+        # record for the admin UI -- which this comment claimed before it was true: the
+        # interactive calls were the ones that never reached it.
+        record_model_invocation(platform_db, None, "agent_chat", "error", str(error), model_client)
         logger.exception("智能体会话失败 role=%s", role.id)
         return {
             "answer": (

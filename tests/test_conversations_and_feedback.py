@@ -479,3 +479,75 @@ def test_every_workbench_action_route_is_a_page_the_console_serves(platform) -> 
     }
     unknown = sorted(route for route in routes if route not in served)
     assert not unknown, f"工作台的事项指向控制台没有的页面：{unknown}（前端实际服务：{sorted(served)}）"
+
+
+def test_an_interactive_model_call_reaches_the_invocation_ledger(platform) -> None:
+    """The ledger recorded four purposes, and none of the interactive ones.
+
+    `record_model_invocation` was called from the non-interactive paths only
+    (`ontology_suggestions`, `blueprint_draft`, `ontology_reasoning_chain`, `model_config_test`),
+    while the comment in `agent.py`'s except-branch said the ledger 「already keeps a durable
+    record for the admin UI」. So the calls an operator most wants to account for -- the ones a
+    person triggered, and the ones that failed -- were exactly the ones missing, in a platform
+    whose accountability story rests on 「which answers involved a model」.
+    """
+    from ontology_platform.agent import _llm_agent_chat, resolve_agent_role
+    from ontology_platform.model_client import OpenRouterClient, OpenRouterConfig
+
+    def transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float):
+        return {
+            "model": "test-model",
+            "choices": [{"message": {"content": "合同 1 没有问题。"}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+        }
+
+    db = platform["platform_db"]
+    client = OpenRouterClient(
+        OpenRouterConfig(
+            api_key="test-key",
+            model="test-model",
+            base_url="https://openrouter.ai/api/v1",
+            http_referer="",
+            app_title="",
+            service_tier="auto",
+            timeout_seconds=10,
+        ),
+        transport=transport,
+    )
+    role = resolve_agent_role(db, "business_expert")
+
+    _llm_agent_chat(db, client, "合同 1 是否合规？", role, platform["source_id"], None, [], "chat-ledger")
+
+    with connect(db) as conn:
+        rows = conn.execute(
+            "select purpose, status, total_tokens from model_invocation where purpose = 'agent_chat'"
+        ).fetchall()
+    assert rows, "交互式调用没有进入模型调用台账"
+    assert rows[0]["status"] == "success"
+    assert rows[0]["total_tokens"] == 16
+
+    # And a failure is recorded too: an error an operator cannot see is a call they cannot
+    # account for.
+    def failing_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout_seconds: float):
+        raise RuntimeError("连接被拒绝")
+
+    broken = OpenRouterClient(
+        OpenRouterConfig(
+            api_key="test-key",
+            model="test-model",
+            base_url="https://openrouter.ai/api/v1",
+            http_referer="",
+            app_title="",
+            service_tier="auto",
+            timeout_seconds=10,
+        ),
+        transport=failing_transport,
+    )
+    _llm_agent_chat(db, broken, "再来一次", role, platform["source_id"], None, [], "chat-ledger")
+
+    with connect(db) as conn:
+        failed = conn.execute(
+            "select status, error from model_invocation where purpose = 'agent_chat' and status = 'error'"
+        ).fetchall()
+    assert failed, "失败的交互式调用没有进入台账"
+    assert "连接被拒绝" in failed[0]["error"]
