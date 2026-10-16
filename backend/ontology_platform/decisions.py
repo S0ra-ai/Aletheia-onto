@@ -5,6 +5,7 @@ import sqlite3
 from typing import Any
 from uuid import uuid4
 
+from . import advice
 from .context import PlatformDb
 from .database import connect
 
@@ -23,6 +24,7 @@ def record_decision(
     decision_type: str,
     status: str,
     recommendation: str = "",
+    recommendation_code: str = "",
     ontology_id: int | None = None,
     object_code: str = "",
     instance_id: str = "",
@@ -38,6 +40,7 @@ def record_decision(
             decision_type,
             status,
             recommendation,
+            recommendation_code,
             ontology_id,
             object_code,
             instance_id,
@@ -54,6 +57,7 @@ def record_decision_in_connection(
     decision_type: str,
     status: str,
     recommendation: str = "",
+    recommendation_code: str = "",
     ontology_id: int | None = None,
     object_code: str = "",
     instance_id: str = "",
@@ -68,10 +72,10 @@ def record_decision_in_connection(
         """
         insert into decision_record (
             decision_id, decision_type, ontology_id, object_code, instance_id,
-            operation_code, status, recommendation, input_ref, rule_results,
-            evidence, actor
+            operation_code, status, recommendation, recommendation_code, input_ref,
+            rule_results, evidence, actor
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             decision_id,
@@ -82,6 +86,7 @@ def record_decision_in_connection(
             operation_code,
             status,
             recommendation,
+            recommendation_code,
             json.dumps(input_ref or {}, ensure_ascii=False),
             json.dumps(rule_results or [], ensure_ascii=False),
             json.dumps(evidence or {}, ensure_ascii=False),
@@ -123,6 +128,13 @@ def _decision_row(row: Any) -> dict[str, Any]:
         "operation_code": row["operation_code"],
         "status": row["status"],
         "recommendation": row["recommendation"],
+        # A record written before the column existed carries no code. Identifying which of the
+        # platform's own sentences it holds is what keeps it translatable -- an exact match
+        # against `advice.RECOMMENDATION_TEXTS`, which this platform wrote and nothing else
+        # does. Anything that does not match keeps the empty code, and the console falls back
+        # to the sentence it was given (an operation's own result message, for instance, which
+        # is not a chosen recommendation at all).
+        "recommendationCode": row["recommendation_code"] or advice.recommendation_code(row["recommendation"]),
         "inputRef": json.loads(row["input_ref"] or "{}"),
         "input_ref": json.loads(row["input_ref"] or "{}"),
         "ruleResults": json.loads(row["rule_results"] or "[]"),

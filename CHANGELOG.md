@@ -489,6 +489,21 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **英文界面上的最后五句中文**（`ontology.py`、`semantic_kernel.py`、`decisions.py`、`graph.ts`、
+  `semantic.ts`、`InstanceDrawer.tsx`、`governance/index.tsx`、`scripts/i18n_audit.py`）。
+  推理链的那句「合同实例 1 已映射到传统表 contract。」现在**按句拆开发**：
+  每句带自己的 code 与它引用的那几个值（对象名、实例号、来源表），控制台拼自己的句子——
+  一句写好的话，译者拿不到里面的实例名和表名。一致性建议、语义内核的判定建议、
+  关系推断的说明同理。
+  判定建议多加了一步：**它是在判定发生时算出来的，没存下来**，
+  而决策列表要按行翻译，于是给 `decision_record` 加了一列 `recommendation_code`（走既有的列迁移），
+  并对**升级前写下的记录**做回填——按平台自己那五种句子精确匹配，
+  匹配不上就保持空 code、界面回落到原句（比如操作执行记录里的消息本来就不是选出来的建议）。
+  至此 **`KNOWN_BACKEND_PROSE` 空了**：中英文审计一条豁免都不需要，
+  四十多条路由、两种语言，英文界面上没有一句没翻译的界面文案。
+  审计脚本里那张豁免清单留着——机制才是价值所在：**下一句**不带 code 就发出的服务端措辞会被它抓住，
+  而一条什么都没匹配上的豁免会让运行失败。
+
 - **「下一步做什么」这一整层只有中文**（`advice.py`、`metadata.py`、`coverage.py`、
   `operation_bindings.py`、`DataSourceDetail.tsx`、`datasource.ts`、`tests/test_ui_messages.py`）。
   平台每一处建议都是**从带 code 的发现里算出来的**（接入检查、覆盖缺口、结构漂移、API 绑定），

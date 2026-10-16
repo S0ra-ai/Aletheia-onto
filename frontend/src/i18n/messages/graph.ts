@@ -42,5 +42,13 @@ export const graph: Record<string, MessageEntry> = {
   'noGaps': { zh: '未发现孤立对象或缺失规则。', en: 'No isolated objects or missing rules.' },
   'isolatedTitle': { zh: '孤立对象（无任何关联）', en: 'Isolated objects (no connections)' },
   'noRulesTitle': { zh: '无规则对象（不产出判定）', en: 'Objects without rules (producing no decisions)' },
+  // What the inference can and cannot tell from a schema. The server sends the same paragraph
+  // in Chinese (`graph.notes.limitation`) for the CLI; this is static copy rather than data --
+  // it describes the platform's method, not the deployment's model -- so the console keeps its
+  // own wording and the server's field stops being read here.
+  'limitation': {
+    zh: '边的类型由外键推断：组成（子记录随主体存在）、聚合（必填但独立）、关联（可选）；中间表折叠为多对多，基数见关系编码。分类质量取决于模式质量——没有外键或非空约束的库只能得到最弱的分类，此时外键列名是判断关联含义的依据。',
+    en: 'Edge kinds are inferred from foreign keys: composition (the child exists through its parent), aggregation (required but independent), association (optional); junction tables fold into many-to-many, with the cardinality in the relation code. How good that inference is depends on how good the schema is — a database with no foreign keys or NOT NULL constraints gets the weakest kind, and there the column name is what tells you what the relation means.',
+  },
   'limitationTitle': { zh: '关系表达力限制', en: 'Limits of relation expressiveness' },
 };

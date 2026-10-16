@@ -253,11 +253,17 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
     a sentence nobody will read, and a code that is emitted but not registered is a Chinese
     line in an English panel.
 
-    Walking the branches is what makes it a check: `operation_bindings` and `coverage` both have
-    a "nothing to do" branch and a "several things to do" branch, and only driving both would
-    notice one of them going missing.
+    Walking the branches is what makes it a check. `operation_bindings` and `coverage` both
+    have a "nothing to do" branch and a "several things to do" branch; the kernel has five
+    verdict shapes and the consistency report seven; the explanation has six sentence kinds.
+    Only driving them all would notice one going missing.
+
+    The readiness checks needed an instance, because their advice *is* their failing checks --
+    and both halves are collected, because the table renders every check's remediation, passing
+    or not. That is why `connection`, whose check can never fail, belongs on the registry.
     """
     import sys
+    from types import SimpleNamespace
 
     sys.path.insert(0, str(ROOT / "backend"))
     from ontology_platform import advice
@@ -271,14 +277,17 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
         register_data_source,
         scan_data_source,
     )
+    from ontology_platform.ontology import _explanation_parts
     from ontology_platform.operation_bindings import _next_actions as binding_actions
     from ontology_platform.sample_data import create_contract_sample_db
+    from ontology_platform.semantic_kernel import _consistency_next_actions, _decision_from_results
 
     emitted: set[str] = set()
 
     def collect(pairs: list[tuple[str, str]]) -> None:
         emitted.update(code for code, _text in pairs)
 
+    # Structural drift: in sync, and every kind of change at once.
     collect(_schema_drift_next_actions({}, {"objects": [], "mappings": [], "rules": []}))
     collect(
         _schema_drift_next_actions(
@@ -293,24 +302,62 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
             {"objects": [1], "mappings": [1], "rules": [1]},
         )
     )
-    empty_summary = dict.fromkeys(("pendingMappings", "semanticOperations", "operations", "business_objects"), 0)
-    collect(coverage_actions({**empty_summary, "pendingMappings": 2}, [{"ruleCount": 0, "primaryKey": ""}], []))
-    collect(coverage_actions({**empty_summary, "semanticOperations": 1, "operations": 3}, [], [{"id": 1}] * 3))
+
+    # Semantic coverage: gaps, unbound operations, and the closed loop.
+    empty = dict.fromkeys(("pendingMappings", "semanticOperations", "operations"), 0)
+    collect(coverage_actions({**empty, "pendingMappings": 2}, [{"ruleCount": 0, "primaryKey": ""}], []))
+    collect(coverage_actions({**empty, "semanticOperations": 1, "operations": 3}, [], [{"id": 1}] * 3))
     collect(
         coverage_actions(
-            {**empty_summary, "semanticOperations": 1, "operations": 1},
+            {**empty, "semanticOperations": 1, "operations": 1},
             [{"ruleCount": 1, "primaryKey": "id"}],
             [{"id": 1}],
         )
     )
+
+    # Operation bindings: nothing registered, each failure mode, and everything bound.
     collect(binding_actions([]))
     collect(binding_actions([{"status": "invalid"}, {"status": "unbound"}, {"status": "incomplete"}]))
     collect(binding_actions([{"status": "ready"}]))
 
-    # Readiness is the one that needs an instance, because its advice *is* its failing checks.
-    # Both halves are collected -- `nextActionCodes` is the failing ones, and the checks table
-    # renders every check's remediation, passing or not, which is why `connection` is on the
-    # registry even though its check can never fail.
+    # The explanation: one sentence at a time, in the states that add each kind.
+    runtime = SimpleNamespace(object_name="合同", instance_id="1", source_table="contract", as_of="")
+    explanation = lambda parts: emitted.update(part["code"] for part in parts)  # noqa: E731
+    explanation(_explanation_parts(runtime, [], []))
+    explanation(
+        _explanation_parts(
+            runtime,
+            [
+                {"attributeCode": "amount", "derived": True, "unit": ""},
+                {"attributeCode": "days", "derived": False, "unit": "day"},
+            ],
+            [{"name": "count", "truncated": False}],
+        )
+    )
+    runtime.as_of = "2026-01-01"
+    explanation(_explanation_parts(runtime, [], [{"name": "count", "truncated": True}]))
+
+    # The kernel's recommendation: one branch per verdict shape.
+    for failed in (
+        [],
+        [{"severity": "warning", "skipped": False}],
+        [{"severity": "warning", "skipped": True}],
+        [{"severity": "blocking", "skipped": False}],
+        [{"severity": "blocking", "skipped": True}],
+    ):
+        emitted.add(str(_decision_from_results(failed)["recommendationCode"]))
+
+    # The consistency report's advice, including the two "nothing to do" paths.
+    collect(_consistency_next_actions("empty", {}, [], []))
+    collect(_consistency_next_actions("consistent", {"approved": 2}, [], []))
+    collect(_consistency_next_actions("consistent", {"review": 2}, [], []))
+    collect(
+        _consistency_next_actions("mixed", {"blocked": 1}, [{"ruleCode": "r1"}], [{"instanceId": "1", "error": "x"}])
+    )
+    collect(_consistency_next_actions("mixed", {}, [], []))
+
+    # Readiness needs an instance. Two categories, because the API gateway check reads
+    # differently depending on whether the source declares API capability.
     platform_db = tmp_path / "platform.sqlite3"
     initialize_platform_db(platform_db)
     sample = tmp_path / "sample.sqlite3"
@@ -324,11 +371,9 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
         readiness = assess_data_source_readiness(platform_db, source.id)
         emitted.update(readiness["nextActionCodes"])
         # Every check's remediation is rendered, passing or not -- the table shows the check
-        # that passed and what it would have asked for. That is why `connection`, whose check
-        # can never fail, is on the registry at all.
+        # that passed and what it would have asked for.
         emitted.update(check["code"] for check in readiness["checks"])
-        # Drift before any scan, and coverage before any modelling: the two "nothing to compare
-        # against yet" branches, which are only reachable in these states.
+        # Drift before any scan, and coverage before any modelling.
         emitted.update(analyze_schema_drift(platform_db, source.id)["nextActionCodes"])
         emitted.update(build_semantic_coverage(platform_db, source.id)["nextActionCodes"])
 
@@ -339,8 +384,7 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
         raw.execute("create table beta (id integer primary key, label text)")
     unrelated = register_data_source(platform_db, "无外键", "sqlite", str(bare_sql), domain="合同管理")
     scan_data_source(platform_db, unrelated.id)
-    readiness = assess_data_source_readiness(platform_db, unrelated.id)
-    emitted.update(check["code"] for check in readiness["checks"])
+    emitted.update(check["code"] for check in assess_data_source_readiness(platform_db, unrelated.id)["checks"])
 
     assert emitted == set(advice.ADVICE_CODES), (
         "服务端能给出的建议与登记表对不上；"
@@ -350,6 +394,47 @@ def test_every_piece_of_advice_the_backend_can_give_has_a_sentence(tmp_path: Pat
 
     declared = set(_entries())
     missing = sorted(
-        f"datasource.advice.{code}" for code in advice.ADVICE_CODES if f"datasource.advice.{code}" not in declared
+        f"datasource.advice.{code}"
+        for code in advice.ADVICE_CODES
+        if code.startswith(("readiness", "coverage", "bindings", "drift", "scan"))
+        and f"datasource.advice.{code}" not in declared
     )
-    assert not missing, f"字典里缺少这些建议，英文界面上会露出服务端的中文：{missing}"
+    missing += sorted(
+        f"semantic.advice.{code}"
+        for code in advice.ADVICE_CODES
+        if code.startswith("consistency") and f"semantic.advice.{code}" not in declared
+    )
+    missing += sorted(
+        f"semantic.recommendation.{code}"
+        for code in advice.ADVICE_CODES
+        if code.startswith("recommendation") and f"semantic.recommendation.{code}" not in declared
+    )
+    missing += sorted(
+        f"semantic.part.{code}"
+        for code in advice.ADVICE_CODES
+        if code.startswith("explain") and f"semantic.part.{code}" not in declared
+    )
+    # The readiness codes are the same vocabulary the onboarding-checks table speaks, and that
+    # table also has a name and an evidence column per check.
+    readiness_codes = {
+        code
+        for code in advice.ADVICE_CODES
+        if code
+        in {
+            "connection",
+            "metadata_scan",
+            "primary_keys",
+            "relations",
+            "ontology",
+            "mapping_governance",
+            "api_gateway",
+            "business_apis",
+        }
+    }
+    for code in sorted(readiness_codes):
+        for field in ("name", "evidence"):
+            key = f"datasource.check.{code}.{field}"
+            # The API gateway's evidence reads differently in each of its three states.
+            if key not in declared and not any(entry.startswith(f"{key}.") for entry in declared):
+                missing.append(key)
+    assert not missing, f"字典里缺少这些句子，英文界面上会露出服务端的中文：{missing}"

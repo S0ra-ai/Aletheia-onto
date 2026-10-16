@@ -125,10 +125,38 @@ export const adviceTexts = (
   actions: readonly string[] | undefined,
   codes: readonly string[] | undefined,
   t: Translate,
+  // The dictionary namespace the codes live in. A parameter rather than a constant because
+  // the vocabularies are owned by the screens that show them -- readiness and coverage in
+  // `datasource`, the consistency report's advice in `semantic` -- and a helper that guessed
+  // would silently fall back to the server's Chinese for every code it guessed wrong.
+  namespace = 'datasource',
 ): string[] =>
   (actions ?? []).map((action, index) => {
     const code = codes?.[index];
     if (!code) return action;
-    const translated = t(`datasource.advice.${code}` as MessageKey);
+    const translated = t(`${namespace}.advice.${code}` as MessageKey);
     return translated.startsWith('⟦') ? action : translated;
   });
+
+/**
+ * The explanation paragraph, composed from the sentences the server named.
+ *
+ * `explanationParts` carries one `{code, text}` per sentence; `explanation` is the same
+ * paragraph joined, for the CLI. The console says each part from its code, and keeps the
+ * server's `text` for a code this build does not know. The parts are joined without a
+ * separator because each one ends in its own punctuation -- `joinSentences` would add a
+ * semicolon between two full stops.
+ */
+export const explanationParts = (
+  parts: readonly { code: string; text: string }[] | undefined,
+  t: Translate,
+  fallback: string,
+): string => {
+  if (!parts?.length) return fallback;
+  return parts
+    .map((part) => {
+      const translated = t(`semantic.part.${part.code}` as MessageKey, part as unknown as Record<string, string>);
+      return translated.startsWith('⟦') ? part.text : translated;
+    })
+    .join('');
+};

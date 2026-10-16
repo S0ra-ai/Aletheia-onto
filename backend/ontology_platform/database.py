@@ -584,6 +584,17 @@ COLUMN_MIGRATIONS: tuple[ColumnMigration, ...] = (
     ColumnMigration("data_source", "api_base_url", "text not null default ''", "text not null default ''", "text"),
     ColumnMigration("data_source", "api_headers", "text not null default '{}'", "text not null default '{}'", "text"),
     ColumnMigration("ontology", "published_at", "text", "timestamp", "datetime"),
+    # Which recommendation a decision carries, so the decisions *list* can say it in the
+    # reader's language. The sentence is written when the verdict is reached; a code derived at
+    # read time would mean re-deriving the kernel's rule from the stored rows, which is the
+    # kernel's job and not a column reader's.
+    ColumnMigration(
+        "decision_record",
+        "recommendation_code",
+        "text not null default ''",
+        "text not null default ''",
+        "varchar(64) not null default ''",
+    ),
     ColumnMigration(
         "semantic_mapping",
         "reviewer",

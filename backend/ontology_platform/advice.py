@@ -25,7 +25,7 @@ lists can -- both come out of `split` below, which is the only thing that builds
 
 from __future__ import annotations
 
-__all__ = ["ADVICE_CODES", "PAIRS", "split"]
+__all__ = ["ADVICE_CODES", "PAIRS", "RECOMMENDATION_TEXTS", "recommendation_code", "split"]
 
 # Readiness. The codes are the ones the checks themselves carry
 # (`metadata.assess_data_source_readiness`), because the failing check *is* the finding: giving
@@ -58,6 +58,31 @@ COVERAGE_CLOSED_LOOP = "coverage_closed_loop"
 
 # Declared but never scanned.
 SCAN_METADATA_FIRST = "scan_metadata_first"
+
+# The consistency report's advice, one branch of `_consistency_next_actions` each.
+CONSISTENCY_NO_INSTANCES = "consistency_no_instances"
+CONSISTENCY_ALL_PASSED = "consistency_all_passed"
+CONSISTENCY_NOT_ALL_PASSED = "consistency_not_all_passed"
+CONSISTENCY_ERRORS_FIRST = "consistency_errors_first"
+CONSISTENCY_TOP_FAILING_RULE = "consistency_top_failing_rule"
+CONSISTENCY_BLOCKED = "consistency_blocked"
+CONSISTENCY_MIXED = "consistency_mixed"
+
+# The explanation an instance carries, one sentence each. They are joined into a paragraph,
+# which is why they are pairs: the console composes the paragraph, the CLI prints it.
+EXPLAIN_MAPPED_TO_SOURCE = "explain_mapped_to_source"
+EXPLAIN_AS_OF = "explain_as_of"
+EXPLAIN_DERIVED_ATTRIBUTES = "explain_derived_attributes"
+EXPLAIN_DECLARED_UNITS = "explain_declared_units"
+EXPLAIN_AGGREGATES = "explain_aggregates"
+EXPLAIN_AGGREGATE_TRUNCATED = "explain_aggregate_truncated"
+
+# The verdict's own recommendation, one branch of `_decision_from_results` each.
+RECOMMENDATION_BLOCKED_UNEVALUABLE = "recommendation_blocked_unevaluable"
+RECOMMENDATION_BLOCKED = "recommendation_blocked"
+RECOMMENDATION_REVIEW_UNEVALUABLE = "recommendation_review_unevaluable"
+RECOMMENDATION_REVIEW = "recommendation_review"
+RECOMMENDATION_APPROVED = "recommendation_approved"
 
 # Operation bindings, which decide whether automation may run.
 BINDINGS_INVALID_ACTIONS = "bindings_invalid_actions"
@@ -93,7 +118,57 @@ ADVICE_CODES = (
     BINDINGS_INCOMPLETE,
     BINDINGS_REGISTER_APIS,
     BINDINGS_READY,
+    CONSISTENCY_NO_INSTANCES,
+    CONSISTENCY_ALL_PASSED,
+    CONSISTENCY_NOT_ALL_PASSED,
+    CONSISTENCY_ERRORS_FIRST,
+    CONSISTENCY_TOP_FAILING_RULE,
+    CONSISTENCY_BLOCKED,
+    CONSISTENCY_MIXED,
+    RECOMMENDATION_BLOCKED_UNEVALUABLE,
+    RECOMMENDATION_BLOCKED,
+    RECOMMENDATION_REVIEW_UNEVALUABLE,
+    RECOMMENDATION_REVIEW,
+    RECOMMENDATION_APPROVED,
+    EXPLAIN_MAPPED_TO_SOURCE,
+    EXPLAIN_AS_OF,
+    EXPLAIN_DERIVED_ATTRIBUTES,
+    EXPLAIN_DECLARED_UNITS,
+    EXPLAIN_AGGREGATES,
+    EXPLAIN_AGGREGATE_TRUNCATED,
 )
+
+# The kernel's recommendation sentences, by code. They live here rather than beside the
+# decision that chooses them because two modules need them: `semantic_kernel` writes one when a
+# verdict is reached, and `decisions` reads one back for records written before the code was
+# stored -- a deployment that upgrades should not have its older decisions turn Chinese in the
+# English console.
+RECOMMENDATION_TEXTS = {
+    RECOMMENDATION_APPROVED: "未发现阻断或风险规则，允许进入后续自动化流程。",
+    RECOMMENDATION_REVIEW: "存在风险或警告，应进入人工复核或触发后续治理流程。",
+    RECOMMENDATION_REVIEW_UNEVALUABLE: (
+        "部分规则无法在当前数据结构上求值，已按未通过处理，应人工复核规则表达式与来源字段后再恢复自动化。"
+    ),
+    RECOMMENDATION_BLOCKED: "存在阻断级规则未通过，应暂停自动化操作并要求业务人员复核。",
+    RECOMMENDATION_BLOCKED_UNEVALUABLE: (
+        "存在阻断级规则未通过，且部分规则无法求值（可能由结构漂移导致）。"
+        "应暂停自动化操作，先修复规则表达式或来源字段映射。"
+    ),
+}
+
+_BY_SENTENCE = {sentence: code for code, sentence in RECOMMENDATION_TEXTS.items()}
+
+
+def recommendation_code(sentence: str) -> str:
+    """The code for a recommendation written before codes were stored, or "".
+
+    An exact match against this platform's own sentences -- not a heuristic over Chinese text.
+    These strings are written by `_decision_from_results` and by nothing else, so a match is an
+    identification rather than a guess; anything that does not match keeps the empty code and
+    the console falls back to the sentence it was given.
+    """
+    return _BY_SENTENCE.get(sentence, "")
+
 
 # One piece of advice: its code, and the sentence a reader who does not know the code gets.
 PAIRS = list[tuple[str, str]]

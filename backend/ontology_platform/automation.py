@@ -71,6 +71,7 @@ def preflight_operation(
         decisions.OPERATION_PREFLIGHT,
         decision_status,
         assessment["decision"]["recommendation"],
+        assessment["decision"].get("recommendationCode", ""),
         ontology_id=ontology_id,
         object_code=resolved_object_code,
         instance_id=instance_id,
@@ -468,6 +469,9 @@ def _record_execution_decision(
         decisions.OPERATION_EXECUTION,
         result["status"],
         result["message"],
+        # No recommendation code: this record's sentence is the operation's own result message,
+        # which is reported by the executor rather than chosen from a vocabulary.
+        "",
         ontology_id=preflight["target"]["ontologyId"],
         object_code=preflight["target"]["objectCode"],
         instance_id=preflight["target"]["instanceId"],

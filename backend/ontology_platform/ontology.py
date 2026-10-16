@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence
 from urllib.parse import quote
 
+from . import advice
 from .config import MAPPING_CONFIDENCE, SEMANTIC_ASSET_NAMING
 from .context import PlatformDb
 from .database import connect, last_insert_id
@@ -237,6 +238,9 @@ def explain_instance(
             "ancestors": ancestors,
             "timeline": timeline,
             "explanation": _explanation_sentence(runtime, values, aggregates),
+            # The same sentences, named: `explanationParts[i].code` is what the console
+            # translates, and `text` is what the CLI prints.
+            "explanationParts": _explanation_parts(runtime, values, aggregates),
         }
 
 
@@ -307,24 +311,78 @@ def _unit_name(code: str) -> str:
         return code
 
 
-def _explanation_sentence(runtime: Any, values: list[dict[str, Any]], aggregates: list[dict[str, Any]]) -> str:
-    parts = [f"{runtime.object_name}实例 {runtime.instance_id} 已映射到传统表 {runtime.source_table}。"]
+def _explanation_parts(
+    runtime: Any, values: list[dict[str, Any]], aggregates: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """What the explanation says: a code, the Chinese sentence, and the facts it quotes.
+
+    Named per sentence because the paragraph is read in the console, and the console is
+    bilingual: 「合同实例 1 已映射到传统表 contract。」 gives a translator the instance's name
+    and its table inseparably mixed into the sentence. The parameters travel with the code, so
+    the console can say the same thing in either language and the CLI still prints the Chinese
+    paragraph exactly as before.
+    """
+    parts: list[dict[str, Any]] = [
+        {
+            "code": advice.EXPLAIN_MAPPED_TO_SOURCE,
+            "text": f"{runtime.object_name}实例 {runtime.instance_id} 已映射到传统表 {runtime.source_table}。",
+            "object": runtime.object_name,
+            "instance": runtime.instance_id,
+            "table": runtime.source_table,
+        }
+    ]
     if runtime.as_of:
-        parts.append(f"本次解释针对 {runtime.as_of} 这一刻，历史覆盖的字段以当时取值为准。")
+        parts.append(
+            {
+                "code": advice.EXPLAIN_AS_OF,
+                "text": f"本次解释针对 {runtime.as_of} 这一刻，历史覆盖的字段以当时取值为准。",
+                "asOf": runtime.as_of,
+            }
+        )
     derived = [item["attributeCode"] for item in values if item["derived"]]
     if derived:
-        parts.append(f"其中 {len(derived)} 个属性由表达式算出而非直接读取：{'、'.join(derived)}。")
+        parts.append(
+            {
+                "code": advice.EXPLAIN_DERIVED_ATTRIBUTES,
+                "text": f"其中 {len(derived)} 个属性由表达式算出而非直接读取：{'、'.join(derived)}。",
+                "count": len(derived),
+                "attributes": "、".join(derived),
+            }
+        )
     united = [item["attributeCode"] for item in values if item["unit"] and not item["derived"]]
     if united:
-        parts.append(f"{len(united)} 个属性带声明单位，比较时会先换算。")
+        parts.append(
+            {
+                "code": advice.EXPLAIN_DECLARED_UNITS,
+                "text": f"{len(united)} 个属性带声明单位，比较时会先换算。",
+                "count": len(united),
+            }
+        )
     if aggregates:
         named = "、".join(item["name"] for item in aggregates)
-        parts.append(f"另有 {len(aggregates)} 个跨对象聚合值可供规则引用：{named}。")
+        parts.append(
+            {
+                "code": advice.EXPLAIN_AGGREGATES,
+                "text": f"另有 {len(aggregates)} 个跨对象聚合值可供规则引用：{named}。",
+                "count": len(aggregates),
+                "names": named,
+            }
+        )
         # A truncated aggregate is a partial answer, and a rule that compared it reached a
         # verdict on partial data. That has to be said here rather than left in a field.
         if any(item["truncated"] for item in aggregates):
-            parts.append("其中部分聚合已达到取数上限，结果为部分数据。")
-    return "".join(parts)
+            parts.append(
+                {
+                    "code": advice.EXPLAIN_AGGREGATE_TRUNCATED,
+                    "text": "其中部分聚合已达到取数上限，结果为部分数据。",
+                }
+            )
+    return parts
+
+
+def _explanation_sentence(runtime: Any, values: list[dict[str, Any]], aggregates: list[dict[str, Any]]) -> str:
+    """The paragraph, for the CLI and for every client that does not know the codes."""
+    return "".join(part["text"] for part in _explanation_parts(runtime, values, aggregates))
 
 
 # How many events an explanation carries. Small on purpose: an explanation is read

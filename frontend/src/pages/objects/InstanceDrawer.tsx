@@ -4,6 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
 import { EVENT_CATEGORY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
+import { explanationParts } from '../../i18n/text';
 import type {
   EventTypeDeclaration,
   InstanceAttributeVersion,
@@ -309,7 +310,12 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
             )}
           </Descriptions>
 
-          <Alert type="info" showIcon style={{ marginBottom: 16 }} message={explain.explanation} />
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={explanationParts(explain.explanationParts, t, explain.explanation)}
+          />
 
           <Text strong>{t('objects.attributesHeading')}</Text>
           <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>

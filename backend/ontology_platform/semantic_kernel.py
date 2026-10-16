@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Sequence
 
-from . import decisions
+from . import advice, decisions
 from .adapters import RuntimeDatabase, get_adapter
 from .aggregation import aggregate_context, compute_aggregates, load_aggregate_specs
 from .config import clamp_page_size, clamp_sample_size
@@ -272,6 +272,7 @@ def assess_instance(
             decisions.INSTANCE_ASSESSMENT,
             decision["status"],
             decision["recommendation"],
+            decision["recommendationCode"],
             ontology_id=ontology_id,
             object_code=object_code,
             instance_id=instance_id,
@@ -368,6 +369,9 @@ def assess_decision_consistency(
     status_counts = _status_counts(assessments)
     failed_rule_counts = _failed_rule_counts(assessments)
     report_status = _consistency_status(status_counts, errors)
+    consistency_texts, consistency_codes = advice.split(
+        _consistency_next_actions(report_status, status_counts, failed_rule_counts, errors)
+    )
     report = {
         "ontologyId": ontology_id,
         "objectCode": object_code,
@@ -385,7 +389,8 @@ def assess_decision_consistency(
         "ruleFailures": failed_rule_counts,
         "items": assessments,
         "errors": errors,
-        "nextActions": _consistency_next_actions(report_status, status_counts, failed_rule_counts, errors),
+        "nextActions": consistency_texts,
+        "nextActionCodes": consistency_codes,
     }
     with connect(platform_db) as conn:
         conn.execute(
@@ -964,35 +969,41 @@ def _build_explanation(rule: sqlite3.Row, passed: bool, error: str | None) -> st
 
 
 def _decision_from_results(failed: list[dict[str, Any]]) -> dict[str, Any]:
+    """The verdict, with its recommendation named as well as said.
+
+    `recommendationCode` is what lets the console say the sentence in the reader's language --
+    it appears in the decisions table and on the assessment panels, and a finished sentence
+    gives a translator nothing to work from. `recommendation` stays for the CLI.
+    """
     unevaluable = [result for result in failed if result.get("skipped")]
     if any(result["severity"] == "blocking" for result in failed):
         if unevaluable:
             return {
                 "status": "blocked",
-                "recommendation": (
-                    "存在阻断级规则未通过，且部分规则无法求值（可能由结构漂移导致）。"
-                    "应暂停自动化操作，先修复规则表达式或来源字段映射。"
-                ),
+                "recommendationCode": advice.RECOMMENDATION_BLOCKED_UNEVALUABLE,
+                "recommendation": advice.RECOMMENDATION_TEXTS[advice.RECOMMENDATION_BLOCKED_UNEVALUABLE],
             }
         return {
             "status": "blocked",
-            "recommendation": "存在阻断级规则未通过，应暂停自动化操作并要求业务人员复核。",
+            "recommendationCode": advice.RECOMMENDATION_BLOCKED,
+            "recommendation": advice.RECOMMENDATION_TEXTS[advice.RECOMMENDATION_BLOCKED],
         }
     if failed:
         if unevaluable:
             return {
                 "status": "review",
-                "recommendation": (
-                    "部分规则无法在当前数据结构上求值，已按未通过处理，应人工复核规则表达式与来源字段后再恢复自动化。"
-                ),
+                "recommendationCode": advice.RECOMMENDATION_REVIEW_UNEVALUABLE,
+                "recommendation": advice.RECOMMENDATION_TEXTS[advice.RECOMMENDATION_REVIEW_UNEVALUABLE],
             }
         return {
             "status": "review",
-            "recommendation": "存在风险或警告，应进入人工复核或触发后续治理流程。",
+            "recommendationCode": advice.RECOMMENDATION_REVIEW,
+            "recommendation": advice.RECOMMENDATION_TEXTS[advice.RECOMMENDATION_REVIEW],
         }
     return {
         "status": "approved",
-        "recommendation": "未发现阻断或风险规则，允许进入后续自动化流程。",
+        "recommendationCode": advice.RECOMMENDATION_APPROVED,
+        "recommendation": advice.RECOMMENDATION_TEXTS[advice.RECOMMENDATION_APPROVED],
     }
 
 
@@ -1071,22 +1082,33 @@ def _consistency_next_actions(
     status_counts: dict[str, int],
     failed_rule_counts: list[dict[str, Any]],
     errors: list[dict[str, str]],
-) -> list[str]:
+) -> advice.PAIRS:
+    """What the consistency report says to do, as (code, sentence) pairs -- see `advice`."""
     if status == "empty":
-        return ["没有可评估实例，请检查来源表数据或显式传入实例 ID。"]
+        return [(advice.CONSISTENCY_NO_INSTANCES, "没有可评估实例，请检查来源表数据或显式传入实例 ID。")]
     if status == "consistent" and status_counts.get("approved", 0):
-        return ["样本决策全部通过，可继续扩大批量验证范围。"]
+        return [(advice.CONSISTENCY_ALL_PASSED, "样本决策全部通过，可继续扩大批量验证范围。")]
     if status == "consistent":
-        return ["样本决策结果一致但未全部通过，应确认该业务对象当前规则阈值是否符合预期。"]
-    actions: list[str] = []
+        return [
+            (
+                advice.CONSISTENCY_NOT_ALL_PASSED,
+                "样本决策结果一致但未全部通过，应确认该业务对象当前规则阈值是否符合预期。",
+            )
+        ]
+    actions: advice.PAIRS = []
     if errors:
-        actions.append("先处理批量评估中的实例读取或规则执行错误。")
+        actions.append((advice.CONSISTENCY_ERRORS_FIRST, "先处理批量评估中的实例读取或规则执行错误。"))
     if failed_rule_counts:
-        actions.append(f"优先复核失败次数最高的规则：{failed_rule_counts[0]['ruleCode']}。")
+        actions.append(
+            (
+                advice.CONSISTENCY_TOP_FAILING_RULE,
+                f"优先复核失败次数最高的规则：{failed_rule_counts[0]['ruleCode']}。",
+            )
+        )
     if status_counts.get("blocked", 0):
-        actions.append("存在阻断级决策，自动化执行前必须完成规则或数据治理。")
+        actions.append((advice.CONSISTENCY_BLOCKED, "存在阻断级决策，自动化执行前必须完成规则或数据治理。"))
     if not actions:
-        actions.append("决策结果存在分化，建议扩大样本并复核规则分层。")
+        actions.append((advice.CONSISTENCY_MIXED, "决策结果存在分化，建议扩大样本并复核规则分层。"))
     return actions
 
 

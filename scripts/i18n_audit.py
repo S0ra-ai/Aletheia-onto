@@ -106,40 +106,12 @@ ADVICE_KEYS = frozenset({"nextActions", "limitation", "remediation", "evidence"}
 # payload as JSON, so a payload value with no translation looks exactly like untranslated copy.
 TIMELINE = "/ontologies/{ontology}/objects/{object}/instances/{instance}/events?limit=200"
 
-# Chinese the *server* composes and the console prints as-is. Each is a sentence the
-# backend builds from the instance's numbers or from a template, so there is nothing on this
-# side to translate it from -- the fix is to send a code beside it, the way the workbench's
-# action items and the rebuild summary already do.
-#
-# Stated per sentence rather than per route: excusing `/admin/governance?tab=report` wholesale
-# would also excuse the next untranslated string added to it, and this list is meant to shrink.
-KNOWN_BACKEND_PROSE = (
-    (
-        "/admin/graph",
-        r"边的类型由外键推断",
-        "关系推断的说明文字由服务端给出",
-    ),
-    (
-        "/admin/semantic",
-        r"已映射到传统表",
-        "推理链的一句话由服务端拼接（实例号与表名是数据）",
-    ),
-    (
-        "/admin/objects",
-        r"已映射到传统表",
-        "推理链的一句话由服务端拼接（实例号与表名是数据）",
-    ),
-    (
-        "/admin/semantic",
-        r"样本决策全部通过",
-        "一致性结论与建议由服务端给出",
-    ),
-    (
-        "/admin/governance",
-        r"未发现阻断或风险规则",
-        "判定建议由语义内核给出（`semantic_kernel` 的 recommendation）",
-    ),
-)
+# Chinese the *server* composes and the console prints as-is. Empty, and that is the point:
+# every sentence the audit found has been given a code the console can translate, so the list
+# has no reason to hold anything. It stays because the mechanism is what keeps a *new* server
+# sentence from passing unnoticed -- an entry that matches nothing fails the run, so the list
+# cannot quietly become a place where findings are hidden.
+KNOWN_BACKEND_PROSE: tuple[tuple[str, str, str], ...] = ()
 
 
 CJK = re.compile(r"[㐀-䶿一-鿿豈-﫿]")

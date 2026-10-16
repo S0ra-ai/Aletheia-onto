@@ -219,9 +219,13 @@ survives them. What is left is the interface's own words.
 The first run put the size of the problem at three things: the sidebar's hardcoded brand, the
 static `<title>` in `index.html`, and sentences the *server* composes — the audit report, the
 release gate's wording, the reasoning chain, the consistency advice. Twenty of the 43 routes
-were already clean. The server's sentences are excused one by one in `KNOWN_BACKEND_PROSE`, each
-with a reason; an entry that matches nothing fails the run, because an allowance outlives its
-reason and the next thing it hides is a defect.
+were already clean, and the rest has since been given codes the console translates.
+
+The server's sentences were listed in `KNOWN_BACKEND_PROSE` one by one with a reason while that work
+went on. **The list is empty now** -- every sentence the audit found has a code beside it, so the
+console says it in the reader's language -- and it stays because the mechanism is what notices the
+*next* server sentence that arrives without one. An entry that matches nothing still fails the run:
+an allowance outlives its reason, and the next thing it hides is a defect.
 
 The language is pinned with `?lang=en` or `?lang=zh`, which is a feature before it is a test
 hook: a link that opens in the other language, for a reader whose console is set to Chinese. The

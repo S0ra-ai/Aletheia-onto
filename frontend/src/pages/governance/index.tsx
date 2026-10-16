@@ -170,6 +170,14 @@ const Governance: React.FC = () => {
       title: t('governance.column.recommendation'),
       dataIndex: 'recommendation',
       key: 'recommendation',
+      // The kernel's recommendation, in the reader's language: the row carries a code beside
+      // the server's sentence -- see `semantic_kernel._decision_from_results`.
+      render: (_: string, row: { recommendation: string; recommendationCode?: string }) => {
+        const code = row.recommendationCode;
+        if (!code) return row.recommendation;
+        const translated = t(`semantic.recommendation.${code}` as never);
+        return translated.startsWith('⟦') ? row.recommendation : translated;
+      },
       ellipsis: true,
     },
     {

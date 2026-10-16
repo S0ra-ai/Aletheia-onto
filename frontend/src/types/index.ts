@@ -638,6 +638,13 @@ export interface InstanceExplainResult {
   ancestors: string[];
   timeline: InstanceTimelineEntry[];
   explanation: string;
+  /**
+   * The same paragraph, one sentence at a time, each with the code that names it and the facts
+   * it quotes -- see `ontology._explanation_parts`. The paragraph is what the CLI prints; the
+   * console composes its own from these, which is how an instance's name and its source table
+   * can sit inside a sentence in either language.
+   */
+  explanationParts?: Array<{ code: string; text: string } & Record<string, string | number>>;
 }
 
 /** `GET /ontologies/{o}/objects/{c}/instances/{i}/events` -- the full history, not the excerpt. */
@@ -780,6 +787,8 @@ export interface DecisionConsistencyResult {
     error: string;
   }>;
   nextActions: string[];
+  /** The advice codes, in the same order as `nextActions` -- see `advice.py`. */
+  nextActionCodes?: string[];
 }
 
 export interface RuleHit {
@@ -940,6 +949,8 @@ export interface DecisionRecordItem {
   operationCode: string;
   status: string;
   recommendation: string;
+  /** Which recommendation this is -- see `semantic_kernel._decision_from_results`. */
+  recommendationCode?: string;
   inputRef: Record<string, unknown>;
   ruleResults: unknown[];
   evidence: Record<string, unknown>;

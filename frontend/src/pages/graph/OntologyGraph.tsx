@@ -370,7 +370,7 @@ const OntologyGraphPage: React.FC = () => {
               showIcon
               style={{ marginTop: 16 }}
               message={t('graph.limitationTitle')}
-              description={graph.notes.limitation}
+              description={t('graph.limitation')}
             />
           </Col>
         </Row>

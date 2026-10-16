@@ -96,20 +96,19 @@ By design, not bugs. These are the next phase's work.
   tab in the URL), tables that render only after a click, and cells holding an icon rather
   than text, which were reported as empty forever. A diagnostic that reports a standing
   false positive is teaching its reader to skim past the real findings.
-- **The interface is bilingual, but what the server says is still Chinese.** All nineteen screens
-  read from `i18n/messages/`, and the switch moves antd's own copy too -- but **messages the backend
-  returns (why a validation failed, what a preflight concluded, how the audit words it) are Chinese
-  only**, and they appear unchanged inside the English interface. That needs the same scaffolding on
-  the API side (chosen by `Accept-Language`, with 156 endpoints' worth of wording gone through), which
-  is a step of its own.
-  The easiest one to miss is the **fragment interpolated into a translated sentence**:
-  `ontology.draftRebuilt` reads "The draft was rebuilt; the previous {summary} was cleared with it",
-  and `{summary}` is the server's 「9 条规则、32 条映射、3 条关系、1 个工作流」 -- the grammar of the
-  sentence is English and the numbers inside it are not. The workbench's action list is the one place
-  that path is finished: the server sends a stable `code` beside the counts, the console says its own
-  sentence for a code it knows, and keeps the server's for one it does not. Saying so matters because
-  "the interface is in English" and "what you read is in English" are different claims, and the gap
-  between them is widest exactly when something goes wrong.
+- **The interface is bilingual, and what the server says can be translated with it; what is left is
+  the CLI and the API itself.** Nineteen screens read from `i18n/messages/`; the sentences the server
+  composes -- advice, gate verdicts, audit findings, the kernel's recommendation, the explanation of
+  an instance -- now travel with a **stable code and the facts they are about**, so the console says
+  them in the reader's language and falls back to the server's sentence only for a code it does not
+  know. `scripts/i18n_audit.py` holds that in CI, and it now needs **no allowance at all**:
+  `KNOWN_BACKEND_PROSE` is empty, kept because the mechanism is what notices the *next* untranslated
+  server sentence, and an entry that matches nothing fails the run. What is still Chinese-only is
+  **the CLI's output and the API's own error text** (`aletheia` is Chinese-first, and so are the 156
+  endpoints' `detail` strings). In English mode the console falls back to those, so the gap between
+  "the interface is in English" and "what you read is in English" is still there -- it is just now
+  confined to failures and to the platform describing itself.
+
 - **The frontend has no test runner.** No vitest, no Testing Library, no `test` script in
   `package.json` -- so nothing in `frontend/src` is unit-tested: not `label()`'s fallback,
   not the payload normalisers in `api/index.ts`, not the pure helpers in `i18n/`. The

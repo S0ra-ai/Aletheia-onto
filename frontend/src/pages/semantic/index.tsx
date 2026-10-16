@@ -1,4 +1,4 @@
-import { joinSentences } from '../../i18n/text';
+import { adviceTexts, explanationParts, joinSentences } from '../../i18n/text';
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
@@ -16,6 +16,20 @@ const SemanticService: React.FC = () => {
   const label = useLabel();
   const t = useT();
   const [tab, setTab] = useTabParam('natural');
+/**
+ * The kernel's recommendation, in the reader's language.
+ *
+ * The server sends `recommendationCode` beside the Chinese sentence -- see
+ * `semantic_kernel._decision_from_results`. The code is what the console translates; the
+ * sentence is the fallback for a code this build does not know.
+ */
+const recommendationText = (source: { recommendation?: string; recommendationCode?: string }): string => {
+  const code = source.recommendationCode;
+  if (!code) return source.recommendation ?? '';
+  const translated = t(`semantic.recommendation.${code}` as never);
+  return translated.startsWith('⟦') ? source.recommendation ?? '' : translated;
+};
+
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);
   const [assessResult, setAssessResult] = useState<InstanceAssessResult | null>(null);
   const [consistencyResult, setConsistencyResult] = useState<DecisionConsistencyResult | null>(null);
@@ -390,7 +404,7 @@ const SemanticService: React.FC = () => {
                   ]}
                 />
                 <Title level={5} style={{ marginTop: 16 }}>{t('semantic.explanation')}</Title>
-                <Alert message={explainResult.explanation} type="info" />
+                <Alert message={explanationParts(explainResult.explanationParts, t, explainResult.explanation)} type="info" />
                 <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
                   {t('semantic.objectsHint')}
                 </Typography.Paragraph>
@@ -493,7 +507,7 @@ const SemanticService: React.FC = () => {
                     <Divider />
                     <Alert
                       message={t('semantic.governanceAdvice')}
-                      description={joinSentences(consistencyResult.nextActions)}
+                      description={joinSentences(adviceTexts(consistencyResult.nextActions, consistencyResult.nextActionCodes, t, 'semantic'))}
                       type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
                     />
                   </>
@@ -594,7 +608,7 @@ const SemanticService: React.FC = () => {
                 <Title level={5}>{t('semantic.recommendation')}</Title>
                 <Alert
                   message={
-                    preflightResult.recommendation ||
+                    recommendationText(preflightResult) ||
                     label(NEXT_ACTION, preflightResult.nextAction) ||
                     t('semantic.none')
                   }
