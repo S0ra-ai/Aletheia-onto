@@ -458,7 +458,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if exposed and not args.skip_preflight:
         from .deployment import check_deployment
 
-        report = check_deployment(platform_db=_platform_db(args), worker_count=workers)
+        report = check_deployment(platform_db=_platform_db(args), worker_count=workers, listen_host=args.host)
         if not report.ready:
             print(report.summary(), file=sys.stderr)
             return _fail(

@@ -180,10 +180,22 @@ class PlatformAdapter(Protocol):
 
 
 class PlatformConnection:
-    def __init__(self, conn: Any, adapter: PlatformAdapter):
+    def __init__(
+        self,
+        conn: Any,
+        adapter: PlatformAdapter,
+        *,
+        pool: Any = None,
+        pool_key: tuple[str, str, str] | None = None,
+    ):
         self._conn = conn
         self._adapter = adapter
         self._closed = False
+        # Set only when a pool handed this connection out. `close()` returns it rather than
+        # closing it, which is the whole of what pooling changes here -- every caller keeps
+        # writing `with connect(...) as conn:` and gets its connection back either way.
+        self._pool = pool
+        self._pool_key = pool_key
 
     def execute(self, sql: str, params: Iterable[object] = ()) -> Any:
         adapted_sql = _adapt_sql(sql, self._adapter.db_type)
@@ -217,8 +229,15 @@ class PlatformConnection:
             self._conn.rollback()
 
     def close(self) -> None:
-        if not self._closed and hasattr(self._conn, "close"):
-            self._closed = True
+        if self._closed:
+            return
+        self._closed = True
+        if self._pool is not None and self._pool_key is not None:
+            # Returned, not closed. `__exit__` has already committed or rolled back, and the
+            # release path rolls back once more for the caller that never used the block.
+            self._pool.release(self._pool_key, self._conn)
+            return
+        if hasattr(self._conn, "close"):
             self._conn.close()
 
     def __enter__(self) -> "PlatformConnection":

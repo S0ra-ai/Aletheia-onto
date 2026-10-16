@@ -93,11 +93,36 @@ class PlatformContext:
                     self._adapter = create_platform_adapter(self.db_type, self.connection_uri, self.schema)
         return self._adapter
 
+    def pool_key(self) -> tuple[str, str, str]:
+        """What a connection's session state depends on, and therefore what it may be reused for.
+
+        Each adapter configures the session when it opens a connection -- PostgreSQL's
+        `search_path` points at the tenant's schema, MySQL's at a fixed time zone -- and all of
+        it is a function of these three values. Two contexts differing in any of them would be
+        pointed at different data by the same connection, so they never share one.
+
+        The URI is part of the key and not just the schema: two data sources can carry the same
+        schema name in different databases, and a pool that keyed only on the name would hand
+        one's connection to the other.
+        """
+        return (self.db_type, self.connection_uri, self.schema or "")
+
     def connect(self) -> Any:
-        """A connection bound to this context."""
+        """A connection bound to this context, reused when pooling is on and safe.
+
+        SQLite is never pooled, and that is a correctness boundary rather than a preference:
+        `sqlite3.connect` binds a connection to the thread that opened it, so a pooled one
+        handed to another thread raises inside whichever query runs first. See
+        `connection_pool`.
+        """
+        from .connection_pool import pool_for
         from .database import PlatformConnection
 
-        return PlatformConnection(self.adapter.connect(), self.adapter)
+        pool = pool_for()
+        if not pool.enabled or self.db_type == "sqlite":
+            return PlatformConnection(self.adapter.connect(), self.adapter)
+        key = self.pool_key()
+        return PlatformConnection(pool.acquire(key, self.adapter.connect), self.adapter, pool=pool, pool_key=key)
 
     def initialize(self) -> None:
         """Create the base schema for this context."""

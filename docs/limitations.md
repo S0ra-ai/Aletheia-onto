@@ -65,14 +65,24 @@ By design, not bugs. These are the next phase's work.
 
 ## Engineering limitations
 
-- **No connection pooling.** Every `connect()` opens a connection, which costs a handshake and
-  an authentication against PostgreSQL or MySQL on each request. A pool is not a drop-in here:
-  connections are tenant-scoped, so a pool has to be keyed by the tenant *and* the schema, and
-  one that returns a connection to a caller who asked for a different schema hands them another
-  tenant's data. Doing it safely means a keyed pool, a rollback-verify-and-return path, and a
-  policy for what happens when the pool is exhausted — a concurrency-sensitive piece of code
-  whose correctness a test suite verifies poorly, in exchange for a latency win this project has
-  never measured. The honest state is: not done, and not a drop-in.
+- **Connection pooling exists and is off by default.** `ONTOLOGY_CONNECTION_POOL_SIZE` reuses
+  platform-database connections for PostgreSQL and MySQL; `0` keeps the old behaviour of one
+  connection per `connect()`, which is what every existing deployment has and what an operator
+  upgrading should get unless they ask otherwise. The setting is off rather than on because
+  switching it on changes how many connections the deployment holds open, and that is a
+  capacity-planning decision, not one to make silently on somebody's behalf.
+
+  Keying is what makes it safe. A pool entry is `(db type, connection URI, schema)` — exactly
+  the things each adapter configures on the session when it opens a connection (PostgreSQL's
+  `search_path`, MySQL's time zone). Borrowing for one tenant cannot hit the entry another left,
+  and `tests/test_connection_pool.py` asserts that directly rather than reasoning about it. A
+  returned connection is rolled back before it is parked, and closed instead if the rollback
+  itself fails, so no borrower inherits an open transaction.
+
+  **SQLite is never pooled, whatever the setting.** `sqlite3.connect` binds a connection to the
+  thread that opened it, and a pool is thread-safe by construction — so a pooled one handed to
+  another thread raises inside whichever query runs first. Since the platform database is SQLite
+  in most deployments, that makes this a correctness boundary and not a tuning choice.
 
   **There is still no transaction boundary across `connect()` calls**, and that is a correctness
   property rather than a performance one. The publish path used to be the example: it read its

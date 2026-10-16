@@ -10,7 +10,7 @@
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1784%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
+[![Tests](https://img.shields.io/badge/tests-1811%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
 
 [English](README.md) · 简体中文
 
@@ -105,6 +105,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 | 先看它能产出什么 | [界面与产出](docs/screenshots.zh-CN.md) |
 | 装上并跑通一遍 | [快速开始](docs/quickstart.zh-CN.md) |
 | 知道它到底做到了哪一步 | [能力矩阵](docs/capabilities.zh-CN.md) · [当前限制](docs/limitations.zh-CN.md) |
+| 判断能不能在它上面做东西 | [框架成熟度](docs/framework-readiness.md) |
 | 理解这个模型 | [核心概念](docs/concepts.zh-CN.md) · [架构](docs/architecture.zh-CN.md) |
 | 接一个平台不支持的库／规则函数／检索后端 | [扩展指南](docs/extending.md) |
 | 接 Azure OpenAI、vLLM 或中转网关 | [接入自定义模型服务](docs/model-endpoints.md) |
@@ -128,7 +129,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 
 ## 项目状态
 
-1784 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
+1811 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
 由 CI 在裸装环境校验，因此本体、规则引擎与决策留痕可以嵌入别人的应用。
 
 本文档里每一个可数的声明都由测试守着：测试总数、分布表、端点数、支持的 Python 版本，

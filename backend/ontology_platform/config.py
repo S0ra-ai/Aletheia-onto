@@ -66,6 +66,24 @@ class QueryLimits:
 
 
 @dataclass(frozen=True)
+class ConnectionPooling:
+    """Whether platform-database connections are reused.
+
+    Off by default, and deliberately: turning it on changes how many connections a deployment
+    holds open, and a framework that silently changed that on upgrade would be trading an
+    operator's capacity planning for a latency win they did not ask for. `0` means every
+    `connect()` opens one, which is what every deployment before this did.
+
+    Only PostgreSQL and MySQL are pooled. SQLite connections are bound to the thread that
+    opened them (`check_same_thread`), so a pool handing one to another thread fails inside
+    whichever query runs first -- see `connection_pool` for why that makes this a correctness
+    boundary rather than a preference.
+    """
+
+    size: int = _int_env("ONTOLOGY_CONNECTION_POOL_SIZE", 0)
+
+
+@dataclass(frozen=True)
 class AnswerConfidence:
     """Confidence reported for locally generated (non-model) answers."""
 
@@ -119,6 +137,7 @@ class ModelProviderDefaults:
 
 MAPPING_CONFIDENCE = MappingConfidence()
 QUERY_LIMITS = QueryLimits()
+CONNECTION_POOL = ConnectionPooling()
 ANSWER_CONFIDENCE = AnswerConfidence()
 RESOLUTION_CONFIDENCE = ResolutionConfidence()
 SEMANTIC_ASSET_NAMING = SemanticAssetNaming()

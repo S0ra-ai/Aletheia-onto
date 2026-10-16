@@ -73,13 +73,17 @@ def _production(clean_env, secure_db: Path, **overrides) -> PreflightReport:
         "ONTOLOGY_PLATFORM_DB_URI": "postgresql://svc@db.internal/ontology",
         "ONTOLOGY_SESSION_TTL_HOURS": "12",
     }
+    # `listen_host` is not an environment variable, so it is pulled out before the rest are
+    # treated as settings. The default is the empty string, which is what the CLI's `preflight`
+    # passes: it does not know which address the service will bind, and only `serve` does.
+    listen_host = overrides.pop("listen_host", "")
     settings.update({key: value for key, value in overrides.items() if value is not None})
     for name, value in settings.items():
         clean_env.setenv(name, value)
     for name, value in overrides.items():
         if value is None:
             clean_env.delenv(name, raising=False)
-    return check_deployment(platform_db=secure_db, worker_count=1)
+    return check_deployment(platform_db=secure_db, worker_count=1, listen_host=listen_host)
 
 
 def _failed(report: PreflightReport) -> set[str]:
@@ -407,3 +411,43 @@ def test_the_real_env_file_is_not_tracked() -> None:
     """Otherwise the first person to fill it in commits their production credentials."""
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "deploy/.env" in ignored
+
+
+# -- The same finding, at two severities --
+
+
+def test_an_exposed_deployment_without_a_rate_limit_is_blocked(clean_env, secure_db: Path) -> None:
+    """The severity depends on whether anyone can reach it, and that is the whole point.
+
+    On loopback a missing rate limit is a warning, for the reason the test above gives: the
+    deployment serves correctly, and the right number depends on traffic this report cannot see.
+    Bound to `0.0.0.0` it is a blocker, because one caller can then generate unbounded load --
+    the same shape as a leftover `ONTOLOGY_AUTH_DISABLED`, and the same argument: it is only
+    exploitable when exposed, the operator is there at that moment, and the remedy is one
+    environment variable.
+    """
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE=None, listen_host="0.0.0.0")
+    assert not report.ready
+    assert "已配置请求速率限制" in {check.name for check in report.blockers}
+
+    detail = next(check.detail for check in report.blockers if check.name == "已配置请求速率限制")
+    assert "0.0.0.0" in detail, "说明里要点出是哪个监听地址让它成为阻断项"
+
+
+def test_the_same_configuration_on_loopback_is_only_a_warning(clean_env, secure_db: Path) -> None:
+    """Otherwise `aletheia preflight` on a laptop blocks development for a risk that is not there."""
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE=None, listen_host="127.0.0.1")
+    assert report.ready
+    assert "已配置请求速率限制" in {check.name for check in report.warnings}
+
+
+def test_configuring_a_limit_clears_the_blocker(clean_env, secure_db: Path) -> None:
+    """A gate nothing can pass gets `--skip-preflight`'d rather than fixed.
+
+    Which is why the remedy on the blocker names the escape hatch as well as the fix: a
+    deployment behind a reverse proxy that already limits is a real configuration, and the
+    honest thing is to say so explicitly rather than to leave an operator hunting for the flag.
+    """
+    report = _production(clean_env, secure_db, ONTOLOGY_RATE_LIMIT_PER_MINUTE="600", listen_host="0.0.0.0")
+    assert report.ready
+    assert "已配置请求速率限制" not in _failed(report)

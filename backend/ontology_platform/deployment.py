@@ -153,6 +153,7 @@ def check_deployment(
     platform_db: Optional[Any] = None,
     expected_origins: tuple[str, ...] = (),
     worker_count: int = 1,
+    listen_host: str = "",
 ) -> PreflightReport:
     """Check the current environment for production-unsafe configuration.
 
@@ -162,7 +163,7 @@ def check_deployment(
     """
     report = PreflightReport(environment=environment)
     _check_authentication(report)
-    _check_rate_limiting(report)
+    _check_rate_limiting(report, listen_host=listen_host)
     _check_cors(report, expected_origins)
     _check_bootstrap_admin(report)
     _check_platform_store(report, platform_db, worker_count)
@@ -195,14 +196,20 @@ def _check_authentication(report: PreflightReport) -> None:
     )
 
 
-def _check_rate_limiting(report: PreflightReport) -> None:
-    """Rate limiting is off unless a limit is configured, so say so before it matters.
+def _check_rate_limiting(report: PreflightReport, *, listen_host: str = "") -> None:
+    """Rate limiting is off unless a limit is configured -- and that is a blocker when exposed.
 
-    A `warning` rather than a `critical`: the deployment serves correctly without it, and
-    the limit that is right depends on traffic this report cannot know. But it is the one
-    setting here whose absence is invisible in every other way -- nothing logs a request
-    that was not throttled, and the first sign of an unbounded caller is the service
-    falling over, at which point the cause is not in the logs either.
+    The severity depends on whether the service is reachable from the network, and that is the
+    whole reason this check takes a host. On loopback, a missing limit is a `warning`: the
+    deployment serves correctly without it, and the limit that is right depends on traffic this
+    report cannot know. Bound to anything else, one caller can generate unbounded load and
+    nothing records the requests that were not throttled -- which is the same shape as
+    `ONTOLOGY_AUTH_DISABLED`, and the same argument applies: it is only exploitable when
+    exposed, the operator is standing right there, and the fix is one environment variable.
+
+    It stays a warning rather than an error even then, because a deployment behind a reverse
+    proxy that already limits is a real configuration. `--skip-preflight` is the way to say so,
+    and it is a deliberate override rather than an accident.
     """
     raw = _env("ONTOLOGY_RATE_LIMIT_PER_MINUTE")
     try:
@@ -210,19 +217,28 @@ def _check_rate_limiting(report: PreflightReport) -> None:
     except ValueError:
         limit = 0
 
+    exposed = listen_host not in ("", "127.0.0.1", "localhost", "::1")
     unusable = bool(raw) and limit <= 0
+    if limit > 0:
+        detail = ""
+    elif unusable:
+        detail = f"ONTOLOGY_RATE_LIMIT_PER_MINUTE={raw!r} 不是正整数，限制不会生效"
+    elif exposed:
+        detail = (
+            f"服务监听 {listen_host}，可从网络访问，但未设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE："
+            "单个调用方可以无上限地产生请求，而没有任何日志记录被放行的请求。"
+        )
+    else:
+        detail = "未设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE：单个调用方可以无上限地产生请求"
     report.add(
         "已配置请求速率限制",
         limit > 0,
-        severity=WARNING,
-        detail=(
-            f"ONTOLOGY_RATE_LIMIT_PER_MINUTE={raw!r} 不是正整数，限制不会生效"
-            if unusable
-            else "未设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE：单个调用方可以无上限地产生请求"
-        ),
+        severity=CRITICAL if (exposed and limit <= 0) else WARNING,
+        detail=detail,
         remedy=(
             "设置 ONTOLOGY_RATE_LIMIT_PER_MINUTE 为预期峰值之上的正整数（如 600）；"
             "登录接口另有更严的 ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE（默认 10）"
+            "。若已由反向代理限流，可显式传 --skip-preflight 跳过本次自检"
         ),
     )
 

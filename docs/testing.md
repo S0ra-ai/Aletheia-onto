@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1784 tests**, all passing. A case that needs something this machine does not have skips
+**1811 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -44,10 +44,12 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 
 | File | Count | Covers |
 |---|--:|---|
-| `test_documentation_links.py` | 126 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_documentation_links.py` | 128 | Documentation links resolve, and the entry points a newcomer needs exist |
 | `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
 | `test_query_limit_clamping.py` | 8 | A caller-supplied `limit` cannot widen a response past the cap (SQLite reads `LIMIT -1` as "no limit") |
 | `test_list_pagination.py` | 17 | Every list that grows with the customer's data takes a page; not passing a limit still returns everything |
+| `test_connection_pool.py` | 13 | A pooled connection is never handed to a context whose schema or database differs, and never returned with an open transaction |
+| `test_framework_readiness.py` | 9 | Every citation on the framework-readiness page still resolves, and its gap list is still there |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -59,7 +61,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
 | `test_request_observability.py` | 42 | Request identity, the access log, and structured logging |
 | `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
-| `test_deployment_preflight.py` | 45 | Pre-flight checks for a production deployment |
+| `test_deployment_preflight.py` | 48 | Pre-flight checks for a production deployment |
 | `test_cli.py` | 41 | The `aletheia` command line |
 | `test_conversations_and_feedback.py` | 43 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
@@ -260,7 +262,7 @@ which holds the two languages to the same placeholders and the same keys.
 
 ## Scale
 
-90 backend modules, roughly 38,000 lines, 156 API endpoints, 45 platform tables, React +
+91 backend modules, roughly 38,500 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `scaffold` job that walks the path a *new* deployment takes --

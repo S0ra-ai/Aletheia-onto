@@ -114,6 +114,14 @@ columns they show in UTC; the backup list shows local time and says so.
 | `RESOLUTION_CONFIDENCE` | Instance-resolution confidence and boosts | `ONTOLOGY_RESOLUTION_*` |
 | `SEMANTIC_ASSET_NAMING` | IRI namespaces for JSON-LD / Turtle / OWL | `ONTOLOGY_VOCABULARY_BASE_IRI`, `ONTOLOGY_ASSET_BASE_IRI` |
 | `MODEL_PROVIDER_DEFAULTS` | Model endpoint, model name, timeout, service tier | `OPENROUTER_*`; `DEEPSEEK_*` when OpenRouter is unset |
+| `CONNECTION_POOL` | Whether platform-database connections are reused (PostgreSQL and MySQL only) | `ONTOLOGY_CONNECTION_POOL_SIZE` (default `0` = off) |
+
+`ONTOLOGY_CONNECTION_POOL_SIZE` reuses platform-database connections instead of opening one
+per `connect()`. Off by default, because switching it on changes how many connections a
+deployment holds open, and that is an operator's capacity planning rather than this platform's
+call to make on upgrade. SQLite is never pooled whatever the setting: `sqlite3.connect` binds a
+connection to the thread that opened it, so a pooled one handed to another thread fails inside
+whichever query happens to run first.
 
 With no `OPENROUTER_API_KEY` configured, question answering and draft generation fall back
 to a local heuristic — the platform keeps working rather than failing.
