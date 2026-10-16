@@ -7,6 +7,13 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 All captured from a running instance, not mockups. The data comes from the
 bundled synthetic examples and contains no real business information.
 
+Re-capture them with `scripts/capture_screenshots.py` after any change to the console — a
+screenshot that shows a layout the product no longer has is a claim the reader can check and
+find false. The script pairs each route with the file the docs reference, reads the ids it needs
+from the instance, and takes everything from the URL (`?tab=`, `?object=`, `?lang=`) so the same
+command produces the same pictures. `tests/test_documentation_links.py` holds both ends: every
+image the docs show must exist, and every file in `docs/images/` must be shown.
+
 ## Workbench: what to do next, in one screen
 
 ![Workbench](images/06-workbench.png)
@@ -19,13 +26,17 @@ workbench cannot disagree with the screens it summarises.
 
 ![Semantic Q&A with evidence](images/01-semantic-qa-with-evidence.png)
 
-Answers come back structured, not as a paragraph of prose: a bolded conclusion,
-one bullet per rule carrying the rule code (`clause_content_required`) so it can
-be looked up, and result distributions as tables. Answers render as Markdown, so
-which rule fired, why, and what the verdict is stay distinguishable.
+An answer comes back as a verdict with its evidence attached, not as a paragraph of prose: the
+conclusion itself, and the tags naming what the platform understood -- the intent
+(`compliance_assessment`), the source it read, the object it is about. Asking about rules or a
+batch returns those as lists and tables instead, which is what the answer's renderer is for.
 
-The agent role shown ("设备运维业务专家", equipment-maintenance expert) is derived
-at runtime from the onboarded domain; no industry roles are built in.
+Every answer can be rated (helpful / not helpful / wrong), and the rating lands in the feedback
+loop with the question attached -- which is where "the model was unhelpful and nobody noticed"
+stops being possible.
+
+The role shown (「合同管理业务专家」, contract-management expert) is derived at runtime from the
+onboarded domain; no industry roles are built in.
 
 ## Data source onboarding and metadata scan
 

@@ -38,6 +38,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
   const [naturalLanguageResult, setNaturalLanguageResult] = useState<NaturalLanguageQueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [operationForm] = Form.useForm();
+  const [naturalForm] = Form.useForm();
   const [explainForm] = Form.useForm();
   const [assessForm] = Form.useForm();
   const [consistencyForm] = Form.useForm();
@@ -56,6 +57,11 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
     objectCode: searchParams.get('object') ?? '',
     instanceId: searchParams.get('instance') ?? '',
     ontologyId: searchParams.get('ontology') ?? '',
+    // A question in the URL for the same reason the explanation has one: an answer worth
+    // reading is worth sending, and `/admin/semantic?q=合同 1 是否合规` opens on the answer
+    // rather than on an empty box. It is also how `scripts/capture_screenshots.py` reaches
+    // this screen at all -- a screenshot tool cannot type into a form.
+    question: searchParams.get('q') ?? '',
   };
   const ranFromUrl = useRef(false);
 
@@ -133,7 +139,13 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
     if (ranFromUrl.current) return;
     ranFromUrl.current = true;
     const ontologyId = fromUrl.ontologyId ? Number(fromUrl.ontologyId) : undefined;
-    if (tab === 'explain' && fromUrl.objectCode && fromUrl.instanceId) {
+    if (fromUrl.question) {
+      naturalForm.setFieldsValue({ question: fromUrl.question, ontologyId: fromUrl.ontologyId || undefined });
+      void handleNaturalLanguageQuery({
+        question: fromUrl.question,
+        ontologyId: fromUrl.ontologyId ? Number(fromUrl.ontologyId) : undefined,
+      });
+    } else if (tab === 'explain' && fromUrl.objectCode && fromUrl.instanceId) {
       explainForm.setFieldsValue({
         objectCode: fromUrl.objectCode,
         instanceId: fromUrl.instanceId,
@@ -257,6 +269,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
         <TabPane tab={t('semantic.tab.natural')} key="natural">
           <Card>
             <Form
+              form={naturalForm}
               layout="vertical"
               onFinish={handleNaturalLanguageQuery}
               // No prefilled object code and no prefilled question: this platform ships no industry

@@ -185,6 +185,29 @@ const OntologyChat: React.FC = () => {
 
   const quickPrompts = buildQuickPrompts(t, selectedKnowledgeBase);
 
+  /**
+   * A question can arrive in the URL: `/chat?q=合同 1 是否合规？` asks it once on mount.
+   *
+   * The same reason the conversation itself is a place (`?session=`) and the explanation tab
+   * takes its instance from the query: an answer worth reading is worth sending, and a link
+   * that opens on an empty box makes the sender do the typing twice. It is also the only way
+   * `scripts/capture_screenshots.py` can reach a *answered* conversation -- a screenshot tool
+   * cannot type into a composer.
+   *
+   * Asked once, guarded by a ref: a re-render must not re-ask, or the conversation fills with
+   * the same question every time the page re-renders for any reason at all.
+   */
+  const askedFromUrl = useRef(false);
+  useEffect(() => {
+    const fromUrl = params.get('q') ?? '';
+    if (!fromUrl || askedFromUrl.current) return;
+    askedFromUrl.current = true;
+    void ask(fromUrl);
+    // `ask` reads the role and knowledge base from state that loads asynchronously, so it is
+    // called again below once those arrive -- asking against an empty picker would send the
+    // question to whichever role happened to be first.
+  }, [params, roles, knowledgeBases]);
+
   // Message ids come from a counter rather than `Date.now()`. The id is both the React key
   // and the key the feedback update matches on, so two messages created within one
   // millisecond would collide: React would merge the rows, and a rating could be written to

@@ -499,6 +499,20 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **文档里的 15 张截图还是旧界面**（`scripts/capture_screenshots.py`、`docs/images/`、
+  `docs/screenshots.md`、`docs/screenshots.zh-CN.md`、`semantic/index.tsx`、`chat/OntologyChat.tsx`）。
+  双语界面、枚举标签、空状态这些改动之后，截图里显示的还是产品已经没有的样子——
+  而一张截图是一句**读者可以查证、并且会查到是假的断言**。它们此前是手工拍的，所以重拍成了没人愿意干的活。
+  现在有一条命令：`scripts/capture_screenshots.py` 把每条路由与文档引用的文件名配成一对，
+  id 从实例里读（写死 `contract`、`1` 会在别的实例上拍出一张空页面，读起来像产品缺陷），
+  其余全部来自 URL，`--lang` 决定语言。
+  **拍不出来就说明这个状态本来就不该只靠点击到达**：语义问答与智能体对话此前都只能先打字——
+  于是两页都支持了 `?q=`（`/admin/chat?q=合同 1 是否合规？` 打开就是答案），
+  理由与「解释是一个地址」相同：**值得读的答案就值得发出去**，而一条打开是空输入框的链接，
+  等于让收件人把问题再打一遍。
+  顺带改掉了一段与画面对不上的说明：「语义问答」那节描述的是**智能体对话**那一屏
+  （角色是运行时派生的、证据以标签列出），图像与文字现在说的是同一件事。
+
 - **英文界面上的最后五句中文**（`ontology.py`、`semantic_kernel.py`、`decisions.py`、`graph.ts`、
   `semantic.ts`、`InstanceDrawer.tsx`、`governance/index.tsx`、`scripts/i18n_audit.py`）。
   推理链的那句「合同实例 1 已映射到传统表 contract。」现在**按句拆开发**：
