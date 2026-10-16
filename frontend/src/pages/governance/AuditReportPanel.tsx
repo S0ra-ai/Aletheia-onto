@@ -16,7 +16,7 @@ import {
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { auditApi, ontologyApi, requestErrorMessage } from '../../api';
-import type { AuditBlockedDecision, AuditEvent, AuditReport, AuditReportSection, AuditRuleEntry } from '../../types';
+import type { AuditBlockedDecision, AuditEvent, AuditFinding, AuditReport, AuditReportSection, AuditRuleEntry } from '../../types';
 import { RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 
@@ -79,7 +79,27 @@ const AuditReportPanel: React.FC = () => {
     void run(dayjs().subtract(29, 'day').startOf('day'), dayjs(), undefined);
   }, [run]);
 
-  const sectionAnswer = (key: string): string => sections.find((item) => item.section === key)?.answers ?? '';
+  // The section's own sentence, in the reader's language. The server sends the Chinese wording
+  // from `describe_report_sections()`; it is the fallback for a section this build has no
+  // message for -- the CLI prints it, and a new section should not arrive as a ⟦key⟧.
+  const sectionAnswer = (key: string): string => {
+    const translated = t(`governance.section.${key}` as never);
+    if (translated && !translated.startsWith('⟦')) return translated;
+    return sections.find((item) => item.section === key)?.answers ?? '';
+  };
+
+  // A finding's sentence, from the code and the number the server sends beside it. Falls back
+  // to the server's Chinese for a code this build does not know.
+  const findingText = (finding: AuditFinding, field: 'finding' | 'action'): string => {
+    const base = `governance.finding.${finding.code ?? ''}.${field}`;
+    const key = field === 'finding' && finding.count === 1 ? `${base}.one` : base;
+    const translated = t(key as never, {
+      count: finding.count ?? 0,
+      ratio: typeof finding.ratio === 'number' ? `${Math.round(finding.ratio * 100)}%` : '',
+    });
+    if (translated && !translated.startsWith('⟦')) return translated;
+    return finding[field];
+  };
 
   const ruleColumns = [
     // `whiteSpace: nowrap` rather than a narrow column: rule codes are long and
@@ -163,7 +183,7 @@ const AuditReportPanel: React.FC = () => {
             message={t('governance.reportPeriod', { start: report.period.start, end: report.period.end })}
             description={t('governance.reportScope', {
               scope: report.ontologyId ? t('governance.ontologyScope', { id: report.ontologyId }) : t('governance.allOntologies'),
-              boundary: report.period.boundary,
+              boundary: t('governance.rangeBoundary'),
             })}
           />
 
@@ -182,8 +202,8 @@ const AuditReportPanel: React.FC = () => {
                 type={finding.severity === 'blocker' ? 'error' : 'warning'}
                 showIcon
                 style={{ marginBottom: 12 }}
-                message={finding.finding}
-                description={finding.action}
+                message={findingText(finding, 'finding')}
+                description={findingText(finding, 'action')}
               />
             ))
           )}
@@ -233,9 +253,9 @@ const AuditReportPanel: React.FC = () => {
                 {sectionAnswer('rules')}
               </Paragraph>
             )}
-            {report.rules.note && (
-              <Alert type="info" showIcon style={{ marginBottom: 12 }} message={report.rules.note} />
-            )}
+            {/* The server's `rules.note` says the same thing in Chinese. This is static copy
+                rather than data, so the console keeps its own; the field stays for the CLI. */}
+            <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('governance.rulesNote')} />
             <Text strong>{t('governance.neverTriggered', { count: report.rules.neverTriggered.length })}</Text>
             <Table<AuditRuleEntry>
               size="small"

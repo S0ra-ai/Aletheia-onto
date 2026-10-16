@@ -41,21 +41,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Read endpoints whose responses feed the screens' content. Listed rather than discovered:
-# the audit is looking for the instance's *data*, and these are the payloads the tables,
-# lists and drawers are drawn from. One that is missing does not hide a defect -- it shows
-# the data it holds as an unexplained finding, which is a false positive the reader can see.
+# Read endpoints whose payloads are the *deployment's own* content: the names, codes and text
+# somebody typed into this instance. That is what belongs in Chinese on an English screen.
+#
+# What is deliberately **not** here matters more than what is. Advice, captions and verdict
+# explanations -- `nextActions`, `readiness`, `release-readiness`, `semantic-coverage`,
+# `reasoning-chain`, `audit-report`, `graph.limitation` -- are the platform's own words, and
+# the platform is bilingual only on the console side. Leaving those endpoints in this list
+# made the audit subtract its own findings: `/admin/ontology/{id}?tab=release` reported 37
+# Chinese fragments before `release-readiness` was added here and 0 afterwards, with nothing
+# translated in between. **A data list that includes the thing you are looking for is a check
+# that reports a clean screen because it stopped looking.**
+#
+# The cost is the other direction: a name that the platform generates (a rule the draft
+# builder wrote) shows up as a finding until it is either excused or given a code. That is the
+# safe way round -- a false positive is visible in the report, a false negative is not.
 DATA_ENDPOINTS = (
     "/auth/me",
     "/ontologies",
     "/data-sources",
     "/tenants",
-    "/governance/audit-log?limit=200",
-    "/governance/decisions?limit=200",
-    "/governance/model-invocations?limit=200",
     "/platform/users",
     "/industry-blueprints",
-    "/quota-resources",
     "/permissions/roles",
     "/permissions/policies",
     "/tools",
@@ -73,7 +80,6 @@ DETAIL_DATA_ENDPOINTS = (
     "/ontologies/{ontology}/mappings",
     "/ontologies/{ontology}/rules",
     "/ontologies/{ontology}/event-types",
-    "/ontologies/{ontology}/release-readiness",
     "/ontologies/{ontology}/knowledge/documents",
     "/ontologies/{ontology}/knowledge/entries",
     "/data-sources/{source}/tables",
@@ -84,6 +90,16 @@ DETAIL_DATA_ENDPOINTS = (
     "/tenants/default/quotas",
     "/semantic/objects/{object}/instances?ontologyId={ontology}",
 )
+
+# Keys whose payload is the platform's own advice rather than the deployment's content. They sit
+# inside payloads that are otherwise data -- `readiness` holds a score and a status *and* a list
+# of `nextActions` -- so the endpoint is not the unit that can be classified, the key is.
+#
+# Without this the audit reported a clean `/admin/datasource/1?tab=coverage` while the screen
+# was showing 「优先审核待确认语义映射…」: the sentence had been subtracted as data because it
+# arrived from an endpoint on the list. Advice is exactly what has to be translated, so
+# subtracting it makes the check blind to its own subject.
+ADVICE_KEYS = frozenset({"nextActions", "limitation", "remediation", "evidence"})
 
 # The instance timeline, which needs an instance key as well. Its payloads are the instance's
 # data too -- an event's `reason` is a string a workflow wrote, and the timeline renders the
@@ -98,26 +114,6 @@ TIMELINE = "/ontologies/{ontology}/objects/{object}/instances/{instance}/events?
 # Stated per sentence rather than per route: excusing `/admin/governance?tab=report` wholesale
 # would also excuse the next untranslated string added to it, and this list is meant to shrink.
 KNOWN_BACKEND_PROSE = (
-    (
-        "/admin/governance?tab=report",
-        r"半开区间 \[start, end\)",
-        "审计报告：本期区间的说明",
-    ),
-    (
-        "/admin/governance?tab=report",
-        r"从未参与求值|从未触发",
-        "审计报告：对「已发布但从未触发」的发现与建议",
-    ),
-    (
-        "/admin/governance?tab=report",
-        r"确认是死规则",
-        "审计报告：死规则与匹配失效的处理建议",
-    ),
-    (
-        "/admin/governance?tab=report",
-        r"发布、派生、覆盖门禁、配额调整",
-        "审计报告：记录类型的清单",
-    ),
     (
         "/admin/graph",
         r"边的类型由外键推断",
@@ -137,6 +133,30 @@ KNOWN_BACKEND_PROSE = (
         "/admin/semantic",
         r"样本决策全部通过",
         "一致性结论与建议由服务端给出",
+    ),
+    # `nextActions` across five modules: metadata (readiness), coverage, operation_bindings and
+    # the kernel's recommendation. These are the last block, and they are a project of their
+    # own -- each list is built from the findings it answers, so it needs the same treatment the
+    # release gates got: a code per sentence and the numbers beside it.
+    (
+        "/admin/datasource",
+        r"组织业务专家审核语义映射|为数据库\+API 或 API 类传统系统配置",
+        "接入准备度的 nextActions（`metadata.assess_data_source_readiness`）",
+    ),
+    (
+        "/admin/datasource",
+        r"优先审核待确认语义映射|为缺少规则的业务对象补充",
+        "语义覆盖的 nextActions（`coverage._next_actions`）",
+    ),
+    (
+        "/admin/datasource",
+        r"补齐已确认映射、发布态规则和实例主键",
+        "操作绑定的 nextActions（`operation_bindings`）",
+    ),
+    (
+        "/admin/governance",
+        r"未发现阻断或风险规则",
+        "判定建议由语义内核给出（`semantic_kernel` 的 recommendation）",
     ),
 )
 
@@ -183,16 +203,18 @@ def instance_strings(base_url: str, token: str) -> list[str]:
     """Every string the instance holds, from the endpoints that feed the screens."""
     collected: list[str] = []
 
-    def walk(payload: object) -> None:
+    def walk(payload: object, key: str = "") -> None:
+        if key in ADVICE_KEYS:
+            return
         if isinstance(payload, str):
             if payload.strip():
                 collected.append(payload.strip())
         elif isinstance(payload, dict):
-            for value in payload.values():
-                walk(value)
+            for name, value in payload.items():
+                walk(value, str(name))
         elif isinstance(payload, list):
             for value in payload:
-                walk(value)
+                walk(value, key)
 
     for path in DATA_ENDPOINTS:
         walk(_get(base_url, token, path))

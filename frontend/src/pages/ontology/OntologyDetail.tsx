@@ -6,7 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
 import { ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
-import type { OntologyDetail, ReleaseReadinessResult } from '../../types';
+import type { OntologyDetail, ReleaseReadinessGate, ReleaseReadinessResult } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 import ModellingExtensions from './ModellingExtensions';
 
@@ -55,6 +55,7 @@ const OntologyDetailPage: React.FC = () => {
   }, [fetchOntology]);
 
   const blockers = (releaseReadiness?.gates ?? []).filter((gate) => gate.severity === 'blocker' && !gate.passed);
+
   // Only the plain path is offered here. `aletheia publish --force` exists for a deliberate
   // override and records it in the audit log; a button labelled 强行发布 in a web console
   // would make an override look like an ordinary action -- and the refusal names every
@@ -138,7 +139,12 @@ const OntologyDetailPage: React.FC = () => {
   ];
 
   const releaseGateColumns = [
-    { title: t('ontology.gate'), dataIndex: 'name', key: 'name' },
+    {
+      title: t('ontology.gate'),
+      dataIndex: 'name',
+      key: 'name',
+      render: (_: string, gate: ReleaseReadinessGate) => gateText(gate, 'label'),
+    },
     {
       title: t('ontology.status'),
       dataIndex: 'passed',
@@ -153,9 +159,85 @@ const OntologyDetailPage: React.FC = () => {
         <Tag color={severity === 'blocker' ? 'red' : 'orange'}>{label(GATE_SEVERITY, severity)}</Tag>
       ),
     },
-    { title: t('ontology.evidence'), dataIndex: 'evidence', key: 'evidence' },
-    { title: t('ontology.remediation'), dataIndex: 'remediation', key: 'remediation' },
+    {
+      title: t('ontology.evidence'),
+      dataIndex: 'evidence',
+      key: 'evidence',
+      render: (_: string, gate: ReleaseReadinessGate) => gateText(gate, 'evidence'),
+    },
+    {
+      title: t('ontology.remediation'),
+      dataIndex: 'remediation',
+      key: 'remediation',
+      render: (_: string, gate: ReleaseReadinessGate) => gateText(gate, 'remediation'),
+    },
   ];
+
+  /**
+   * A gate's sentence, in the reader's language.
+   *
+   * The server sends the code, whether the gate passed, and the facts it is about --
+   * `numbers` and `status` -- beside its own Chinese wording. Composing here rather than
+   * quoting is what makes the release gate bilingual; the server's wording is the fallback
+   * for a code this build does not know, including the axioms gate when it *fails*, whose
+   * evidence carries the offending declarations themselves.
+   */
+  const gateText = (gate: ReleaseReadinessGate, field: 'label' | 'evidence' | 'remediation'): string => {
+    const dynamic = /^data_source_(\d+)_(readiness|coverage|schema_drift)$/.exec(gate.code ?? '');
+    const subject = dynamic ? `data_source.${dynamic[2]}` : (gate.code ?? '');
+    const numbers = gate.numbers ?? {};
+    const params = {
+      ...numbers,
+      id: dynamic ? dynamic[1] : '',
+      // The status is a vocabulary of its own, and the server's own sentence prints the raw
+      // word -- 「当前状态 draft。」 The reader gets 「当前状态 草案。」 instead.
+      status: label(ONTOLOGY_STATUS, gate.status),
+    };
+    const known = (key: string): string => {
+      const translated = t(key as never, params);
+      // `t()` renders ⟦key⟧ for a key it does not have, which is how a message that may or may
+      // not exist is asked for. Two of the gates have evidence that reads differently depending
+      // on the status (the axioms gate says "all declared axioms hold" or lists the violations),
+      // and the rest have one sentence for both -- so the status-specific key is tried first
+      // and the plain one is the fallback.
+      return translated && !translated.startsWith('⟦') ? translated : '';
+    };
+    const candidates =
+      field === 'evidence' && gate.status
+        ? [`ontology.gate.${subject}.evidence.${gate.status}`, `ontology.gate.${subject}.evidence`]
+        : [`ontology.gate.${subject}.${field}`];
+    for (const candidate of candidates) {
+      const translated = known(candidate);
+      if (translated) return translated;
+    }
+    // A failing axioms gate lists the violated declarations in its evidence; those stay the
+    // server's sentence until the console learns to render them, which is a change of its own.
+    if (field === 'evidence' && gate.status === 'violated') return gate.evidence;
+    // `label` rather than `name`: the column is the gate's name, and the message key is
+    // `gate.<code>.label` because `name` already means the ontology's own name in this file.
+    const fallback = { label: gate.name, evidence: gate.evidence, remediation: gate.remediation };
+    return fallback[field];
+  };
+
+  /**
+   * What to do next, in the reader's language.
+   *
+   * Built from the failing gates rather than from the server's `nextActions`, which is the
+   * same sentences in Chinese. The selection rule mirrors `release_readiness._next_actions`:
+   * blockers first, then warnings, and when nothing failed, the sentence that says so.
+   *
+   * Declared *after* `gateText`, and that is not style: this expression runs while the
+   * component body executes, so naming a `const` that is still in its temporal dead zone is a
+   * ReferenceError -- the whole page rendered as the error boundary, which the render sweep
+   * caught on five routes at once.
+   */
+  const releaseActions = (() => {
+    const failing = (releaseReadiness?.gates ?? []).filter((gate) => !gate.passed);
+    const blocking = failing.filter((gate) => gate.severity === 'blocker');
+    const selected = blocking.length ? blocking : failing;
+    if (!selected.length) return [t('ontology.gate.allPassed')];
+    return selected.map((gate) => gateText(gate, 'remediation'));
+  })();
 
   const releaseColor = (status?: string) => {
     if (status === 'ready') return 'green';
@@ -264,7 +346,7 @@ const OntologyDetailPage: React.FC = () => {
               style={{ marginTop: 16 }}
               type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
               message={t('ontology.nextActions')}
-              description={joinSentences(releaseReadiness.nextActions)}
+              description={joinSentences(releaseActions)}
             />
           )}
         </Card>

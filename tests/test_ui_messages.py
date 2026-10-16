@@ -188,3 +188,56 @@ def test_the_rebuild_summary_is_composed_from_the_counts_not_quoted() -> None:
     for language in ("zh", "en"):
         sentence = _entries()["ontology.draftRebuilt"][language]
         assert "{summary}" in sentence, f"draftRebuilt 的 {language} 文本里没有 {{summary}}：{sentence}"
+
+
+def test_every_release_gate_and_audit_finding_has_a_sentence() -> None:
+    """The two panels a reader consults before they commit to something.
+
+    The release gate is what stands between a model and a published version; the audit report's
+    findings are what an auditor is told to look at. Both are composed by the server, and both
+    now carry a code beside their Chinese wording so the console can say them in either
+    language. This holds the dictionary to those codes, in the same shape as the workbench's
+    action items -- a code the console cannot name is a Chinese paragraph in an English panel,
+    and a code it *can* name but the server never sends is a sentence nobody will read.
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.audit_reports import AUDIT_FINDING_CODES
+    from ontology_platform.release_readiness import RELEASE_GATE_CODES, RELEASE_GATE_SUBTYPES
+
+    declared = set(_entries())
+    missing: list[str] = []
+
+    def require_evidence(prefix: str) -> None:
+        """`<prefix>.evidence`, or a per-status form of it.
+
+        The axioms gate is the reason for the second branch: its evidence sentence differs
+        between "all axioms hold" and "these three do not", the console has a message for the
+        first and deliberately falls back to the server's wording for the second -- the failing
+        sentence lists the offending declarations, and rendering those is a change of its own.
+        """
+        if f"{prefix}.evidence" in declared or any(key.startswith(f"{prefix}.evidence.") for key in declared):
+            return
+        missing.append(f"{prefix}.evidence")
+
+    for code in RELEASE_GATE_CODES:
+        missing.extend(f"ontology.gate.{code}.{field}" for field in ("label", "remediation"))
+        require_evidence(f"ontology.gate.{code}")
+    for subtype in RELEASE_GATE_SUBTYPES:
+        missing.extend(f"ontology.gate.data_source.{subtype}.{field}" for field in ("label", "remediation"))
+        require_evidence(f"ontology.gate.data_source.{subtype}")
+    for code in AUDIT_FINDING_CODES:
+        missing.extend(f"governance.finding.{code}.{field}" for field in ("finding", "action"))
+    unknown = sorted(key for key in missing if key not in declared)
+    assert not unknown, f"字典里缺少这些句子，英文界面上会露出服务端的中文：{unknown}"
+
+    # A finding that counts things needs a singular for the English sentence, the same rule the
+    # workbench titles follow -- and keyed on the placeholder, so a new one cannot skip it.
+    singular = sorted(
+        f"governance.finding.{code}.finding.one"
+        for code in AUDIT_FINDING_CODES
+        if "{count}" in _entries()[f"governance.finding.{code}.finding"]["en"]
+        and f"governance.finding.{code}.finding.one" not in declared
+    )
+    assert not singular, f"这些发现带 {{{{count}}}} 却没有英文单数形式：{singular}"

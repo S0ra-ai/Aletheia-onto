@@ -342,20 +342,39 @@ def _trace_coverage(conn: Any, start: str, end: str, ontology_id: Optional[int])
     }
 
 
-def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
+# Every finding this report can raise, declared as data so the console's sentences can be
+# checked against it. The console composes its own wording from `count` / `ratio`; the Chinese
+# `finding` and `action` beside them stay for the CLI and for any client that does not know
+# these codes.
+AUDIT_FINDING_CODES = (
+    "rules_never_triggered",
+    "forced_publications",
+    "trace_gap",
+    "model_failures",
+)
+
+
+def _findings(report: dict[str, Any]) -> list[dict[str, Any]]:
     """The things an auditor should look at, stated rather than left to be noticed.
 
     A report that only presents numbers relies on the reader knowing which number is
     alarming. These are the ones that are always worth surfacing: controls that never
     ran, gates that were overridden, and conclusions that cannot be re-examined.
+
+    Each carries a stable `code` and the number it is about, because the sentence is read in
+    the console and the console is bilingual: a client that renders these has to say
+    「本期有 3 次模型调用失败」 or "3 model calls failed this period" from the same payload, and
+    neither can be composed from a sentence that is already written.
     """
-    findings: list[dict[str, str]] = []
+    findings: list[dict[str, Any]] = []
 
     never = report["rules"]["neverTriggered"]
     if never:
         findings.append(
             {
+                "code": "rules_never_triggered",
                 "severity": "warning",
+                "count": len(never),
                 "finding": f"{len(never)} 条已发布规则在本期内从未参与求值",
                 "action": "确认是死规则（应下线）还是匹配失效（是控制缺口）。",
             }
@@ -365,7 +384,9 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
     if forced:
         findings.append(
             {
+                "code": "forced_publications",
                 "severity": "blocker",
+                "count": len(forced),
                 "finding": f"本期存在 {len(forced)} 次覆盖发布门禁的发布",
                 "action": "逐条复核覆盖理由与当时未通过的门禁项。",
             }
@@ -375,7 +396,9 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
     if ratio is not None and ratio < 1:
         findings.append(
             {
+                "code": "trace_gap",
                 "severity": "blocker",
+                "ratio": ratio,
                 "finding": f"仅 {ratio:.1%} 的规则求值带有解释链",
                 "action": "无解释链的求值无法复核，等同于本期该部分不可审计。",
             }
@@ -384,7 +407,9 @@ def _findings(report: dict[str, Any]) -> list[dict[str, str]]:
     if report["model"]["failed"]:
         findings.append(
             {
+                "code": "model_failures",
                 "severity": "warning",
+                "count": report["model"]["failed"],
                 "finding": f"本期有 {report['model']['failed']} 次模型调用失败",
                 "action": "模型不可用时平台回退本地启发式，相关答案的产生路径与其他期不同。",
             }

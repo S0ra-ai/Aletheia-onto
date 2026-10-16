@@ -489,6 +489,35 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **发布门禁与审计报告在英文界面里是中文的**（`release_readiness.py`、`audit_reports.py`、
+  `OntologyDetail.tsx`、`AuditReportPanel.tsx`、`ontology.ts`、`governance.ts`）。
+  这两处是**读者做决定之前看的地方**：发布门禁决定一个模型能不能发布，审计报告的发现决定审计员去查什么；
+  而两者的每一句都由服务端拼好、只有中文。
+  现在两处都在中文句子旁边给出**稳定的 code 与它说的那几个数**
+  （`{"objects": 4}`、`status: "draft"`、`ratio: 0.42`），控制台按 code 说自己的话，
+  服务端那句中文留给 CLI 和还不认识这些 code 的调用方。
+  发布门禁一共 12 个（9 个固定 + 每个数据源 3 个），文案 36 条；顺带**比服务端原来的话更准**：
+  服务端写的是「当前状态 draft。」，控制台渲染成「当前状态 草案。」——状态本身就是一个词表。
+  「下一步」那一段也不再引服务端的中文，而是**由失败的门禁现算**，选择规则与服务端 `_next_actions` 一致
+  （先阻断项、再警告项、都没有就说门禁全过）。
+  审计报告的四个发现同理，英文还补了单数形式。
+  修的过程中两个守卫各抓了一次：**先是模板字符串 `${gate.status}` 被枚举守卫误报**——
+  那是在拼消息键而不是渲染值（守卫加了 `(?<!\$)`，并把这个区别写进注释）；
+  **然后是页面整屏崩成错误边界**：`releaseActions` 的立即执行表达式写在了 `gateText` 的 `const` 之前，
+  进了暂时性死区——五条路由同时报 `PAGE FAILED`，正是上一轮刚立起来的那条守卫报的。
+
+- **英文界面审计此前把自己的发现当成数据减掉了**（`scripts/i18n_audit.py`）。
+  它靠「这个字符串在接口返回里出现过」来判定数据，而接口清单里混进了**平台自己写的建议与说明**
+  （`readiness`、`release-readiness`、`semantic-coverage`、`reasoning-chain`、`operation-bindings`）。
+  后果很隐蔽：`/admin/ontology/1?tab=release` 在这之前报 37 段中文、加进清单之后报 0 段，
+  中间一个字都没翻译过。**一份包含了你要找的东西的「数据清单」，就是不再找的检查。**
+  现在按**键**分类而不是按接口：`nextActions`、`limitation`、`remediation`、`evidence` 一律不算数据——
+  同一个 `readiness` 载荷里既有分数（数据）又有下一步建议（文案），能分类的单位是键不是端点。
+  代价是反方向的：平台生成的名字（草案构建器写的规则名）会先当成发现浮出来，
+  再由豁免或 code 收掉——**假阳性看得见，假阴性看不见，这笔账要往这边倒。**
+  剩下 10 处服务端措辞逐条豁免、逐条写明理由，其中四条是 `nextActions`
+  （`metadata`／`coverage`／`operation_bindings`）与语义内核的判定建议——下一批。
+
 - **会话过期之后落在的是一页 JSON**（`routing.ts`、`api/index.ts`、`App.tsx`、`scripts/ui_smoke.py`、
   `tests/test_ui_smoke_guards.py`）。
   生产构建把前端挂载在 `/admin` 下，而 401 拦截器写的是 `window.location.assign('/login')`——

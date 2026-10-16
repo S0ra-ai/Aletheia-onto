@@ -585,7 +585,11 @@ BARE_ENUM_ALLOWED = {
 }
 
 ENUM_ISH = re.compile(
-    r"\{([A-Za-z_][A-Za-z0-9_.]*\."
+    # `(?<!\$)` is what keeps this about JSX: `${gate.status}` inside a template literal
+    # builds a *key* rather than rendering a value, and one of those (the message that says
+    # which status a release gate is in) is how the gate reports it in the reader's language.
+    # Without the lookbehind, a screen that got this right was reported as one that did not.
+    r"(?<!\$)\{([A-Za-z_][A-Za-z0-9_.]*\."
     r"(?:status|severity|decision|ruleType|mappingType|category|nextAction|relationType|kind|toolType|riskLevel)[A-Za-z0-9_]*)\}"
 )
 

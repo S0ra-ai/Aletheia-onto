@@ -433,6 +433,13 @@ export interface OntologyPublication {
 }
 
 export interface ReleaseReadinessGate {
+  /**
+   * The facts this gate is about, sent beside its Chinese wording so the console can say the
+   * sentence in the reader's language: `{objects: 4}` for "4 business objects identified",
+   * `status` for the vocabularies it quotes. See `ontology.gate.*` in the dictionary.
+   */
+  status?: string;
+  numbers?: Record<string, number>;
   code: string;
   name: string;
   passed: boolean;
@@ -1500,6 +1507,17 @@ export interface SsoStatus {
 /** One thing an auditor should look at, stated by the report rather than left to be noticed. */
 export interface AuditFinding {
   severity: string;
+  /**
+   * Which finding this is, so the console can say it in the reader's language.
+   *
+   * The sentence is composed here rather than quoted: `finding` and `action` arrive in
+   * Chinese, and a bilingual console cannot translate a finished sentence -- it needs the
+   * code and the number. `count` and `ratio` are what the sentence is about; `ratio` is a
+   * fraction (0.42), not a percentage.
+   */
+  code?: string;
+  count?: number;
+  ratio?: number;
   finding: string;
   action: string;
 }

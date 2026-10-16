@@ -103,6 +103,102 @@ export const ontology: Record<string, MessageEntry> = {
   'passed': { zh: '通过', en: 'Passed' },
   'notPassed': { zh: '未通过', en: 'Not passed' },
   'gateLevel': { zh: '级别', en: 'Severity' },
+  // The release gate, said by the console. The server sends each gate's code, whether it
+  // passed, the facts behind it (`numbers`, `status`) and its own Chinese wording; the wording
+  // is the fallback for a code this build does not know. A gate is the last thing a reader
+  // looks at before publishing, so it is the worst place to leave a sentence in the wrong
+  // language.
+  'gate.ontology_status.label': { zh: '本体状态', en: 'Ontology status' },
+  'gate.ontology_status.evidence': { zh: '当前状态 {status}。', en: 'Current status: {status}.' },
+  'gate.ontology_status.remediation': {
+    zh: '仅 draft、reviewing 或已发布版本可进入发布评估。',
+    en: 'Only draft, reviewing or published versions can be assessed for release.',
+  },
+  'gate.business_objects.label': { zh: '业务对象', en: 'Business objects' },
+  'gate.business_objects.evidence': { zh: '识别到 {objects} 个业务对象。', en: '{objects} business objects identified.' },
+  'gate.business_objects.remediation': {
+    zh: '先基于数据源扫描结果生成本体草案。',
+    en: 'Generate an ontology draft from the scan results first.',
+  },
+  'gate.source_bindings.label': { zh: '来源绑定', en: 'Source bindings' },
+  'gate.source_bindings.evidence': {
+    zh: '{bound}/{objects} 个对象绑定来源表。',
+    en: '{bound} of {objects} objects are bound to a source table.',
+  },
+  'gate.source_bindings.remediation': {
+    zh: '为每个业务对象绑定传统系统来源表。',
+    en: 'Bind every business object to its table in the legacy system.',
+  },
+  'gate.primary_keys.label': { zh: '实例标识', en: 'Instance identity' },
+  'gate.primary_keys.evidence': {
+    zh: '{withKey}/{objects} 个对象具备主键。',
+    en: '{withKey} of {objects} objects have a primary key.',
+  },
+  'gate.primary_keys.remediation': {
+    zh: '为缺少主键的来源表配置稳定实例标识。',
+    en: 'Give the source tables without a primary key a stable instance identity.',
+  },
+  'gate.pending_mappings.label': { zh: '映射审核', en: 'Mapping review' },
+  'gate.pending_mappings.evidence': { zh: '待审核映射 {pending} 条。', en: '{pending} mappings await review.' },
+  'gate.pending_mappings.remediation': {
+    zh: '发布前必须完成全部语义映射审核。',
+    en: 'Every semantic mapping has to be reviewed before release.',
+  },
+  'gate.confirmed_mappings.label': { zh: '确认映射', en: 'Confirmed mappings' },
+  'gate.confirmed_mappings.evidence': { zh: '已确认映射 {confirmed} 条。', en: '{confirmed} mappings confirmed.' },
+  'gate.confirmed_mappings.remediation': {
+    zh: '至少确认关键对象和关键字段映射。',
+    en: 'Confirm at least the key objects and the key fields.',
+  },
+  'gate.published_rules.label': { zh: '业务规则', en: 'Business rules' },
+  'gate.published_rules.evidence': { zh: '已发布规则 {published} 条。', en: '{published} published rules.' },
+  'gate.published_rules.remediation': {
+    zh: '至少为核心业务对象配置一组发布态规则。',
+    en: 'Configure at least one set of published rules for the core business objects.',
+  },
+  'gate.object_rule_coverage.label': { zh: '对象规则覆盖', en: 'Rule coverage' },
+  'gate.object_rule_coverage.evidence': {
+    zh: '{withRules}/{objects} 个对象具备规则。',
+    en: '{withRules} of {objects} objects have rules.',
+  },
+  'gate.object_rule_coverage.remediation': {
+    zh: '为缺少规则的业务对象补充校验、风险或权限规则。',
+    en: 'Add validation, risk or permission rules to the objects that have none.',
+  },
+  'gate.axioms_satisfied.label': { zh: '公理一致性', en: 'Axiom consistency' },
+  'gate.axioms_satisfied.evidence.satisfied': {
+    zh: '已声明 {declared} 条公理，全部成立。',
+    en: 'All {declared} declared axioms hold.',
+  },
+  'gate.axioms_satisfied.remediation': {
+    zh: '修正模型声明，或移除已不适用的公理。公理描述模型本身，不针对单个实例。',
+    en: 'Correct the model, or remove the axioms that no longer apply. An axiom describes the model itself, not an instance.',
+  },
+  'gate.data_source.readiness.label': { zh: '数据源 {id} 接入准备度', en: 'Data source {id}: readiness' },
+  'gate.data_source.readiness.evidence': {
+    zh: '准备度 {score} 分，状态 {status}。',
+    en: 'Score {score}, status {status}.',
+  },
+  'gate.data_source.readiness.remediation': {
+    zh: '完成元数据扫描、实例定位、映射治理等阻断项。',
+    en: 'Clear the blockers: metadata scan, instance identity, mapping governance.',
+  },
+  'gate.data_source.coverage.label': { zh: '数据源 {id} 语义覆盖', en: 'Data source {id}: semantic coverage' },
+  'gate.data_source.coverage.evidence': { zh: '覆盖度 {score} 分，状态 {status}。', en: 'Score {score}, status {status}.' },
+  'gate.data_source.coverage.remediation': {
+    zh: '补齐对象映射、业务规则和语义 API。',
+    en: 'Fill in the object mappings, business rules and semantic APIs.',
+  },
+  'gate.data_source.schema_drift.label': { zh: '数据源 {id} 结构漂移', en: 'Data source {id}: schema drift' },
+  'gate.data_source.schema_drift.evidence': { zh: '结构漂移状态 {status}。', en: 'Drift status: {status}.' },
+  'gate.data_source.schema_drift.remediation': {
+    zh: '发布前先处理结构漂移并重新确认受影响语义资产。',
+    en: 'Resolve the drift and re-confirm the affected semantic assets before releasing.',
+  },
+  'gate.allPassed': {
+    zh: '发布门禁全部通过，可按治理流程发布本体版本。',
+    en: 'Every release gate passed. The ontology can be published through the governance flow.',
+  },
   'evidence': { zh: '证据', en: 'Evidence' },
   'remediation': { zh: '修复动作', en: 'Remediation' },
   'releaseReadiness': { zh: '发布就绪度', en: 'Release readiness' },

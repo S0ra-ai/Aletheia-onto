@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from .axioms import check_axioms
 from .context import PlatformDb
@@ -65,6 +65,7 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"当前状态 {ontology['status']}。",
             "仅 draft、reviewing 或已发布版本可进入发布评估。",
+            status=ontology["status"],
         ),
         _gate(
             "business_objects",
@@ -73,6 +74,7 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"识别到 {len(objects)} 个业务对象。",
             "先基于数据源扫描结果生成本体草案。",
+            numbers={"objects": len(objects)},
         ),
         _gate(
             "source_bindings",
@@ -81,6 +83,10 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"{sum(1 for row in objects if row['source_table_id'] is not None)}/{len(objects)} 个对象绑定来源表。",
             "为每个业务对象绑定传统系统来源表。",
+            numbers={
+                "bound": sum(1 for row in objects if row["source_table_id"] is not None),
+                "objects": len(objects),
+            },
         ),
         _gate(
             "primary_keys",
@@ -89,6 +95,10 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"{sum(1 for row in objects if row['primary_key'])}/{len(objects)} 个对象具备主键。",
             "为缺少主键的来源表配置稳定实例标识。",
+            numbers={
+                "withKey": sum(1 for row in objects if row["primary_key"]),
+                "objects": len(objects),
+            },
         ),
         _gate(
             "pending_mappings",
@@ -97,6 +107,7 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"待审核映射 {mapping_counts.get('pending', 0)} 条。",
             "发布前必须完成全部语义映射审核。",
+            numbers={"pending": mapping_counts.get("pending", 0)},
         ),
         _gate(
             "confirmed_mappings",
@@ -105,6 +116,7 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"已确认映射 {mapping_counts.get('confirmed', 0)} 条。",
             "至少确认关键对象和关键字段映射。",
+            numbers={"confirmed": mapping_counts.get("confirmed", 0)},
         ),
         _gate(
             "published_rules",
@@ -113,6 +125,7 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "blocker",
             f"已发布规则 {rule_count} 条。",
             "至少为核心业务对象配置一组发布态规则。",
+            numbers={"published": rule_count},
         ),
         _gate(
             "object_rule_coverage",
@@ -121,6 +134,10 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
             "warning",
             f"{sum(1 for row in object_rule_rows if row['total'] > 0)}/{len(object_rule_rows)} 个对象具备规则。",
             "为缺少规则的业务对象补充校验、风险或权限规则。",
+            numbers={
+                "withRules": sum(1 for row in object_rule_rows if row["total"] > 0),
+                "objects": len(object_rule_rows),
+            },
         ),
         _gate(
             "axioms_satisfied",
@@ -139,6 +156,11 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
                 + "；".join(item["detail"] for item in axiom_report["violations"][:3])
             ),
             "修正模型声明，或移除已不适用的公理。公理描述模型本身，不针对单个实例。",
+            status="satisfied" if axiom_report["satisfied"] else "violated",
+            numbers={
+                "declared": axiom_report["declared"],
+                "violations": len(axiom_report["violations"]),
+            },
         ),
     ]
     for report in data_source_reports:
@@ -154,6 +176,8 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
                     "blocker",
                     f"准备度 {readiness['score']} 分，状态 {readiness['status']}。",
                     "完成元数据扫描、实例定位、映射治理等阻断项。",
+                    status=readiness["status"],
+                    numbers={"score": readiness["score"], "dataSourceId": report["dataSourceId"]},
                 ),
                 _gate(
                     f"data_source_{report['dataSourceId']}_coverage",
@@ -162,6 +186,8 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
                     "warning",
                     f"覆盖度 {coverage['score']} 分，状态 {coverage['status']}。",
                     "补齐对象映射、业务规则和语义 API。",
+                    status=coverage["status"],
+                    numbers={"score": coverage["score"], "dataSourceId": report["dataSourceId"]},
                 ),
                 _gate(
                     f"data_source_{report['dataSourceId']}_schema_drift",
@@ -170,6 +196,8 @@ def assess_ontology_release_readiness(platform_db: PlatformDb, ontology_id: int)
                     "blocker",
                     f"结构漂移状态 {drift['status']}。",
                     "发布前先处理结构漂移并重新确认受影响语义资产。",
+                    status=drift["status"],
+                    numbers={"dataSourceId": report["dataSourceId"]},
                 ),
             ]
         )
@@ -213,7 +241,24 @@ def _data_source_report(platform_db: PlatformDb, data_source_id: int) -> dict[st
     }
 
 
-def _gate(code: str, name: str, passed: bool, severity: str, evidence: str, remediation: str) -> dict[str, Any]:
+def _gate(
+    code: str,
+    name: str,
+    passed: bool,
+    severity: str,
+    evidence: str,
+    remediation: str,
+    *,
+    status: str = "",
+    numbers: Optional[dict[str, int]] = None,
+) -> dict[str, Any]:
+    """One gate, with its sentence and the facts behind it.
+
+    `status` and `numbers` are what the console composes its own sentence from. The Chinese
+    `name`, `evidence` and `remediation` are kept for the CLI and for clients that do not know
+    these codes -- the console reads the code and says it in the reader's language, which it
+    cannot do from a sentence that already has the numbers baked into it.
+    """
     return {
         "code": code,
         "name": name,
@@ -221,7 +266,26 @@ def _gate(code: str, name: str, passed: bool, severity: str, evidence: str, reme
         "severity": severity,
         "evidence": evidence,
         "remediation": remediation,
+        "status": status,
+        "numbers": numbers or {},
     }
+
+
+# The gates this module can raise, declared as data so the console's sentences can be checked
+# against them. The per-data-source gates append the id and the subtype:
+# `data_source_<id>_<subtype>`, which is why the subtype list is separate.
+RELEASE_GATE_CODES = (
+    "ontology_status",
+    "business_objects",
+    "source_bindings",
+    "primary_keys",
+    "pending_mappings",
+    "confirmed_mappings",
+    "published_rules",
+    "object_rule_coverage",
+    "axioms_satisfied",
+)
+RELEASE_GATE_SUBTYPES = ("readiness", "coverage", "schema_drift")
 
 
 def _next_actions(blockers: list[dict[str, Any]], warnings: list[dict[str, Any]]) -> list[str]:

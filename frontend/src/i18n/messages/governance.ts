@@ -55,6 +55,89 @@ export const governance: Record<string, MessageEntry> = {
 
   'reportPeriod': { zh: '报表区间：{start} → {end}', en: 'Report period: {start} → {end}' },
   'reportScope': { zh: '作用范围：{scope} · {boundary}', en: 'Scope: {scope} · {boundary}' },
+  // The server sends this string too, and the CLI prints it. The console says its own: a
+  // sentence that describes the interval is about the reader's language, not about the data.
+  'rangeBoundary': { zh: '半开区间 [start, end)', en: 'half-open interval [start, end)' },
+
+  // What each section of the report answers, keyed by the section's stable `section` field.
+  // The server sends the Chinese wording as well, and it is the fallback for a key this build
+  // does not know -- a sentence in the wrong language beats a ⟦key⟧ in any language.
+  'section.decisions': {
+    zh: '按结论与严重级聚合，回答「这段时间阻断了多少、为什么」',
+    en: 'Counts by verdict and severity: how much was blocked in this period, and why',
+  },
+  'section.rules': {
+    zh: '含从未触发的已发布规则——那是控制失效还是死规则',
+    en: 'Includes published rules that never fired — a broken control, or a rule that is simply dead',
+  },
+  'section.actors': {
+    zh: '谁在这段时间改了什么，按操作者与动作聚合',
+    en: 'Who changed what in this period, by actor and action',
+  },
+  'section.governance': {
+    zh: '发布、派生、覆盖门禁、配额调整',
+    en: 'Publications, derivations, gate overrides, quota changes',
+  },
+  'section.model': {
+    zh: '哪些结论涉及模型，以及调用是否失败',
+    en: 'Which conclusions involved a model, and whether those calls failed',
+  },
+  'section.coverage': {
+    zh: '每次规则求值是否都带解释链——缺失意味着结论无法复核',
+    en: 'Whether every rule evaluation carries its explanation chain — a gap means the verdict cannot be re-examined',
+  },
+  'rulesNote': {
+    zh: '从未触发的已发布规则要么是死规则，要么在静默地匹配不到任何实例——后者意味着组织以为存在的控制并未运行。',
+    en: 'A published rule that never fired is either dead, or silently matching no instance at all — and the second means a control the organisation believes in is not running.',
+  },
+
+  // The findings, composed from the `code` and the number the server sends beside it. The
+  // server's own Chinese sentence is the fallback, and its `action` line is where the
+  // instruction lives -- both are kept for the CLI.
+  'finding.rules_never_triggered.finding': {
+    zh: '{count} 条已发布规则在本期内从未参与求值',
+    en: '{count} published rules never took part in an evaluation this period',
+  },
+  'finding.rules_never_triggered.finding.one': {
+    zh: '{count} 条已发布规则在本期内从未参与求值',
+    en: '{count} published rule never took part in an evaluation this period',
+  },
+  'finding.rules_never_triggered.action': {
+    zh: '确认是死规则（应下线）还是匹配失效（是控制缺口）。',
+    en: 'Establish whether it is dead (and should be retired) or matching nothing (which is a gap in the control).',
+  },
+  'finding.forced_publications.finding': {
+    zh: '本期存在 {count} 次覆盖发布门禁的发布',
+    en: '{count} publications overrode the release gate this period',
+  },
+  'finding.forced_publications.finding.one': {
+    zh: '本期存在 {count} 次覆盖发布门禁的发布',
+    en: '{count} publication overrode the release gate this period',
+  },
+  'finding.forced_publications.action': {
+    zh: '逐条复核覆盖理由与当时未通过的门禁项。',
+    en: 'Review each override against the gate items that were failing at the time.',
+  },
+  'finding.trace_gap.finding': {
+    zh: '仅 {ratio} 的规则求值带有解释链',
+    en: 'Only {ratio} of rule evaluations carry an explanation chain',
+  },
+  'finding.trace_gap.action': {
+    zh: '无解释链的求值无法复核，等同于本期该部分不可审计。',
+    en: 'An evaluation with no chain cannot be re-examined, which makes that part of the period unauditable.',
+  },
+  'finding.model_failures.finding': {
+    zh: '本期有 {count} 次模型调用失败',
+    en: '{count} model calls failed this period',
+  },
+  'finding.model_failures.finding.one': {
+    zh: '本期有 {count} 次模型调用失败',
+    en: '{count} model call failed this period',
+  },
+  'finding.model_failures.action': {
+    zh: '模型不可用时平台回退本地启发式，相关答案的产生路径与其他期不同。',
+    en: 'When the model is unavailable the platform falls back to local heuristics, so those answers were produced by a different path than the rest of the period.',
+  },
   'noFindings': { zh: '本期没有需要立刻跟进的发现', en: 'No findings this period need immediate follow-up' },
   'noFindingsDetail': {
     zh: '这不等于「一切正常」，只等于以下几类没有触发：从未求值的已发布规则、被覆盖的发布门禁、无解释链的求值、失败的模型调用。',
