@@ -32,9 +32,16 @@ ARTIFACT = re.compile(r"`((?:backend|frontend|deploy)/[A-Za-z0-9_./-]+)`")
 
 
 def _rows() -> list[tuple[str, str]]:
-    """`(capability, whole row text)` for every table row on the page."""
+    """`(capability, whole row text)` for every **capability** row on the page.
+
+    The gap table is excluded, and the first version of this did not exclude it -- which made
+    `test_every_row_says_where_the_capability_lives_and_what_holds_it` demand a citation from rows
+    whose second column is what the gap *costs*, not what holds it. Two tables with two shapes,
+    and a parser that treats them as one reports the difference as a defect.
+    """
+    text = PAGE.read_text(encoding="utf-8").split("## Not there yet", 1)[0]
     rows = []
-    for line in PAGE.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if not line.startswith("| ") or line.startswith("| Capability") or line.startswith("|---"):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
