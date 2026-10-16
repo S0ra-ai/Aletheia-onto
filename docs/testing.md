@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1824 tests**, all passing. A case that needs something this machine does not have skips
+**1826 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -57,7 +57,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_cross_source_resolution.py` | 46 | 跨源实体消解。ROADMAP 通用性清单最后一项结构性空白。 |
 | `test_file_and_rest_sources.py` | 46 | CSV directories and REST APIs as data sources |
 | `test_extension_registry.py` | 45 | Contract tests for the platform's extension points |
-| `test_conformance_suites.py` | 44 | Executable conformance suites for the extension points |
+| `test_conformance_suites.py` | 46 | Executable conformance suites for the extension points, each with a counter-example |
 | `test_derived_attributes_and_units.py` | 42 | Derived attributes and units of measure |
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
 | `test_request_observability.py` | 42 | Request identity, the access log, and structured logging |

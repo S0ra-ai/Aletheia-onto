@@ -559,6 +559,7 @@ rule matters.
 | `retrieval_backend` | 6 | must not return entries outside the candidate set |
 | `embedding_model` | 4 | the same input must produce the same vector |
 | `writeback_executor` | 3 | the result must state what the writeback did |
+| `model_provider` | 3 | a failure must raise, not return an empty answer |
 
 ### Required versus advisory
 

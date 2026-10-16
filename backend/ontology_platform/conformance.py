@@ -601,6 +601,134 @@ def check_embedding_model(model: Callable[[str], Sequence[float]], *, subject: s
     return report
 
 
+# -- Model providers --------------------------------------------------------
+
+
+def check_model_provider(
+    client: Any,
+    failing_client: Any,
+    *,
+    subject: str = "",
+    secret: str = "",
+) -> ConformanceReport:
+    """Verify a model client against the properties the platform's use of it depends on.
+
+    A model provider is the one extension point whose failures are *quiet*. Everywhere else a
+    broken implementation raises and the request fails; here a provider that catches its own
+    transport error and returns an empty string produces a successful call with nothing in it --
+    which the platform records as `status: success`, which a reader sees as a model with nothing
+    to say, and which leaves the audit report's "model failures this period" at zero while the
+    endpoint is down.
+
+    **`failing_client` is required, and that is the design.** The two checks that matter most are
+    about what happens when the endpoint cannot be reached, and no contract can make an arbitrary
+    provider fail -- so the implementation has to supply an instance of itself that does. The
+    first version of this function took one argument and built its own failing stub, which meant
+    the two most important guards were testing *the stub* and passing every implementation,
+    including ones that swallow their errors. Two negative tests written afterwards caught it:
+    they asserted a silent provider and a leaky provider would be rejected, and both were
+    accepted.
+
+    A caller that cannot supply a failing instance cannot claim conformance for the failure
+    paths. That is the honest position, and it is why the parameter has no default.
+    """
+    report = ConformanceReport(suite="model_provider", subject=subject or type(client).__name__)
+
+    def answers_the_documented_shape() -> Optional[str]:
+        """`chat(messages, purpose=…, session_id=…)`, with a list of role/content dicts."""
+        try:
+            result = client.chat([{"role": "user", "content": "ping"}], purpose="conformance", session_id="conformance")
+        except TypeError as error:
+            return f"不接受平台调用的参数形态: {error}"
+        except Exception:
+            # A provider with no credentials, an unreachable endpoint or a rejecting server
+            # fails here, and failing is allowed -- `failure_is_not_an_empty_answer` is the
+            # guard for how it fails. Treating any exception as a signature mismatch would
+            # report a correctly-written provider as broken, which is the false finding that
+            # makes a contract suite get deleted.
+            return None
+        if not hasattr(result, "content"):
+            return f"返回了 {type(result).__name__}，没有 `content`——调用方读的是它"
+        if not isinstance(result.content, str):
+            return f"`content` 是 {type(result.content).__name__}，应为 str"
+        return None
+
+    _guard(
+        report,
+        "接受平台调用的参数形态并返回含 content 的结果",
+        "调用方读 `result.content` 与 `result.used_remote_model`。返回裸字符串会让每个调用点都报 AttributeError，"
+        "而那看起来像平台坏了，不像扩展写错了。",
+        answers_the_documented_shape,
+    )
+
+    def failure_is_not_an_empty_answer() -> Optional[str]:
+        try:
+            result = failing_client.chat([{"role": "user", "content": "ping"}], purpose="conformance")
+        except Exception:
+            return None
+        if getattr(result, "content", "") == "":
+            return "调用失败时返回了空内容而不是抛异常——审计会把这次失败记成一次成功的空回答"
+        return None
+
+    _guard(
+        report,
+        "失败时抛异常，而不是返回空答案",
+        "审计报表按 `status` 统计模型失败次数。把失败写成空回答会让这个计数恒为 0，"
+        "也就是在模型宕机期间报告「没有模型故障」。",
+        failure_is_not_an_empty_answer,
+    )
+
+    def does_not_leak_the_secret() -> Optional[str]:
+        if not secret:
+            return "没有提供凭据，无法检查它是否会被写进错误文本"
+        try:
+            failing_client.chat([{"role": "user", "content": "ping"}], purpose="conformance")
+        except Exception as error:
+            message = str(error)
+        else:
+            return "调用失败时没有抛异常，无从检查错误文本"
+        if secret in message:
+            return "异常文本里带着 API Key——它会进入日志、审计与界面"
+        return None
+
+    _guard(
+        report,
+        "错误文本不含凭据",
+        "请求头里的密钥会出现在很多驱动自己的异常文本里，而这里转发出去的每一句都会进日志与审计表。",
+        does_not_leak_the_secret,
+    )
+    return report
+
+
+def builtin_model_provider_pair() -> tuple[Any, Any, str]:
+    """The platform's own client, plus an instance of itself that cannot reach anything.
+
+    Supplied here rather than in the CLI so that the CI run and `aletheia verify model_provider`
+    exercise the same pair -- a contract the platform passes only from one caller is a contract
+    with a caveat nobody wrote down.
+    """
+    from .model_client import OpenRouterClient, OpenRouterConfig
+
+    secret = "sk-conformance-secret"
+
+    def failing_transport(*_args: Any, **_kwargs: Any) -> Any:
+        # The shape of a real failure: a driver that puts the request it was handed into its own
+        # error text, which is how a key reaches a log if nothing redacts it.
+        raise OSError(f"POST https://example.invalid/v1 failed (Authorization: Bearer {secret})")
+
+    config = OpenRouterConfig(
+        provider="openrouter",
+        base_url="https://example.invalid/api/v1",
+        model="conformance",
+        api_key=secret,
+        http_referer="",
+        app_title="",
+        service_tier="",
+        timeout_seconds=5,
+    )
+    return OpenRouterClient(config=config), OpenRouterClient(config=config, transport=failing_transport), secret
+
+
 # -- Writeback executors ----------------------------------------------------
 
 
@@ -682,6 +810,7 @@ def check_writeback_executor(
 # -- Suite registry ---------------------------------------------------------
 
 SUITES = {
+    "model_provider": check_model_provider,
     "instance_resolver": check_instance_resolver,
     "data_source_adapter": check_data_source_adapter,
     "retrieval_backend": check_retrieval_backend,
@@ -708,6 +837,7 @@ def describe_suites() -> list[dict[str, Any]]:
 
 
 _SUITE_SUBJECTS = {
+    "model_provider": "模型调用客户端（远程模型的每一次问答与起草都经过它）",
     "instance_resolver": "实例解析器（哪些行是这个对象的实例）",
     "data_source_adapter": "数据源适配器（接入、扫描、运行时读取）",
     "retrieval_backend": "检索后端（候选条目排序）",
@@ -716,6 +846,7 @@ _SUITE_SUBJECTS = {
 }
 
 _SUITE_ENTRY_POINTS = {
+    "model_provider": "aletheia.model_providers",
     "instance_resolver": "aletheia.resolvers",
     "data_source_adapter": "aletheia.adapters",
     "retrieval_backend": "aletheia.retrieval_backends",

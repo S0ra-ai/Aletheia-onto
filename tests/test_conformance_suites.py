@@ -636,3 +636,60 @@ def test_the_documented_check_counts_match_reality() -> None:
 
     mismatched = {name: (claimed[name], actual[name]) for name in actual if claimed[name] != actual[name]}
     assert not mismatched, f"文档声明的检查项数与实际不符 (文档, 实际): {mismatched}"
+
+
+def test_a_model_provider_that_swallows_its_own_failure_is_rejected() -> None:
+    """The counter-example for the `model_provider` contract.
+
+    Every other contract fails on a wrong *answer*; this one's most dangerous failure is a wrong
+    *silence*. A provider that catches its transport error and returns an empty string produces a
+    successful call with nothing in it -- the platform records `status: success`, the reader sees
+    a model with nothing to say, and the audit report's "model failures this period" stays at
+    zero while the endpoint is down. The audit report is the artefact an operator uses to decide
+    whether the model layer is healthy, so a provider that lies to it is worse than one that
+    crashes.
+    """
+    from ontology_platform.conformance import check_model_provider
+    from ontology_platform.model_client import ModelResult
+
+    class Silent:
+        """Returns an empty result instead of raising. The defect, in nine lines."""
+
+        def chat(self, messages, purpose="", session_id=None):
+            return ModelResult(
+                provider="silent",
+                model="m",
+                configured=True,
+                used_remote_model=True,
+                content="",
+                raw={},
+            )
+
+    class SilentFailing(Silent):
+        """The same provider, failing -- which is what the contract requires it to supply."""
+
+    report = check_model_provider(Silent(), SilentFailing(), subject="silent")
+    assert not report.conformant
+    failed = {finding.check for finding in report.failures}
+    assert any("空答案" in name for name in failed), failed
+
+
+def test_a_model_provider_that_leaks_its_key_in_an_error_is_rejected() -> None:
+    """The other counter-example, and the reason the built-in client redacts on the way out.
+
+    Credentials travel in the request headers, and drivers are free to put the request they were
+    given into their own error text. Every sentence raised through `chat` lands in the log, the
+    audit trail and the console.
+    """
+    from ontology_platform.conformance import check_model_provider
+
+    class Leaky:
+        def chat(self, messages, purpose="", session_id=None):
+            raise OSError("request to https://h/v1 failed: Authorization: Bearer sk-real-key")
+
+    class LeakyFailing(Leaky):
+        """Fails the same way when nothing is reachable, which is the instance under test."""
+
+    report = check_model_provider(Leaky(), LeakyFailing(), subject="leaky", secret="sk-real-key")
+    assert not report.conformant
+    assert any("凭据" in finding.check for finding in report.failures), [f.check for f in report.failures]

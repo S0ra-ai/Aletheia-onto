@@ -665,6 +665,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
         name = args.name or ""
         report = check_retrieval_backend(get_retrieval_backend(name), subject=name or "default")
+    elif suite == "model_provider":
+        # Checked against the platform's own client and its intentional-failure twin, which is
+        # what "the kernel passes the contract it publishes" means for this extension point --
+        # the failure paths cannot be exercised against an arbitrary implementation, so the
+        # contract requires one from whoever claims conformance.
+        from .conformance import builtin_model_provider_pair, check_model_provider
+
+        working, failing, secret = builtin_model_provider_pair()
+        report = check_model_provider(working, failing, subject="built-in (openrouter)", secret=secret)
     elif suite == "embedding_model":
         from .retrieval import get_embedding_model
 

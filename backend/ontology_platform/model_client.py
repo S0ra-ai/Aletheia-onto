@@ -248,12 +248,28 @@ class OpenRouterClient:
             if session_id:
                 payload["session_id"] = session_id
 
-        raw = self.transport(
-            self.config.chat_completions_url,
-            headers,
-            payload,
-            self.config.timeout_seconds,
-        )
+        try:
+            raw = self.transport(
+                self.config.chat_completions_url,
+                headers,
+                payload,
+                self.config.timeout_seconds,
+            )
+        except Exception as error:
+            # Credentials travel in the headers, and a driver is free to put the request it was
+            # given into its own error text -- several do. Every sentence raised through here
+            # lands in the log, the audit trail and the console, so the key is removed on the
+            # way out rather than trusted not to be there.
+            #
+            # Raised as this platform's own type rather than `type(error)(redacted)`, which was
+            # the first attempt and is wrong for the most likely failure of all: a 401 from the
+            # model endpoint arrives as `urllib.error.HTTPError`, whose constructor takes five
+            # arguments, so rebuilding it raised `TypeError` *while handling the error* and the
+            # reader got a message about HTTPError's signature instead of about their key.
+            #
+            # `from None` on purpose: the original's text is what may carry the secret, and a
+            # chained traceback would print it after all.
+            raise ModelTransportError(_redact_secret(str(error), self.config.api_key)) from None
         return ModelResult(
             provider=self.provider,
             model=raw.get("model", self.config.model),
@@ -262,6 +278,23 @@ class OpenRouterClient:
             content=_response_text(raw),
             raw=raw,
         )
+
+
+class ModelTransportError(RuntimeError):
+    """The model endpoint could not be reached, or refused the request.
+
+    A stable type for a transport failure, which the platform did not have: every caller caught
+    bare `Exception` around `chat`, so a caller that wanted to distinguish "the endpoint is down"
+    from "the model answered something unusable" had to read the message. The text is always
+    redacted -- see where it is raised.
+    """
+
+
+def _redact_secret(text: str, secret: str) -> str:
+    """Remove a credential from a sentence that is about to be logged, audited and displayed."""
+    if secret and secret in text:
+        return text.replace(secret, "***")
+    return text
 
 
 def _response_text(raw: Any) -> str:

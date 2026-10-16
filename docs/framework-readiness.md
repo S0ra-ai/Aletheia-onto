@@ -41,6 +41,8 @@ its row with it rather than leaving a promise behind.
 | Register a data source adapter without touching platform code | `backend/ontology_platform/registry.py` | `tests/test_extension_registry.py` |
 | Register a rule function, a route policy, a writeback executor | `backend/ontology_platform/registry.py` | `tests/test_extension_registry.py` |
 | **Verify your own implementation** before shipping it, without pytest and without this repo | `backend/ontology_platform/conformance.py` | `tests/test_conformance_suites.py` |
+| A model-provider contract, whose failure paths the implementation must supply an instance for | `backend/ontology_platform/conformance.py` | `tests/test_conformance_suites.py` |
+| A credential cannot reach the log through a model endpoint's own error text | `backend/ontology_platform/model_client.py` | `tests/test_conformance_suites.py` |
 | The platform's own implementations pass the same contract third parties get | `backend/ontology_platform/conformance.py` | `tests/test_conformance_suites.py` |
 | An extension point that stops being extended fails loudly, not silently | `backend/ontology_platform/registry.py` | `tests/test_module_boundaries.py` |
 
@@ -94,5 +96,4 @@ project.
 | **Component tests cover two tables, not every screen.** `src/components/TableColumns.test.tsx` renders the mapping and rule lists and asserts every cell has text; the rest are covered by the browser sweep. | A blank column on a screen nobody wrote a test for is still found by a browser, if somebody runs one. |
 | **Untranslated refusals remain**: 51 of 101 single-sentence Chinese refusals carry a code the console can translate. The rest are internal invariants a reader cannot reach. | An English console can still show a Chinese sentence for an unusual failure. |
 | **The API's own sentences stay Chinese even in English mode** — in the CLI as well as the console, which fall back to them for a code they do not know. | Deliberate: the payload's shape and vocabulary are the contract a pipeline parses, and translating it would make the same response say different things to different callers. |
-| **No pluggable model-provider SPI with a conformance suite** — model endpoints are configured, and the extension points with published contracts are instance resolvers, data source adapters, retrieval backends, embedding models and writeback executors. | Adding a genuinely new provider protocol means reading `model_client.py`. |
 | **No cursor pagination**, only `limit`/`offset`. | A page requested while rows are being inserted can skip or repeat one; the platform's lists are review queues and audit views rather than live feeds, so it has not bitten. |

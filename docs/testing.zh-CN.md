@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1824 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1826 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -51,7 +51,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_cross_source_resolution.py` | 46 | 跨源实体消解。ROADMAP 通用性清单最后一项结构性空白。 |
 | `test_file_and_rest_sources.py` | 46 | CSV directories and REST APIs as data sources |
 | `test_extension_registry.py` | 45 | Contract tests for the platform's extension points |
-| `test_conformance_suites.py` | 44 | Executable conformance suites for the extension points |
+| `test_conformance_suites.py` | 46 | 扩展点的一致性契约，每条都配一个反例 |
 | `test_derived_attributes_and_units.py` | 42 | Derived attributes and units of measure |
 | `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
 | `test_request_observability.py` | 42 | 请求标识、访问日志与结构化日志 |
