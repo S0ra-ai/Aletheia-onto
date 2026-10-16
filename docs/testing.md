@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1725 tests**, all passing. A case that needs something this machine does not have skips
+**1726 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -97,7 +97,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 10 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 12 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 13 | The render check's own guards, exercised without a browser |
 | `test_ui_messages.py` | 3 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |

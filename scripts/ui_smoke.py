@@ -364,6 +364,25 @@ def seeded_url(entry: str, route: str) -> str:
     return f"{entry}?to={quote(route, safe='')}"
 
 
+def route_detail(route: str, *, tables_rendered: int, empty_columns: list[str], broken: str) -> str:
+    """The tail of a route's line: which finding, if any, this route produced.
+
+    One finding, most severe first. A failed page renders no tables and a tableless page has
+    no empty columns, so the branches overlap and the order decides which is reported. `NO
+    TABLE` used to be applied *last*, which reported a crashed screen as a page that simply
+    has no table -- the least informative line for the case where the most informative one
+    applies, and the line that tells a maintainer to add an entry to `NO_TABLE_ROUTES`, i.e.
+    to excuse the page that is broken.
+    """
+    if broken:
+        return f"  PAGE FAILED: {broken}"
+    if tables_rendered == 0:
+        return f"  NO TABLE{': ' + NO_TABLE_ROUTES[route] if route in NO_TABLE_ROUTES else ''}"
+    if empty_columns:
+        return f"  EMPTY: {'; '.join(empty_columns)}"
+    return ""
+
+
 def failure_marker(html: str) -> str:
     """The failure text a dumped page contains, if any.
 
@@ -532,11 +551,7 @@ def main() -> int:
                     empty_here.append(f"table #{index}: {', '.join(empty)}")
             if not page_tables:
                 tableless.append(route)
-            detail = f"  EMPTY: {'; '.join(empty_here)}" if empty_here else ""
-            if broken:
-                detail = f"  PAGE FAILED: {broken}"
-            if not page_tables:
-                detail = f"  NO TABLE{': ' + NO_TABLE_ROUTES[route] if route in NO_TABLE_ROUTES else ''}"
+            detail = route_detail(route, tables_rendered=len(page_tables), empty_columns=empty_here, broken=broken)
             print(f"{route:44s} {len(page_tables):2d} table(s), {examined:4d} row(s){detail}")
     finally:
         (assets / "seed.html").unlink(missing_ok=True)
@@ -544,7 +559,13 @@ def main() -> int:
     # Nothing was examined on a route whose table should be there. Checked in both directions:
     # a route that lost its table, and a route that gained one while still being excused here
     # -- the second is how an allowance outlives its reason and starts hiding a defect.
-    unexpected = sorted(route for route in tableless if route not in NO_TABLE_ROUTES)
+    #
+    # A failed page is excluded from the first list: its table count is meaningless, and the
+    # message below would offer `NO_TABLE_ROUTES` as the remedy for a page that never
+    # rendered. Reported on its own, and first, because it is the more serious finding -- and
+    # because this `return` used to happen before the failure-page message was ever printed.
+    broken_routes = sorted(route for route in broken_pages if route in routes)
+    unexpected = sorted(route for route in tableless if route not in NO_TABLE_ROUTES and route not in broken_pages)
     stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and route not in tableless)
     if skipped:
         # A route that was dropped is not a route that passed. Reported with the same weight
@@ -552,6 +573,13 @@ def main() -> int:
         print(
             "\n以下详情路由没有填出来，因此这一次没有扫到（缺少的是实例里的哪一项，见括号）：\n  "
             + "\n  ".join(skipped),
+            file=sys.stderr,
+        )
+        return 1
+    if broken_routes:
+        print(
+            "\n以下路由渲染的是失败页（前端错误边界或「页面不存在」）——它们没有表格，"
+            "但那不是「这个页面本来就没有表格」，是页面根本没渲染成功：\n  " + "\n  ".join(broken_routes),
             file=sys.stderr,
         )
         return 1
@@ -581,12 +609,9 @@ def main() -> int:
         )
         return 1
     if findings:
-        if broken_pages:
-            print(
-                "\n以下路由渲染的是失败页（前端错误边界或「页面不存在」），它们上面的表格计数没有意义：\n  "
-                + "\n  ".join(broken_pages),
-                file=sys.stderr,
-            )
+        # No failure-page message here: `broken_routes` above returns first, so a sweep that
+        # reaches this line has none, and a second copy of the same message is a second place
+        # to keep in step.
         print(f"\n{findings} table(s) with a column that is empty in every row.")
         print("A sparse column is normal; a column empty in *every* row usually means the")
         print("`dataIndex` does not match the field name the endpoint returns.")

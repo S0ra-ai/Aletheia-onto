@@ -213,6 +213,26 @@ def test_a_page_that_failed_to_render_is_recognised() -> None:
     assert module.failure_marker('<table class="ant-table"><th>备份名称</th></table>') == ""
 
 
+def test_a_failed_page_is_not_reported_as_a_page_without_a_table() -> None:
+    """The two findings overlap, and the order they are applied in decides which is printed.
+
+    `NO TABLE` was applied last, so a crashed screen -- which renders no table either -- read
+    as 「这个页面本来就没有表格」. Two ways that hurts: the line says the least about the
+    failure that matters most, and it is the line that sends a maintainer to add the route to
+    `NO_TABLE_ROUTES`, excusing the page that is broken. The stale-allowance check would not
+    catch it afterwards: an excused route with no table is exactly what an allowance asserts.
+    """
+    module = _load_script()
+    failed = module.route_detail("/admin/knowledge", tables_rendered=0, empty_columns=[], broken="页面加载失败")
+    assert failed == "  PAGE FAILED: 页面加载失败", f"失败页被报成了：{failed!r}"
+
+    assert module.route_detail("/admin/knowledge", tables_rendered=0, empty_columns=[], broken="") == "  NO TABLE"
+    excused = module.route_detail("/admin/model", tables_rendered=0, empty_columns=[], broken="")
+    assert excused.startswith("  NO TABLE: ") and "模型配置" in excused, excused
+    assert module.route_detail("/admin/rules", tables_rendered=1, empty_columns=[], broken="") == ""
+    assert module.route_detail("/admin/rules", tables_rendered=1, empty_columns=["说明"], broken="") == "  EMPTY: 说明"
+
+
 def test_every_excused_route_is_one_the_sweep_visits() -> None:
     """A key that matches no route excuses nothing -- the route it was meant for fails as
     unexpected instead, and the reason written beside it describes a path that is not swept."""
