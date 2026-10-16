@@ -25,6 +25,7 @@ dev = [
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "rdflib" },
     { name = "ruff" },
 ]
@@ -59,6 +60,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = "==9.1.1" },
     { name = "python-docx", marker = "extra == 'documents'", specifier = "==1.2.0" },
     { name = "python-multipart", marker = "extra == 'web'", specifier = "==0.0.32" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = "==6.0.3" },
     { name = "rdflib", marker = "extra == 'dev'", specifier = "==7.6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.4" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = "==0.52.4" },
