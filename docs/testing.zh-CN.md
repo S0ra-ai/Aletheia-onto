@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1842 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1849 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -38,75 +38,75 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
-| `test_documentation_links.py` | 128 | Documentation links resolve, and the entry points a newcomer needs exist |
-| `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
+| `test_documentation_links.py` | 128 | 文档链接可解析，新人需要的入口都在 |
+| `test_error_codes.py` | 14 | 拒绝码：注册表引用的都是平台真说过的句子，且每个码控制台都叫得出 |
 | `test_query_limit_clamping.py` | 8 | 调用方给的 `limit` 无法越过上限把整张表取走（SQLite 把 `LIMIT -1` 读作「不限制」） |
 | `test_list_pagination.py` | 21 | 每个随客户数据增长的列表都接受分页；不传 limit 仍然返回全部 |
 | `test_connection_pool.py` | 14 | 池化连接绝不会交给 schema 或数据库不同的上下文，也绝不会带着未结束的事务被归还 |
 | `test_framework_readiness.py` | 9 | 框架成熟度那一页上的每条引用仍然成立，且缺口清单还在 |
 | `test_cli_language.py` | 12 | CLI 自己的句子双语，包括「由解析器产出、而 `--lang` 也由它解析」的帮助文本 |
 | `test_generated_types.py` | 9 | 生成的响应类型是最新的，且生成器自身的命名规则被钉住 |
-| `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
-| `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
-| `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
+| `test_instance_resolvers.py` | 57 | 实例解析器的一致性契约 |
+| `test_sql_dialects_and_generic_adapter.py` | 54 | SQL 方言档案与通用 DB-API 适配器 |
+| `test_cross_object_aggregation.py` | 46 | 跨对象聚合：要同时推理多个实例的规则 |
 | `test_cross_source_resolution.py` | 46 | 跨源实体消解。ROADMAP 通用性清单最后一项结构性空白。 |
-| `test_file_and_rest_sources.py` | 46 | CSV directories and REST APIs as data sources |
-| `test_extension_registry.py` | 45 | Contract tests for the platform's extension points |
+| `test_file_and_rest_sources.py` | 46 | CSV 目录与 REST API 作为数据源 |
+| `test_extension_registry.py` | 45 | 扩展点的契约测试 |
 | `test_conformance_suites.py` | 46 | 扩展点的一致性契约，每条都配一个反例 |
-| `test_derived_attributes_and_units.py` | 42 | Derived attributes and units of measure |
-| `test_multi_tenancy.py` | 42 | Multi-tenant isolation: separate schema plus a tenant_id column |
+| `test_derived_attributes_and_units.py` | 42 | 派生属性与计量单位 |
+| `test_multi_tenancy.py` | 42 | 多租户隔离：独立 schema 加一列 tenant_id |
 | `test_request_observability.py` | 42 | 请求标识、访问日志与结构化日志 |
-| `test_type_hierarchy_and_events.py` | 42 | Type hierarchy and business events |
-| `test_deployment_preflight.py` | 48 | Pre-flight checks for a production deployment |
-| `test_cli.py` | 41 | The `aletheia` command line |
-| `test_conversations_and_feedback.py` | 43 | Conversation persistence and the feedback loop |
-| `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
-| `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
+| `test_type_hierarchy_and_events.py` | 42 | 类型层次与业务事件 |
+| `test_deployment_preflight.py` | 48 | 生产部署前的预检 |
+| `test_cli.py` | 41 | `aletheia` 命令行 |
+| `test_conversations_and_feedback.py` | 43 | 会话持久化与反馈闭环 |
+| `test_database_writeback.py` | 35 | 写回存量数据库，含存储过程那条路 |
+| `test_temporal_validity.py` | 35 | 时态有效性：某件事在什么时候成立 |
 | `test_metadata_flow.py` | 80 | 元数据扫描、蓝图草案（含模型响应形状）与映射流程 |
-| `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
-| `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
+| `test_sso.py` | 32 | 单点登录：身份由提供方证明，权限由平台裁决 |
+| `test_composite_instance_keys.py` | 31 | 复合主键，端到端 |
 | `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
-| `test_api_authentication.py` | 57 | End-to-end authentication and authorization tests |
-| `test_inert_fields_activated.py` | 29 | Three fields that were stored but never evaluated |
-| `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
-| `test_domain_neutrality.py` | 25 | Domain neutrality tests |
-| `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL export: the same ontology in vocabulary other tools can act on |
-| `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
+| `test_api_authentication.py` | 57 | 端到端的认证与鉴权 |
+| `test_inert_fields_activated.py` | 29 | 三个存下来却从未被求值的字段 |
+| `test_document_knowledge.py` | 27 | 文档知识层：引用锚定到本体 |
+| `test_domain_neutrality.py` | 25 | 领域中立性 |
+| `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL 导出：同一份本体换成别的工具能用的词表 |
+| `test_platform_context.py` | 23 | 平台上下文：取代模块级单例的那个对象 |
 | `test_rate_limiter.py` | 24 | 固定窗口请求限流，以及施加限流的中间件 |
-| `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |
-| `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
-| `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
+| `test_relation_expressiveness.py` | 22 | 关系语义：基数、强度与多对多 |
+| `test_api_versioning.py` | 23 | `/v1` 前缀：每条路由服务两次，保护完全一致 |
+| `test_custom_model_endpoints.py` | 28 | 自建模型端点的兼容性 |
 | `test_error_messages.py` | 21 | 失败时用户读到什么：驱动与解释器原文不再直接示人 |
 | `test_backup.py` | 14 | SQLite 平台安全备份、原子恢复、恢复前留下的那份快照，以及二者各自的审计记录 |
-| `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
-| `test_scaffold.py` | 21 | Project scaffolding: generated code must actually run |
-| `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |
+| `test_axioms.py` | 20 | 公理：本体的第五个组成部分，以及用到它的发布门禁 |
+| `test_scaffold.py` | 21 | 项目脚手架：生成的代码必须真能跑起来 |
+| `test_audit_reports.py` | 18 | 审计报表：审计员真正带来的问题，而不是「最近发生了什么」 |
 | `test_rule_engine_safety.py` | 36 | 规则引擎安全、发布门禁，以及「读前置条件」与「写入发布」之间的那个窗口 |
-| `test_codegen.py` | 16 | Code generation from a published ontology |
-| `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
+| `test_codegen.py` | 16 | 从已发布本体生成代码 |
+| `test_tenant_quotas.py` | 16 | 租户配额。ROADMAP 阶段 B 的最后一项。 |
 | `test_quota_enforcement.py` | 9 | 声明的配额绑定到平台真正写入的那些行——七个资源、两个方向 |
-| `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
-| `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
-| `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
-| `test_frontend_type_agreement.py` | 97 | The frontend's hand-written types must agree with the API they mirror, on both sides |
+| `test_packaging.py` | 16 | 打包：项目可安装，装完可用 |
+| `test_workbench_and_graph.py` | 15 | 工作台聚合与知识图谱投影 |
+| `test_value_domain_mapping.py` | 13 | 值域映射：存量代码到语义状态 |
+| `test_frontend_type_agreement.py` | 97 | 前端手写的类型必须与它所映射的 API 一致，两侧都要 |
 | `test_frontend_serving.py` | 4 | 同源生产管理端与 API 传输前缀 |
 | `test_metrics.py` | 5 | Prometheus 兼容运行指标与安全重复初始化 |
-| `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
+| `test_migrations.py` | 12 | 版本化迁移：`SchemaBundle` 表达不了的那些结构变更 |
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
-| `test_data_source_knowledge_base.py` | 13 |  |
-| `test_platform_database_dialects.py` | 11 | Platform database durability and dialect tests |
+| `test_data_source_knowledge_base.py` | 13 | 数据源自己的知识库：浏览它的行、用它自己的规则作答，以及答案的形状 |
+| `test_platform_database_dialects.py` | 11 | 平台库的持久性与方言 |
 | `test_credential_protection.py` | 14 | 凭据不外泄，以及让密钥根本不落库的 `env:`／`file:` 引用 |
-| `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
-| `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 18 | The render check's own guards, exercised without a browser |
+| `test_derive_completeness.py` | 7 | `derive` 必须把决定结论的东西全都带上 |
+| `test_platform_db_consistency.py` | 7 | `--platform-db` 在每条命令里都必须指同一个库，包括 `serve` |
+| `test_ui_smoke_guards.py` | 18 | 渲染检查自己的那几个守卫，不开浏览器也能验证 |
 | `test_frontend_enum_rendering.py` | 2 | 表格列不许把枚举原样打印出来，必须走标签映射 |
 | `test_demo_bootstrap.py` | 2 | 演示按钮第二次按下时，报告它清掉了什么 |
 | `test_ui_messages.py` | 9 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键，也没有 `as never` 关掉键检查 |
 | `test_ci_workflow.py` | 3 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_smoke_seeding.py` | 4 | 渲染检查的种子数据真的给每个页面填了行，且只报告它做过的事 |
-| `test_every_route_answers.py` | 1 | Every route called once; none may crash |
-| `test_documented_claims.py` | 14 | Documented numbers match the code they describe |
-| `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
+| `test_every_route_answers.py` | 1 | 每条路由调用一次，都不许崩 |
+| `test_documented_claims.py` | 15 | 文档里写的数字与实际代码相符 |
+| `test_module_boundaries.py` | 6 | 模块边界：没有循环导入，也不伸手进私有名字 |
 | `test_object_service.py` | 14 | 通用业务对象浏览（HTTP 与服务层）、元数据、分页代价与行级权限过滤 |
 
 ## 静态检查与前端构建
@@ -227,7 +227,7 @@ job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单
 
 ## 规模
 
-92 个后端模块约 38800 行，156 个 API 端点，45 张平台表，前端 React + antd。
+92 个后端模块约 39400 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `scaffold` job，走的是**新部署**那条路——`aletheia new`、安装、`init`、
 `connect`、`model`、`verify.py`——因为那条路上的三个缺陷都是**靠人工走一遍**发现的，

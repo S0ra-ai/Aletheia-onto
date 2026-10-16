@@ -129,6 +129,43 @@ def test_the_per_file_breakdown_covers_every_test_file() -> None:
     assert not wrong, f"README 分布表数量过期（文档, 实际）: {wrong}"
 
 
+def test_each_distribution_table_has_a_sentence_in_its_own_language() -> None:
+    """The Chinese table held forty-five rows of English, and every check on it passed.
+
+    A count is a number, so the counters above catch a stale one -- but a row whose number is
+    right and whose *sentence* is in the wrong language reads as a correct row to everything
+    that looks at it. `docs/testing.zh-CN.md` is the page a Chinese reader is sent to, and it
+    was, for forty-four of its rows, the English page again: the same reading, in the language
+    they did not open it for. Two more rows said nothing at all -- an empty `Covers` cell --
+    and an empty cell is the same failure with the number kept.
+
+    `test_ui_messages.py` holds the *interface* to this standard. Nothing held the documents to
+    it, on the reasoning that prose cannot be checked -- which is true of whether a translation
+    is any good and false of whether it is there.
+
+    A floor, not a ceiling: a Chinese row may carry identifiers (`SchemaBundle`, `tenant_id`,
+    `--platform-db`, `OWL/RDFS/SHACL`), because those are the names of things. What it may not
+    be is *only* those.
+    """
+    problems: list[str] = []
+    for name in ("testing.md", "testing.zh-CN.md"):
+        chinese = name.endswith("zh-CN.md")
+        for number, line in enumerate((ROOT / "docs" / name).read_text(encoding="utf-8").splitlines(), 1):
+            if not line.startswith("| `test_"):
+                continue
+            cells = [cell.strip() for cell in line.split("|")[1:-1]]
+            if len(cells) < 3:
+                continue
+            covers = cells[2]
+            if not covers:
+                problems.append(f"{name}:{number} {cells[0]} 的「覆盖」一栏是空的")
+            elif chinese and not re.search(r"[一-鿿]", covers):
+                problems.append(f"{name}:{number} {cells[0]} 一栏是英文：{covers[:60]}")
+            elif not chinese and re.search(r"[一-鿿]", covers):
+                problems.append(f"{name}:{number} {cells[0]} 一栏是中文：{covers[:60]}")
+    assert not problems, "下面这些行不是本页语言，或者什么都没写：\n  " + "\n  ".join(problems)
+
+
 def test_the_changelog_states_each_change_type_once_per_release() -> None:
     """One `### Added` per release. The file had eleven.
 

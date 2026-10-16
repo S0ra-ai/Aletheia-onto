@@ -193,113 +193,6 @@ SCAFFOLD_PROJECT_NAME_INVALID = "scaffold_project_name_invalid"
 SCAFFOLD_FILES_EXIST = "scaffold_files_exist"
 SCAFFOLD_EXTENSION_UNKNOWN = "scaffold_extension_unknown"
 
-CODES: tuple[str, ...] = (
-    AUTH_LOGIN_FAILED,
-    AUTH_ACCOUNT_DISABLED,
-    AUTH_CURRENT_PASSWORD_WRONG,
-    AUTH_PASSWORD_TOO_SHORT,
-    AUTH_USERNAME_REQUIRED,
-    AUTH_TOKEN_MISSING,
-    AUTH_FORBIDDEN,
-    AUTH_TOKEN_INVALID,
-    AUTH_TOKEN_EXPIRED,
-    AUTH_TOKEN_REVOKED,
-    AUTH_USER_NOT_FOUND,
-    AUTH_USER_STATUS_INVALID,
-    ONTOLOGY_NOT_FOUND,
-    DATA_SOURCE_NOT_FOUND,
-    OBJECT_NOT_FOUND,
-    INSTANCE_NOT_FOUND,
-    RULE_NOT_FOUND,
-    CONVERSATION_NOT_FOUND,
-    WORKFLOW_NOT_FOUND,
-    BACKUP_NOT_FOUND,
-    KNOWLEDGE_ENTRY_NOT_FOUND,
-    OBJECT_NOT_BOUND_TO_SOURCE,
-    OBJECT_NOT_BOUND_TO_TABLE,
-    SOURCE_TABLE_NOT_SCANNED,
-    NO_OBJECTS_MODELLED,
-    PUBLISH_NEEDS_CONFIRMED_MAPPINGS,
-    PUBLISHED_MAPPINGS_IMMUTABLE,
-    PUBLISHED_RULES_IMMUTABLE,
-    PUBLISHED_RULES_UNDELETABLE,
-    PUBLISHED_KNOWLEDGE_IMMUTABLE,
-    PUBLISHED_CANNOT_REGENERATE,
-    DERIVE_REQUIRES_PUBLISHED,
-    MAPPINGS_STILL_PENDING,
-    ONTOLOGY_NOT_PUBLISHABLE,
-    ONTOLOGY_VERSION_EXISTS,
-    RELEASE_GATE_BLOCKED,
-    MAPPING_NOT_FOUND,
-    RULE_SCOPE_OBJECT_NOT_FOUND,
-    RULE_TYPE_UNSUPPORTED,
-    RULE_SEVERITY_UNSUPPORTED,
-    RULE_EXPRESSION_NOT_EXECUTABLE,
-    RULE_OVERRIDE_NOT_SUPERIOR,
-    RULE_OVERRIDE_SELF,
-    RULE_OVERRIDDEN_MISSING,
-    PUBLISHED_AGGREGATION_IMMUTABLE,
-    PUBLISHED_DERIVED_ATTRIBUTE_IMMUTABLE,
-    PUBLISHED_UNIT_IMMUTABLE,
-    PUBLISHED_CROSS_SOURCE_IMMUTABLE,
-    PUBLISHED_EVENT_TYPE_IMMUTABLE,
-    PUBLISHED_INSTANCE_RESOLVER_IMMUTABLE,
-    PUBLISHED_TYPE_HIERARCHY_IMMUTABLE,
-    PUBLISHED_VALUE_MAPPING_IMMUTABLE,
-    SOURCE_DIRECTORY_REQUIRED,
-    SOURCE_DIRECTORY_MISSING,
-    SOURCE_FILE_MISSING,
-    MYSQL_URI_FORMAT,
-    OPENAPI_PATHS_MISSING,
-    OPENAPI_URL_INVALID,
-    OPENAPI_URL_NOT_JSON,
-    TEST_CONNECTION_INPUT_REQUIRED,
-    UPLOAD_FORMAT_UNSUPPORTED,
-    DOCUMENT_TITLE_REQUIRED,
-    DOCUMENT_ALREADY_IMPORTED,
-    WORD_NO_RULES_FOUND,
-    WORD_NOT_A_DOCX,
-    WORD_SUPPORT_MISSING,
-    SCOPE_OBJECT_REQUIRED,
-    NO_ONTOLOGY_TO_EXPLAIN,
-    DATA_SOURCE_NOT_READY,
-    INSTANCE_HINT_REQUIRED,
-    MODEL_KEY_MISSING,
-    MODEL_AUTH_STYLE_UNSUPPORTED,
-    MODEL_AUTH_HEADER_REQUIRED,
-    MODEL_RESPONSE_NOT_JSON,
-    TENANT_ID_REQUIRED,
-    TENANT_ID_INVALID,
-    QUOTA_RESOURCE_UNKNOWN,
-    QUOTA_LIMIT_NEGATIVE,
-    CROSS_TENANT_ACCESS,
-    SSO_GROUP_REQUIRED,
-    SSO_ROLE_UNKNOWN,
-    SSO_MAPPING_MISSING,
-    SSO_IDENTITY_UNMAPPED,
-    SSO_NOT_ENABLED,
-    SSO_ALGORITHM_UNSUPPORTED,
-    SSO_ASSERTION_EXPIRED,
-    SSO_ASSERTION_NO_EXPIRY,
-    SSO_ASSERTION_MALFORMED,
-    SSO_SIGNATURE_INVALID,
-    SSO_ISSUER_MISMATCH,
-    SSO_AUDIENCE_MISMATCH,
-    WORKFLOW_NOT_CONFIGURED,
-    INSTANCE_NOT_IN_WORKFLOW,
-    INSTANCE_ALREADY_IN_WORKFLOW,
-    TRANSITION_NOT_ALLOWED,
-    GUARD_REJECTED,
-    QUESTION_REQUIRED,
-    FILE_NAME_REQUIRED,
-    FILE_CONTENT_EMPTY,
-    UNSUPPORTED_STATUS,
-    RULE_FUNCTION_NOT_ALLOWED,
-    MIGRATION_FAILED,
-    SCAFFOLD_PROJECT_NAME_INVALID,
-    SCAFFOLD_FILES_EXIST,
-    SCAFFOLD_EXTENSION_UNKNOWN,
-)
 
 # `code -> the sentences that mean it`, in the platform's own words.
 #
@@ -435,6 +328,252 @@ TEMPLATES: dict[str, tuple[str, ...]] = {
 }
 
 
+# -- Refusals an extension author meets --
+#
+# A framework's extension authors are users too: the person writing an adapter, a resolver, a
+# writeback executor or a dialect profile is the reader of these sentences, and they meet them
+# through `aletheia verify`, through the console's modelling screens, and through their own
+# first run. Transcribed from 16 modules: aggregation.py, axioms.py, db_executors.py, derived_attributes.py, entity_resolution.py, events.py, generic_sql_adapter.py, instance_resolver.py, knowledge_documents.py, registry.py, rest_adapter.py, rule_sandbox.py, sql_dialects.py, temporal.py, type_hierarchy.py, value_mapping.py.
+AGGREGATE_FUNCTION_UNSUPPORTED = "aggregate_function_unsupported"
+AGGREGATE_NAME_INVALID = "aggregate_name_invalid"
+AGGREGATE_NAME_UNDERSCORE = "aggregate_name_underscore"
+AGGREGATE_SELF_COLUMN_REQUIRED = "aggregate_self_column_required"
+AGGREGATE_VALUE_COLUMN_REQUIRED = "aggregate_value_column_required"
+AXIOM_ATTRIBUTE_NOT_FOUND = "axiom_attribute_not_found"
+AXIOM_CODE_REQUIRED = "axiom_code_required"
+AXIOM_EXCLUSIVE_SAME_OBJECT = "axiom_exclusive_same_object"
+AXIOM_KIND_UNKNOWN = "axiom_kind_unknown"
+AXIOM_NOT_FOUND = "axiom_not_found"
+AXIOM_OPERAND_REQUIRED = "axiom_operand_required"
+AXIOM_OPERANDS_IDENTICAL = "axiom_operands_identical"
+AXIOM_REFERENCE_FORMAT = "axiom_reference_format"
+AXIOM_REFERENCE_INCOMPLETE = "axiom_reference_incomplete"
+AXIOM_RELATION_NOT_FOUND = "axiom_relation_not_found"
+AXIOM_SUBJECT_REQUIRED = "axiom_subject_required"
+CROSS_SOURCE_CONFLICT_UNSUPPORTED = "cross_source_conflict_unsupported"
+CROSS_SOURCE_MATCH_REQUIRED = "cross_source_match_required"
+CROSS_SOURCE_NAME_INVALID = "cross_source_name_invalid"
+CROSS_SOURCE_OBJECT_NOT_FOUND = "cross_source_object_not_found"
+CROSS_SOURCE_OBJECT_REQUIRED = "cross_source_object_required"
+CROSS_SOURCE_SOURCE_NOT_FOUND = "cross_source_source_not_found"
+CROSS_SOURCE_SOURCE_REQUIRED = "cross_source_source_required"
+CROSS_SOURCE_VALUE_CONFLICT = "cross_source_value_conflict"
+DERIVED_ATTRIBUTE_NOT_FOUND = "derived_attribute_not_found"
+DERIVED_CODE_INVALID = "derived_code_invalid"
+DERIVED_CODE_UNDERSCORE = "derived_code_underscore"
+DERIVED_COLUMN_CONFLICT = "derived_column_conflict"
+DERIVED_EXPRESSION_INVALID = "derived_expression_invalid"
+DIALECT_EXISTS = "dialect_exists"
+DIALECT_NAME_INVALID = "dialect_name_invalid"
+DIALECT_PAGING_UNSUPPORTED = "dialect_paging_unsupported"
+DIALECT_PARAMSTYLE_UNSUPPORTED = "dialect_paramstyle_unsupported"
+DIALECT_QUOTE_REQUIRED = "dialect_quote_required"
+DIALECT_UNKNOWN = "dialect_unknown"
+EVENT_CATEGORY_UNSUPPORTED = "event_category_unsupported"
+EVENT_CODE_INVALID = "event_code_invalid"
+EVENT_NAME_REQUIRED = "event_name_required"
+EVENT_PAYLOAD_FIELD_INVALID = "event_payload_field_invalid"
+EVENT_TYPE_UNDECLARED = "event_type_undeclared"
+HIERARCHY_SELF_PARENT = "hierarchy_self_parent"
+HIERARCHY_TOO_DEEP = "hierarchy_too_deep"
+MOMENT_REQUIRED = "moment_required"
+MOMENT_UNPARSEABLE = "moment_unparseable"
+REGISTRY_KIND_UNSUPPORTED = "registry_kind_unsupported"
+REGISTRY_NAME_REQUIRED = "registry_name_required"
+REGISTRY_NAME_TAKEN = "registry_name_taken"
+RESOLVER_CUSTOM_UNSUPPORTED = "resolver_custom_unsupported"
+RESOLVER_DISCRIMINATOR_REQUIRED = "resolver_discriminator_required"
+RESOLVER_IDENTIFIER_INVALID = "resolver_identifier_invalid"
+RESOLVER_JOINS_REQUIRED = "resolver_joins_required"
+RESOLVER_QUERY_KIND = "resolver_query_kind"
+RESOLVER_QUERY_REQUIRED = "resolver_query_required"
+RESOLVER_QUERY_SEMICOLON = "resolver_query_semicolon"
+REST_FIELDS_REQUIRED = "rest_fields_required"
+REST_ITEMS_PATH_MISSING = "rest_items_path_missing"
+REST_KEY_NOT_DECLARED = "rest_key_not_declared"
+REST_LIST_PATH_INVALID = "rest_list_path_invalid"
+REST_NO_COLLECTION_ENDPOINT = "rest_no_collection_endpoint"
+REST_REQUEST_FAILED = "rest_request_failed"
+REST_REQUEST_FAILED_STATUS = "rest_request_failed_status"
+REST_RESOURCE_DUPLICATE = "rest_resource_duplicate"
+REST_RESOURCE_NAME_INVALID = "rest_resource_name_invalid"
+REST_RESOURCE_UNDECLARED = "rest_resource_undeclared"
+REST_RESOURCES_REQUIRED = "rest_resources_required"
+REST_RESPONSE_NOT_JSON = "rest_response_not_json"
+REST_RESPONSE_NOT_LIST = "rest_response_not_list"
+RULE_EXPRESSION_ATTRIBUTE_FORBIDDEN = "rule_expression_attribute_forbidden"
+RULE_EXPRESSION_NODE_FORBIDDEN = "rule_expression_node_forbidden"
+RULE_FUNCTION_NAME_INVALID = "rule_function_name_invalid"
+RULE_FUNCTION_NAME_UNDERSCORE = "rule_function_name_underscore"
+RULE_FUNCTION_NO_KWARGS = "rule_function_no_kwargs"
+RULE_FUNCTION_NOT_CALLABLE = "rule_function_not_callable"
+SQL_DRIVER_NO_CONNECT = "sql_driver_no_connect"
+SQL_DRIVER_NOT_DECLARED = "sql_driver_not_declared"
+SQL_SOURCE_TYPE_INVALID = "sql_source_type_invalid"
+TEMPORAL_SCHEMA_MISSING = "temporal_schema_missing"
+UNIT_CODE_INVALID = "unit_code_invalid"
+UNIT_DIMENSION_MISMATCH = "unit_dimension_mismatch"
+UNIT_EXISTS = "unit_exists"
+UNIT_FACTOR_INVALID = "unit_factor_invalid"
+UNIT_UNKNOWN = "unit_unknown"
+VALUE_MAPPING_RAW_REQUIRED = "value_mapping_raw_required"
+VALUE_MAPPING_STATE_REQUIRED = "value_mapping_state_required"
+WORD_SUPPORT_MISSING_BARE = "word_support_missing_bare"
+WRITEBACK_CHANNEL_EXISTS = "writeback_channel_exists"
+WRITEBACK_COLUMNS_REQUIRED = "writeback_columns_required"
+WRITEBACK_DELETE_NOT_ALLOWED = "writeback_delete_not_allowed"
+WRITEBACK_DRIVER_MISSING = "writeback_driver_missing"
+WRITEBACK_DRIVER_REQUIRED = "writeback_driver_required"
+WRITEBACK_FAILED = "writeback_failed"
+WRITEBACK_KEY_COLUMNS_REQUIRED = "writeback_key_columns_required"
+WRITEBACK_KIND_UNSUPPORTED = "writeback_kind_unsupported"
+WRITEBACK_NAME_INVALID = "writeback_name_invalid"
+WRITEBACK_NO_ROWS = "writeback_no_rows"
+WRITEBACK_PARAM_MISSING = "writeback_param_missing"
+WRITEBACK_PARAM_MISSING_BARE = "writeback_param_missing_bare"
+WRITEBACK_PARAM_NAME_INVALID = "writeback_param_name_invalid"
+WRITEBACK_PROCEDURE_REQUIRED = "writeback_procedure_required"
+WRITEBACK_SCHEME_INVALID = "writeback_scheme_invalid"
+WRITEBACK_SEMICOLON_FORBIDDEN = "writeback_semicolon_forbidden"
+WRITEBACK_STATEMENT_FORBIDDEN = "writeback_statement_forbidden"
+WRITEBACK_TABLE_REQUIRED = "writeback_table_required"
+WRITEBACK_UNDECLARED = "writeback_undeclared"
+WRITEBACK_URI_REQUIRED = "writeback_uri_required"
+WRITEBACK_WHERE_REQUIRED = "writeback_where_required"
+
+_EXTENSION_TEMPLATES = {
+    "aggregate_name_invalid": ("聚合名必须是合法标识符: {name}（规则表达式要按此名引用它）",),
+    "aggregate_name_underscore": ("聚合名不能以下划线开头，避免与沙箱内部名冲突",),
+    "aggregate_function_unsupported": ("不支持的聚合函数: {name}。可选: {supported}",),
+    "aggregate_value_column_required": ("{name} 聚合必须指定 valueColumn",),
+    "aggregate_self_column_required": ("excludeSelf 为真时必须指定 selfColumn",),
+    "axiom_code_required": ("公理编码不能为空",),
+    "axiom_kind_unknown": ("未知公理类型 {kind}，支持: {supported}",),
+    "axiom_subject_required": ("公理主体不能为空",),
+    "axiom_operand_required": ("{kind} 需要两个操作数，object 不能为空",),
+    "axiom_operands_identical": ("{kind} 的两个操作数不能相同: {operand}",),
+    "axiom_not_found": ("公理不存在: {axiomCode}",),
+    "axiom_reference_format": ("属性引用需为 对象编码.属性编码 形式: {reference}",),
+    "axiom_reference_incomplete": ("属性引用不完整: {reference}",),
+    "axiom_relation_not_found": ("业务关系不存在: {relationCode}",),
+    "axiom_attribute_not_found": ("业务属性不存在: {reference}",),
+    "axiom_exclusive_same_object": ("互斥属性必须属于同一对象: {first} / {second}",),
+    "writeback_semicolon_forbidden": ("{name}不允许包含分号（多语句会绕过单语句审计）",),
+    "writeback_statement_forbidden": ("{name}不允许使用 {statement}：自动化用于推进业务状态，不用于变更结构或权限",),
+    "writeback_name_invalid": ("写回名称必须是字母数字、下划线或连字符: {name}",),
+    "writeback_kind_unsupported": ("不支持的写回类型: {kind}。可选: {supported}",),
+    "writeback_delete_not_allowed": (
+        "{name}: 删除类写回必须显式设置 allowDelete=True。自动化用于推进业务状态，销毁数据需要单独的授权决定。",
+    ),
+    "writeback_procedure_required": ("{name}: call 类写回必须指定 procedure",),
+    "writeback_param_name_invalid": ("{name}: 参数名必须是合法标识符: {parameter}",),
+    "writeback_table_required": ("{name}: 结构化写回必须指定 table",),
+    "writeback_columns_required": ("{name}: {kind} 写回必须指定 columns",),
+    "writeback_key_columns_required": (
+        "{name}: {kind} 写回必须指定 keyColumns。缺少 WHERE 条件的更新会改写整张表，且事后无法从判定记录看出这一点。",
+    ),
+    "writeback_where_required": ("{name}: UPDATE／DELETE 语句必须包含 WHERE 条件，否则会作用于整张表。",),
+    "writeback_param_missing": ("{name}: 缺少参数 {parameter}。写回不会用 NULL 代替缺失值。",),
+    "writeback_param_missing_bare": ("缺少参数 {parameter}。写回不会用 NULL 代替缺失值。",),
+    "writeback_scheme_invalid": ("写回 scheme 必须是字母数字或下划线: {scheme}",),
+    "writeback_uri_required": ("{scheme}: 必须提供连接串",),
+    "writeback_driver_required": ("{scheme}: 必须指定驱动模块",),
+    "writeback_undeclared": (
+        "{name}: 未声明的写回 {operation}。已声明: {declared}。写回语句必须预先声明，不能由请求构造。",
+    ),
+    "writeback_driver_missing": ("{scheme}: 写回需要安装驱动 {module}",),
+    "writeback_failed": ("{objectCode}/{instanceId}: 写回失败: {detail}",),
+    "writeback_no_rows": ("{objectCode}/{instanceId}: 语句执行成功但影响 0 行，目标实例可能不存在或条件不匹配。",),
+    "writeback_channel_exists": ("写回通道已存在: {scheme}。要覆盖请显式传 replace=True。",),
+    "unit_code_invalid": ("单位编码必须是合法标识符: {unitCode}",),
+    "unit_factor_invalid": ("单位换算系数必须为正数: {factor}",),
+    "unit_exists": ("单位已存在: {unitCode}。要覆盖请显式传 replace=True。",),
+    "unit_unknown": ("未知单位: {unitCode}。已登记: {known}",),
+    "unit_dimension_mismatch": (
+        "无法在不同量纲间换算: {from}（{fromDimension}）→ {to}（{toDimension}）。这通常意味着建模有误，而不是需要换算。",
+    ),
+    "derived_code_invalid": ("派生属性编码必须是合法标识符: {name}（规则要按此名引用它）",),
+    "derived_code_underscore": ("派生属性编码不能以下划线开头，避免与沙箱内部名冲突",),
+    "derived_expression_invalid": ("派生表达式不可执行: {expression}",),
+    "derived_column_conflict": ("属性 {attributeCode} 已绑定来源列，不能改为派生属性。请换一个编码，或先解除映射。",),
+    "derived_attribute_not_found": ("属性不存在: {objectCode}.{attributeCode}",),
+    "cross_source_name_invalid": ("跨源对应名称必须是合法标识符: {name}",),
+    "cross_source_object_required": ("{name}: 必须指定主源业务对象",),
+    "cross_source_source_required": ("{name}: 必须指定副源数据源 id",),
+    "cross_source_match_required": (
+        "{name}: 必须声明至少一个匹配列对。跨源判定会把「这两行是同一实例」写进判定链，因此它必须是声明的，不能是推断的。",
+    ),
+    "cross_source_conflict_unsupported": ("{name}: 不支持的冲突策略 {strategy}。可选: {supported}",),
+    "cross_source_object_not_found": ("主源业务对象不存在: {objectCode}",),
+    "cross_source_source_not_found": ("副源数据源不存在: {dataSourceId}",),
+    "cross_source_value_conflict": (
+        "字段 {field} 在两个数据源中取值不同（主源={primary}，副源={secondary}），无法参与比较。请在跨源对应中声明冲突策略，或修正源数据。",
+    ),
+    "event_code_invalid": ("事件编码必须是合法标识符: {eventCode}",),
+    "event_name_required": ("事件名称不能为空",),
+    "event_category_unsupported": ("不支持的事件类别: {category}。可选: {supported}",),
+    "event_payload_field_invalid": ("载荷字段名必须是合法标识符: {field}",),
+    "event_type_undeclared": (
+        "未声明的事件类型: {objectCode}.{eventCode}。请先声明事件类型，否则历史将无法按类型检索。",
+    ),
+    "sql_source_type_invalid": ("数据源类型必须是字母数字或下划线: {sourceType}",),
+    "sql_driver_not_declared": ("{sourceType} 未声明驱动模块",),
+    "sql_driver_no_connect": ("驱动 {module} 没有 {attribute}()，无法建立连接。",),
+    "resolver_identifier_invalid": (
+        "{kind}不合法: {value}。只允许字母或下划线开头的字母、数字、下划线，最长 64 字符。",
+    ),
+    "resolver_joins_required": ("joined_tables 解析器至少需要一个 joins 配置",),
+    "resolver_discriminator_required": ("discriminated 解析器必须指定判别值",),
+    "resolver_query_required": ("custom_sql 解析器必须提供 query",),
+    "resolver_query_kind": ("custom_sql 只允许 select 或 with 查询",),
+    "resolver_query_semicolon": ("custom_sql 不允许包含分号",),
+    "resolver_custom_unsupported": ("运行时不支持自定义查询",),
+    "word_support_missing_bare": ("解析 Word 文档需要安装 python-docx。",),
+    "registry_name_required": ("{kind}的名称不能为空",),
+    "registry_name_taken": ("{kind} '{name}' 已被占用。如确实要覆盖，请显式传入 replace=True。",),
+    "registry_kind_unsupported": ("不支持的{kind}: {name}。当前已注册: {registered}",),
+    "rest_resource_name_invalid": ("资源名必须是字母数字或下划线: {name}",),
+    "rest_list_path_invalid": ("{name} 的 listPath 必须以 / 开头: {path}",),
+    "rest_fields_required": ("{name} 必须声明字段列表：REST 响应没有可供发现的模式",),
+    "rest_key_not_declared": ("{name} 的主键 {key} 不在已声明字段中",),
+    "rest_resources_required": ("{name} 未声明任何资源",),
+    "rest_resource_duplicate": ("{name} 存在重名资源: {duplicates}",),
+    "rest_resource_undeclared": ("未声明的资源: {name}。已声明: {declared}",),
+    "rest_items_path_missing": ("响应中找不到 itemsPath 片段 {path}",),
+    "rest_response_not_list": ("响应不是对象列表: {detail}",),
+    "rest_request_failed_status": ("请求 {operation} 返回 {status}: {detail}",),
+    "rest_request_failed": ("请求 {operation} 失败: {detail}",),
+    "rest_response_not_json": ("{name} 返回的不是 JSON",),
+    "rest_no_collection_endpoint": (
+        "OpenAPI 文档中没有可用于声明的集合端点（需要返回对象数组的 GET 端点）。请手工声明 RestResource。",
+    ),
+    "rule_function_name_invalid": ("规则函数名必须是合法标识符: {name}",),
+    "rule_function_name_underscore": ("规则函数名不能以下划线开头，避免与沙箱内部名冲突: {name}",),
+    "rule_function_not_callable": ("规则函数 {name} 必须可调用",),
+    "rule_expression_node_forbidden": ("不允许的规则表达式节点: {node}",),
+    "rule_function_no_kwargs": ("规则函数不支持关键字参数",),
+    "rule_expression_attribute_forbidden": ("不允许访问内部属性: {attribute}",),
+    "dialect_name_invalid": ("方言名必须是字母数字或下划线: {name}",),
+    "dialect_paramstyle_unsupported": ("不支持的参数风格: {style}。可选: format、qmark、numeric",),
+    "dialect_paging_unsupported": ("不支持的分页风格: {style}。可选: limit_offset、fetch_first",),
+    "dialect_quote_required": ("标识符引号不能为空",),
+    "dialect_exists": ("方言已存在: {name}。要覆盖请显式传 replace=True。",),
+    "dialect_unknown": ("未知 SQL 方言: {name}。已登记: {registered}",),
+    "moment_required": ("{what}不能为空",),
+    "moment_unparseable": ("无法解析{what}: {value}。请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。",),
+    "temporal_schema_missing": ("时态表尚未创建，请先运行 init_temporal_schema()。",),
+    "hierarchy_self_parent": ("对象不能是自身的子类型: {objectCode}",),
+    "hierarchy_too_deep": ("类型层级超过 {depth} 层，请检查是否存在环。",),
+    "value_mapping_raw_required": ("原始值不能为空",),
+    "value_mapping_state_required": ("语义状态名不能为空",),
+}
+TEMPLATES.update(_EXTENSION_TEMPLATES)
+
+
+# **One sentence, one code.** Two codes naming the identical sentence cannot both be returned by
+# `identify` -- it returns the first match -- so the second is a translation the console would
+# never show and, worse, an entry that reads as coverage. Where two modules raise the same
+# refusal, they share the code; `tests/test_error_codes.py` fails on any sentence claimed twice.
 def _compile(template: str) -> tuple[re.Pattern[str], tuple[str, ...]]:
     """A template as a regex plus the fact names in the order they appear.
 
@@ -488,6 +627,14 @@ def identify(sentence: str) -> tuple[str, dict[str, str]]:
 def sentence_for(code: str, **facts: Any) -> str:
     """The platform's own sentence for a code, with its facts filled in.
 
+    **No template may name a fact `code`.** `sentence_for(code, **facts)` would raise
+    `TypeError: got multiple values for argument 'code'`, and the first version of the
+    extension-author batch did exactly that: `公理不存在: {code}` is a natural way to write that
+    sentence, and the collision surfaces as a TypeError from a function three layers away from
+    the template. Renamed to `axiomCode` and friends.
+    """
+    """The platform's own sentence for a code, with its facts filled in.
+
     For tests and for callers that need the sentence a console would have been given. Raises
     on a code that is not registered: a misspelled code here is a typo in a registry entry,
     not a runtime condition, and `tests/test_error_codes.py` exercises every code through
@@ -515,3 +662,221 @@ def decorate(detail: Any) -> dict[str, Any]:
         if facts:
             body["facts"] = facts
     return body
+
+
+# Defined last, after every constant it names. It sat in the middle of the file while every
+# constant was declared above it; the extension-author batch is appended at the end, and a tuple
+# that references names defined below it is a NameError at import.
+CODES: tuple[str, ...] = (
+    AUTH_LOGIN_FAILED,
+    AUTH_ACCOUNT_DISABLED,
+    AUTH_CURRENT_PASSWORD_WRONG,
+    AUTH_PASSWORD_TOO_SHORT,
+    AUTH_USERNAME_REQUIRED,
+    AUTH_TOKEN_MISSING,
+    AUTH_FORBIDDEN,
+    AUTH_TOKEN_INVALID,
+    AUTH_TOKEN_EXPIRED,
+    AUTH_TOKEN_REVOKED,
+    AUTH_USER_NOT_FOUND,
+    AUTH_USER_STATUS_INVALID,
+    ONTOLOGY_NOT_FOUND,
+    DATA_SOURCE_NOT_FOUND,
+    OBJECT_NOT_FOUND,
+    INSTANCE_NOT_FOUND,
+    RULE_NOT_FOUND,
+    CONVERSATION_NOT_FOUND,
+    WORKFLOW_NOT_FOUND,
+    BACKUP_NOT_FOUND,
+    KNOWLEDGE_ENTRY_NOT_FOUND,
+    OBJECT_NOT_BOUND_TO_SOURCE,
+    OBJECT_NOT_BOUND_TO_TABLE,
+    SOURCE_TABLE_NOT_SCANNED,
+    NO_OBJECTS_MODELLED,
+    PUBLISH_NEEDS_CONFIRMED_MAPPINGS,
+    PUBLISHED_MAPPINGS_IMMUTABLE,
+    PUBLISHED_RULES_IMMUTABLE,
+    PUBLISHED_RULES_UNDELETABLE,
+    PUBLISHED_KNOWLEDGE_IMMUTABLE,
+    PUBLISHED_CANNOT_REGENERATE,
+    DERIVE_REQUIRES_PUBLISHED,
+    MAPPINGS_STILL_PENDING,
+    ONTOLOGY_NOT_PUBLISHABLE,
+    ONTOLOGY_VERSION_EXISTS,
+    RELEASE_GATE_BLOCKED,
+    MAPPING_NOT_FOUND,
+    RULE_SCOPE_OBJECT_NOT_FOUND,
+    RULE_TYPE_UNSUPPORTED,
+    RULE_SEVERITY_UNSUPPORTED,
+    RULE_EXPRESSION_NOT_EXECUTABLE,
+    RULE_OVERRIDE_NOT_SUPERIOR,
+    RULE_OVERRIDE_SELF,
+    RULE_OVERRIDDEN_MISSING,
+    PUBLISHED_AGGREGATION_IMMUTABLE,
+    PUBLISHED_DERIVED_ATTRIBUTE_IMMUTABLE,
+    PUBLISHED_UNIT_IMMUTABLE,
+    PUBLISHED_CROSS_SOURCE_IMMUTABLE,
+    PUBLISHED_EVENT_TYPE_IMMUTABLE,
+    PUBLISHED_INSTANCE_RESOLVER_IMMUTABLE,
+    PUBLISHED_TYPE_HIERARCHY_IMMUTABLE,
+    PUBLISHED_VALUE_MAPPING_IMMUTABLE,
+    SOURCE_DIRECTORY_REQUIRED,
+    SOURCE_DIRECTORY_MISSING,
+    SOURCE_FILE_MISSING,
+    MYSQL_URI_FORMAT,
+    OPENAPI_PATHS_MISSING,
+    OPENAPI_URL_INVALID,
+    OPENAPI_URL_NOT_JSON,
+    TEST_CONNECTION_INPUT_REQUIRED,
+    UPLOAD_FORMAT_UNSUPPORTED,
+    DOCUMENT_TITLE_REQUIRED,
+    DOCUMENT_ALREADY_IMPORTED,
+    WORD_NO_RULES_FOUND,
+    WORD_NOT_A_DOCX,
+    WORD_SUPPORT_MISSING,
+    SCOPE_OBJECT_REQUIRED,
+    NO_ONTOLOGY_TO_EXPLAIN,
+    DATA_SOURCE_NOT_READY,
+    INSTANCE_HINT_REQUIRED,
+    MODEL_KEY_MISSING,
+    MODEL_AUTH_STYLE_UNSUPPORTED,
+    MODEL_AUTH_HEADER_REQUIRED,
+    MODEL_RESPONSE_NOT_JSON,
+    TENANT_ID_REQUIRED,
+    TENANT_ID_INVALID,
+    QUOTA_RESOURCE_UNKNOWN,
+    QUOTA_LIMIT_NEGATIVE,
+    CROSS_TENANT_ACCESS,
+    SSO_GROUP_REQUIRED,
+    SSO_ROLE_UNKNOWN,
+    SSO_MAPPING_MISSING,
+    SSO_IDENTITY_UNMAPPED,
+    SSO_NOT_ENABLED,
+    SSO_ALGORITHM_UNSUPPORTED,
+    SSO_ASSERTION_EXPIRED,
+    SSO_ASSERTION_NO_EXPIRY,
+    SSO_ASSERTION_MALFORMED,
+    SSO_SIGNATURE_INVALID,
+    SSO_ISSUER_MISMATCH,
+    SSO_AUDIENCE_MISMATCH,
+    WORKFLOW_NOT_CONFIGURED,
+    INSTANCE_NOT_IN_WORKFLOW,
+    INSTANCE_ALREADY_IN_WORKFLOW,
+    TRANSITION_NOT_ALLOWED,
+    GUARD_REJECTED,
+    QUESTION_REQUIRED,
+    FILE_NAME_REQUIRED,
+    FILE_CONTENT_EMPTY,
+    UNSUPPORTED_STATUS,
+    RULE_FUNCTION_NOT_ALLOWED,
+    MIGRATION_FAILED,
+    SCAFFOLD_PROJECT_NAME_INVALID,
+    SCAFFOLD_FILES_EXIST,
+    SCAFFOLD_EXTENSION_UNKNOWN,
+    AGGREGATE_FUNCTION_UNSUPPORTED,
+    AGGREGATE_NAME_INVALID,
+    AGGREGATE_NAME_UNDERSCORE,
+    AGGREGATE_SELF_COLUMN_REQUIRED,
+    AGGREGATE_VALUE_COLUMN_REQUIRED,
+    AXIOM_ATTRIBUTE_NOT_FOUND,
+    AXIOM_CODE_REQUIRED,
+    AXIOM_EXCLUSIVE_SAME_OBJECT,
+    AXIOM_KIND_UNKNOWN,
+    AXIOM_NOT_FOUND,
+    AXIOM_OPERAND_REQUIRED,
+    AXIOM_OPERANDS_IDENTICAL,
+    AXIOM_REFERENCE_FORMAT,
+    AXIOM_REFERENCE_INCOMPLETE,
+    AXIOM_RELATION_NOT_FOUND,
+    AXIOM_SUBJECT_REQUIRED,
+    CROSS_SOURCE_CONFLICT_UNSUPPORTED,
+    CROSS_SOURCE_MATCH_REQUIRED,
+    CROSS_SOURCE_NAME_INVALID,
+    CROSS_SOURCE_OBJECT_NOT_FOUND,
+    CROSS_SOURCE_OBJECT_REQUIRED,
+    CROSS_SOURCE_SOURCE_NOT_FOUND,
+    CROSS_SOURCE_SOURCE_REQUIRED,
+    CROSS_SOURCE_VALUE_CONFLICT,
+    DERIVED_ATTRIBUTE_NOT_FOUND,
+    DERIVED_CODE_INVALID,
+    DERIVED_CODE_UNDERSCORE,
+    DERIVED_COLUMN_CONFLICT,
+    DERIVED_EXPRESSION_INVALID,
+    DIALECT_EXISTS,
+    DIALECT_NAME_INVALID,
+    DIALECT_PAGING_UNSUPPORTED,
+    DIALECT_PARAMSTYLE_UNSUPPORTED,
+    DIALECT_QUOTE_REQUIRED,
+    DIALECT_UNKNOWN,
+    EVENT_CATEGORY_UNSUPPORTED,
+    EVENT_CODE_INVALID,
+    EVENT_NAME_REQUIRED,
+    EVENT_PAYLOAD_FIELD_INVALID,
+    EVENT_TYPE_UNDECLARED,
+    HIERARCHY_SELF_PARENT,
+    HIERARCHY_TOO_DEEP,
+    MOMENT_REQUIRED,
+    MOMENT_UNPARSEABLE,
+    REGISTRY_KIND_UNSUPPORTED,
+    REGISTRY_NAME_REQUIRED,
+    REGISTRY_NAME_TAKEN,
+    RESOLVER_CUSTOM_UNSUPPORTED,
+    RESOLVER_DISCRIMINATOR_REQUIRED,
+    RESOLVER_IDENTIFIER_INVALID,
+    RESOLVER_JOINS_REQUIRED,
+    RESOLVER_QUERY_KIND,
+    RESOLVER_QUERY_REQUIRED,
+    RESOLVER_QUERY_SEMICOLON,
+    REST_FIELDS_REQUIRED,
+    REST_ITEMS_PATH_MISSING,
+    REST_KEY_NOT_DECLARED,
+    REST_LIST_PATH_INVALID,
+    REST_NO_COLLECTION_ENDPOINT,
+    REST_REQUEST_FAILED,
+    REST_REQUEST_FAILED_STATUS,
+    REST_RESOURCE_DUPLICATE,
+    REST_RESOURCE_NAME_INVALID,
+    REST_RESOURCE_UNDECLARED,
+    REST_RESOURCES_REQUIRED,
+    REST_RESPONSE_NOT_JSON,
+    REST_RESPONSE_NOT_LIST,
+    RULE_EXPRESSION_ATTRIBUTE_FORBIDDEN,
+    RULE_EXPRESSION_NODE_FORBIDDEN,
+    RULE_FUNCTION_NAME_INVALID,
+    RULE_FUNCTION_NAME_UNDERSCORE,
+    RULE_FUNCTION_NO_KWARGS,
+    RULE_FUNCTION_NOT_CALLABLE,
+    SQL_DRIVER_NO_CONNECT,
+    SQL_DRIVER_NOT_DECLARED,
+    SQL_SOURCE_TYPE_INVALID,
+    TEMPORAL_SCHEMA_MISSING,
+    UNIT_CODE_INVALID,
+    UNIT_DIMENSION_MISMATCH,
+    UNIT_EXISTS,
+    UNIT_FACTOR_INVALID,
+    UNIT_UNKNOWN,
+    VALUE_MAPPING_RAW_REQUIRED,
+    VALUE_MAPPING_STATE_REQUIRED,
+    WORD_SUPPORT_MISSING_BARE,
+    WRITEBACK_CHANNEL_EXISTS,
+    WRITEBACK_COLUMNS_REQUIRED,
+    WRITEBACK_DELETE_NOT_ALLOWED,
+    WRITEBACK_DRIVER_MISSING,
+    WRITEBACK_DRIVER_REQUIRED,
+    WRITEBACK_FAILED,
+    WRITEBACK_KEY_COLUMNS_REQUIRED,
+    WRITEBACK_KIND_UNSUPPORTED,
+    WRITEBACK_NAME_INVALID,
+    WRITEBACK_NO_ROWS,
+    WRITEBACK_PARAM_MISSING,
+    WRITEBACK_PARAM_MISSING_BARE,
+    WRITEBACK_PARAM_NAME_INVALID,
+    WRITEBACK_PROCEDURE_REQUIRED,
+    WRITEBACK_SCHEME_INVALID,
+    WRITEBACK_SEMICOLON_FORBIDDEN,
+    WRITEBACK_STATEMENT_FORBIDDEN,
+    WRITEBACK_TABLE_REQUIRED,
+    WRITEBACK_UNDECLARED,
+    WRITEBACK_URI_REQUIRED,
+    WRITEBACK_WHERE_REQUIRED,
+)

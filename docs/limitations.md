@@ -183,12 +183,22 @@ By design, not bugs. These are the next phase's work.
   without confirmed mappings, editing a published ontology, an object with no source table.
 
   What is left is measurable rather than vague: of the 101 single-sentence Chinese refusals the
-  backend raises, **51 are named**, and `tests/test_error_codes.py` holds that count as a ceiling so
-  it can only fall. An unnamed refusal is not broken -- the console shows the server's sentence, which
-  is true and readable, just in the other language. What is left is mostly internal invariants a user
-  cannot reach at all (`instance_key` rejecting a malformed key, `schema` rejecting an empty DDL
-  declaration, the extension registry rejecting a duplicate name), where a translation nobody reads
-  would only look like coverage. **The CLI is bilingual too** (`--lang en`, or `ONTOLOGY_LANG`),
+  backend raises, **73 are named**. That is the count of literal `raise` sites; the registry as a
+  whole holds **211 codes**, because the refusals built from an f-string -- the ones a reader meets
+  with a value inside them -- are named as well, and **28** remain. The extension-author batch is
+  most of the difference: a framework's extension authors are users too, and the person writing an
+  adapter, a resolver, a writeback executor or a dialect profile reads these sentences through
+  `aletheia verify`, the modelling screens and their own first run. `tests/test_error_codes.py`
+  holds the 28 as a ceiling, so it can only fall.
+
+  An unnamed refusal is not broken -- the console shows the server's sentence, which is true and
+  readable, just in the other language. What is left is mostly internal invariants a user cannot
+  reach at all (`instance_key` rejecting a malformed key, `schema` rejecting an empty DDL
+  declaration, the extension registry rejecting a duplicate name), where a translation nobody
+  reads would only look like coverage. What is left after the extension-author batch is the set
+  that fires only when the platform itself is misassembled — a `SchemaBundle` whose declared
+  tables are not in its DDL, a template with an unreplaced placeholder. **The CLI is bilingual
+  too** (`--lang en`, or `ONTOLOGY_LANG`),
   covering everything it says about itself: help text, its own errors, the sentences it composes
   about what it just did, and the `doctor` hints that explain why a driver is missing. What it
   does not translate is the JSON it prints — that is the API's output, and it stays Chinese for

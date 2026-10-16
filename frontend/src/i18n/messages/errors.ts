@@ -191,4 +191,429 @@ export const errors: Record<string, MessageEntry> = {
   'api.question_required': { zh: '请先输入要问的问题。', en: 'Enter a question first.' },
   'api.file_name_required': { zh: '请选择要上传的文件。', en: 'Choose a file to upload.' },
   'api.file_content_empty': { zh: '这个文件是空的，没有可以解析的内容。', en: 'That file is empty, so there is nothing to parse.' },
+
+  'api.aggregate_name_invalid': {
+    zh: '聚合名必须是合法标识符: {name}（规则表达式要按此名引用它）',
+    en: 'An aggregate name has to be a valid identifier, because a rule expression refers to it by name; got “{name}”.',
+  },
+  'api.aggregate_name_underscore': {
+    zh: '聚合名不能以下划线开头，避免与沙箱内部名冲突',
+    en: 'An aggregate name cannot start with an underscore: names beginning with `_` are reserved for the rule sandbox’s own internals.',
+  },
+  'api.aggregate_function_unsupported': {
+    zh: '不支持的聚合函数: {name}。可选: {supported}',
+    en: '“{name}” is not an aggregate function this build knows. The available ones are {supported}.',
+  },
+  'api.aggregate_value_column_required': {
+    zh: '{name} 聚合必须指定 valueColumn',
+    en: 'An aggregate of kind “{name}” has to say which column to aggregate — `valueColumn` is required.',
+  },
+  'api.aggregate_self_column_required': {
+    zh: 'excludeSelf 为真时必须指定 selfColumn',
+    en: 'With `excludeSelf` set, `selfColumn` has to say which column holds the instance being excluded.',
+  },
+  'api.axiom_code_required': {
+    zh: '公理编码不能为空',
+    en: 'An axiom needs a code.',
+  },
+  'api.axiom_kind_unknown': {
+    zh: '未知公理类型 {kind}，支持: {supported}',
+    en: '“{kind}” is not an axiom kind this build knows. The supported ones are {supported}.',
+  },
+  'api.axiom_subject_required': {
+    zh: '公理主体不能为空',
+    en: 'An axiom needs a subject — the object or relation it is about.',
+  },
+  'api.axiom_operand_required': {
+    zh: '{kind} 需要两个操作数，object 不能为空',
+    en: '“{kind}” takes two operands, and the object one is empty.',
+  },
+  'api.axiom_operands_identical': {
+    zh: '{kind} 的两个操作数不能相同: {operand}',
+    en: '“{kind}” cannot take the same value twice; both operands are {operand}.',
+  },
+  'api.axiom_not_found': {
+    zh: '公理不存在: {axiomCode}',
+    en: 'There is no axiom named {axiomCode}.',
+  },
+  'api.axiom_reference_format': {
+    zh: '属性引用需为 对象编码.属性编码 形式: {reference}',
+    en: 'An attribute reference is written `objectCode.attributeCode`; got “{reference}”.',
+  },
+  'api.axiom_reference_incomplete': {
+    zh: '属性引用不完整: {reference}',
+    en: 'That attribute reference is incomplete: {reference}',
+  },
+  'api.axiom_relation_not_found': {
+    zh: '业务关系不存在: {relationCode}',
+    en: 'There is no business relation named {relationCode}.',
+  },
+  'api.axiom_attribute_not_found': {
+    zh: '业务属性不存在: {reference}',
+    en: 'There is no business attribute named {reference}.',
+  },
+  'api.axiom_exclusive_same_object': {
+    zh: '互斥属性必须属于同一对象: {first} / {second}',
+    en: 'Mutually exclusive attributes have to belong to the same object; {first} and {second} do not.',
+  },
+  'api.writeback_semicolon_forbidden': {
+    zh: '{name}不允许包含分号（多语句会绕过单语句审计）',
+    en: '{name} may not contain a semicolon: more than one statement would bypass the per-statement audit.',
+  },
+  'api.writeback_statement_forbidden': {
+    zh: '{name}不允许使用 {statement}：自动化用于推进业务状态，不用于变更结构或权限',
+    en: '{name} may not use {statement}: automation exists to advance business state, not to change structure or permissions.',
+  },
+  'api.writeback_name_invalid': {
+    zh: '写回名称必须是字母数字、下划线或连字符: {name}',
+    en: 'A writeback name has to be letters, digits, underscores or hyphens; got “{name}”.',
+  },
+  'api.writeback_kind_unsupported': {
+    zh: '不支持的写回类型: {kind}。可选: {supported}',
+    en: '“{kind}” is not a writeback kind this build knows. The available ones are {supported}.',
+  },
+  'api.writeback_delete_not_allowed': {
+    zh: '{name}: 删除类写回必须显式设置 allowDelete=True。自动化用于推进业务状态，销毁数据需要单独的授权决定。',
+    en: 'A delete-class writeback for “{name}” has to set `allowDelete=True` explicitly. Automation exists to advance business state; destroying data needs a separate authorisation decision.',
+  },
+  'api.writeback_procedure_required': {
+    zh: '{name}: call 类写回必须指定 procedure',
+    en: 'A call-class writeback for “{name}” has to name its procedure.',
+  },
+  'api.writeback_param_name_invalid': {
+    zh: '{name}: 参数名必须是合法标识符: {parameter}',
+    en: '{name}: a parameter name has to be a valid identifier; got “{parameter}”.',
+  },
+  'api.writeback_table_required': {
+    zh: '{name}: 结构化写回必须指定 table',
+    en: 'A structured writeback for “{name}” has to name its table.',
+  },
+  'api.writeback_columns_required': {
+    zh: '{name}: {kind} 写回必须指定 columns',
+    en: 'A {kind} writeback for “{name}” has to declare its columns.',
+  },
+  'api.writeback_key_columns_required': {
+    zh: '{name}: {kind} 写回必须指定 keyColumns。缺少 WHERE 条件的更新会改写整张表，且事后无法从判定记录看出这一点。',
+    en: 'A {kind} writeback for “{name}” has to declare `keyColumns`. An update without a WHERE clause rewrites the whole table, and afterwards the decision record cannot show that it happened.',
+  },
+  'api.writeback_where_required': {
+    zh: '{name}: UPDATE／DELETE 语句必须包含 WHERE 条件，否则会作用于整张表。',
+    en: '{name}: an UPDATE or DELETE has to carry a WHERE clause, or it acts on the whole table.',
+  },
+  'api.writeback_param_missing': {
+    zh: '{name}: 缺少参数 {parameter}。写回不会用 NULL 代替缺失值。',
+    en: '{name}: the parameter {parameter} is missing. A writeback will not substitute NULL for a value that was not supplied.',
+  },
+  'api.writeback_param_missing_bare': {
+    zh: '缺少参数 {parameter}。写回不会用 NULL 代替缺失值。',
+    en: 'The parameter {parameter} is missing. A writeback will not substitute NULL for a value that was not supplied.',
+  },
+  'api.writeback_scheme_invalid': {
+    zh: '写回 scheme 必须是字母数字或下划线: {scheme}',
+    en: 'A writeback scheme has to be letters, digits or underscores; got “{scheme}”.',
+  },
+  'api.writeback_uri_required': {
+    zh: '{scheme}: 必须提供连接串',
+    en: '{scheme} has to provide a connection string.',
+  },
+  'api.writeback_driver_required': {
+    zh: '{scheme}: 必须指定驱动模块',
+    en: '{scheme} has to declare its driver module.',
+  },
+  'api.writeback_undeclared': {
+    zh: '{name}: 未声明的写回 {operation}。已声明: {declared}。写回语句必须预先声明，不能由请求构造。',
+    en: '{name}: the writeback {operation} is not declared. Declared: {declared}. A writeback statement has to be declared in advance; it cannot be built from a request.',
+  },
+  'api.writeback_driver_missing': {
+    zh: '{scheme}: 写回需要安装驱动 {module}',
+    en: 'The writeback channel {scheme} needs the {module} driver installed.',
+  },
+  'api.writeback_failed': {
+    zh: '{objectCode}/{instanceId}: 写回失败: {detail}',
+    en: 'Writeback failed for {objectCode}/{instanceId}: {detail}',
+  },
+  'api.writeback_no_rows': {
+    zh: '{objectCode}/{instanceId}: 语句执行成功但影响 0 行，目标实例可能不存在或条件不匹配。',
+    en: '{objectCode}/{instanceId}: the statement ran but affected 0 rows, so the target instance may not exist or the condition did not match.',
+  },
+  'api.writeback_channel_exists': {
+    zh: '写回通道已存在: {scheme}。要覆盖请显式传 replace=True。',
+    en: 'The writeback channel {scheme} already exists. To replace it, pass `replace=True` explicitly.',
+  },
+  'api.unit_code_invalid': {
+    zh: '单位编码必须是合法标识符: {unitCode}',
+    en: 'A unit code has to be a valid identifier; got “{unitCode}”.',
+  },
+  'api.unit_factor_invalid': {
+    zh: '单位换算系数必须为正数: {factor}',
+    en: 'A unit conversion factor has to be positive; got {factor}.',
+  },
+  'api.unit_exists': {
+    zh: '单位已存在: {unitCode}。要覆盖请显式传 replace=True。',
+    en: 'The unit {unitCode} already exists. To replace it, pass `replace=True` explicitly.',
+  },
+  'api.unit_unknown': {
+    zh: '未知单位: {unitCode}。已登记: {known}',
+    en: 'There is no unit named {unitCode}. Registered: {known}.',
+  },
+  'api.unit_dimension_mismatch': {
+    zh: '无法在不同量纲间换算: {from}（{fromDimension}）→ {to}（{toDimension}）。这通常意味着建模有误，而不是需要换算。',
+    en: 'Cannot convert between dimensions: {from} ({fromDimension}) to {to} ({toDimension}). That usually means the model is wrong rather than that a conversion is needed.',
+  },
+  'api.derived_code_invalid': {
+    zh: '派生属性编码必须是合法标识符: {name}（规则要按此名引用它）',
+    en: 'A derived attribute code has to be a valid identifier, because a rule refers to it by name; got “{name}”.',
+  },
+  'api.derived_code_underscore': {
+    zh: '派生属性编码不能以下划线开头，避免与沙箱内部名冲突',
+    en: 'A derived attribute code cannot start with an underscore: names beginning with `_` are reserved for the rule sandbox’s own internals.',
+  },
+  'api.derived_expression_invalid': {
+    zh: '派生表达式不可执行: {expression}',
+    en: 'That derived expression cannot be evaluated: {expression}',
+  },
+  'api.derived_column_conflict': {
+    zh: '属性 {attributeCode} 已绑定来源列，不能改为派生属性。请换一个编码，或先解除映射。',
+    en: 'Attribute {attributeCode} is bound to a source column, so it cannot become derived. Use a different code, or lift the mapping first.',
+  },
+  'api.derived_attribute_not_found': {
+    zh: '属性不存在: {objectCode}.{attributeCode}',
+    en: 'There is no attribute {objectCode}.{attributeCode}.',
+  },
+  'api.cross_source_name_invalid': {
+    zh: '跨源对应名称必须是合法标识符: {name}',
+    en: 'A cross-source link name has to be a valid identifier; got “{name}”.',
+  },
+  'api.cross_source_object_required': {
+    zh: '{name}: 必须指定主源业务对象',
+    en: '{name} has to name the primary business object.',
+  },
+  'api.cross_source_source_required': {
+    zh: '{name}: 必须指定副源数据源 id',
+    en: '{name} has to name the secondary data source id.',
+  },
+  'api.cross_source_match_required': {
+    zh: '{name}: 必须声明至少一个匹配列对。跨源判定会把「这两行是同一实例」写进判定链，因此它必须是声明的，不能是推断的。',
+    en: '“{name}” has to declare at least one pair of matching columns. A cross-source verdict records “these two rows are the same instance” in the decision trail, so it has to be declared rather than inferred.',
+  },
+  'api.cross_source_conflict_unsupported': {
+    zh: '{name}: 不支持的冲突策略 {strategy}。可选: {supported}',
+    en: '{name} does not declare a conflict strategy this build knows: “{strategy}”. The available ones are {supported}.',
+  },
+  'api.cross_source_object_not_found': {
+    zh: '主源业务对象不存在: {objectCode}',
+    en: 'There is no business object named {objectCode} on the primary source.',
+  },
+  'api.cross_source_source_not_found': {
+    zh: '副源数据源不存在: {dataSourceId}',
+    en: 'There is no data source with id {dataSourceId} on the secondary side.',
+  },
+  'api.cross_source_value_conflict': {
+    zh: '字段 {field} 在两个数据源中取值不同（主源={primary}，副源={secondary}），无法参与比较。请在跨源对应中声明冲突策略，或修正源数据。',
+    en: '“{field}” holds different values in the two sources (primary={primary}, secondary={secondary}), so it cannot take part in the comparison. Declare a conflict strategy for it, or correct the source data.',
+  },
+  'api.event_code_invalid': {
+    zh: '事件编码必须是合法标识符: {eventCode}',
+    en: 'An event code has to be a valid identifier; got “{eventCode}”.',
+  },
+  'api.event_name_required': {
+    zh: '事件名称不能为空',
+    en: 'An event needs a name.',
+  },
+  'api.event_category_unsupported': {
+    zh: '不支持的事件类别: {category}。可选: {supported}',
+    en: '“{category}” is not an event category this build knows. The available ones are {supported}.',
+  },
+  'api.event_payload_field_invalid': {
+    zh: '载荷字段名必须是合法标识符: {field}',
+    en: 'A payload field name has to be a valid identifier; got “{field}”.',
+  },
+  'api.event_type_undeclared': {
+    zh: '未声明的事件类型: {objectCode}.{eventCode}。请先声明事件类型，否则历史将无法按类型检索。',
+    en: 'The event type {objectCode}.{eventCode} has not been declared. Declare it first, or the history cannot be searched by type.',
+  },
+  'api.sql_source_type_invalid': {
+    zh: '数据源类型必须是字母数字或下划线: {sourceType}',
+    en: 'A data source type has to be letters, digits or underscores; got “{sourceType}”.',
+  },
+  'api.sql_driver_not_declared': {
+    zh: '{sourceType} 未声明驱动模块',
+    en: '{sourceType} does not declare a driver module.',
+  },
+  'api.sql_driver_no_connect': {
+    zh: '驱动 {module} 没有 {attribute}()，无法建立连接。',
+    en: 'The driver {module} has no {attribute}(), so a connection cannot be made.',
+  },
+  'api.resolver_identifier_invalid': {
+    zh: '{kind}不合法: {value}。只允许字母或下划线开头的字母、数字、下划线，最长 64 字符。',
+    en: 'That {kind} is not usable: “{value}”. Only letters, digits and underscores are allowed, starting with a letter or underscore, up to 64 characters.',
+  },
+  'api.resolver_joins_required': {
+    zh: 'joined_tables 解析器至少需要一个 joins 配置',
+    en: 'A `joined_tables` resolver needs at least one join.',
+  },
+  'api.resolver_discriminator_required': {
+    zh: 'discriminated 解析器必须指定判别值',
+    en: 'A `discriminated` resolver has to say which value it discriminates on.',
+  },
+  'api.resolver_query_required': {
+    zh: 'custom_sql 解析器必须提供 query',
+    en: 'A `custom_sql` resolver has to provide its query.',
+  },
+  'api.resolver_query_kind': {
+    zh: 'custom_sql 只允许 select 或 with 查询',
+    en: 'A `custom_sql` resolver may only run a `select` or a `with` query.',
+  },
+  'api.resolver_query_semicolon': {
+    zh: 'custom_sql 不允许包含分号',
+    en: 'A `custom_sql` query may not contain a semicolon.',
+  },
+  'api.resolver_custom_unsupported': {
+    zh: '运行时不支持自定义查询',
+    en: 'The runtime does not support custom queries.',
+  },
+  'api.word_support_missing_bare': {
+    zh: '解析 Word 文档需要安装 python-docx。',
+    en: 'Reading Word documents needs python-docx installed.',
+  },
+  'api.registry_name_required': {
+    zh: '{kind}的名称不能为空',
+    en: 'A {kind} needs a name.',
+  },
+  'api.registry_name_taken': {
+    zh: '{kind} ‘{name}’ 已被占用。如确实要覆盖，请显式传入 replace=True。',
+    en: 'That {kind} name, “{name}”, is already taken. To replace it, pass `replace=True` explicitly.',
+  },
+  'api.registry_kind_unsupported': {
+    zh: '不支持的{kind}: {name}。当前已注册: {registered}',
+    en: '“{name}” is not a {kind} this build knows. Currently registered: {registered}.',
+  },
+  'api.rest_resource_name_invalid': {
+    zh: '资源名必须是字母数字或下划线: {name}',
+    en: 'A resource name has to be letters, digits or underscores; got “{name}”.',
+  },
+  'api.rest_list_path_invalid': {
+    zh: '{name} 的 listPath 必须以 / 开头: {path}',
+    en: '`listPath` for {name} has to start with `/`; got “{path}”.',
+  },
+  'api.rest_fields_required': {
+    zh: '{name} 必须声明字段列表：REST 响应没有可供发现的模式',
+    en: '“{name}” has to declare its fields: a REST response has no schema to discover them from.',
+  },
+  'api.rest_key_not_declared': {
+    zh: '{name} 的主键 {key} 不在已声明字段中',
+    en: 'The primary key {key} of “{name}” is not among its declared fields.',
+  },
+  'api.rest_resources_required': {
+    zh: '{name} 未声明任何资源',
+    en: '“{name}” declares no resources.',
+  },
+  'api.rest_resource_duplicate': {
+    zh: '{name} 存在重名资源: {duplicates}',
+    en: '“{name}” declares the same resource twice: {duplicates}',
+  },
+  'api.rest_resource_undeclared': {
+    zh: '未声明的资源: {name}。已声明: {declared}',
+    en: '“{name}” is not a declared resource. Declared: {declared}.',
+  },
+  'api.rest_items_path_missing': {
+    zh: '响应中找不到 itemsPath 片段 {path}',
+    en: 'The response has no fragment at `itemsPath`: {path}',
+  },
+  'api.rest_response_not_list': {
+    zh: '响应不是对象列表: {detail}',
+    en: 'The response is not a list of objects: {detail}',
+  },
+  'api.rest_request_failed_status': {
+    zh: '请求 {operation} 返回 {status}: {detail}',
+    en: '{operation} returned {status}: {detail}',
+  },
+  'api.rest_request_failed': {
+    zh: '请求 {operation} 失败: {detail}',
+    en: 'The request for {operation} failed: {detail}',
+  },
+  'api.rest_response_not_json': {
+    zh: '{name} 返回的不是 JSON',
+    en: '{name} did not return JSON.',
+  },
+  'api.rest_no_collection_endpoint': {
+    zh: 'OpenAPI 文档中没有可用于声明的集合端点（需要返回对象数组的 GET 端点）。请手工声明 RestResource。',
+    en: 'That OpenAPI document has no collection endpoint a declaration could use — it needs a GET that returns an array of objects. Declare a `RestResource` by hand instead.',
+  },
+  'api.rule_function_name_invalid': {
+    zh: '规则函数名必须是合法标识符: {name}',
+    en: 'A rule function name has to be a valid identifier; got “{name}”.',
+  },
+  'api.rule_function_name_underscore': {
+    zh: '规则函数名不能以下划线开头，避免与沙箱内部名冲突: {name}',
+    en: 'A rule function name cannot start with an underscore: {name}',
+  },
+  'api.rule_function_not_callable': {
+    zh: '规则函数 {name} 必须可调用',
+    en: 'The rule function {name} has to be callable.',
+  },
+  'api.rule_expression_node_forbidden': {
+    zh: '不允许的规则表达式节点: {node}',
+    en: 'A rule expression may not use that construct: {node}',
+  },
+  'api.rule_function_no_kwargs': {
+    zh: '规则函数不支持关键字参数',
+    en: 'Rule functions do not take keyword arguments.',
+  },
+  'api.rule_expression_attribute_forbidden': {
+    zh: '不允许访问内部属性: {attribute}',
+    en: 'That attribute cannot be reached from a rule expression: {attribute}',
+  },
+  'api.dialect_name_invalid': {
+    zh: '方言名必须是字母数字或下划线: {name}',
+    en: 'A dialect name has to be letters, digits or underscores; got “{name}”.',
+  },
+  'api.dialect_paramstyle_unsupported': {
+    zh: '不支持的参数风格: {style}。可选: format、qmark、numeric',
+    en: '“{style}” is not a parameter style this build knows. The available ones are `format`, `qmark` and `numeric`.',
+  },
+  'api.dialect_paging_unsupported': {
+    zh: '不支持的分页风格: {style}。可选: limit_offset、fetch_first',
+    en: '“{style}” is not a paging style this build knows. The available ones are `limit_offset` and `fetch_first`.',
+  },
+  'api.dialect_quote_required': {
+    zh: '标识符引号不能为空',
+    en: 'A dialect needs an identifier quote character.',
+  },
+  'api.dialect_exists': {
+    zh: '方言已存在: {name}。要覆盖请显式传 replace=True。',
+    en: 'The dialect {name} already exists. To replace it, pass `replace=True` explicitly.',
+  },
+  'api.dialect_unknown': {
+    zh: '未知 SQL 方言: {name}。已登记: {registered}',
+    en: 'There is no SQL dialect named “{name}”. Registered: {registered}.',
+  },
+  'api.moment_required': {
+    zh: '{what}不能为空',
+    en: '{what} cannot be empty.',
+  },
+  'api.moment_unparseable': {
+    zh: '无法解析{what}: {value}。请使用 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。',
+    en: 'Cannot read {what} from “{value}”. Use `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`.',
+  },
+  'api.temporal_schema_missing': {
+    zh: '时态表尚未创建，请先运行 init_temporal_schema()。',
+    en: 'The temporal tables have not been created. Run `init_temporal_schema()` first.',
+  },
+  'api.hierarchy_self_parent': {
+    zh: '对象不能是自身的子类型: {objectCode}',
+    en: 'An object cannot be its own supertype: {objectCode}.',
+  },
+  'api.hierarchy_too_deep': {
+    zh: '类型层级超过 {depth} 层，请检查是否存在环。',
+    en: 'The type hierarchy is more than {depth} levels deep. That usually means there is a cycle.',
+  },
+  'api.value_mapping_raw_required': {
+    zh: '原始值不能为空',
+    en: 'A value mapping needs the raw value.',
+  },
+  'api.value_mapping_state_required': {
+    zh: '语义状态名不能为空',
+    en: 'A value mapping needs the semantic state it maps to.',
+  },
 };

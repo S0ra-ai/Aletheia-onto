@@ -10,7 +10,7 @@
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1842%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
+[![Tests](https://img.shields.io/badge/tests-1849%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
 
 [English](README.md) · 简体中文
 
@@ -129,7 +129,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 
 ## 项目状态
 
-1842 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
+1849 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
 由 CI 在裸装环境校验，因此本体、规则引擎与决策留痕可以嵌入别人的应用。
 
 本文档里每一个可数的声明都由测试守着：测试总数、分布表、端点数、支持的 Python 版本，

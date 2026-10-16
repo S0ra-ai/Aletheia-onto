@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1842 tests**, all passing. A case that needs something this machine does not have skips
+**1849 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -45,7 +45,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | File | Count | Covers |
 |---|--:|---|
 | `test_documentation_links.py` | 128 | Documentation links resolve, and the entry points a newcomer needs exist |
-| `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
+| `test_error_codes.py` | 14 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
 | `test_query_limit_clamping.py` | 8 | A caller-supplied `limit` cannot widen a response past the cap (SQLite reads `LIMIT -1` as "no limit") |
 | `test_list_pagination.py` | 21 | Every list that grows with the customer's data takes a page; not passing a limit still returns everything |
 | `test_connection_pool.py` | 14 | A pooled connection is never handed to a context whose schema or database differs, and never returned with an open transaction |
@@ -55,7 +55,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
-| `test_cross_source_resolution.py` | 46 | 跨源实体消解。ROADMAP 通用性清单最后一项结构性空白。 |
+| `test_cross_source_resolution.py` | 46 | Cross-source entity resolution. The last structural gap on the ROADMAP generality list. |
 | `test_file_and_rest_sources.py` | 46 | CSV directories and REST APIs as data sources |
 | `test_extension_registry.py` | 45 | Contract tests for the platform's extension points |
 | `test_conformance_suites.py` | 46 | Executable conformance suites for the extension points, each with a counter-example |
@@ -68,10 +68,10 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_conversations_and_feedback.py` | 43 | Conversation persistence and the feedback loop |
 | `test_database_writeback.py` | 35 | Writeback into a legacy database, and via stored procedures |
 | `test_temporal_validity.py` | 35 | Temporal validity: what was true, and when |
-| `test_metadata_flow.py` | 80 |  |
+| `test_metadata_flow.py` | 80 | Metadata to a served API: scanning, drafting, mapping review, readiness and export |
 | `test_sso.py` | 32 | SSO: the provider proves who, the platform decides what |
 | `test_composite_instance_keys.py` | 31 | Composite primary keys, end to end |
-| `test_answer_regression.py` | 28 | 问答回归测试集。ROADMAP 阶段 G。 |
+| `test_answer_regression.py` | 28 | The question-answering regression set. ROADMAP stage G. |
 | `test_api_authentication.py` | 57 | End-to-end authentication and authorization tests |
 | `test_inert_fields_activated.py` | 29 | Three fields that were stored but never evaluated |
 | `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
@@ -98,8 +98,8 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_frontend_serving.py` | 4 | Same-origin production admin shell and API transport prefix |
 | `test_metrics.py` | 5 | Prometheus-compatible runtime metrics and safe re-initialisation |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
-| `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
-| `test_data_source_knowledge_base.py` | 13 |  |
+| `test_retrieval_permission_filtering.py` | 12 | Permission filtering at retrieval time. ROADMAP stage B's last item. |
+| `test_data_source_knowledge_base.py` | 13 | The data source's own knowledge base: browsing its rows, answering with its rules, and the shape of the answer |
 | `test_platform_database_dialects.py` | 11 | Platform database durability and dialect tests |
 | `test_credential_protection.py` | 14 | Credential exposure, and `env:`/`file:` references that keep a secret out of the database |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
@@ -111,7 +111,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
-| `test_documented_claims.py` | 14 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 15 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
 | `test_object_service.py` | 14 | Generic business-object browsing over HTTP and in the service, metadata, pagination cost, row-level permission filtering |
 
@@ -264,7 +264,7 @@ which holds the two languages to the same placeholders and the same keys.
 
 ## Scale
 
-92 backend modules, roughly 38,800 lines, 156 API endpoints, 45 platform tables, React +
+92 backend modules, roughly 39,400 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `scaffold` job that walks the path a *new* deployment takes --
