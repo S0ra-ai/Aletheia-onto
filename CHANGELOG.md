@@ -424,6 +424,21 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **工作流控制台的两个按钮永远是坏的**（`WorkflowManager.tsx`、`api/index.ts`、`docs/limitations*.md`）。
+  这是本轮审计（42 个 agent、六个视角、每条发现两名独立复核者）查出的第一条，两名复核者都实测复现：
+  `get_available_actions` 返回 `workflow_transition` 的**原始行**（`action_code`／`to_state`），
+  而客户端只写了一句类型断言、没像同文件其它调用那样归一化——于是每个动作按钮渲染成
+  「提交审核 → 」（目标状态为空），点下去把 `undefined` 当 `actionCode` 发出去，
+  axios 直接丢掉该字段、服务端 422，提示只有「转移失败」：
+  **一个核心治理动作，既点不动、又说不清为什么**。
+  「历史」弹窗同时硬编码了 `demo_1`（这个实例在整个仓库里只出现在那一行），
+  查的是编造的实例，然后把「查错了对象」显示成「暂无历史记录」——
+  **一句关于审计留痕的断言，而它其实什么都没查**。
+  现在两个 payload 都走归一化（`action_code`／`to_state`／`from_state`／`created_at`），
+  历史弹窗改为**要求输入实例 ID**，并区分「还没查」与「查了、没有记录」。
+  契约表一直是**对的**（写的就是 wire 拼写）却没能拦住，因为那条反向检查在两个词于别处出现过时会通过——
+  这个盲区已写进[当前限制](docs/limitations.md)。
+
 - **发布门禁这张页面，没有一扇门**（`OntologyDetail.tsx`、`api/index.ts`、`docs/quickstart*.md`）。
   本体详情页有「发布就绪度」卡片、有「发布门禁」标签页、逐条列出哪一项阻断了发布——
   **而整个控制台没有一处能发布**：`ontologyApi.publish` 写好之后没有任何调用方。

@@ -923,19 +923,42 @@ export const workflowApi = {
     actionCode: string; name: string; toState: string;
   }>> => {
     const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}/actions`);
-    return (data.actions || []) as Array<{ actionCode: string; name: string; toState: string }>;
+    // Normalised like the rest of this file. `get_available_actions` returns
+    // `workflow_transition` rows verbatim -- `action_code`, `to_state` -- and this call was
+    // the one place that merely asserted camelCase: every action button rendered
+    // 「提交审核 → 」 with no target state, and posting it sent no `actionCode` at all, which
+    // the API refuses with 422. A core governance action, unusable, reporting 「转移失败」.
+    return (data.actions || []).map((item: any) => ({
+      ...item,
+      actionCode: item.actionCode ?? item.action_code ?? '',
+      toState: item.toState ?? item.to_state ?? '',
+      name: item.name ?? item.action_code ?? '',
+    }));
   },
 
   transition: async (workflowId: number, payload: {
     instanceId: string; actionCode: string; actor?: string; reason?: string;
   }): Promise<WorkflowInstance> => {
     const { data } = await api.post(`/workflows/${workflowId}/transitions/run`, payload);
-    return data as WorkflowInstance;
+    return normalizeWorkflowInstance(data);
   },
 
   getInstanceHistory: async (workflowId: number, instanceId: string): Promise<WorkflowHistoryItem[]> => {
     const { data } = await api.get(`/workflows/${workflowId}/instances/${instanceId}/history`);
-    return (data.items || []) as WorkflowHistoryItem[];
+    // `workflow_history` rows, same spelling problem: the timeline read
+    // `h.fromState`/`h.toState`/`h.actor`/`h.createdAt` off snake_case and rendered
+    // 「初始 → 」 with an empty actor and time.
+    return (data.items || []).map((item: any) => ({
+      ...item,
+      instanceWorkflowId: item.instanceWorkflowId ?? item.instance_workflow_id ?? 0,
+      fromState: item.fromState ?? item.from_state ?? '',
+      toState: item.toState ?? item.to_state ?? '',
+      actionCode: item.actionCode ?? item.action_code ?? '',
+      actor: item.actor ?? '',
+      reason: item.reason ?? '',
+      metadata: item.metadata ?? '',
+      createdAt: item.createdAt ?? item.created_at ?? '',
+    }));
   },
 };
 

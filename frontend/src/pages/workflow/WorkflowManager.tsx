@@ -13,6 +13,12 @@ const WorkflowManager: React.FC = () => {
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowDefinition | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<WorkflowHistoryItem[]>([]);
+  // Which workflow the history dialog is about, and whether its query has run: an empty
+  // timeline means "no history" only after somebody asked for a specific instance.
+  const [historyWorkflow, setHistoryWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [historyInstanceId, setHistoryInstanceId] = useState('');
+  const [historyQueried, setHistoryQueried] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [transitionModalOpen, setTransitionModalOpen] = useState(false);
   const [transitionActions, setTransitionActions] = useState<Array<{ actionCode: string; name: string; toState: string }>>([]);
   const [transitionInstanceId, setTransitionInstanceId] = useState('');
@@ -114,19 +120,32 @@ const WorkflowManager: React.FC = () => {
     }
   };
 
-  const showHistory = async (wf: WorkflowDefinition) => {
+  const showHistory = async (wf: WorkflowDefinition, instanceId: string) => {
     setTransitionWorkflowId(wf.id);
+    if (!instanceId.trim()) {
+      // It used to pass `transitionInstanceId || 'demo_1'` -- an id that exists nowhere in the
+      // repository. The dialog then listed nothing and said 「暂无历史记录」, which is a claim
+      // about that instance's audit trail rather than about the query.
+      setHistoryItems([]);
+      setHistoryQueried(false);
+      setHistoryOpen(true);
+      return;
+    }
+    setHistoryLoading(true);
     try {
-      const items = await workflowApi.getInstanceHistory(wf.id, transitionInstanceId || 'demo_1');
-      setHistoryItems(items);
+      setHistoryItems(await workflowApi.getInstanceHistory(wf.id, instanceId.trim()));
+      setHistoryQueried(true);
       setHistoryOpen(true);
     } catch (error) {
       // This also opened the history dialog, so a failed read presented an empty dialog as
       // "this instance has no history" -- a statement about the instance's audit trail,
       // which is not what happened.
       setHistoryItems([]);
-      setHistoryOpen(false);
+      setHistoryQueried(true);
+      setHistoryOpen(true);
       message.error(requestErrorMessage(error, '读取流转历史失败'));
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -151,7 +170,7 @@ const WorkflowManager: React.FC = () => {
         <Space>
           <Button size="small" onClick={() => showDetail(record)}>详情</Button>
           <Button size="small" icon={<RightOutlined />} onClick={() => showTransitionModal(record)}>转移</Button>
-          <Button size="small" icon={<HistoryOutlined />} onClick={() => showHistory(record)}>历史</Button>
+          <Button size="small" icon={<HistoryOutlined />} onClick={() => { setHistoryWorkflow(record); setHistoryInstanceId(transitionInstanceId); void showHistory(record, transitionInstanceId); }}>历史</Button>
           <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -261,7 +280,25 @@ const WorkflowManager: React.FC = () => {
       </Modal>
 
       <Modal title="工作流历史" open={historyOpen} onCancel={() => setHistoryOpen(false)} footer={null} width={600}>
-        {historyItems.length > 0 ? (
+        <Input
+          placeholder="输入实例 ID"
+          value={historyInstanceId}
+          onChange={e => setHistoryInstanceId(e.target.value)}
+          onPressEnter={() => historyWorkflow && void showHistory(historyWorkflow, historyInstanceId)}
+          style={{ marginBottom: 12 }}
+        />
+        <Button
+          onClick={() => historyWorkflow && void showHistory(historyWorkflow, historyInstanceId)}
+          loading={historyLoading}
+          style={{ marginBottom: 16 }}
+        >
+          查询历史
+        </Button>
+        {!historyQueried ? (
+          <div style={{ color: '#999', textAlign: 'center', padding: 24 }}>
+            输入要查看的实例 ID。流转历史属于某个实例，不是一个工作流的属性。
+          </div>
+        ) : historyItems.length > 0 ? (
           <Timeline items={historyItems.map(h => ({
             color: h.fromState === '' ? 'green' : 'blue',
             children: (

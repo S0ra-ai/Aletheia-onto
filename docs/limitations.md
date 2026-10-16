@@ -83,6 +83,13 @@ By design, not bugs. These are the next phase's work.
   endpoint still sends them — a written-down contract, per screen, not generated agreement.
   It covers the endpoints a screen charts; an endpoint no screen reads is not covered, and
   adding a field to a screen without adding it there is not caught.
+  It also reads the *wire* fields an endpoint still sends — not the fields a screen consumes.
+  `/workflows/{id}/instances/{id}/actions` and `.../history` were charted with their wire
+  spellings (`action_code`, `to_state`) and tested, while the client merely `as`-cast them to
+  camelCase: the transition buttons showed no target state and always answered 422, the history
+  timeline rendered 「初始 → 」, and both the chart and its reverse check stayed green (those
+  words appear in an unrelated normaliser). What would catch it is a behavioural test of the
+  client, and the frontend has no test runner (below).
   `scripts/ui_smoke.py` covers the rest by inspection, reporting columns that are empty in
   every row; it needs a browser and a live instance, which is why it is a diagnostic rather
   than a gate. It has just had three blind spots closed — tabs (a page must put its active
