@@ -7,7 +7,7 @@ import type { MessageEntry } from './shell';
 
 export const demo: Record<string, MessageEntry> = {
   'title': { zh: '演示中心', en: 'Demo' },
-  'subtitle': { zh: '一键加载演示数据，体验完整业务流程', en: 'Load sample data in one click and walk through a full business flow' },
+  'subtitle': { zh: '一键加载演示数据，体验完整业务流程', en: 'Load the demo data in one click and walk through a full business flow' },
 
   'notice.title': { zh: '演示说明', en: 'About the demo' },
   'notice.body': { zh: '点击下方按钮将自动创建样例数据库、注册数据源、执行元数据扫描并生成领域本体草案。', en: 'The button below creates a sample database, registers it as a data source, runs a metadata scan and drafts a domain ontology.' },
@@ -15,7 +15,7 @@ export const demo: Record<string, MessageEntry> = {
   'contract.title': { zh: '合同管理演示', en: 'Contract management demo' },
   'contract.intro': { zh: '演示合同管理场景，包含：', en: 'Demonstrates the contract-management scenario, including:' },
   'contract.objects': { zh: '客户、合同、付款计划、发票等业务对象', en: 'Business objects such as customers, contracts, payment schedules and invoices' },
-  'contract.risks': { zh: '黑名单客户、逾期付款等风险场景', en: 'Risk cases such as blacklisted customers and overdue payments' },
+  'contract.risks': { zh: '黑名单客户、逾期付款等风险场景', en: 'Risk scenarios such as blacklisted customers and overdue payments' },
   'contract.rules': { zh: '合同金额校验、付款逾期预警等规则', en: 'Rules such as contract-amount validation and overdue-payment alerts' },
   'contract.start': { zh: '启动合同管理演示', en: 'Start the contract demo' },
 
@@ -31,9 +31,9 @@ export const demo: Record<string, MessageEntry> = {
   'successTitle': { zh: '演示数据加载成功', en: 'Demo data loaded' },
   'resultWithDecision': {
     zh: '数据源 {id} 已接入，本体已生成，并对样例实例完成了一次研判：{decision}',
-    en: 'Data source {id} is connected, the ontology is generated, and one assessment has run over the sample instances: {decision}',
+    en: 'Data source {id} is connected, the ontology was generated, and one assessment was completed on the sample instances: {decision}',
   },
-  'resultWithoutDecision': { zh: '数据源ID: {id}，本体已生成', en: 'Data source ID: {id}; the ontology is generated' },
+  'resultWithoutDecision': { zh: '数据源ID: {id}，本体已生成', en: 'Data source ID: {id}; the ontology was generated' },
 
   'viewDatasource': { zh: '查看数据源', en: 'View the data source' },
   'viewOntology': { zh: '查看本体', en: 'View the ontology' },

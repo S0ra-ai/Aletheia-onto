@@ -28,7 +28,7 @@ export const feedback: Record<string, MessageEntry> = {
   'correctionsAlertTitle': { zh: '纠正建议不会自动生效', en: 'A correction does not take effect on its own' },
   'correctionsAlertBody': {
     zh: '用户提交的纠正是一方主张，不是新规则。若确认应当调整判定，请在业务规则或文档知识库中走正常的治理与发布流程。',
-    en: 'A submitted correction is a claim by one party, not a new rule. If the decision really should change, take it through the usual governance and publication path in Business rules or the knowledge base.',
+    en: 'A submitted correction is one user\'s claim, not a new rule. If the decision really should change, take it through the usual governance and publication path in Business rules or the knowledge base.',
   },
 
   'escalationQueue': { zh: '转人工队列', en: 'Human-review queue' },

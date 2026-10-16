@@ -45,7 +45,7 @@ export const objects: Record<string, MessageEntry> = {
   },
   'rowFilterErrorDescription': {
     zh: '这不是「没有数据」：平台为避免越权披露，在过滤条件无法判断时按不可见处理。请修正该角色在本对象上的过滤表达式后重试。',
-    en: 'This is not "no data": to avoid disclosing more than allowed, the platform treats an undecidable filter as invisible. Fix the filter expression this role has on this object and try again.',
+    en: 'This is not "no data": to avoid disclosing more than allowed, the platform treats the data as not visible when the filter cannot be evaluated. Fix the filter expression this role has on this object and try again.',
   },
 
   // ObjectBrowser —— the empty states.
@@ -97,7 +97,7 @@ export const objects: Record<string, MessageEntry> = {
     zh: '规则可以直接按名称引用这些值。它们不属于本行的任何属性，而是对其他行的一次查询，所以单独列出——',
     en: 'Rules can reference these values by name. They are not attributes of this row but a query over other rows, so they are listed separately — ',
   },
-  'aggregatesHintEmphasis': { zh: '判定引用了某个聚合值，这里就必须看得到它', en: 'if a verdict references an aggregate, it has to be visible here' },
+  'aggregatesHintEmphasis': { zh: '判定引用了某个聚合值，这里就必须看得到它', en: 'if a decision references an aggregate, it has to be visible here' },
   'aggregatesHintEnd': { zh: '。', en: '.' },
   'nameColumn': { zh: '名称', en: 'Name' },
   'definitionColumn': { zh: '定义', en: 'Definition' },
@@ -130,9 +130,9 @@ export const objects: Record<string, MessageEntry> = {
   'versionsHeading': { zh: '取值沿革', en: 'Value history' },
   'versionsHint': {
     zh: '判定可以按过去某一时刻产出，所以「上个月的金额是多少」是复核旧结论时绕不开的问题。',
-    en: 'A verdict can be produced as of a past moment, so "what was the amount last month" cannot be avoided when re-checking an old conclusion.',
+    en: 'A decision can be produced as of a past moment, so "what was the amount last month" cannot be avoided when re-checking an old conclusion.',
   },
-  'versionsHintEmphasis': { zh: '没记录过取值的属性不会出现在这里', en: 'attributes whose values were never recorded do not appear here' },
+  'versionsHintEmphasis': { zh: '没记录过取值的属性不会出现在这里', en: ' Attributes whose values were never recorded do not appear here' },
   'versionsHintTail': {
     zh: '——这不是数据缺失，是沿革从未被记录。',
     en: ' — this is not missing data; the history was simply never recorded.',

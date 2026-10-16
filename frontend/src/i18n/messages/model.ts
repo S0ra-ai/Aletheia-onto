@@ -22,7 +22,7 @@ export const model: Record<string, MessageEntry> = {
   'currentModel': { zh: '当前模型', en: 'Current model' },
   'notSet': { zh: '未设置', en: 'Not set' },
   'authStyleLabel': { zh: '鉴权方式', en: 'Authentication' },
-  'resolvedEndpoint': { zh: '实际调用地址', en: 'Endpoint actually called' },
+  'resolvedEndpoint': { zh: '实际调用地址', en: 'Resolved endpoint' },
 
   'loadFailed': { zh: '获取配置失败', en: 'Could not load the configuration' },
   'saved': { zh: '配置保存成功', en: 'Configuration saved' },
@@ -76,7 +76,7 @@ export const model: Record<string, MessageEntry> = {
   'extraHeadersLabel': { zh: '附加请求头（可选，JSON）', en: 'Extra request headers (optional, JSON)' },
   'extraHeadersHint': {
     zh: '部分网关需要额外标识，例如 {"X-Tenant-Id": "acme"}。此处的键会覆盖上面自动生成的同名请求头。',
-    en: 'Some gateways need extra markers, for example {"X-Tenant-Id": "acme"}. Keys entered here override the same-named headers generated above.',
+    en: 'Some gateways need extra identifiers, for example {"X-Tenant-Id": "acme"}. Keys entered here override the same-named headers generated above.',
   },
   'other': { zh: '其他', en: 'Other' },
   'serviceTierLabel': { zh: '服务层级', en: 'Service tier' },
@@ -94,6 +94,6 @@ export const model: Record<string, MessageEntry> = {
   'returnedModel': { zh: '返回模型：{model}', en: 'Model returned: {model}' },
   'testHint': {
     zh: '401 通常是鉴权方式不匹配；400 常见于未知字段，可尝试关闭「发送 OpenRouter 扩展字段」；404 多为 Base URL 路径不正确。',
-    en: 'A 401 usually means the authentication method does not match; a 400 is often an unknown field, so try turning off "Send OpenRouter extension fields"; a 404 usually means the Base URL path is wrong.',
+    en: 'A 401 usually means the authentication method does not match; a 400 is often an unknown field, so try turning off "Send OpenRouter extension fields"; a 404 usually means the base URL path is wrong.',
   },
 };

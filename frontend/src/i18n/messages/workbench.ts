@@ -16,16 +16,16 @@ export const workbench: Record<string, MessageEntry> = {
   'loading': { zh: '正在汇总平台状态...', en: 'Summarising the platform state...' },
 
   'startTaskTitle': { zh: '开始一个任务', en: 'Start with a task' },
-  'startTaskHint': { zh: '按任务进入，复杂配置会在需要时展开', en: 'Enter by task; the complex configuration unfolds only when it is needed' },
+  'startTaskHint': { zh: '按任务进入，复杂配置会在需要时展开', en: 'Pick the task you want to do; the detailed configuration appears only when you need it' },
   'demoButton': { zh: '先体验演示', en: 'Try the demo first' },
-  'demoHint': { zh: '自动准备样例数据，快速看到一次完整研判', en: 'Sample data is prepared for you, so a full analysis is a few clicks away' },
+  'demoHint': { zh: '自动准备样例数据，快速看到一次完整研判', en: 'Sample data is prepared for you, so a full assessment is a few clicks away' },
   'datasourceButton': { zh: '接入自己的系统', en: 'Connect your own system' },
   'datasourceHint': { zh: '从连接数据源开始，系统会提示下一步', en: 'Start by connecting a data source; the platform suggests the next step' },
-  'chatButton': { zh: '查看业务研判', en: 'Look at an analysis' },
-  'chatHint': { zh: '对已初始化的业务对象提问并查看证据', en: 'Ask an initialised business object questions, and read the evidence' },
+  'chatButton': { zh: '查看业务研判', en: 'Ask the model' },
+  'chatHint': { zh: '对已初始化的业务对象提问并查看证据', en: 'Ask about the business objects you have set up, and read the evidence behind each answer' },
 
   'noActionItems': { zh: '没有待处理事项', en: 'Nothing is waiting' },
-  'noActionItemsHint': { zh: '数据源已扫描、映射已审核、对象已配置规则。', en: 'Sources are scanned, mappings are reviewed, and objects carry their rules.' },
+  'noActionItemsHint': { zh: '数据源已扫描、映射已审核、对象已配置规则。', en: 'Sources have been scanned, mappings have been reviewed, and objects have their rules configured.' },
 
   'actionItemsTitle': { zh: '待处理事项', en: 'Action items' },
   'blockersTag': { zh: '{count} 项阻断', en: '{count} blockers' },

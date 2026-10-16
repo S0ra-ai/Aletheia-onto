@@ -6,7 +6,7 @@
 import type { MessageEntry } from './shell';
 
 export const errors: Record<string, MessageEntry> = {
-  'title': { zh: '页面加载失败', en: 'This page failed to load' },
+  'title': { zh: '页面加载失败', en: 'This page could not be loaded' },
   'unknown': { zh: '发生未知错误，请刷新页面重试', en: 'Something went wrong. Reload the page to try again.' },
   'unknownShort': { zh: '发生未知错误', en: 'Something went wrong.' },
 

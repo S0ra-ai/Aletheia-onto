@@ -19,7 +19,7 @@ export const rules: Record<string, MessageEntry> = {
   'rulesLoadFailed': { zh: '获取业务规则失败', en: 'Could not load the business rules' },
   'emptyNoOntologies': {
     zh: '还没有本体，规则依附于本体。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成本体草案',
-    en: 'No ontologies yet, and rules belong to one. Register and scan a business source under "Data sources" first, then generate an ontology draft under "Modelling".',
+    en: 'No ontologies yet, and rules belong to one. Register and scan a business database under "Data sources" first, then generate an ontology draft under "Modelling".',
   },
   'emptyNoRules': { zh: '该本体暂无规则，点击上方按钮创建或导入', en: 'This ontology has no rules yet. Use the buttons above to create or import one.' },
   'emptySelectOntology': { zh: '请选择本体查看业务规则', en: 'Select an ontology to see its business rules.' },
@@ -35,7 +35,7 @@ export const rules: Record<string, MessageEntry> = {
   'createFailed': { zh: '创建规则失败', en: 'Could not create the rule' },
   'importPartial': {
     zh: '识别 {total} 条规则，成功导入 {imported} 条，失败 {failed} 条',
-    en: 'Found {total} rules: {imported} imported, {failed} failed',
+    en: 'Recognised {total} rules: {imported} imported, {failed} failed',
   },
   'importedFromWord': { zh: '已从 Word 导入 {count} 条自定义规则', en: 'Imported {count} custom rules from Word' },
   'importFailed': { zh: '规则 Word 导入失败，请确认文件格式和规则字段', en: 'The Word import failed. Check the file format and the rule fields.' },
@@ -69,7 +69,7 @@ export const rules: Record<string, MessageEntry> = {
   'uploadHint': { zh: '支持 .docx 和 .doc 格式。', en: 'Supports .docx and .doc files.' },
   'importing': { zh: '正在导入...', en: 'Importing...' },
   'importResultTitle': { zh: '导入结果 ({file})', en: 'Import result ({file})' },
-  'importRecognized': { zh: '识别规则: {count} 条', en: 'Rules recognized: {count}' },
+  'importRecognized': { zh: '识别规则: {count} 条', en: 'Rules recognised: {count}' },
   'importSucceeded': { zh: '成功导入: {count} 条', en: 'Imported: {count}' },
   'importErrorCount': { zh: '失败: {count} 条', en: 'Failed: {count}' },
   'warnings': { zh: '警告:', en: 'Warnings:' },

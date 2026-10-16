@@ -119,7 +119,7 @@ export const ontology: Record<string, MessageEntry> = {
   },
   'publishNote': {
     zh: '发布后该版本不可修改：改动要派生新版本，判定仍能追溯到发布时的模型。',
-    en: 'A published version cannot be modified: changes derive a new version, so decisions stay traceable to the model as published.',
+    en: 'A published version cannot be modified: to make changes, derive a new version, so decisions stay traceable to the model as published.',
   },
 
   // ModellingExtensions.
@@ -130,7 +130,7 @@ export const ontology: Record<string, MessageEntry> = {
   'declareFailed': { zh: '声明事件类型失败', en: 'Could not declare the event type' },
   'eventTypesIntro': {
     zh: '事件必须声明类型后才能记录：不存在「先记下来，以后再分类」——«驳回»、«拒绝» 与 «rejected» 一旦各记各的，历史就不再可检索。记录某个实例的事件在「对象浏览」的实例解释里做。',
-    en: 'An event must be declared before it can be recorded: there is no "write it down now, classify it later" -- once «驳回», «拒绝» and «rejected» are each recorded on their own, the history stops being searchable. Recording an event for a single instance is done in the instance explanation under "Business objects".',
+    en: 'An event must be declared before it can be recorded: there is no "write it down now, classify it later" -- once the same meaning is recorded under different type codes, the history stops being searchable. To record an event for a single instance, use the instance explanation under "Business objects".',
   },
   'readOnlyTitle': { zh: '本体已发布或正在审核，不能修改事件定义', en: 'The ontology is published or under review, so event declarations cannot change' },
   'readOnlyDetail': {
@@ -138,7 +138,7 @@ export const ontology: Record<string, MessageEntry> = {
     en: 'This is deliberate: a published model should not change meaning unnoticed. Derive a new version to make changes.',
   },
   'selectObject': { zh: '选择业务对象', en: 'Select a business object' },
-  'declaredCount': { zh: '共声明 {total} 种，其中本对象 {here} 种', en: 'Declared {total} in total, {here} for this object' },
+  'declaredCount': { zh: '共声明 {total} 种，其中本对象 {here} 种', en: '{total} declared in total, {here} for this object' },
   'event': { zh: '事件', en: 'Event' },
   'category': { zh: '类别', en: 'Category' },
   'payloadFields': { zh: '载荷字段', en: 'Payload fields' },

@@ -7,7 +7,7 @@ import type { MessageEntry } from './shell';
 
 export const knowledge: Record<string, MessageEntry> = {
   'title': { zh: '文档知识库', en: 'Knowledge base' },
-  'subtitle': { zh: '制度与合同条款，锚定到业务对象或规则后可作为判定依据被引用', en: 'Policy and contract clauses; once anchored to a business object or rule they can be cited as evidence.' },
+  'subtitle': { zh: '制度与合同条款，锚定到业务对象或规则后可作为判定依据被引用', en: 'Policy and contract clauses; once anchored to a business object or rule, they can be cited as the basis for a decision.' },
 
   'refresh': { zh: '刷新', en: 'Refresh' },
   'uploadButton': { zh: '上传文档', en: 'Upload document' },
@@ -16,7 +16,7 @@ export const knowledge: Record<string, MessageEntry> = {
   'confirmedOnly': { zh: '条目须经确认才会被检索', en: 'Entries are searchable only after confirmation' },
   'confirmedOnlyDetail': {
     zh: '切分结果默认为待审核状态。确认时必须指定它解释的业务对象或它作为依据的规则——未锚定的文本无法回答「这段话凭什么支持这个结论」，因此不能作为判定依据。',
-    en: 'Split results start as pending review. Confirming requires the business object this passage explains or the rule it is evidence for: unanchored text cannot answer "what makes this passage support that conclusion", so it cannot serve as the basis for a verdict.',
+    en: 'Split results start as pending review. Confirming requires the business object this passage explains or the rule it supports: unanchored text cannot answer "what makes this passage support that conclusion", so it cannot serve as the basis for a decision.',
   },
 
   'documentsCard': { zh: '文档（{count}）', en: 'Documents ({count})' },
@@ -44,29 +44,29 @@ export const knowledge: Record<string, MessageEntry> = {
   'citationSeparator': { zh: '、', en: ', ' },
   'splitWarnings': { zh: '切分提示', en: 'Split warnings' },
   'uploadFailed': { zh: '上传失败', en: 'Upload failed' },
-  'entryConfirmed': { zh: '条目已确认，可作为判定依据', en: 'Entry confirmed and can be cited as evidence' },
+  'entryConfirmed': { zh: '条目已确认，可作为判定依据', en: 'Entry confirmed; it can now serve as the basis for a decision' },
   'entryUpdated': { zh: '条目已更新', en: 'Entry updated' },
   'actionFailed': { zh: '操作失败', en: 'The action failed' },
 
   'uploadTitle': { zh: '上传制度或合同文档', en: 'Upload a policy or contract document' },
   'uploadAndSplit': { zh: '上传并切分', en: 'Upload and split' },
   'fileLabel': { zh: '文件', en: 'File' },
-  'fileHint': { zh: '支持 .docx 与 UTF-8 文本；按条款编号切分，保留可引用定位', en: 'Supports .docx and UTF-8 text; split by clause number, keeping citable locators' },
+  'fileHint': { zh: '支持 .docx 与 UTF-8 文本；按条款编号切分，保留可引用定位', en: 'Supports .docx and UTF-8 text; splits the document by clause number and keeps citable locators' },
   'draggerText': { zh: '点击或拖拽文件到此处', en: 'Click or drag a file here' },
   'documentTitleLabel': { zh: '文档标题', en: 'Document title' },
-  'documentTitleHint': { zh: '留空则使用文件名；将作为引用出处显示', en: 'Leave blank to use the file name; shown as the citation source' },
+  'documentTitleHint': { zh: '留空则使用文件名；将作为引用出处显示', en: 'Leave blank to use the file name; the title is shown as the citation source' },
   'documentTitlePlaceholder': { zh: '售后政策', en: 'After-sales policy' },
   'defaultObjectLabel': { zh: '默认锚定业务对象（可选）', en: 'Default anchored business object (optional)' },
-  'defaultObjectHint': { zh: '可在逐条审核时修正', en: 'Can be corrected during entry-by-entry review' },
+  'defaultObjectHint': { zh: '可在逐条审核时修正', en: 'You can correct it when you review each entry' },
   'defaultRuleLabel': { zh: '默认锚定规则（可选）', en: 'Default anchored rule (optional)' },
 
   'reviewTitle': { zh: '审核条目 {citation}', en: 'Review entry {citation}' },
   'reject': { zh: '驳回', en: 'Reject' },
   'cancel': { zh: '取消', en: 'Cancel' },
-  'confirmAsEvidence': { zh: '确认为判定依据', en: 'Confirm as evidence' },
+  'confirmAsEvidence': { zh: '确认为判定依据', en: 'Confirm as the basis for a decision' },
   'anchorObjectLabel': { zh: '锚定业务对象', en: 'Anchored business object' },
   'anchorObjectHint': { zh: '该条款解释哪个业务对象', en: 'Which business object this clause explains' },
   'anchorRuleLabel': { zh: '锚定规则', en: 'Anchored rule' },
-  'anchorRuleHint': { zh: '该条款是哪条规则的文字依据', en: 'Which rule this clause is the textual basis for' },
-  'anchorRequired': { zh: '业务对象与规则至少填写一项', en: 'Fill in at least one of the business object and the rule' },
+  'anchorRuleHint': { zh: '该条款是哪条规则的文字依据', en: 'Which rule this clause supports' },
+  'anchorRequired': { zh: '业务对象与规则至少填写一项', en: 'Fill in the business object, the rule, or both' },
 };

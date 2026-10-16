@@ -59,11 +59,11 @@ export const semantic: Record<string, MessageEntry> = {
   'codeColumn': { zh: '编码', en: 'Code' },
   'sourceColumn': { zh: '来源', en: 'Source' },
   'valueColumn': { zh: '值', en: 'Value' },
-  'emptyValue': { zh: '空值', en: 'Empty value' },
+  'emptyValue': { zh: '空值', en: 'No value' },
   'explanation': { zh: '解释', en: 'Explanation' },
   'objectsHint': {
     zh: '在「对象浏览」中点击任一实例的「解释」，可以看到同一份解释加上事件历史与取值沿革。',
-    en: 'In "Business objects", clicking "Explain" on any instance shows the same explanation plus event history and value lineage.',
+    en: 'In "Business objects", clicking "Explain" on any instance shows the same explanation plus event history and value history.',
   },
 
   'assessButton': { zh: '研判', en: 'Assess' },
@@ -88,7 +88,7 @@ export const semantic: Record<string, MessageEntry> = {
   'summaryReview': { zh: '复核', en: 'In review' },
   'summaryBlocked': { zh: '阻断', en: 'Blocked' },
   'summaryErrors': { zh: '错误', en: 'Errors' },
-  'governanceAdvice': { zh: '治理建议', en: 'Governance recommendation' },
+  'governanceAdvice': { zh: '治理建议', en: 'Governance advice' },
   'ruleFailureDistribution': { zh: '规则失败分布', en: 'Rule failure distribution' },
   'assessmentErrors': { zh: '评估错误', en: 'Assessment errors' },
   'failedRuleCount': { zh: '失败规则数', en: 'Failed rule count' },

@@ -34,15 +34,15 @@ export const chat: Record<string, MessageEntry> = {
   'feedbackUnhelpful': { zh: '没帮助', en: 'Not helpful' },
   'feedbackUnhelpfulRecorded': { zh: '没有帮助', en: 'Not helpful' },
   'feedbackIncorrect': { zh: '结论错误', en: 'Wrong conclusion' },
-  'feedbackRecordedIncorrect': { zh: '已记录：该结论被标记为错误，将进入复核队列', en: 'Recorded: the conclusion was marked wrong and enters the review queue' },
+  'feedbackRecordedIncorrect': { zh: '已记录：该结论被标记为错误，将进入复核队列', en: 'Recorded: the conclusion was marked wrong and will enter the review queue' },
   'feedbackThanks': { zh: '感谢反馈', en: 'Thanks for the feedback' },
   'feedbackFailed': { zh: '提交反馈失败', en: 'Could not submit the feedback' },
 
   'requestFailed': { zh: '对话失败，请检查模型配置或数据源本体是否已生成', en: 'The conversation failed. Check the model configuration and whether the data source ontology has been generated.' },
-  'assistantUnavailable': { zh: '我暂时无法完成这次语义研判。请确认已接入数据源并生成本体，或在模型配置中测试 OpenRouter 连接。', en: 'I cannot complete this analysis right now. Check that a data source is connected and an ontology has been generated, or test the OpenRouter connection under Model configuration.' },
+  'assistantUnavailable': { zh: '我暂时无法完成这次语义研判。请确认已接入数据源并生成本体，或在模型配置中测试 OpenRouter 连接。', en: 'I cannot complete this assessment right now. Check that a data source is connected and an ontology has been generated, or test the OpenRouter connection under Model configuration.' },
   'dataSourceTag': { zh: '数据源 #{id}', en: 'Data source #{id}' },
   'modelUnderstanding': { zh: '模型理解', en: 'Model understanding' },
-  'toolCalls': { zh: '工具调用 x{count}', en: 'Tool calls x{count}' },
+  'toolCalls': { zh: '工具调用 x{count}', en: '{count} tool calls' },
   'analysing': { zh: '正在分析问题、调用本体内核并整理回答...', en: 'Analysing the question, calling the ontology kernel, and drafting the answer...' },
 
   'enterHint': { zh: 'Enter 发送，Shift + Enter 换行', en: 'Enter to send, Shift + Enter for a new line' },

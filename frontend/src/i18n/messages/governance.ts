@@ -55,17 +55,17 @@ export const governance: Record<string, MessageEntry> = {
 
   'reportPeriod': { zh: '报表区间：{start} → {end}', en: 'Report period: {start} → {end}' },
   'reportScope': { zh: '作用范围：{scope} · {boundary}', en: 'Scope: {scope} · {boundary}' },
-  'noFindings': { zh: '本期没有需要立刻跟进的发现', en: 'No findings need follow-up right now' },
+  'noFindings': { zh: '本期没有需要立刻跟进的发现', en: 'No findings this period need immediate follow-up' },
   'noFindingsDetail': {
     zh: '这不等于「一切正常」，只等于以下几类没有触发：从未求值的已发布规则、被覆盖的发布门禁、无解释链的求值、失败的模型调用。',
-    en: 'This is not the same as everything being fine: it only means none of these fired -- published rules that were never evaluated, overridden release gates, evaluations without an explanation chain, and failed model calls.',
+    en: 'This does not mean everything is fine. It means only that none of the following fired: published rules that were never evaluated, overridden release gates, evaluations without an explanation chain, and failed model calls.',
   },
 
   'statDecisions': { zh: '判定总数', en: 'Total decisions' },
   'statEvaluations': { zh: '规则求值', en: 'Rule evaluations' },
   'modelFailedSuffix': { zh: '（模型失败 {count}）', en: ' ({count} model failures)' },
   'statReviewable': { zh: '可复核比例', en: 'Reviewable share' },
-  'ratioNoEvaluations': { zh: '本期没有规则求值，比例无从谈起', en: 'No rule evaluations this period, so there is no share to speak of' },
+  'ratioNoEvaluations': { zh: '本期没有规则求值，比例无从谈起', en: 'No rules were evaluated this period, so there is no share to speak of' },
   'ratioDetail': { zh: '{withTrace} / {evaluations} 次求值带解释链', en: '{withTrace} of {evaluations} evaluations carry an explanation chain' },
   'statNeverTriggered': { zh: '从未求值的已发布规则', en: 'Published rules never evaluated' },
 
@@ -78,7 +78,7 @@ export const governance: Record<string, MessageEntry> = {
   'forcedCard': { zh: '覆盖发布门禁的发布', en: 'Publications that overrode a release gate' },
   'forcedNote': { zh: '覆盖门禁可以是正当的业务例外，但它不该需要审计去翻找', en: 'Overriding a gate can be a legitimate business exception, but it should not take an audit to find one' },
   'blockedCard': { zh: '被阻断的判定', en: 'Blocked decisions' },
-  'blockedNote': { zh: '逐条列出而不是只给计数：一屏「40 条被阻断」回答不了「其中有没有被冤枉的」。', en: 'Listed one by one rather than only as a count: a screen reading "40 blocked" cannot answer "was any of them wrongly blocked?"' },
+  'blockedNote': { zh: '逐条列出而不是只给计数：一屏「40 条被阻断」回答不了「其中有没有被冤枉的」。', en: 'The decisions are listed one by one rather than only as a count: a screen reading "40 blocked" cannot answer whether any of them was wrongly blocked.' },
 
   'eventsCard': { zh: '治理事件（{count}）', en: 'Governance events ({count})' },
   'eventsEmpty': { zh: '本期没有发布、派生、门禁覆盖或配额调整', en: 'No publications, derivations, gate overrides or quota adjustments this period' },

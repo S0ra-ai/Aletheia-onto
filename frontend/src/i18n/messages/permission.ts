@@ -9,8 +9,8 @@ export const permission: Record<string, MessageEntry> = {
   'loadFailed': { zh: '加载权限配置失败', en: 'Could not load the permission configuration' },
   'roleCreated': { zh: '角色创建成功', en: 'Role created' },
   'policySaved': { zh: '策略已保存', en: 'Policy saved' },
-  'createFailed': { zh: '创建失败', en: 'Could not create' },
-  'saveFailed': { zh: '保存失败', en: 'Could not save' },
+  'createFailed': { zh: '创建失败', en: 'Could not create the role' },
+  'saveFailed': { zh: '保存失败', en: 'Could not save the policy' },
   'reviewApproved': { zh: '已通过', en: 'Approved' },
   'reviewRejected': { zh: '已拒绝', en: 'Rejected' },
   'reviewFailed': { zh: '审核失败', en: 'Review failed' },
@@ -55,7 +55,7 @@ export const permission: Record<string, MessageEntry> = {
   'ssoCard': { zh: '单点登录', en: 'Single sign-on' },
   'declareMapping': { zh: '声明组映射', en: 'Declare a group mapping' },
   'pendingReviews': { zh: '待审核', en: 'Pending review' },
-  'pendingExecutions': { zh: '待审核工具执行', en: 'Pending tool executions' },
+  'pendingExecutions': { zh: '待审核工具执行', en: 'Tool executions pending review' },
 
   'ssoUnknownTitle': { zh: '无法读取 SSO 状态', en: 'Could not read the SSO status' },
   'ssoUnknownDesc': { zh: '这不表示 SSO 已启用或已关闭，只表示这次读取失败。请刷新重试；若持续失败，查看服务端日志。', en: 'This does not mean SSO is on or off; it means this read failed. Reload to try again, and check the server logs if it keeps failing.' },
@@ -65,7 +65,7 @@ export const permission: Record<string, MessageEntry> = {
   'ssoIssuerLine': { zh: '签发方：{issuer}　受众：{audience}　算法：{algorithm}（取自配置，绝不取自令牌头）', en: 'Issuer: {issuer}  Audience: {audience}  Algorithm: {algorithm} (read from configuration, never from the token header)' },
   'ssoClaimsLine': { zh: '组声明：{group}　用户标识声明：{username}', en: 'Group claim: {group}  Username claim: {username}' },
   'noMappingsTitle': { zh: '尚未声明任何组映射：所有 SSO 登录都会被拒绝', en: 'No group mappings declared yet: every SSO sign-in will be refused' },
-  'noMappingsDesc': { zh: '这是刻意设计——未映射的身份不给默认角色，否则目录里的每位员工都会被静默授予「读取平台可达的全部业务对象」。', en: 'This is deliberate: an unmapped identity is given no default role, otherwise every employee in the directory would be silently granted "read every business object the platform can reach".' },
+  'noMappingsDesc': { zh: '这是刻意设计——未映射的身份不给默认角色，否则目录里的每位员工都会被静默授予「读取平台可达的全部业务对象」。', en: 'This is deliberate: an unmapped identity is given no default role; otherwise every employee in the directory would be silently granted "read every business object the platform can reach".' },
 
   'providerGroup': { zh: '提供方组', en: 'Provider group' },
   'platformRole': { zh: '平台角色', en: 'Platform role' },
@@ -74,7 +74,7 @@ export const permission: Record<string, MessageEntry> = {
   'remove': { zh: '移除', en: 'Remove' },
 
   'providerGroupRequired': { zh: '请填写提供方组名', en: 'Enter the provider group name' },
-  'providerGroupHint': { zh: '取自令牌里的组声明，需与提供方完全一致。', en: 'Taken from the token\'s group claim; it must match the provider exactly.' },
+  'providerGroupHint': { zh: '取自令牌里的组声明，需与提供方完全一致。', en: 'Taken from the token\'s group claim; it must match the provider\'s group name exactly.' },
   'providerGroupExample': { zh: '如 engineering', en: 'e.g. engineering' },
   'roleRequired': { zh: '请选择角色', en: 'Select a role' },
   'roleOption': { zh: '{name}（{code}）', en: '{name} ({code})' },

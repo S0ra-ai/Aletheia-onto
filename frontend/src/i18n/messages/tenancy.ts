@@ -10,14 +10,14 @@ export const tenancy: Record<string, MessageEntry> = {
 
   'introBefore': { zh: '多租户为', en: 'Multi-tenancy is an ' },
   'introOptional': { zh: '可选', en: 'optional' },
-  'introAfter': { zh: '能力：单租户部署下这里为空是预期结果，不是故障。每租户独立 schema，关键表另带 tenant_id 作为双保险；配额存放在基础库而非租户库——存在租户库里的配额是租户可以自己改的配额。', en: ' capability: on a single-tenant deployment an empty list here is the expected answer, not a fault. Each tenant gets its own schema, and key tables carry tenant_id as a second line of defence; quotas live in the base database rather than the tenant database — a quota stored in the tenant database is a quota the tenant can change itself.' },
+  'introAfter': { zh: '能力：单租户部署下这里为空是预期结果，不是故障。每租户独立 schema，关键表另带 tenant_id 作为双保险；配额存放在基础库而非租户库——存在租户库里的配额是租户可以自己改的配额。', en: ' capability: on a single-tenant deployment an empty list here is the expected result, not a fault. Each tenant gets its own schema, and key tables carry tenant_id as a second line of defence; quotas live in the base database rather than the tenant database — a quota stored in the tenant database is a quota the tenant can change.' },
 
-  'loadFailedTitle': { zh: '读取失败', en: 'Could not read' },
+  'loadFailedTitle': { zh: '读取失败', en: 'Load failed' },
   'loadTenantsFailed': { zh: '获取租户列表失败', en: 'Could not load the tenant list' },
   'loadDetailFailed': { zh: '读取租户信息失败', en: 'Could not read the tenant details' },
   'createSuccess': { zh: '租户 {tenant} 已开通，schema：{schema}', en: 'Tenant {tenant} provisioned, schema: {schema}' },
   'createFailed': { zh: '开通租户失败', en: 'Could not provision the tenant' },
-  'quotaSuccess': { zh: '配额已声明。配额存放在基础库，租户无法自行修改。', en: 'Quota declared. Quotas live in the base database, and a tenant cannot change them itself.' },
+  'quotaSuccess': { zh: '配额已声明。配额存放在基础库，租户无法自行修改。', en: 'Quota declared. Quotas live in the base database, so tenants cannot change them.' },
   'quotaFailed': { zh: '声明配额失败', en: 'Could not declare the quota' },
   'isolationModel': { zh: '隔离模型：{model}（平台库：{database}）', en: 'Isolation model: {model} (platform database: {database})' },
 
