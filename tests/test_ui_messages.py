@@ -67,6 +67,17 @@ def test_a_sentence_keeps_its_placeholders_in_both_languages() -> None:
     assert not wrong, f"占位符在两种语言里对不上：{wrong}"
 
 
+def _interface_sources() -> list[Path]:
+    """The files that render the interface -- which is to say, not the tests.
+
+    A test is not the interface and is allowed to do what the interface must not: name a key
+    that does not exist, to prove the sentinel renders; reach for a payload the API never sends,
+    to prove the normaliser copes; call a local helper that happens to be called `t`. Scanning
+    them made both checks below report findings that were the tests doing their job.
+    """
+    return [path for path in sorted((ROOT / "frontend" / "src").rglob("*.ts*")) if not path.name.endswith(".test.ts")]
+
+
 def test_no_message_is_a_key_that_resolves_to_nothing() -> None:
     """`t()` renders ⟦key⟧ for an unknown key, on purpose, so it is visible in the interface.
 
@@ -75,13 +86,60 @@ def test_no_message_is_a_key_that_resolves_to_nothing() -> None:
     """
     declared = set(_entries())
     asked: set[str] = set()
-    for path in (ROOT / "frontend" / "src").rglob("*.ts*"):
+    for path in _interface_sources():
         text = path.read_text(encoding="utf-8")
         for match in re.finditer(r"\bt\(\s*'([\w.]+)'", text):
             asked.add(match.group(1))
     # Namespaced keys in the dictionary are `<file>.<key>`; a call site writes the same string.
     unknown = sorted(key for key in asked if key not in declared and key != "shell")
     assert not unknown, f"界面里调用了字典里没有的键：{unknown}"
+
+
+def test_no_call_site_turns_the_key_check_off() -> None:
+    """`t(someKey as never)` compiles, and it is why a screen's keys could all be wrong silently.
+
+    A key written through a variable cannot be checked the way `t('shell.nav.workbench')` can,
+    and the cast that made it compile also made the check disappear: the call renders `⟦key⟧`
+    at runtime, the type checker is quiet, and `scripts/i18n_audit.py` reads CJK so a missing
+    English key is not CJK either. Every one of the twenty-four casts in this codebase was of
+    that shape -- a label map or a preset table declared as `Record<string, string>` instead of
+    `Record<string, MessageKey>`.
+
+    They are gone: the maps now carry `MessageKey`, `codedText` centralises the one lookup that
+    genuinely is keyed by a value the server chose, and the code does not need a cast anywhere.
+    This keeps it that way. The fix is always at the declaration, not at the call site.
+    """
+    offenders: list[str] = []
+    for path in _interface_sources():
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith(("*", "//")):
+                continue
+            if re.search(r"\bas never\b", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{line_number}  {stripped}")
+    assert not offenders, (
+        "以下位置用 `as never` 关掉了字典键的检查——写错的键会在界面上渲染成 ⟦key⟧ 而不是"
+        "构建失败。请在声明处把类型收成 MessageKey，或改用 i18n/text.ts 的 codedText：\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_label_maps_are_keyed_by_message_keys() -> None:
+    """The declarations the casts were hiding behind, asserted as declarations.
+
+    `t()` is not the only way a key reaches the dictionary: `label()` in `labels.ts` returns a
+    value, and a page passes that value straight into `t()`. Type-safe at the point of use and
+    wrong at the point of definition is the same defect one step earlier.
+    """
+    offenders: list[str] = []
+    for path in sorted((ROOT / "frontend" / "src").rglob("*.ts*")):
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if "labelKey" in line and re.search(r"labelKey\??:\s*string\b", line):
+                offenders.append(f"{path.relative_to(ROOT)}:{line_number}  {line.strip()}")
+    assert not offenders, "以下 labelKey 声明为 string，因此 `t(map[x].labelKey)` 无法被检查：\n  " + "\n  ".join(
+        offenders
+    )
 
 
 def test_the_workbench_action_items_speak_the_readers_language() -> None:

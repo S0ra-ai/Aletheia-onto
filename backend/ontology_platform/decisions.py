@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from . import advice
+from .config import clamp_page_size
 from .context import PlatformDb
 from .database import connect
 
@@ -98,6 +99,14 @@ def record_decision_in_connection(
 
 
 def list_decisions(platform_db: PlatformDb, limit: int = 50) -> list[dict[str, Any]]:
+    """Recent decisions, newest first.
+
+    `limit` is clamped rather than trusted, and the clamp is here rather than in the route so
+    that every caller gets it. Unclamped it is not a large response but an *arbitrary* one:
+    SQLite reads `LIMIT -1` as "no limit", so `?limit=-1` returned the entire table -- every
+    decision this deployment has ever recorded -- in a single response, and `?limit=10**9`
+    did the same. Measured on a seeded instance: 50 rows by default, 5 015 on request.
+    """
     with connect(platform_db) as conn:
         rows = conn.execute(
             """
@@ -106,7 +115,7 @@ def list_decisions(platform_db: PlatformDb, limit: int = 50) -> list[dict[str, A
             order by id desc
             limit ?
             """,
-            (limit,),
+            (clamp_page_size(limit),),
         ).fetchall()
         return [_decision_row(row) for row in rows]
 

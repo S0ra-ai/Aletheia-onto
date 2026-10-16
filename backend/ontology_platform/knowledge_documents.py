@@ -37,6 +37,7 @@ from typing import Any, Iterable, Optional
 
 from .context import PlatformDb
 from .database import connect, last_insert_id
+from .pagination import resolve_page
 from .retrieval import tokenize
 from .schema import SchemaBundle
 
@@ -468,10 +469,31 @@ def _refresh_document_status(conn: Any, document_id: int) -> None:
     conn.execute("update knowledge_document set status = ? where id = ?", (status, document_id))
 
 
-def list_documents(platform_db: PlatformDb, ontology_id: int) -> list[dict[str, Any]]:
+def count_documents(platform_db: PlatformDb, ontology_id: int) -> int:
+    """How many documents one ontology holds. See `ontology.count_ontologies`."""
+    with connect(platform_db) as conn:
+        return int(
+            conn.execute(
+                "select count(*) as count from knowledge_document where ontology_id = ?",
+                (ontology_id,),
+            ).fetchone()["count"]
+        )
+
+
+def list_documents(
+    platform_db: PlatformDb,
+    ontology_id: int,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> list[dict[str, Any]]:
+    """Documents ingested for one ontology, newest first, optionally one page of them."""
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    paging = "" if resolved_limit is None else "limit ? offset ?"
+    page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
     with connect(platform_db) as conn:
         rows = conn.execute(
-            """
+            f"""
             select d.id, d.title, d.source_name, d.chunk_count, d.status, d.uploaded_by, d.created_at,
                    (select count(*) from knowledge_entry e
                     where e.document_id = d.id and e.status = 'confirmed') as confirmed_count,
@@ -480,8 +502,9 @@ def list_documents(platform_db: PlatformDb, ontology_id: int) -> list[dict[str, 
             from knowledge_document d
             where d.ontology_id = ?
             order by d.id desc
+            {paging}
             """,
-            (ontology_id,),
+            (ontology_id, *page_params),
         ).fetchall()
     return [
         {

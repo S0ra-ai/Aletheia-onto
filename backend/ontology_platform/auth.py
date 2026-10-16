@@ -26,6 +26,7 @@ from typing import Any, Optional
 
 from .context import PlatformDb
 from .database import connect
+from .pagination import resolve_page
 from .schema import ColumnAddition, SchemaBundle
 
 logger = logging.getLogger(__name__)
@@ -337,10 +338,22 @@ def create_user(
         return _user_dict(row)
 
 
-def list_users(platform_db: PlatformDb) -> list[dict[str, Any]]:
+def count_users(platform_db: PlatformDb) -> int:
+    """How many accounts exist. See `ontology.count_ontologies` for why this is separate."""
+    with connect(platform_db) as conn:
+        return int(conn.execute("select count(*) as count from platform_user").fetchone()["count"])
+
+
+def list_users(platform_db: PlatformDb, *, limit: int | None = None, offset: int | None = None) -> list[dict[str, Any]]:
+    """Accounts, oldest first, optionally one page of them."""
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    paging = "" if resolved_limit is None else "limit ? offset ?"
+    page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
     with connect(platform_db) as conn:
         rows = conn.execute(
-            "select id, username, display_name, role_code, status, created_at, last_login_at from platform_user order by id"
+            f"select id, username, display_name, role_code, status, created_at, last_login_at"
+            f" from platform_user order by id {paging}",
+            page_params,
         ).fetchall()
         return [_user_dict(row) for row in rows]
 

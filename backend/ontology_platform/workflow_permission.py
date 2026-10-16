@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from .config import clamp_page_size
 from .context import PlatformDb
 from .database import connect, last_insert_id
 from .events import STATE_CHANGE, EventType, record_event
@@ -1359,12 +1360,17 @@ def log_tool_execution(
 
 
 def list_pending_reviews(platform_db: PlatformDb, limit: int = 50) -> list[dict[str, Any]]:
+    """Tool executions held for review, newest first.
+
+    Clamped rather than trusted, for the reason `decisions.list_decisions` gives: `LIMIT -1`
+    is "no limit" in SQLite, so an unclamped limit is an unbounded response.
+    """
     with connect(platform_db) as conn:
         rows = conn.execute(
             """select * from tool_execution_log
             where requires_review = 1 and reviewed_by is null
             order by id desc limit ?""",
-            (limit,),
+            (clamp_page_size(limit),),
         ).fetchall()
         return [dict(r) for r in rows]
 

@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
+from . import error_codes
 from .access_policy import (
     VERSION_PREFIXES,
     is_public,
@@ -56,6 +57,7 @@ from .metrics import expose_metrics, init_metrics
 from .natural_language import query_natural_language
 from .object_service import ObjectAccessError, get_object_instance, list_object_instances
 from .ontology import (
+    count_ontologies,
     explain_instance,
     export_ontology_asset,
     generate_ontology_draft,
@@ -64,6 +66,7 @@ from .ontology import (
     resolve_ontology_for_object,
     summarize_ontology,
 )
+from .pagination import page_block, resolve_page
 from .rate_limiter import RateLimitMiddleware
 from .release_readiness import assess_ontology_release_readiness
 from .request_logger import request_logging_middleware, unhandled_exception_response
@@ -232,8 +235,15 @@ async def enforce_access_policy(request: Request, call_next):
             content={
                 "detail": str(error),
                 "code": "forbidden",
+                # Kept as the documented top-level fields they have always been, and repeated
+                # under `facts` in the shape `error_codes.decorate` produces -- the console
+                # reads one shape for every refusal instead of special-casing this one. The
+                # code stays written out here rather than identified from the sentence: this is
+                # a security decision's explanation, and it must not depend on a lookup that a
+                # reworded sentence could turn into nothing.
                 "requiredCapability": capability,
                 "roleCode": principal.role_code,
+                "facts": {"roleCode": principal.role_code, "capability": capability},
             },
         )
 
@@ -261,6 +271,40 @@ async def log_request(request: Request, call_next):
 
 
 app.add_exception_handler(Exception, unhandled_exception_response)
+
+
+async def coded_http_exception_response(request: Request, exc: Exception) -> JSONResponse:
+    """Give a refusal its code, so the console can say it in the reader's language.
+
+    Every route raises `HTTPException(status_code=..., detail=str(error))`, and that sentence
+    is Chinese -- written by the domain layer at the point the rule is known. Threading a code
+    down from every one of those raises would be a rewrite of the domain layer for a display
+    concern; identifying the sentence on the way out is one function.
+
+    The sentence is untouched. `detail` is what the CLI, the tests and third-party clients
+    read, and it stays exactly as raised; `code` and `facts` are added beside it, which is the
+    shape `advice.py` already uses and the one `scripts/i18n_audit.py` expects.
+
+    A refusal with no registered code gets no `code` key at all -- not an empty string. The
+    console then shows the sentence it was given, which is still true and still readable;
+    `tests/test_error_codes.py` measures how much of the surface that still covers.
+
+    `exc` is annotated `Exception` and narrowed here because that is the type Starlette keys
+    its handlers on; the registration below is for `HTTPException`, so the narrowing is a
+    signature accommodation rather than a runtime possibility.
+    """
+    http_error = cast("HTTPException", exc)
+    return JSONResponse(
+        status_code=http_error.status_code,
+        content=error_codes.decorate(http_error.detail),
+        headers=getattr(http_error, "headers", None),
+    )
+
+
+# Registered for the class FastAPI already handles: this replaces the default renderer rather
+# than adding a second one, so there is no path where a refusal is serialised without going
+# through `decorate`.
+app.add_exception_handler(HTTPException, coded_http_exception_response)
 
 
 class OntologyDraftCreate(BaseModel):
@@ -481,9 +525,21 @@ def upsert_blueprint(payload: IndustryBlueprintUpsert) -> dict[str, object]:
 
 
 @core_router.get("/ontologies")
-def get_ontologies() -> dict[str, object]:
-    items = list_ontologies(DEFAULT_PLATFORM_DB)
-    return {"items": items, "ontologies": items}
+def get_ontologies(limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
+    """Every ontology version, or one page of them.
+
+    `total` is `len(items)` when no limit was asked for rather than a second count query: the
+    response already holds every row, so counting them again would be a round trip for a number
+    the caller can read off what it is holding.
+    """
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    items = list_ontologies(DEFAULT_PLATFORM_DB, limit=resolved_limit, offset=resolved_offset)
+    total = count_ontologies(DEFAULT_PLATFORM_DB) if resolved_limit is not None else len(items)
+    return {
+        "items": items,
+        "ontologies": items,
+        "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(items)),
+    }
 
 
 @core_router.get("/ontologies/{ontology_id}")
@@ -524,9 +580,11 @@ def export_ontology(ontology_id: int, format: str = "jsonld") -> Response:
 
 
 @core_router.get("/ontologies/{ontology_id}/mappings")
-def get_ontology_mappings(ontology_id: int, status: Optional[str] = None) -> dict[str, object]:
+def get_ontology_mappings(
+    ontology_id: int, status: Optional[str] = None, limit: Optional[int] = None, offset: int = 0
+) -> dict[str, object]:
     try:
-        return list_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, status)
+        return list_semantic_mappings(DEFAULT_PLATFORM_DB, ontology_id, status, limit=limit, offset=offset)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -592,9 +650,9 @@ def derive_ontology_draft(
 
 
 @core_router.get("/ontologies/{ontology_id}/rules")
-def get_business_rules(ontology_id: int) -> dict[str, object]:
+def get_business_rules(ontology_id: int, limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
     try:
-        return list_business_rules(DEFAULT_PLATFORM_DB, ontology_id)
+        return list_business_rules(DEFAULT_PLATFORM_DB, ontology_id, limit=limit, offset=offset)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 

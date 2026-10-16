@@ -16,6 +16,7 @@ from .derived_attributes import Quantity, UnitError, get_unit
 from .events import EVENT_CATEGORY_LABELS, EVENT_TABLE, EVENT_TYPE_TABLE, event_tables_exist
 from .industry_blueprints import IndustryBlueprint, get_industry_blueprint, infer_industry_blueprint
 from .metadata import delete_referencing_rows
+from .pagination import resolve_page
 from .relations import (
     AGGREGATION,
     ASSOCIATION,
@@ -430,15 +431,37 @@ def _recent_events(
     ]
 
 
-def list_ontologies(platform_db: PlatformDb) -> list[dict[str, Any]]:
+def count_ontologies(platform_db: PlatformDb) -> int:
+    """How many ontology versions exist. Separate from `list_ontologies` because only a
+    paginated caller needs it: an unpaginated response already holds every row, and asking the
+    database to count them again would be a second query for a number the caller can read off
+    the list it is holding."""
+    with connect(platform_db) as conn:
+        return int(conn.execute("select count(*) as count from ontology").fetchone()["count"])
+
+
+def list_ontologies(
+    platform_db: PlatformDb, *, limit: int | None = None, offset: int | None = None
+) -> list[dict[str, Any]]:
+    """Ontology versions, oldest first, optionally one page of them.
+
+    The list grows on every `derive` -- each version is its own row -- so a modelling team that
+    iterates adds to it steadily, and it was returned whole every time the modelling page
+    loaded.
+    """
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    paging = "" if resolved_limit is None else "limit ? offset ?"
+    page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
     with connect(platform_db) as conn:
         rows = conn.execute(
-            """
+            f"""
             select o.id, o.name, o.domain, o.version, o.status, o.published_at, o.created_at,
                    (select count(*) from business_object bo where bo.ontology_id = o.id) as object_count
             from ontology o
             order by o.id
-            """
+            {paging}
+            """,
+            page_params,
         ).fetchall()
         summaries = []
         for row in rows:

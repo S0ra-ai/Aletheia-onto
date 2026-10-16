@@ -281,7 +281,13 @@ class CSVRuntime:
             candidate = self.directory / f"{table_name}{suffix}"
             if candidate.exists():
                 return candidate
-        raise FileSourceError(f"文件不存在: {table_name}{CSV_SUFFIXES[0]}（在 {self.directory}）")
+        # The two halves are joined here rather than interpolated side by side
+        # (`{table_name}{CSV_SUFFIXES[0]}`), because the sentence is one the console has to be
+        # able to *identify*: `error_codes.py` matches a refusal by walking its literal parts,
+        # and two adjacent values leave nothing to walk between them. The sentence a reader sees
+        # is unchanged -- `orders.csv` either way.
+        filename = f"{table_name}{CSV_SUFFIXES[0]}"
+        raise FileSourceError(f"文件不存在: {filename}（在 {self.directory}）")
 
     def _typed_rows(self, table_name: str) -> list[dict[str, Any]]:
         path = self._path(table_name)

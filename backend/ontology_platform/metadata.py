@@ -14,6 +14,7 @@ from .context import PlatformDb
 from .credentials import redact_connection_uri
 from .database import connect, last_insert_id
 from .errors import describe_data_source_failure
+from .pagination import resolve_page
 from .schema import dialect_of, quote_identifier, referencing_columns
 
 logger = logging.getLogger(__name__)
@@ -123,15 +124,29 @@ def register_data_source(
         return _row_to_data_source(row)
 
 
-def list_data_sources(platform_db: PlatformDb) -> list[dict[str, Any]]:
+def count_data_sources(platform_db: PlatformDb) -> int:
+    """How many sources are registered. See `count_ontologies` for why this is separate."""
+    with connect(platform_db) as conn:
+        return int(conn.execute("select count(*) as count from data_source").fetchone()["count"])
+
+
+def list_data_sources(
+    platform_db: PlatformDb, *, limit: int | None = None, offset: int | None = None
+) -> list[dict[str, Any]]:
+    """Registered data sources, optionally one page of them."""
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    paging = "" if resolved_limit is None else "limit ? offset ?"
+    page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
     with connect(platform_db) as conn:
         rows = conn.execute(
-            """
+            f"""
             select id, name, domain, system_category, source_type, connection_uri, api_base_url, api_headers,
                    capabilities, created_at
             from data_source
             order by id
-            """
+            {paging}
+            """,
+            page_params,
         ).fetchall()
         return [_data_source_dict(row) for row in rows]
 
@@ -194,11 +209,35 @@ def register_source_api(
         return _row_to_source_api(row)
 
 
-def list_source_apis(platform_db: PlatformDb, data_source_id: int) -> list[dict[str, Any]]:
+def count_source_apis(platform_db: PlatformDb, data_source_id: int) -> int:
+    """How many operations a source declares. See `count_ontologies` for why this is separate."""
+    with connect(platform_db) as conn:
+        return int(
+            conn.execute(
+                "select count(*) as count from source_api where data_source_id = ?", (data_source_id,)
+            ).fetchone()["count"]
+        )
+
+
+def list_source_apis(
+    platform_db: PlatformDb,
+    data_source_id: int,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> list[dict[str, Any]]:
+    """Declared operations of one data source, optionally one page of them.
+
+    An OpenAPI import writes a row per operation, and a large business system's specification
+    has thousands -- returned whole to a page that draws a table of them.
+    """
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    paging = "" if resolved_limit is None else "limit ? offset ?"
+    page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
     with connect(platform_db) as conn:
         rows = conn.execute(
-            "select * from source_api where data_source_id = ? order by operation_code",
-            (data_source_id,),
+            f"select * from source_api where data_source_id = ? order by operation_code {paging}",
+            (data_source_id, *page_params),
         ).fetchall()
         return [dict(row) for row in rows]
 

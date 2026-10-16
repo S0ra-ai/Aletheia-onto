@@ -1,9 +1,9 @@
 """Code generation from a published ontology.
 
-ROADMAP stage F's last item. The frontend keeps 1143 hand-written lines mirroring the
-backend, and what makes that debt is not the duplication but that **the two copies can
-disagree with nothing failing** -- the model configuration endpoint silently discarded four
-fields the frontend had always sent.
+ROADMAP stage F's last item. The frontend keeps a large hand-written mirror of the
+backend's models, and what makes that debt is not the duplication but that **the two copies
+can disagree with nothing failing** -- the model configuration endpoint silently discarded
+four fields the frontend had always sent.
 
 Generating the platform's own types from OpenAPI stays blocked: every endpoint returns
 `dict[str, object]`, so there is no response schema to generate from. What is generatable,

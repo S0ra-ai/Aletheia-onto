@@ -41,6 +41,7 @@ from ..conversations import (
 )
 from ..http_runtime import current_principal, enforce_quota, platform_db
 from ..knowledge_documents import (
+    count_documents,
     extract_text_from_docx,
     ingest_document,
     list_documents,
@@ -48,6 +49,7 @@ from ..knowledge_documents import (
     review_knowledge_entry,
     split_into_chunks,
 )
+from ..pagination import page_block, resolve_page
 from ..retrieval import supported_embedding_models, supported_retrieval_backends
 
 router = APIRouter()
@@ -84,8 +86,16 @@ class ConversationStatusUpdate(BaseModel):
 
 
 @router.get("/ontologies/{ontology_id}/knowledge/documents")
-def knowledge_documents(ontology_id: int) -> dict[str, object]:
-    return {"items": list_documents(platform_db(), ontology_id)}
+def knowledge_documents(ontology_id: int, limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    items = list_documents(platform_db(), ontology_id, limit=resolved_limit, offset=resolved_offset)
+    # `total` is the list's own length when no limit was asked for: the response holds every
+    # row, so a second count query would be a round trip for a number already in hand.
+    total = count_documents(platform_db(), ontology_id) if resolved_limit is not None else len(items)
+    return {
+        "items": items,
+        "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(items)),
+    }
 
 
 @router.get("/ontologies/{ontology_id}/knowledge/entries")

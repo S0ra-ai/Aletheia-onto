@@ -1,6 +1,6 @@
 """The frontend's hand-written types must agree with the API they mirror.
 
-`frontend/src/types/index.ts` is 1143 hand-written lines mirroring the backend models.
+`frontend/src/types/index.ts` is a large hand-written mirror of the backend models.
 ROADMAP records this as debt, and the reason it is debt is not the duplication -- it is
 that **the two copies can disagree with nothing failing**.
 
@@ -56,6 +56,12 @@ MIRRORED_REQUEST_MODELS = (
     "OntologyDraftCreate",
     "SourceApiCreate",
     "OnboardingRunCreate",
+    # Added when the literal-payload check below found four request bodies sending an
+    # identity field the API does not declare. These two are the ones that had a named
+    # interface to be checked against; the other two were inline object types, which is
+    # precisely why they went unnoticed -- see `test_no_request_body_sends_a_field_the_api_discards`.
+    "BulkMappingReviewCreate",
+    "ToolExecutionReview",
 )
 
 
@@ -120,6 +126,289 @@ def test_the_frontend_can_reach_every_field_the_api_accepts(model) -> None:
         f"{model}: API 接受但前端未声明的字段无法从界面到达: {unreachable}。"
         "请补充前端类型，或说明该字段仅供 API 调用方使用。"
     )
+
+
+# -- Request bodies written inline, which the interface comparison cannot see --
+
+# The five mirrored interfaces above are the requests somebody thought to name. Most bodies
+# are written inline at the call site (`api.post(url, { status, note })`), and an inline
+# object type has no declaration to compare -- so the check above looked past exactly the
+# places the same mistake kept happening.
+#
+# Four of them were live at once, all the same shape: the console sends an identity
+# (`reviewer`, `actor`, `publisher`) that the server does not accept, because the server
+# credits the authenticated principal instead. Pydantic drops the field, the request
+# succeeds, and the call site reads as though it decided who was recorded. `publish` had
+# already been fixed and commented; `reviewMappings`, `derive` and `reviewExecution` had not,
+# and a fourth sent a *canned Chinese note* that the server did accept and wrote into
+# `semantic_mapping.evidence` -- stored in whatever language the console was in.
+#
+# Comparing the literal's keys against the request model the route actually declares is the
+# general form of that bug, and it needs no interface to exist.
+
+# Bodies FastAPI takes as an untyped `dict`, so there is no schema to compare against.
+# Empty because every write route in this API declares a model -- listed rather than assumed
+# so that the day one does not, the exclusion has to be written down with its reason.
+UNTYPED_REQUEST_BODIES: tuple[str, ...] = ()
+
+
+def _js_arguments(call: str) -> list[str]:
+    """Top-level arguments of a call, given its source text from `(` to the matching `)`.
+
+    Split by hand rather than by `split(",")`: a body like
+    `{"name": "a,b", "tags": ["x", "y"]}` has commas at four different depths, and splitting
+    on all of them would report a field named `"y"]`.
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    index = 0
+    quote: str | None = None
+    while index < len(call):
+        char = call[index]
+        if quote:
+            current.append(char)
+            if char == "\\":
+                index += 1
+                if index < len(call):
+                    current.append(call[index])
+            elif char == quote:
+                quote = None
+        elif char in "\"'`":
+            quote = char
+            current.append(char)
+        elif char in "([{":
+            depth += 1
+            current.append(char)
+        elif char in ")]}":
+            depth -= 1
+            current.append(char)
+        elif char == "," and depth == 0:
+            if current:
+                parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    if current:
+        parts.append("".join(current).strip())
+    return [part for part in parts if part]
+
+
+def _object_literal_keys(literal: str) -> list[str]:
+    """Every key at the top level of a JS object literal, including shorthand entries.
+
+    `{ status }` declares `status` just as `{ status: s }` does, and the bodies that send an
+    identity field are mostly shorthand (`{ username, password }`).
+    """
+    keys: list[str] = []
+    depth = 0
+    brackets = 0
+    expecting_key = False
+    index = 0
+    while index < len(literal):
+        char = literal[index]
+        if char in "\"'`":
+            quote = char
+            index += 1
+            while index < len(literal) and literal[index] != quote:
+                if literal[index] == "\\":
+                    index += 1
+                index += 1
+            index += 1
+            continue
+        if char == "{":
+            depth += 1
+            expecting_key = depth == 1
+        elif char == "}":
+            depth -= 1
+        elif char == "[":
+            brackets += 1
+        elif char == "]":
+            brackets -= 1
+        elif char == "," and depth == 1 and brackets == 0:
+            expecting_key = True
+        elif expecting_key and (char.isalpha() or char in "_$"):
+            start = index
+            while index < len(literal) and (literal[index].isalnum() or literal[index] in "_$"):
+                index += 1
+            key = literal[start:index]
+            ahead = index
+            while ahead < len(literal) and literal[ahead].isspace():
+                ahead += 1
+            # `key:` is a pair; `key,` / `key}` is shorthand for `key: key`.
+            if ahead < len(literal) and literal[ahead] in ":,}":
+                keys.append(key)
+            expecting_key = False
+            continue
+        index += 1
+    return keys
+
+
+def _inline_request_bodies() -> list[tuple[str, str, str, list[str]]]:
+    """`(method, url, literal, keys)` for every request body written as an object literal.
+
+    Only literals: a body passed as `payload` has a type by construction, and the interface
+    comparison above is what checks those. What is invisible to that check is a body typed at
+    the call site, which is where all four occurrences of the identity-field bug lived.
+    """
+    api_source = (ROOT / "frontend" / "src" / "api" / "index.ts").read_text(encoding="utf-8")
+    found: list[tuple[str, str, str, list[str]]] = []
+    for match in re.finditer(r"api\.(post|put|patch)\(\s*(`[^`]*`|'[^']*'|\"[^\"]*\")", api_source):
+        verb = match.group(1).upper()
+        url = match.group(2)[1:-1]
+        # The arguments run to the matching `)`, so the body's own braces are not the end.
+        start = match.end()
+        depth = 0
+        index = start
+        while index < len(api_source):
+            char = api_source[index]
+            if char in "([{":
+                depth += 1
+            elif char in ")]}":
+                depth -= 1
+                if depth < 0:
+                    break
+            index += 1
+        # The URL is prepended so the argument positions match the real call: axios takes
+        # `(url, data, config)`, so a slice starting after the URL would make `data` look
+        # like the first argument and hand the *config* object to the comparison below.
+        arguments = _js_arguments(match.group(2) + api_source[start:index])
+        if len(arguments) < 2:
+            continue
+        body = arguments[1]
+        if not (body.startswith("{") and body.endswith("}")):
+            continue
+        keys = _object_literal_keys(body)
+        if keys:
+            found.append((verb, url, body, keys))
+    return found
+
+
+def _route_request_models() -> dict[tuple[str, str], str]:
+    """`{("POST", "/ontologies/{ontology_id}/derive"): "OntologyDeriveCreate"}` from OpenAPI.
+
+    Read from the API's own schema rather than from the Pydantic classes by name: the schema
+    is what a client sees, and a route that stopped declaring a model would drop out of this
+    table instead of silently comparing against a class nothing uses.
+    """
+    from ontology_platform.api import app
+
+    routes: dict[tuple[str, str], str] = {}
+    for path, operations in app.openapi()["paths"].items():
+        for method, operation in operations.items():
+            schema = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+            reference = schema.get("$ref", "")
+            if reference:
+                routes[(method.upper(), path)] = reference.rsplit("/", 1)[-1]
+    return routes
+
+
+def test_no_request_body_sends_a_field_the_api_discards() -> None:
+    """Every object-literal request body must declare only fields its route accepts.
+
+    This is the check that was missing, not another instance of the fix. The four identity
+    fields it finds (`reviewer` twice, `actor`, and a canned `note`) had each been fixed
+    where somebody happened to look, and the reason there was a next one is that nothing
+    compared a call site's body to the route's model. Naming five interfaces did not help:
+    an inline literal has no interface to name.
+    """
+    schemas = _api_schemas()
+    routes = _route_request_models()
+    bodies = _inline_request_bodies()
+    assert bodies, "没有解析到任何行内请求体——这个检查多半已经失效，而不是前端改了写法"
+
+    findings: list[str] = []
+    for verb, url, literal, keys in bodies:
+        matches = [
+            (route_method, route_path, model)
+            for (route_method, route_path), model in routes.items()
+            if route_method == verb and _matches(url, route_path)
+        ]
+        if not matches:
+            findings.append(f"{verb} {url}: 请求体 {literal} 找不到对应的路由声明")
+            continue
+        for _method, route_path, model in matches:
+            if route_path in UNTYPED_REQUEST_BODIES:
+                continue
+            accepted = set(schemas.get(model, {}).get("properties", {}))
+            discarded = sorted(set(keys) - accepted)
+            if discarded:
+                findings.append(f"{verb} {url} → {model}: 前端发送但 API 未声明的字段会被静默丢弃: {discarded}")
+
+    assert not findings, (
+        "以下请求体包含 API 不会读取的字段——请求会成功，值会消失：\n  "
+        + "\n  ".join(sorted(set(findings)))
+        + "\n若该字段是身份（审核人／操作者／发布者），服务端记录的是认证主体，"
+        "请删除该字段而不是补进模型。"
+    )
+
+
+def test_no_page_navigates_to_a_protected_endpoint() -> None:
+    """A URL the browser opens on its own carries no `Authorization` header.
+
+    This platform authenticates with a bearer token and deliberately sets no cookie, so
+    `window.open('/api/ontologies/1/export?format=jsonld')` cannot download anything: the new
+    tab is unauthenticated and shows `{"detail":"缺少访问令牌"}`. Five buttons did exactly
+    that -- the four export formats and the kernel package -- and every one of them was
+    broken in every deployment, because nothing about the code looks wrong: the URL is right,
+    the endpoint is right, and only the credential is missing.
+
+    The endpoint prefixes are read from the API's own schema rather than listed, so a route
+    added tomorrow is covered without anyone editing this.
+    """
+    from ontology_platform.api import app
+
+    prefixes = {"/" + path.strip("/").split("/")[0] for path in app.openapi()["paths"] if path.strip("/")}
+    # Navigation that is *meant* to leave the application. Not an exemption list for API
+    # paths: these are the external destinations, and they are the only ones allowed.
+    external = ("http://", "https://", "mailto:", "//")
+
+    offenders: list[str] = []
+    for page in sorted((ROOT / "frontend" / "src").rglob("*.ts*")):
+        text = page.read_text(encoding="utf-8")
+        for match in re.finditer(r"(window\.open|location\.assign|location\.href\s*=)\s*\(?\s*([^)\n;]+)", text):
+            target = match.group(2)
+            if any(marker in target for marker in external):
+                continue
+            # The segment itself starts with `/`, so that *is* the left boundary. Requiring a
+            # quote or a slash before it was the first version of this check, and it matched
+            # nothing: the URL a page hands to `window.open` is written `/api/ontologies/…`
+            # (the proxy strips the prefix) while the axios client writes `/ontologies/…`
+            # relative to its `baseURL`. Only a segment-shaped search sees both.
+            if any(re.search(rf"{re.escape(prefix)}(?:[/?\"'`]|$)", target) for prefix in prefixes):
+                line = text[: match.start()].count("\n") + 1
+                offenders.append(f"{page.relative_to(ROOT)}:{line}  {match.group(0).strip()}")
+
+    assert not offenders, (
+        "以下位置让浏览器自己打开一个受保护的接口地址——新标签页不带 Bearer 令牌，"
+        "只会显示 401 的 JSON。请改为通过 `api/index.ts` 的 `downloadFile` 或对应的 API 方法发起请求：\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_the_literal_payload_check_can_actually_fail() -> None:
+    """A check nobody has seen fail is a check that may be comparing nothing.
+
+    Pinned against the parser itself: an object literal with a nested body, an array of
+    strings and a quoted comma is the shape a naive split would shred, and the four bugs
+    this guard found were all shorthand entries, which a `\\w+:\\s` key scan misses.
+    """
+    literal = '{ status: "confirmed", note: "", tags: ["a,b", "c"], nested: { reviewer: "x" } }'
+    assert _object_literal_keys(literal) == ["status", "note", "tags", "nested"]
+    assert _object_literal_keys("{ reviewer, actor }") == ["reviewer", "actor"]
+    assert _object_literal_keys("{}") == []
+
+    arguments = _js_arguments('"/ontologies/1/derive", { version, actor }, { params: { a: 1 } }')
+    assert arguments[0] == '"/ontologies/1/derive"'
+    assert arguments[1] == "{ version, actor }"
+
+    # And end to end: a body carrying a field this route does not declare must be reported.
+    routes = _route_request_models()
+    model = routes.get(("POST", "/ontologies/{ontology_id}/derive"))
+    assert model, "derive 路由应从 OpenAPI 中解析出来"
+    accepted = set(_api_schemas()[model].get("properties", {}))
+    assert "actor" not in accepted, "OntologyDeriveCreate 若开始接受 actor，本测试需要重写"
 
 
 def test_the_model_config_compatibility_settings_reach_the_backend() -> None:

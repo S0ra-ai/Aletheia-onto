@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from ..audit_reports import AuditPeriodError, build_audit_report, describe_report_sections
 from ..auth import Principal
+from ..config import clamp_page_size
 from ..database import connect
 from ..decisions import list_decisions
 from ..http_runtime import current_principal, platform_db
@@ -135,7 +136,7 @@ def audit_log(limit: int = 50) -> dict[str, object]:
             order by id desc
             limit ?
             """,
-            (limit,),
+            (clamp_page_size(limit),),
         ).fetchall()
         return {"items": [dict(row) for row in rows]}
 
@@ -150,7 +151,7 @@ def model_invocations(limit: int = 50) -> dict[str, object]:
             order by id desc
             limit ?
             """,
-            (limit,),
+            (clamp_page_size(limit),),
         ).fetchall()
         return {"items": [dict(row) for row in rows]}
 

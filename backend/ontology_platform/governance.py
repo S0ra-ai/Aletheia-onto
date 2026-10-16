@@ -6,6 +6,7 @@ from typing import Any
 from .context import PlatformDb
 from .database import connect, last_insert_id
 from .ontology import business_rule_row, mapping_target_codes, semantic_mapping_row
+from .pagination import page_block, resolve_page
 from .release_readiness import assess_ontology_release_readiness
 from .schema import table_exists
 from .semantic_kernel import validate_rule_expression
@@ -37,7 +38,22 @@ def _validate_rule_write(rule_type: str, severity: str, expression: str) -> None
         raise ValueError(f"规则表达式不可执行: {validation['error']}")
 
 
-def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: str | None = None) -> dict[str, Any]:
+def list_semantic_mappings(
+    platform_db: PlatformDb,
+    ontology_id: int,
+    status: str | None = None,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict[str, Any]:
+    """Mappings of one ontology, oldest first, optionally one page of them.
+
+    This is the list with the largest realistic length in the platform: a row is written per
+    mapped column, so a legacy schema with five hundred tables produces tens of thousands of
+    them on the queue that gates publication. `limit` is what stops that queue from being
+    rendered into a browser in one piece; without it the response is what it always was.
+    """
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
         params: list[Any] = [ontology_id]
@@ -45,9 +61,17 @@ def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: st
         if status:
             status_filter = " and status = ?"
             params.append(status)
+        total = int(
+            conn.execute(
+                f"select count(*) as count from semantic_mapping where ontology_id = ? {status_filter}",
+                tuple(params),
+            ).fetchone()["count"]
+        )
         # Built once rather than per row: the ids inside `target_ref` are the same two
         # tables for every mapping of this ontology.
         codes = mapping_target_codes(conn, ontology_id)
+        paging = "" if resolved_limit is None else "limit ? offset ?"
+        page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
         rows = conn.execute(
             f"""
             select id, ontology_id, mapping_type, source_ref, target_ref, confidence, status,
@@ -56,8 +80,9 @@ def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: st
             where ontology_id = ?
             {status_filter}
             order by id
+            {paging}
             """,
-            tuple(params),
+            (*params, *page_params),
         ).fetchall()
         return {
             "ontologyId": ontology_id,
@@ -66,6 +91,7 @@ def list_semantic_mappings(platform_db: PlatformDb, ontology_id: int, status: st
             # only the snake_case wire columns, and the review table asks for the decoded
             # ones -- five of its seven columns were blank for every row.
             "items": [semantic_mapping_row(row, codes) for row in rows],
+            "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(rows)),
         }
 
 
@@ -293,19 +319,35 @@ def derive_ontology_version(
         return _ontology_derivation_summary(conn, new_ontology_id, source_ontology_id, mapping_count, rule_count)
 
 
-def list_business_rules(platform_db: PlatformDb, ontology_id: int) -> dict[str, Any]:
+def list_business_rules(
+    platform_db: PlatformDb,
+    ontology_id: int,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict[str, Any]:
+    """Rules of one ontology, by priority, optionally one page of them."""
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
     with connect(platform_db) as conn:
         _require_ontology(conn, ontology_id)
+        total = int(
+            conn.execute(
+                "select count(*) as count from business_rule where ontology_id = ?", (ontology_id,)
+            ).fetchone()["count"]
+        )
+        paging = "" if resolved_limit is None else "limit ? offset ?"
+        page_params = () if resolved_limit is None else (resolved_limit, resolved_offset)
         rows = conn.execute(
-            """
+            f"""
             select id, ontology_id, code, name, rule_type, scope_object_code, expression,
                    severity, natural_language, status, priority, category,
                    effective_start, effective_end, depends_on
             from business_rule
             where ontology_id = ?
             order by priority desc, code
+            {paging}
             """,
-            (ontology_id,),
+            (ontology_id, *page_params),
         ).fetchall()
         # Through the same serializer the ontology summary uses. Returning `dict(row)` sent
         # only the wire columns, and the rule table asks for the decoded ones -- 类型 /
@@ -313,7 +355,11 @@ def list_business_rules(platform_db: PlatformDb, ontology_id: int) -> dict[str, 
         # time, four hundred lines away, and this endpoint did not call it. Same shape of
         # mistake as the mapping review queue, found the same way: by giving the table a row
         # to draw, because an empty table makes every column look correct.
-        return {"ontologyId": ontology_id, "items": [business_rule_row(row) for row in rows]}
+        return {
+            "ontologyId": ontology_id,
+            "items": [business_rule_row(row) for row in rows],
+            "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(rows)),
+        }
 
 
 def get_business_rule(platform_db: PlatformDb, ontology_id: int, rule_id: int) -> dict[str, Any]:

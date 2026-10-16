@@ -41,6 +41,8 @@ from ..metadata import (
     assess_data_source_readiness,
     check_business_api_gateway,
     check_data_source_connection,
+    count_data_sources,
+    count_source_apis,
     import_openapi_operations,
     import_openapi_operations_from_url,
     list_data_sources,
@@ -51,6 +53,7 @@ from ..metadata import (
 )
 from ..onboarding import run_onboarding_pipeline
 from ..operation_bindings import assess_operation_bindings
+from ..pagination import page_block, resolve_page
 from ..sql_dialects import known_dialects
 
 router = APIRouter()
@@ -149,9 +152,15 @@ def run_onboarding(payload: OnboardingRunCreate) -> dict[str, object]:
 
 
 @router.get("/data-sources")
-def get_data_sources() -> dict[str, object]:
-    items = list_data_sources(platform_db())
-    return {"dataSources": items, "data_sources": items}
+def get_data_sources(limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    items = list_data_sources(platform_db(), limit=resolved_limit, offset=resolved_offset)
+    total = count_data_sources(platform_db()) if resolved_limit is not None else len(items)
+    return {
+        "dataSources": items,
+        "data_sources": items,
+        "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(items)),
+    }
 
 
 @router.post("/data-sources/test-connection")
@@ -202,8 +211,14 @@ def create_source_api(data_source_id: int, payload: SourceApiCreate) -> dict[str
 
 
 @router.get("/data-sources/{data_source_id}/apis")
-def get_source_apis(data_source_id: int) -> dict[str, object]:
-    return {"apis": list_source_apis(platform_db(), data_source_id)}
+def get_source_apis(data_source_id: int, limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    items = list_source_apis(platform_db(), data_source_id, limit=resolved_limit, offset=resolved_offset)
+    total = count_source_apis(platform_db(), data_source_id) if resolved_limit is not None else len(items)
+    return {
+        "apis": items,
+        "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(items)),
+    }
 
 
 @router.post("/data-sources/{data_source_id}/apis/import-openapi")

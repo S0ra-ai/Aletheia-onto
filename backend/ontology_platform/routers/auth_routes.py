@@ -16,6 +16,8 @@ Stability: internal. Routers are an implementation detail of the HTTP layer.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -26,6 +28,7 @@ from ..auth import (
     AuthenticationError,
     Principal,
     change_password,
+    count_users,
     create_user,
     list_users,
     login,
@@ -33,6 +36,7 @@ from ..auth import (
     set_user_status,
 )
 from ..http_runtime import bearer_token, current_principal, platform_db
+from ..pagination import page_block, resolve_page
 from ..sso import (
     SsoError,
     declare_group_mapping,
@@ -110,8 +114,15 @@ def auth_change_password(
 
 
 @router.get("/auth/users")
-def auth_list_users() -> dict[str, object]:
-    return {"items": list_users(platform_db()), "roles": sorted(ROLE_CAPABILITIES)}
+def auth_list_users(limit: Optional[int] = None, offset: int = 0) -> dict[str, object]:
+    resolved_limit, resolved_offset = resolve_page(limit, offset)
+    items = list_users(platform_db(), limit=resolved_limit, offset=resolved_offset)
+    total = count_users(platform_db()) if resolved_limit is not None else len(items)
+    return {
+        "items": items,
+        "roles": sorted(ROLE_CAPABILITIES),
+        "pagination": page_block(limit=resolved_limit, offset=resolved_offset, total=total, returned=len(items)),
+    }
 
 
 @router.post("/auth/users")
