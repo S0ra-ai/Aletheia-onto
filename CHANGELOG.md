@@ -679,6 +679,36 @@
   于是工作流状态转换表的 `→` 列，在一套里是空的、在另一套里是满的。
   **两套检查对「空」的定义不一致，比哪一套错了都糟**：读者跑哪一套，就决定这一列算不算缺陷。
   组件测试现在跟浏览器扫描一致，因为它才是「浏览器画了什么」的权威。
+
+- **两种语言的文档开始真正互相对齐，并且有了守卫**（`tests/test_bilingual_documents.py`、
+  `quickstart.md`、`capabilities.md`、`capabilities.zh-CN.md`、`configuration.zh-CN.md`、
+  `testing.zh-CN.md`、`extending.zh-CN.md`）。
+  README 承诺两份语言版本是同一份文档，但没有任何东西在管这件事，于是**两个方向都漂了**：
+
+  - 英文 `quickstart.md` 从来没有提过 `aletheia new`——**生成项目骨架而不是 fork 仓库**，
+    而那正是「我能不能在它上面做东西而不 fork」这句话的正面回答；也没有 `codegen`、
+    没有 OWL／SHACL 导出、没有 `demo` 的实际输出。打开英文快速开始的人，
+    读到的框架比实际的小。
+  - 英文能力矩阵比中文**少点名 19 个模块**：没有公理、没有实例解析器、没有 SSO、
+    没有租户配额、没有审计报表、没有部署前检、没有一致性契约、没有工作台、没有知识图谱。
+    在回答「这东西能做什么」的那一页上，英文读者数到的框架是三分之二。
+  - 中文 `capabilities.zh-CN.md` 反过来缺「可安装的包与命令行」与 `/v1` 前缀两行。
+  - 中文 `configuration.zh-CN.md` 缺整节「让密钥根本不落库」（`env:`／`file:` 引用），
+    中文 `testing.zh-CN.md` 有一句以冒号结尾、然后**什么都没接**——命令块不见了。
+
+  守卫比较的是**语言中立的东西**，因为散文不该被比较、翻译也不是变换：
+  **围栏代码块的数量**（命令、JSON、代码片段是内容，只有里面的注释会翻译），
+  两份能力矩阵**点名的模块名**（`` `axioms.py` `` 在两种语言里拼写相同），
+  以及两份文档里的 `aletheia <动词>`／`python -m <模块>` 命令集合。
+  三条都植入缺陷验证过。
+
+  **刻意不比较标题**：两版 `design-decisions` 是同样的十二条决策，一边写 `## N. 标题`、
+  另一边写成加粗段落，比标题数会把这种排版差异报成缺口，而它什么都没缺。
+
+  顺带发现：`model-endpoints.md`、`operations.md`、`production-checklist.md`、`roles.md`、
+  `architecture-debt.md`、`framework-readiness.md` 六页**只有英文版**，
+  而中文 README 与中文文档已经在链过去。这一条没有顺手做掉——「这些页面该不该有中文版」
+  是产品判断，不是漂移。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

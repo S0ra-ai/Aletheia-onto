@@ -231,9 +231,18 @@ register_resolver("cross_source", CrossSourceResolver)
 
 **契约中最易写错的一点：`list_ids()` 与 `fetch()` 必须往返闭合。**
 批量研判依赖它——若 `list_ids` 返回了 `fetch` 不接受的 id，批量评估会得到
-「实例不存在」而非结论。
+「实例不存在」而非结论，而单实例研判看上去完全正常。契约因此逐对检查。
 
-对你的实现跑 `tests/test_instance_resolvers.py` 即可验证合规。
+验证：这条契约需要活的被测对象，所以在代码里调用而不是从命令行——
+`aletheia verify instance_resolver` 按设计拒绝跑它：
+
+```python
+from ontology_platform.conformance import check_instance_resolver
+
+report = check_instance_resolver(MyResolver(spec), runtime, subject="my_resolver")
+```
+
+见 [§14](#14-验证你的实现一致性契约)。
 
 ### 标识符必须校验，不能只加引号
 

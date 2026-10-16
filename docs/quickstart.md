@@ -24,6 +24,33 @@ aletheia demo      # onboard → model → assess, against a built-in sample sys
 aletheia doctor    # report configuration, installed extras, registered extension points
 ```
 
+What `aletheia demo` prints (bare kernel, no extras at all):
+
+```json
+{
+  "platformDb": "~/.aletheia/platform.sqlite3",
+  "ontologyId": 1,
+  "objectCode": "contract",
+  "decision": "approved",
+  "next": "aletheia serve  # then open http://127.0.0.1:8000/docs"
+}
+```
+
+**Start from scaffolding, not from a fork.** `new` generates a project that depends on the
+platform -- upgrading is `pip install -U aletheia-onto`, and the generated code needs no
+changes:
+
+```bash
+aletheia new --list-extensions          # first: which extension points exist, and which to use when
+aletheia new mycorp --extension rule-function --domain 合同管理
+cd mycorp && pip install -e . && python -m mycorp init
+```
+
+The result is a configuration module, skeletons for the extension points you asked for, a
+conformance-contract script, and a `.env.example` with no usable defaults in it. Run
+`python -m mycorp` rather than `aletheia`: the CLI does not load the extensions you
+registered.
+
 Connect a real system:
 
 ```bash
@@ -72,6 +99,36 @@ Oracle / SQL Server / 达梦 / 人大金仓 / openGauss ship as declarations wit
 installing the driver makes them appear. Adding a SQL database that is *not* declared does
 not require writing an adapter — four lines of declaration, see
 [the extension guide](extending.md#10-connecting-a-new-sql-database).
+
+**Generate frontend types from the ontology.** The part a hand-written mirror cannot do:
+a relation is typed as the **object** it points at rather than `number`, so nothing stops you
+passing a contract id where a party is expected -- the hand-written version allowed exactly
+that.
+
+```bash
+aletheia codegen 1 --output src/types/ontology.ts
+```
+
+It accepts **published** ontologies only: a draft's objects and attributes move while the
+mappings are under review, and types generated from it would describe a model nobody agreed
+to. The output is verified by compiling it with a real `tsc --strict`.
+
+**Export to standard vocabulary.** Against GB/T 48000.3—2026's requirement to adopt OWL/RDF,
+an ontology exports in forms that external RDF tools can *reason about* rather than merely
+read:
+
+```bash
+aletheia export 1 --format owl    > ontology.ttl   # owl:Class / rdfs:domain / rdfs:range
+aletheia export 1 --format shacl  > shapes.ttl     # SHACL shapes, for a validator
+aletheia export 1 --format jsonld > asset.jsonld   # platform vocabulary, more fields
+```
+
+The two vocabularies coexist rather than replace each other: `owl`/`shacl` use standard terms
+and buy interoperability; `jsonld`/`turtle` use the platform's own terms and keep the fields
+standard vocabulary has no word for (source tables, rule expressions, mapping confidence).
+The SHACL shapes are **generated from the same declaration rather than written by hand** --
+a hand-written copy drifts from the release gate, and the copy that drifts declares
+constraints the platform does not enforce.
 
 **Assess as of a past moment.** A compliance audit usually asks about the past:
 

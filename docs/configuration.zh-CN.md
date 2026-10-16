@@ -108,3 +108,30 @@ MySQL 连接现在固定 `SET time_zone = '+00:00'`，因此那条约定在三�
 如果未设置 `OPENROUTER_API_KEY` 而设置了 `DEEPSEEK_API_KEY`，平台会自动使用 DeepSeek 官方
 OpenAI 兼容接口；默认模型为 `deepseek-flash`，默认地址为 `https://api.deepseek.com`，并关闭
 OpenRouter 专属扩展字段。也可以在前端“模型配置”中选择“DeepSeek 官方 API”预设后保存。
+
+## 让密钥根本不落库
+
+上面两个变量是模型层按名字认识的。其他端点——Azure、内网网关、本地 vLLM——密钥在设置页配置，
+而**有一种配法可以让密钥从不写进平台库**：那里存的是一个**引用**，连接建立时才去读。
+
+```bash
+export CONTRACTS_DSN='postgresql://reader:...@10.0.0.5:5432/contracts'
+export AZURE_OPENAI_KEY='...'
+```
+
+| 存进库的值 | 读作 |
+|---|---|
+| `env:CONTRACTS_DSN` | 该环境变量，建立连接时读取 |
+| `file:/run/secrets/azure-openai-key` | 该文件内容，去掉末尾换行 |
+| 其他任何值 | 就是值本身，原样使用 |
+
+数据源的连接串与模型 API Key 都接受引用。**指不到东西的引用是错误，而不是空凭据**——
+空密码会失败在「密码不对」，把一个运维引向错误的问题。
+
+设置页显示的是**引用本身**而不是解析后的值，这正是运维需要知道的「这一行用的是哪个密钥」。
+这**不是加密**：密钥根本不在库里，这比把它遮起来是更强的性质，而且不需要任何密码学依赖。
+
+## 相关
+
+- [自托管部署](deployment.zh-CN.md)——以及 `aletheia preflight`，它会拦住不安全的组合
+- [模型端点](model-endpoints.md)——Azure OpenAI、vLLM、各类网关（这一页目前只有英文版）

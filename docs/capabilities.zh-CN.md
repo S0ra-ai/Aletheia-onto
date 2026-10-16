@@ -19,6 +19,8 @@
 | **可执行一致性契约随包发布**（5 个扩展点，第三方可自验） | ✅ | `conformance.py` |
 | **部署前自检**（免鉴权暴露等静默误配置在流水线阶段被拦） | ✅ | `deployment.py`、`deploy/` |
 | **问答回归测试集**（断言结构性属性，不锚定措辞） | ✅ | `tests/test_answer_regression.py` |
+| **可安装的包与命令行**（`aletheia init／connect／model／assess／…`） | ✅ | `cli.py`、`pyproject.toml` |
+| **`/v1` 路径前缀**（与裸路径共用同一套中间件与策略） | ✅ | `api.py`、`access_policy.py` |
 | **SQL 方言 profile**（6 个差异点声明为数据，非分支） | ✅ | `sql_dialects.py` |
 | **通用 DB-API 适配器**：新 SQL 库靠声明接入，无需写适配器 | ✅ | `generic_sql_adapter.py` |
 | Oracle／SQL Server／达梦／人大金仓／openGauss 内置声明 | ⚠️ | 已内置声明与方言，驱动装上即可用；**CI 无法安装驱动，故未实测** |
@@ -140,3 +142,4 @@
 | **管理控制台**（React + antd，上面每项能力都有页面） | ✅ | `frontend/` |
 | **中英双语控制台**（中文优先、英文完整；`?lang=en` 可以给链接钉住语言） | ✅ | `frontend/src/i18n/`、`test_ui_messages.py` |
 | 服务端自身错误文本的语言 | ⚠️ | 156 个端点的 `detail` 是中文；界面按 code 翻译拿到的那些句子，其余照原样显示 |
+| 拆分为多个 PyPI 发行包 | 📋 | 目前是单包 + extras |
