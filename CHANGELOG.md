@@ -440,6 +440,19 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **三份文档描述的行为已经不存在了，其中一份还指向一个不存在的锚点**（三处文档 + `scripts/backup.sh`、
+  `tests/test_backup.py`）。
+  `docs/screenshots*.md` 仍写着行级过滤表达式「**有存储但未生效**」，并把读者送去
+  `README.md#current-limitations`——README 里没有这一节，而且那句话早就不成立：
+  `check_permission` 会在规则沙箱里求值它，对象列表逐候选行应用并上报 `rowFilterApplied`，
+  求不出值就**拒绝**。**一张截图说明在替代码撒谎，而它比代码更早被读到。**
+  `docs/extending.md` 让读者运行 `aletheia verify instance_resolver`，而 CLI 按设计拒绝它
+  （同一份文档的 §14 写着相反的话）；那条「验证：…」现在给出真的能用的调用方式。
+  `docs/deployment.md` 的 cron 行**照抄跑不起来**：脚本用 `set -e` 且两个变量必填，而 cron 不继承 export；
+  它同时默认整页的参考编排是 PostgreSQL，而脚本只处理 SQLite。现在两种语言各自写明这个区别、
+  把变量写进任务行，并补上**解释器**这一环——脚本原先调用 `python`（cron 的 PATH 里通常没有），
+  失败信息是 `command not found`；换成 `python3` 后在没有平台包的解释器里又是一句裸的 ModuleNotFoundError。
+  现在这个失败会说出两条出路（装包或 `PYTHON_BIN` 指向虚拟环境），并有测试分别断言失败与成功两条路径。
 - **「草案」的身份是名字，而名字默认是「领域名＋本体」**（`ontology.py`、`tests/test_metadata_flow.py`）。
   于是同一个领域里的两个数据源是**同一行本体**：给第二个生成草案＝**重建第一个**，
   连同挂在它上面的规则、映射与工作流一起清掉。而界面里唯一的提示写着

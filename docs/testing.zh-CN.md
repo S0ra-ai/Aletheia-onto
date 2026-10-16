@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1708 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1709 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -70,7 +70,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_api_versioning.py` | 23 | The `/v1` prefix: every route served twice, with identical protection |
 | `test_custom_model_endpoints.py` | 28 | Custom model endpoint compatibility |
 | `test_error_messages.py` | 21 | 失败时用户读到什么：驱动与解释器原文不再直接示人 |
-| `test_backup.py` | 13 | SQLite 平台安全备份、原子恢复、恢复前留下的那份快照，以及二者各自的审计记录 |
+| `test_backup.py` | 14 | SQLite 平台安全备份、原子恢复、恢复前留下的那份快照，以及二者各自的审计记录 |
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 21 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |

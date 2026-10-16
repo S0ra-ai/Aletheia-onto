@@ -46,13 +46,24 @@ refusing it would push people to skip the check entirely.
 
 Full reasoning in [ADR-0017](adr/0017-deployment-preflight.md).
 
-## 定时备份
+## Scheduled backups
 
-添加 cron 任务每日备份:
+**`scripts/backup.sh` backs up a local SQLite platform database only.** The reference compose file
+uses PostgreSQL, and for that deployment use `pg_dump` / PITR instead: the script's own header and
+`backup.py` both refuse a server-side database rather than produce a physical snapshot that cannot
+be restored.
+
+For a SQLite deployment the script **does not guess where the database is** -- both variables must
+be given explicitly, and cron inherits nothing from your shell, so they belong in the crontab line
+itself. Without them the script exits before creating anything (`set -e` plus a required variable):
+
 ```bash
-# 编辑 crontab
 crontab -e
-
-# 添加每日 2 点备份
-0 2 * * * /path/to/scripts/backup.sh >> /var/log/aletheia-backup.log 2>&1
+0 2 * * * ONTOLOGY_PLATFORM_DB_FILE=/srv/aletheia/platform.sqlite3 ONTOLOGY_BACKUP_DIR=/srv/aletheia/backups /path/to/scripts/backup.sh >> /var/log/aletheia-backup.log 2>&1
 ```
+
+`PYTHON_BIN` names the interpreter the script runs (it defaults to `python3`): set it to your
+virtualenv's interpreter when the platform is installed in one. Environment variables are in
+[Configuration](configuration.md); restoring, including the snapshot taken before a restore, is in
+[Operations](operations.md).
+

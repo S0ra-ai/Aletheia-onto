@@ -254,7 +254,16 @@ Batch assessment depends on it — if `list_ids` returns an id your `fetch` refu
 reports "instance not found" instead of a verdict, while single-instance assessment looks
 perfectly healthy. The contract checks every pair explicitly for that reason.
 
-Verify: `aletheia verify instance_resolver` (see [§14](#14-verify-your-implementation-the-conformance-contract)).
+Verify: this contract needs a live subject, so it is called in code rather than from the
+command line -- `aletheia verify instance_resolver` refuses it by design:
+
+```python
+from ontology_platform.conformance import check_instance_resolver
+
+report = check_instance_resolver(MyResolver(spec), runtime, subject="my_resolver")
+```
+
+See [§14](#14-verify-your-implementation-the-conformance-contract).
 
 ### Identifiers must be validated, not merely quoted
 

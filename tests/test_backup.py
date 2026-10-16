@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import io
 import sqlite3
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -283,3 +284,38 @@ def test_a_backup_and_a_restore_leave_a_trace_in_the_database(tmp_path: Path) ->
         restored = conn.execute("select detail from audit_log where action = 'restore_backup'").fetchall()
     assert restored, "恢复没有在被替换后的库里留下审计记录"
     assert result["safetyCopy"] in restored[0][0], restored[0][0]
+
+
+def test_the_backup_script_says_why_it_could_not_start(tmp_path: Path) -> None:
+    """The cron entry point fails with a sentence, not a traceback.
+
+    `scripts/backup.sh` runs from cron: a minimal PATH (no `python`, sometimes no `python3`),
+    no inherited exports, and a log nobody reads until a restore is needed. The first version
+    used `python` and failed with `line 25: python: command not found` *after* announcing the
+    backup it was about to take; with `python3` it failed with a bare ModuleNotFoundError when
+    the package was installed in a virtualenv. Both failures name a symptom. This asserts the
+    message names the two causes instead -- and that the script actually runs when they are
+    not in the way.
+    """
+    script = Path(__file__).resolve().parents[1] / "scripts" / "backup.sh"
+    platform = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform)
+    backups = tmp_path / "backups"
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "ONTOLOGY_PLATFORM_DB_FILE": str(platform),
+        "ONTOLOGY_BACKUP_DIR": str(backups),
+    }
+
+    # No platform package on that interpreter: the message has to say what to do.
+    result = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env)
+    assert result.returncode != 0
+    assert "ontology_platform 包" in result.stdout + result.stderr
+    assert "PYTHON_BIN" in result.stdout + result.stderr
+    assert "Traceback" not in result.stdout + result.stderr
+
+    # With an interpreter that can import the platform, the same command backs up.
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "backend")
+    run = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert list(backups.glob("*.tar.gz")), "脚本成功退出却没有产出备份"

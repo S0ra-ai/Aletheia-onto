@@ -50,9 +50,10 @@ written to the audit log together with the count of failed gates.
 
 ![Roles and permissions](images/05-roles-and-permissions.png)
 
-> ⚠️ The row-filter expression field visible here is **stored but inert** --
-> `check_permission` returns it verbatim and applies no filtering. See
-> [Current limitations](../README.md#current-limitations).
+> The row-filter expression field visible here **is enforced**: `check_permission` evaluates it
+> in the rule sandbox, the object list applies it per candidate row and reports
+> `rowFilterApplied`, and an expression that cannot be evaluated **denies** rather than allows.
+> See [Current limitations](limitations.md) for what it costs (one row read per candidate).
 
 ## Knowledge graph preview
 

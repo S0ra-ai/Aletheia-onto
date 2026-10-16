@@ -745,9 +745,7 @@ def _create_ontology(
         # A name that belongs to another source's *draft* must not be taken over, and must not
         # collide either: this source gets its own row under a name that says which source it
         # came from. A published name is a different matter -- that is the caller's error.
-        taken = conn.execute(
-            "select id, status from ontology where name = ? and version = '0.1.0'", (name,)
-        ).fetchone()
+        taken = conn.execute("select id, status from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
         if taken is not None and taken["status"] == "published":
             raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
         name = _distinct_draft_name(conn, name, data_source_id)
@@ -785,9 +783,7 @@ def _distinct_draft_name(conn: sqlite3.Connection, name: str, data_source_id: in
     """
     candidate = name
     suffix = 2
-    while conn.execute(
-        "select 1 from ontology where name = ? and version = '0.1.0'", (candidate,)
-    ).fetchone():
+    while conn.execute("select 1 from ontology where name = ? and version = '0.1.0'", (candidate,)).fetchone():
         candidate = f"{name}（{suffix}）"
         suffix += 1
     return candidate

@@ -12,6 +12,21 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 镜像两阶段构建、非 root 运行、不内置任何凭据或预置数据库。
 参考编排用 PostgreSQL 作平台库，数据库端口不映射到宿主。
 
+## 定时备份
+
+**`scripts/backup.sh` 只备份本地 SQLite 平台库。** 参考编排用的是 PostgreSQL，那种部署请用
+`pg_dump`／PITR：脚本头部与 `backup.py` 都会拒绝服务端数据库，而不是生成一份无法恢复的物理快照。
+
+SQLite 部署：脚本**不猜数据库位置**，两个变量都必须显式给出；cron 不会继承你 shell 里的 export，
+所以它们要写进 crontab 那一行本身，否则脚本会在建任何东西之前退出（`set -e` 加变量必填）：
+```bash
+crontab -e
+0 2 * * * ONTOLOGY_PLATFORM_DB_FILE=/srv/aletheia/platform.sqlite3 ONTOLOGY_BACKUP_DIR=/srv/aletheia/backups /path/to/scripts/backup.sh >> /var/log/aletheia-backup.log 2>&1
+```
+
+`PYTHON_BIN` 指定脚本用的解释器（默认 `python3`）：平台装在 virtualenv 里时把它指向那个解释器。
+环境变量见[配置](configuration.zh-CN.md)；恢复的步骤与「恢复前快照」见[运维](operations.md)。
+
 ## 部署前自检
 
 ```bash
