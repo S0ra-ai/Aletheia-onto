@@ -218,6 +218,39 @@ def publish_ontology(
         raise ReleaseGateBlocked(f"发布门禁未通过，存在 {len(blockers)} 项阻断项，不能发布本体。{blocker_summary}")
 
     with connect(platform_db) as conn:
+        # Re-checked inside the *writing* transaction, because everything above it was read
+        # outside one. The counts at the top of this function and the gate assessment below
+        # them ran in two other connections, and a connection is a transaction boundary: a
+        # mapping reviewed in between is invisible to both. The race is concrete and it goes
+        # the wrong way -- one administrator's publish validates with every mapping confirmed,
+        # a second rejects them, and the first then publishes an ontology whose stated
+        # precondition ("没有已确认的语义映射，不能发布本体") is false at the moment it is
+        # written. Silently: the audit row records the counts as they were when it started.
+        #
+        # Re-reading here closes the window without a lock and without a transaction spanning
+        # the gate assessment, which cannot be inside one -- it reads the live source databases
+        # for drift.
+        reread = _require_ontology(conn, ontology_id)
+        if reread["status"] == "published":
+            # Idempotent, and the honest answer: somebody else published this version while
+            # this call was assessing gates, so the outcome the caller asked for is already
+            # true.
+            return _ontology_publication_summary(conn, ontology_id)
+        pending_now = conn.execute(
+            "select count(*) as count from semantic_mapping where ontology_id = ? and status = 'pending'",
+            (ontology_id,),
+        ).fetchone()["count"]
+        confirmed_now = conn.execute(
+            "select count(*) as count from semantic_mapping where ontology_id = ? and status = 'confirmed'",
+            (ontology_id,),
+        ).fetchone()["count"]
+        if pending_now or confirmed_now == 0:
+            raise ValueError(
+                "发布前复核发现语义映射已被改动"
+                f"（待审核 {pending_now} 条、已确认 {confirmed_now} 条），本次发布已取消。"
+                "请重新确认映射后再发布——判定会引用这份模型，不能在审核结果变过之后发布。"
+            )
+
         conn.execute(
             "update ontology set status = 'published', published_at = current_timestamp where id = ?",
             (ontology_id,),
@@ -235,7 +268,11 @@ def publish_ontology(
                 str(ontology_id),
                 json.dumps(
                     {
-                        "confirmedMappings": confirmed_count,
+                        # The count re-read inside the transaction, which is the one the write
+                        # actually proceeded on. The earlier reading is what the checks above
+                        # used and may differ by now -- recording it would make the audit row
+                        # disagree with the state it describes.
+                        "confirmedMappings": confirmed_now,
                         "releaseStatus": readiness["status"],
                         "passedGates": readiness["summary"]["passedGates"],
                         "totalGates": readiness["summary"]["totalGates"],

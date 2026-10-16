@@ -279,3 +279,89 @@ def test_the_sandbox_refuses_more_than_call_syntax(expression: str) -> None:
     passed, error = evaluate_rule_expression(expression, {"amount": 10, "status": "active"})
     assert passed is False, f"{expression} 竟然求值成功"
     assert error, f"{expression} 被拒绝但没有给出原因"
+
+
+def test_a_mapping_reviewed_during_the_gate_assessment_cannot_be_published_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The publish path reads its preconditions outside the transaction that writes.
+
+    Everything above the write happens in two other connections -- the mapping counts in one,
+    the release-gate assessment outside any, because the gates read the live source databases
+    for drift. A connection is a transaction boundary, so a review that lands in between is
+    invisible to both, and the race goes the wrong way: an administrator publishes with every
+    mapping confirmed, a second rejects them, and the first then publishes an ontology whose
+    stated precondition -- 没有已确认的语义映射，不能发布本体 -- is false at the moment it is
+    written. Silently, with an audit row recording the counts as they were when it started.
+
+    Simulated by making the gate assessment itself perform the interfering edit, which is
+    exactly where a real one would land: after the checks and before the write. That is
+    deterministic, where a thread race would be a flake.
+    """
+    platform_db, _, ontology_id = _bootstrap(tmp_path)
+    bulk_review_semantic_mappings(platform_db, ontology_id, "confirmed", "业务专家", "批量确认")
+
+    from ontology_platform import governance
+
+    real_assess = governance._assess_release_gates
+
+    def interfere(platform_db_arg, ontology_id_arg):
+        # The concurrent actor, placed precisely: the gates are read first, the edit lands
+        # after. Mutating before the assessment would test the gate instead of the window --
+        # which is what the first version of this test did, and the gate blocked it, so the
+        # window itself went untested.
+        result = real_assess(platform_db_arg, ontology_id_arg)
+        with connect(platform_db_arg) as conn:
+            conn.execute(
+                "update semantic_mapping set status = 'rejected' where ontology_id = ?",
+                (ontology_id_arg,),
+            )
+        return result
+
+    monkeypatch.setattr(governance, "_assess_release_gates", interfere)
+
+    with pytest.raises(ValueError, match="语义映射已被改动"):
+        publish_ontology(platform_db, ontology_id, "架构师")
+
+    with connect(platform_db) as conn:
+        status = conn.execute("select status from ontology where id = ?", (ontology_id,)).fetchone()["status"]
+        ruled = conn.execute("select count(*) as count from audit_log where action = 'publish_ontology'").fetchone()[
+            "count"
+        ]
+    assert status == "draft", "映射已被全部驳回，本体却发布了"
+    assert ruled == 0, "发布被取消，却留下了「已发布」的审计记录"
+
+
+def test_publishing_a_version_someone_else_published_is_not_an_error(tmp_path: Path, monkeypatch) -> None:
+    """The other outcome of the same window, and the honest answer is the summary.
+
+    Somebody else publishing this version while this call was assessing gates means the outcome
+    the caller asked for is already true. Refusing would report a failure for a request that
+    succeeded -- and re-publishing would write a second audit row for one publication.
+    """
+    platform_db, _, ontology_id = _bootstrap(tmp_path)
+    bulk_review_semantic_mappings(platform_db, ontology_id, "confirmed", "业务专家", "批量确认")
+
+    from ontology_platform import governance
+
+    real_assess = governance._assess_release_gates
+
+    def publish_behind_our_back(platform_db_arg, ontology_id_arg):
+        result = real_assess(platform_db_arg, ontology_id_arg)
+        with connect(platform_db_arg) as conn:
+            conn.execute(
+                "update ontology set status = 'published', published_at = current_timestamp where id = ?",
+                (ontology_id_arg,),
+            )
+        return result
+
+    monkeypatch.setattr(governance, "_assess_release_gates", publish_behind_our_back)
+
+    summary = publish_ontology(platform_db, ontology_id, "架构师")
+    assert summary["status"] == "published"
+
+    with connect(platform_db) as conn:
+        ruled = conn.execute("select count(*) as count from audit_log where action = 'publish_ontology'").fetchone()[
+            "count"
+        ]
+    assert ruled == 0, "第二次调用不该再写一条发布审计——那次发布不是它做的"

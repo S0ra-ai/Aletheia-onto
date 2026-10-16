@@ -65,10 +65,25 @@ By design, not bugs. These are the next phase's work.
 
 ## Engineering limitations
 
-- **No connection pooling.** Every `connect()` opens a connection. A pool is not a
-  drop-in: connections here are tenant-scoped, and returning one to a shared pool without
-  respecting the schema it was opened against would hand a caller another tenant's data.
-  Also no unified transaction boundary across `connect()` calls.
+- **No connection pooling.** Every `connect()` opens a connection, which costs a handshake and
+  an authentication against PostgreSQL or MySQL on each request. A pool is not a drop-in here:
+  connections are tenant-scoped, so a pool has to be keyed by the tenant *and* the schema, and
+  one that returns a connection to a caller who asked for a different schema hands them another
+  tenant's data. Doing it safely means a keyed pool, a rollback-verify-and-return path, and a
+  policy for what happens when the pool is exhausted — a concurrency-sensitive piece of code
+  whose correctness a test suite verifies poorly, in exchange for a latency win this project has
+  never measured. The honest state is: not done, and not a drop-in.
+
+  **There is still no transaction boundary across `connect()` calls**, and that is a correctness
+  property rather than a performance one. The publish path used to be the example: it read its
+  preconditions in one connection, assessed the release gates outside any connection (they read
+  the live source databases for drift), and wrote in a third. A mapping reviewed in between was
+  invisible to all of them, so the race ran the wrong way — one administrator's publish
+  validates with every mapping confirmed, a second rejects them, and the first publishes an
+  ontology whose stated precondition is false at the moment it is written. It re-checks inside
+  the writing transaction now, and `tests/test_rule_engine_safety.py` reproduces the interleaving
+  deterministically by making the gate assessment perform the interfering edit. Other
+  multi-connection paths have not been audited one by one.
 - **Credentials are still not encrypted at rest — but they no longer have to be stored.** A
   data source password or a model API key written straight into the row sits in the platform
   database in plaintext, so in that configuration that database *is* the credential store:

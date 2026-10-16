@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1782 tests**, all passing. A case that needs something this machine does not have skips
+**1784 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -83,7 +83,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_axioms.py` | 20 | Axioms: the fifth component of an ontology, and the release gate that uses it |
 | `test_scaffold.py` | 21 | Project scaffolding: generated code must actually run |
 | `test_audit_reports.py` | 18 | Audit reports: the questions an auditor arrives with, not "what happened recently" |
-| `test_rule_engine_safety.py` | 34 | Rule engine safety and release gate tests |
+| `test_rule_engine_safety.py` | 36 | Rule engine safety, release gates, and the window between reading the preconditions and writing the publication |
 | `test_codegen.py` | 16 | Code generation from a published ontology |
 | `test_tenant_quotas.py` | 16 | Tenant quotas: ROADMAP stage B's last open item |
 | `test_quota_enforcement.py` | 9 | A declared quota binds to the rows the platform actually writes |
