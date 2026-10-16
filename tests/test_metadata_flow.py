@@ -2607,3 +2607,86 @@ def test_a_scan_reports_the_tables_the_draft_does_not_model(tmp_path: Path) -> N
     assert after["unmodelledTables"] == ["audit_trail"]
     assert after["modelledOntologyId"] == ontology_id
     assert set(after["modelledTables"]) >= {"contract", "customer"}
+
+
+def test_a_second_source_in_the_same_domain_does_not_take_over_the_first_draft(tmp_path: Path) -> None:
+    """A draft's identity is the source it was derived from, not its name.
+
+    Both sources default to `<domain>本体`, and the generator used to look the existing draft up
+    by `(name, version)` -- so drafting the second source *rebuilt* the first one, clearing the
+    rules, mappings and workflows attached to it, while the only warning in the interface says
+    that clearing happens 「若该数据源已有草案」. The 演示中心 button reaches the same path on a
+    second click: re-running the demo took its own draft apart.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(tmp_path / "first.sqlite3")
+    create_contract_sample_db(tmp_path / "second.sqlite3")
+    first = register_data_source(
+        platform_db, "合同系统一", "sqlite", str(tmp_path / "first.sqlite3"), domain="合同管理"
+    )
+    second = register_data_source(
+        platform_db, "合同系统二", "sqlite", str(tmp_path / "second.sqlite3"), domain="合同管理"
+    )
+    scan_data_source(platform_db, first.id)
+    scan_data_source(platform_db, second.id)
+
+    first_draft = generate_ontology_draft(platform_db, first.id)
+    upsert_business_rule(
+        platform_db,
+        first_draft["id"],
+        "hand_written_rule",
+        "人工规则",
+        "validation",
+        "contract",
+        "amount > 0",
+        "warning",
+        "金额必须大于零。",
+        actor="tester",
+    )
+
+    second_draft = generate_ontology_draft(platform_db, second.id)
+
+    assert second_draft["id"] != first_draft["id"], "第二个数据源复用了第一个的本体行"
+    assert second_draft["discarded"] == {}, "第二个数据源的生成不该清掉任何东西"
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from business_rule where code = 'hand_written_rule'").fetchone()[0] == 1, (
+            "第一个数据源的人工规则被第二个的草案生成清掉了"
+        )
+        assert conn.execute("select count(*) from ontology").fetchone()[0] == 2
+
+
+def test_regenerating_a_draft_rebuilds_the_same_source_and_says_so(tmp_path: Path) -> None:
+    """The other direction: a source's own draft *is* rebuilt, and the report names the cost.
+
+    This is the behaviour that must not be lost while fixing the case above -- the demo button
+    re-runs the scenario, and a second run is a legitimate rebuild of the same source.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    create_contract_sample_db(tmp_path / "business.sqlite3")
+    source = register_data_source(
+        platform_db, "合同管理样例系统", "sqlite", str(tmp_path / "business.sqlite3"), domain="合同管理"
+    )
+    scan_data_source(platform_db, source.id)
+
+    draft = generate_ontology_draft(platform_db, source.id)
+    upsert_business_rule(
+        platform_db,
+        draft["id"],
+        "hand_written_rule",
+        "人工规则",
+        "validation",
+        "contract",
+        "amount > 0",
+        "warning",
+        "金额必须大于零。",
+        actor="tester",
+    )
+
+    again = generate_ontology_draft(platform_db, source.id)
+
+    assert again["id"] == draft["id"], "同一数据源的重新生成应当重建同一行"
+    assert again["discarded"]["rules"] >= 1, "重新生成应当说出它清掉了什么"
+    with connect(platform_db) as conn:
+        assert conn.execute("select count(*) from business_rule where code = 'hand_written_rule'").fetchone()[0] == 0

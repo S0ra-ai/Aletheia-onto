@@ -56,7 +56,7 @@ def generate_ontology_draft(
         )
         resolved_domain = domain or data_source["domain"] or blueprint.domain
         resolved_name = name or f"{resolved_domain}本体"
-        ontology_id, discarded = _create_ontology(conn, resolved_name, resolved_domain)
+        ontology_id, discarded = _create_ontology(conn, data_source_id, resolved_name, resolved_domain)
         object_ids: dict[int, int] = {}
         # Labels contributed by every registered blueprint, including user
         # imported ones. This replaces a built-in table of industry terms, so a
@@ -708,7 +708,31 @@ def _export_turtle(detail: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> tuple[int, dict[str, int]]:
+def _draft_for_source(conn: sqlite3.Connection, data_source_id: int) -> sqlite3.Row | None:
+    """The newest draft this source was used to build, if there is one.
+
+    A draft's identity is the *source it was derived from*, not its name. It used to be the
+    name -- which defaults to `<domain>本体` -- so two data sources in the same domain were the
+    same ontology row, and generating a draft for the second one *rebuilt* the first one,
+    clearing the rules, mappings and workflows somebody had attached to it. The 演示中心 button
+    reached the same path on a second click: it re-runs the demo, and the demo silently took
+    its own draft apart. Only the draft-generation endpoint warns, and its warning says the
+    clearing applies 「若该数据源已有草案」 -- which is false in exactly this case.
+    """
+    return conn.execute(
+        """select o.id, o.name, o.status
+           from ontology o
+           join business_object bo on bo.ontology_id = o.id
+           join source_table st on st.id = bo.source_table_id
+           where st.data_source_id = ? and o.version = '0.1.0'
+           order by o.id desc limit 1""",
+        (data_source_id,),
+    ).fetchone()
+
+
+def _create_ontology(
+    conn: sqlite3.Connection, data_source_id: int, name: str, domain: str
+) -> tuple[int, dict[str, int]]:
     """The ontology row to build into, and what regenerating it destroyed.
 
     The second half is returned so the caller can *say* what it removed. Regenerating a
@@ -716,7 +740,18 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> tuple[
     caller that reports only 「本体草案生成成功」 is announcing a rebuild while a user's
     hand-written rules and workflows disappear behind it.
     """
-    existing = conn.execute("select id, status from ontology where name = ? and version = '0.1.0'", (name,)).fetchone()
+    own = _draft_for_source(conn, data_source_id)
+    if own is None:
+        # A name that belongs to another source's *draft* must not be taken over, and must not
+        # collide either: this source gets its own row under a name that says which source it
+        # came from. A published name is a different matter -- that is the caller's error.
+        taken = conn.execute(
+            "select id, status from ontology where name = ? and version = '0.1.0'", (name,)
+        ).fetchone()
+        if taken is not None and taken["status"] == "published":
+            raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
+        name = _distinct_draft_name(conn, name, data_source_id)
+    existing = own
     if existing:
         if existing["status"] == "published":
             raise ValueError(f"本体版本已发布，不能重新生成草案: {name} 0.1.0。请派生新版本。")
@@ -739,6 +774,23 @@ def _create_ontology(conn: sqlite3.Connection, name: str, domain: str) -> tuple[
         (name, domain, "0.1.0", "draft"),
     )
     return last_insert_id(conn), {}
+
+
+def _distinct_draft_name(conn: sqlite3.Connection, name: str, data_source_id: int) -> str:
+    """`name`, or a variant of it that no other ontology is using.
+
+    Two sources in the same domain both default to `<domain>本体`; the second one is not the
+    first one, and saying so in the name is cheaper than explaining later why one model's
+    rules disappeared when the other was drafted.
+    """
+    candidate = name
+    suffix = 2
+    while conn.execute(
+        "select 1 from ontology where name = ? and version = '0.1.0'", (candidate,)
+    ).fetchone():
+        candidate = f"{name}（{suffix}）"
+        suffix += 1
+    return candidate
 
 
 # What a regeneration takes with it, and what to call each in a message to the person who

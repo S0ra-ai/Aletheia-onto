@@ -440,6 +440,15 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **「草案」的身份是名字，而名字默认是「领域名＋本体」**（`ontology.py`、`tests/test_metadata_flow.py`）。
+  于是同一个领域里的两个数据源是**同一行本体**：给第二个生成草案＝**重建第一个**，
+  连同挂在它上面的规则、映射与工作流一起清掉。而界面里唯一的提示写着
+  「若该数据源已有草案」——恰好把这一种情况漏掉了。演示中心第二次点击也走这条路：
+  重跑演示时，演示把它自己上一次的草案拆了（放出的 JSON 里那句 `discardedSummary` 就是它自述的损失）。
+  现在**草案的身份是它派生自哪个数据源**（经 `business_object → source_table` 认回去），
+  名字只是标签：同源重建（演示的第二次点击）照旧、并说清掉了什么；
+  异源同名不再接管，而是另起一行、名字带上序号。
+  **一个用名字当身份的系统，在两个人同名的那天开始丢东西。**
 - **授权表里有一条永远不生效的规则，而它守的是发布门禁**（`access_policy.py`、`tests/test_api_authentication.py`）。
   这张表**先匹配先赢**，而 `POST|PUT|PATCH|DELETE /ontologies.*` → `platform:write` 排在
   「删除公理需要 `governance:publish`」**前面**——于是那条规则永远轮不到，判定一律落到 write。
