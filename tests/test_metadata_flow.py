@@ -2690,3 +2690,73 @@ def test_regenerating_a_draft_rebuilds_the_same_source_and_says_so(tmp_path: Pat
     assert again["discarded"]["rules"] >= 1, "重新生成应当说出它清掉了什么"
     with connect(platform_db) as conn:
         assert conn.execute("select count(*) from business_rule where code = 'hand_written_rule'").fetchone()[0] == 0
+
+
+def test_a_workflow_cannot_start_in_a_state_it_does_not_have(tmp_path: Path) -> None:
+    """`initial_state` was accepted and ignored: 200, then an instance in no state at all.
+
+    `create_workflow(initial_state="in_review")` stored the value, seeded the seven default
+    states, and `enter_workflow` then put an instance into a state the workflow does not
+    declare -- a state machine whose start is not a state. The value is checked where the
+    states it must belong to are known.
+    """
+    from ontology_platform.workflow_permission import create_workflow, init_workflow_and_permission_schema
+
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+
+    with pytest.raises(ValueError) as refusal:
+        create_workflow(platform_db, ontology_id, "contract", "坏起点", initial_state="in_review")
+    message = str(refusal.value)
+    assert "in_review" in message, message
+    assert "pending_review" in message, "拒绝时应当列出可以用的状态"
+
+    # A declared state is still accepted, and is the one instances start in.
+    workflow = create_workflow(platform_db, ontology_id, "contract", "审批流", initial_state="pending_review")
+    assert workflow["initial_state"] == "pending_review"
+    assert "pending_review" in {state["code"] for state in workflow["states"]}
+
+
+def test_deleting_a_workflow_that_has_instances_leaves_a_record_and_no_orphans(tmp_path: Path) -> None:
+    """The delete worked only for workflows nobody had used, and wrote nothing down.
+
+    `instance_workflow` has no `on delete cascade` (states and transitions do), so deleting a
+    workflow any instance had entered failed with `FOREIGN KEY constraint failed` -- a 500, for
+    exactly the workflows that mattered. And nothing was audited, while every other governance
+    delete in the platform writes a row.
+    """
+    from ontology_platform.workflow_permission import (
+        create_workflow,
+        delete_workflow,
+        enter_workflow,
+        init_workflow_and_permission_schema,
+    )
+
+    platform_db, _source_id, ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    workflow = create_workflow(platform_db, ontology_id, "contract", "审批流")
+    enter_workflow(platform_db, workflow["id"], "contract", "1")
+
+    delete_workflow(platform_db, workflow["id"])
+
+    with connect(platform_db) as conn:
+        detail = conn.execute("select detail from audit_log where action = 'delete_workflow'").fetchone()
+        assert detail is not None, "删除工作流没有留下审计记录"
+        assert "审批流" in detail["detail"], detail["detail"]
+        assert '"instances": 1' in detail["detail"], "审计应当说出随它一起消失的实例数"
+        for table in ("workflow_definition", "workflow_state", "workflow_transition", "instance_workflow"):
+            remaining = conn.execute(f"select count(*) from {table}").fetchone()[0]
+            assert remaining == 0, f"{table} 还留着 {remaining} 行"
+
+
+def test_deleting_a_workflow_that_does_not_exist_says_so(tmp_path: Path) -> None:
+    """Silence would read as "deleted" to a caller that mistyped an id."""
+    from ontology_platform.workflow_permission import delete_workflow, init_workflow_and_permission_schema
+
+    platform_db, _source_id, _ontology_id = _source_with_draft_ontology(tmp_path)
+    with connect(platform_db) as conn:
+        init_workflow_and_permission_schema(conn)
+    with pytest.raises(ValueError):
+        delete_workflow(platform_db, 999)

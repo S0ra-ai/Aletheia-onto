@@ -440,6 +440,15 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **删工作流这件事，用过的都删不掉，删掉了也没记录**（`workflow_permission.py`、`tests/test_metadata_flow.py`）。
+  `instance_workflow` 没有 `on delete cascade`（状态与流转有），所以**只要有任何实例进入过这个工作流**，
+  删除就会撞外键、以 `FOREIGN KEY constraint failed` 收场——正巧是那些真正在用的工作流删不掉；
+  而没有级联的那半边也没人写审计：平台里删规则、删 SSO 映射、删智能体角色都留记录，唯独删掉一台
+  手工搭的状态机什么都不留。现在按依赖顺序删除（历史 → 实例 → 定义，状态与流转随级联），
+  **删之前先数**（几个状态、几条流转、几个实例）并写进审计。
+  顺带修掉 `create_workflow(initial_state=...)`：这个参数一直被存下、却从不校验——
+  `initial_state="in_review"` 会返回成功，然后 `enter_workflow` 把一个实例放进**这个工作流并不存在的状态**。
+  现在非法起点会被拒绝，并列出可用的七个状态。
 - **三份文档描述的行为已经不存在了，其中一份还指向一个不存在的锚点**（三处文档 + `scripts/backup.sh`、
   `tests/test_backup.py`）。
   `docs/screenshots*.md` 仍写着行级过滤表达式「**有存储但未生效**」，并把读者送去

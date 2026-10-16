@@ -567,7 +567,49 @@ def list_workflows(platform_db: PlatformDb, ontology_id: int | None = None) -> l
 
 
 def delete_workflow(platform_db: PlatformDb, workflow_id: int) -> None:
+    """Delete a workflow and everything that hung off it -- recorded, like every other delete.
+
+    States, transitions (with their guard expressions and review roles), instances and their
+    history disappear with it through `on delete cascade`, and none of that was written down:
+    the governance deletes of a rule, an SSO mapping or an agent role all leave an audit row,
+    and this one -- which can remove a hand-built state machine from the interface with one
+    click -- left nothing. The counts are taken before the delete, because afterwards there is
+    nothing left to count.
+    """
     with connect(platform_db) as conn:
+        workflow = conn.execute("select * from workflow_definition where id = ?", (workflow_id,)).fetchone()
+        if workflow is None:
+            raise ValueError(f"工作流 {workflow_id} 不存在")
+        summary = {
+            "name": workflow["name"],
+            "ontologyId": workflow["ontology_id"],
+            "objectCode": workflow["object_code"],
+            "states": conn.execute(
+                "select count(*) as count from workflow_state where workflow_id = ?", (workflow_id,)
+            ).fetchone()["count"],
+            "transitions": conn.execute(
+                "select count(*) as count from workflow_transition where workflow_id = ?", (workflow_id,)
+            ).fetchone()["count"],
+            "instances": conn.execute(
+                "select count(*) as count from instance_workflow where workflow_id = ?", (workflow_id,)
+            ).fetchone()["count"],
+        }
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
+            ("system", "delete_workflow", "workflow", str(workflow_id), json.dumps(summary, ensure_ascii=False)),
+        )
+        # In dependency order, and deliberately not left to the schema: `workflow_state` and
+        # `workflow_transition` cascade, but `instance_workflow` does not -- so deleting a
+        # workflow an instance had entered failed with `FOREIGN KEY constraint failed`, which
+        # reached a user as a 500 for exactly the workflows that mattered. Explicit deletes
+        # rather than an `on delete cascade` migration, so existing deployments are fixed by
+        # this code and not by a schema change they have to apply first.
+        conn.execute(
+            "delete from workflow_history where instance_workflow_id in"
+            " (select id from instance_workflow where workflow_id = ?)",
+            (workflow_id,),
+        )
+        conn.execute("delete from instance_workflow where workflow_id = ?", (workflow_id,))
         conn.execute("delete from workflow_definition where id = ?", (workflow_id,))
         conn.commit()
 
@@ -912,6 +954,16 @@ def _seed_default_states(conn: Any, workflow_id: int, initial_state: str) -> Non
         ("completed", "已完成", 1, "#10b981", 5),
         ("cancelled", "已取消", 1, "#6b7280", 6),
     ]
+    # The parameter used to be accepted and ignored: `create_workflow(initial_state="in_review")`
+    # answered 200, stored the value, and seeded the seven states above -- so `enter_workflow`
+    # then put an instance into a state the workflow does not have. A state machine whose start
+    # is not a state is not a state machine, so the value is checked here, where the states it
+    # must belong to are known.
+    if initial_state not in {code for code, *_rest in defaults}:
+        raise ValueError(
+            f"初始状态 {initial_state!r} 不在工作流的默认状态里：{'、'.join(code for code, *_ in defaults)}。"
+            "要别的起点就先建工作流，再用 add_workflow_state 声明状态、用 add_workflow_transition 声明流转。"
+        )
     for code, name, is_terminal, color, sort_order in defaults:
         # Seeding is idempotent: a state that already exists trips the unique
         # constraint, which is the expected outcome on re-seed.
