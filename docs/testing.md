@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1736 tests**, all passing. A case that needs something this machine does not have skips
+**1778 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -45,6 +45,9 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | File | Count | Covers |
 |---|--:|---|
 | `test_documentation_links.py` | 126 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
+| `test_query_limit_clamping.py` | 8 | A caller-supplied `limit` cannot widen a response past the cap (SQLite reads `LIMIT -1` as "no limit") |
+| `test_list_pagination.py` | 17 | Every list that grows with the customer's data takes a page; not passing a limit still returns everything |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -87,7 +90,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
-| `test_frontend_type_agreement.py` | 90 | The frontend's hand-written types must agree with the API they mirror, on both sides |
+| `test_frontend_type_agreement.py` | 97 | The frontend's hand-written types must agree with the API they mirror, on both sides |
 | `test_frontend_serving.py` | 4 | Same-origin production admin shell and API transport prefix |
 | `test_metrics.py` | 5 | Prometheus-compatible runtime metrics and safe re-initialisation |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
@@ -100,7 +103,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_ui_smoke_guards.py` | 15 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | No table column prints an enum value itself; it goes through the label maps |
 | `test_demo_bootstrap.py` | 2 | The demo buttons, and what they report having destroyed |
-| `test_ui_messages.py` | 7 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
+| `test_ui_messages.py` | 9 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys, and no `as never` turning the key check off |
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
@@ -121,9 +124,10 @@ cd frontend && npm run build
 
 None of the above catches a column whose `dataIndex` does not match the field name the
 endpoint returns. antd draws nothing for a missing key, the linter sees a valid string, and
-mypy sees a valid `string`. **The frontend has no test runner at all** — no vitest, no
-Testing Library, no test script — so there is no component test to render the table and assert
-that a cell has text. This paragraph used to claim there was one.
+mypy sees a valid `string`. The frontend has a test runner now (`npm test`), but it runs in
+`node` with no DOM, so **there is still no component test** that renders a table and asserts a
+cell has text -- and adding one would mean jsdom and a rendering library, which is a different
+decision from adding a runner.
 
 Three columns of the governance audit table and four of the model-invocation table were blank
 in every row for exactly this reason, and only a browser showed it. What covers the class now
@@ -256,7 +260,7 @@ which holds the two languages to the same placeholders and the same keys.
 
 ## Scale
 
-87 backend modules, roughly 36,300 lines, 156 API endpoints, 45 platform tables, React +
+89 backend modules, roughly 38,100 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `scaffold` job that walks the path a *new* deployment takes --

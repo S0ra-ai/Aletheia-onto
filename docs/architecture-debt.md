@@ -101,10 +101,14 @@ DDL 辅助函数，因为它们各自手写建表语句。
 > 会让测试失败，并且 `__all__` 里不存在的名字也会被抓出来。
 
 🚧 **仍待完成：前端类型手写。**
-`frontend/src/types/index.ts` 手写 1143 行镜像后端模型。
+`frontend/src/types/index.ts` 手写镜像后端模型。
 后端同时下发 camelCase 与 snake_case 两份字段
 （见 `metadata.py` 的 `DataSource.public_dict()`），前端类型靠手工同步。
 应改为从 OpenAPI 生成，并把响应收敛为单一命名风格。
+
+请求体一侧已有守护：`tests/test_frontend_type_agreement.py` 逐个比对前端声明的
+字段与 API 请求模型。（本行曾写「手写 1143 行」，而该文件当时已近 1600 行——
+一个没人核对的数字会安静地过期，所以这里不再写行数。）
 
 <details>
 <summary>原始记录</summary>

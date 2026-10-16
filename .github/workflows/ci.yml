@@ -453,6 +453,15 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      # The half a browser cannot check. `scripts/ui_smoke.py` reads the drawn rows and
+      # `tests/test_frontend_type_agreement.py` holds each screen's fields to what its endpoint
+      # sends; neither can see a payload normaliser that maps the wrong key, because the symptom
+      # -- a cell with no text -- only appears once a real row exists. This runs in `node` with
+      # no DOM: what it tests is the pure layer between the wire and the screens.
+      - name: 前端单元测试
+        working-directory: frontend
+        run: npm test
+
       - name: 类型检查与构建
         working-directory: frontend
         run: npm run build

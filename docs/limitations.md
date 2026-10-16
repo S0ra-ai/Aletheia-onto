@@ -12,7 +12,34 @@ interface can look functional while silently ignoring stored logic. In particula
 permission policy are live and fail closed. Derived versions now carry the workflow and
 rule-evaluation metadata needed to reproduce a verdict.
 
-- List endpoints are mostly unpaginated.
+- **List endpoints are paginated where the row count is a function of the customer's data, and
+  deliberately not where it is not.** Six take a page and return a `pagination` block:
+  `/ontologies/{id}/mappings` (the one that can realistically reach tens of thousands -- a row
+  per mapped column), `/ontologies/{id}/rules`, `/ontologies`, `/data-sources`,
+  `/data-sources/{id}/apis`, `/auth/users`, `/ontologies/{id}/knowledge/documents`, plus the two
+  that already did and the three histories capped with an explicit `truncated` flag (events at
+  500, attribute versions at 1 000). Not passing a `limit` still returns **everything**, which is
+  the property the current screens rely on -- several read `array.length` for a tab count and
+  several key their empty state off it, so a quiet default cap would have made those numbers
+  wrong without making anything fail.
+
+  The lists left unpaginated are ones whose length is bounded by *platform configuration* rather
+  than by the customer's schema: `/permissions/roles`, `/permissions/policies`, `/tools`,
+  `/tenants`, `/industry-blueprints`, the quota resources, and the static catalogs
+  (`/units`, `/resolvers`, `/axiom-kinds`, `/source-types`, `/writeback-channels`). A pager on
+  six built-in roles is ceremony, and the honest thing is to say so rather than to add one.
+  `/conversations/{id}`'s messages are the one judgement call left: they are bounded by how long
+  a person keeps typing, and a session long enough to need a page is not one this console has.
+
+  The other half of the same sentence *was* a defect and is fixed: four endpoints
+  (`/governance/audit-log`, `/governance/model-invocations`, `/governance/decisions`,
+  `/tools/pending-reviews`) accepted a `limit` and forwarded it to SQL unclamped, and SQLite
+  reads `LIMIT -1` as *no limit*. `?limit=-1` returned every row the deployment had ever
+  written -- not a large response but an undeclared export endpoint. `tests/test_query_limit_clamping.py`
+  holds that both ways (a live request with a hostile `limit`; a source check that every route
+  taking a `limit` clamps it or hands it to something that does), and
+  `tests/test_list_pagination.py` holds the two properties above: no limit returns everything,
+  and `total` is a real count rather than the size of the page.
 
 ## Structural expressiveness ceiling
 
@@ -89,35 +116,50 @@ By design, not bugs. These are the next phase's work.
   camelCase: the transition buttons showed no target state and always answered 422, the history
   timeline rendered 「初始 → 」, and both the chart and its reverse check stayed green (those
   words appear in an unrelated normaliser). What would catch it is a behavioural test of the
-  client, and the frontend has no test runner (below).
+  client. That last gap is closed now -- see the frontend test runner below -- which is what
+  made the missing normalisation testable rather than merely documented.
   `scripts/ui_smoke.py` covers the rest by inspection, reporting columns that are empty in
   every row; it needs a browser and a live instance, which is why it is a diagnostic rather
   than a gate. It has just had three blind spots closed — tabs (a page must put its active
   tab in the URL), tables that render only after a click, and cells holding an icon rather
   than text, which were reported as empty forever. A diagnostic that reports a standing
   false positive is teaching its reader to skim past the real findings.
-- **The interface is bilingual, and what the server says can be translated with it; what is left is
-  the CLI and the API itself.** Nineteen screens read from `i18n/messages/`; the sentences the server
-  composes -- advice, gate verdicts, audit findings, the kernel's recommendation, the explanation of
-  an instance -- now travel with a **stable code and the facts they are about**, so the console says
-  them in the reader's language and falls back to the server's sentence only for a code it does not
-  know. `scripts/i18n_audit.py` holds that in CI, and it now needs **no allowance at all**:
-  `KNOWN_BACKEND_PROSE` is empty, kept because the mechanism is what notices the *next* untranslated
-  server sentence, and an entry that matches nothing fails the run. What is still Chinese-only is
-  **the CLI's output and the API's own error text** (`aletheia` is Chinese-first, and so are the 156
-  endpoints' `detail` strings). In English mode the console falls back to those, so the gap between
-  "the interface is in English" and "what you read is in English" is still there -- it is just now
-  confined to failures and to the platform describing itself.
+- **The interface is bilingual, and most of what the server says can be translated with it; what is
+  left is the CLI, and the refusals nobody has named yet.** Nineteen screens read from
+  `i18n/messages/`; the sentences the server composes -- advice, gate verdicts, audit findings, the
+  kernel's recommendation, the explanation of an instance -- now travel with a **stable code and the
+  facts they are about**, so the console says them in the reader's language and falls back to the
+  server's sentence only for a code it does not know. `scripts/i18n_audit.py` holds that in CI, and it
+  now needs **no allowance at all**: `KNOWN_BACKEND_PROSE` is empty, kept because the mechanism is
+  what notices the *next* untranslated server sentence, and an entry that matches nothing fails the
+  run. **Failures** joined them: `error_codes.py` identifies a refusal from the sentence the domain
+  layer raised, `decorate` puts `code` and `facts` beside `detail` on the way out, and the console
+  says its own sentence when it knows the code. That covers authentication and authorization, the
+  login and password rules, and the governance refusals a reader is most likely to meet -- publishing
+  without confirmed mappings, editing a published ontology, an object with no source table.
 
-- **The frontend has no test runner.** No vitest, no Testing Library, no `test` script in
-  `package.json` -- so nothing in `frontend/src` is unit-tested: not `label()`'s fallback,
-  not the payload normalisers in `api/index.ts`, not the pure helpers in `i18n/`. The
-  failure modes that mattered most are covered from outside instead -- the response contract
-  holds each screen's fields to what its endpoint sends, and the render sweep reads the drawn
-  rows in a real browser -- which is how eight blank-column defects were found after typing
-  and linting had passed. What that leaves uncovered is anything that does not change the
-  shape of a rendered table: a wrong fallback, a mis-sorted list, punctuation. Adding a
-  runner is a product decision about dependencies, not an oversight to fix in passing.
+  What is left is measurable rather than vague: of the 101 single-sentence Chinese refusals the
+  backend raises, **51 are named**, and `tests/test_error_codes.py` holds that count as a ceiling so
+  it can only fall. An unnamed refusal is not broken -- the console shows the server's sentence, which
+  is true and readable, just in the other language. What is left is mostly internal invariants a user
+  cannot reach at all (`instance_key` rejecting a malformed key, `schema` rejecting an empty DDL
+  declaration, the extension registry rejecting a duplicate name), where a translation nobody reads
+  would only look like coverage. The CLI's output is Chinese-first throughout and
+  has no `--lang`; it is a tool for the operator who deployed the platform, not for the console's
+  reader.
+
+- **The frontend has a test runner now, and it covers the layer it can.** `npm test` runs
+  vitest in `node` with **no DOM** -- no jsdom, no Testing Library, no component rendering --
+  over the pure code between the wire and the screens: the payload normalisers (moved out of
+  `api/index.ts` into `api/normalise.ts` so they could be), `label()`'s fallback, the sentence
+  helpers in `i18n/text.ts`, and the lookup in `i18n/translate.ts`. That is where the silent
+  failures lived: four times a table drew nothing for every row because a normaliser read
+  `camelCase` off a `snake_case` payload, and nothing anywhere failed.
+  What it deliberately does **not** cover is anything that needs a rendered component -- a
+  mis-sorted list, a button wired to the wrong handler, layout. Those stay with
+  `scripts/ui_smoke.py` and `scripts/i18n_audit.py`, which drive a real browser, and with
+  `tests/test_frontend_type_agreement.py`, which holds each screen's fields to what its
+  endpoint sends. Three checks, three questions, no overlap claimed.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.

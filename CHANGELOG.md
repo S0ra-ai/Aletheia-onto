@@ -10,6 +10,114 @@
 
 ### Added
 
+- **随客户数据增长的列表端点现在可以分页**（`pagination.py`、`governance.py`、`ontology.py`、
+  `metadata.py`、`knowledge_documents.py`、`auth.py`、`api.py`、`routers/*.py`、
+  `api/index.ts`、`MappingList.tsx`、`RuleList.tsx`、`DataSourceDetail.tsx`、
+  `tests/test_list_pagination.py`）。
+  文档里那句「列表端点大多未分页」的诚实版本不是「什么都分页」——长度由**平台配置**决定的列表
+  （六个内置角色、配额资源种类、公理种类）不需要分页器，加上去是仪式。而是：
+  **每个长度随客户库结构变化的列表都接受一页，并说明这一页是整份列表的多少**。
+  八个端点接上了：`/ontologies/{id}/mappings`（一列映射一行，几百张表的遗留系统会产生几千条，
+  而它是发布门禁前的那道审核队列）、`/ontologies/{id}/rules`、`/ontologies`、`/data-sources`、
+  `/data-sources/{id}/apis`（导入一份 OpenAPI 就是几千行）、`/auth/users`、
+  `/ontologies/{id}/knowledge/documents`。
+
+  两条性质是这件事的全部，而两条都容易错得没人看得出来：
+
+  - **不传 `limit` 仍然返回全部。** 这些端点此前就是全量返回，而好几个界面拿 `array.length`
+    当标签页计数、拿它判断空状态。悄悄把默认值限成五十，会让那些数字出错而**不让任何东西失败**——
+    和那七处「整列为空」是同一形状的缺陷。
+  - **`total` 是真计数，不是一页的大小。** 在九百行的表上显示「第 51 条 / 共 51 条」比没有分页器更糟，
+    因为它看起来像个答案。所以测试拿真实存在的行数去断言它，而不是拿一页的长度。
+
+  没分页的那些在[当前限制](docs/limitations.md)里逐条列出并说明理由，而不是留一句「大多未分页」。
+  前端三处真正用上了服务端分页（`total` 来自服务端，不来自 `mappings.length`——
+  只装一页的表格用自己手里的行数算分页器，永远会说自己在最后一页）。
+  分页顺带暴露了一处歧义：批量审核作用于**服务端全部待审**而不是当前页，
+  而一个看着「第 1 页 / 共 9 页」的读者从按钮文字里看不出来——所以成功提示现在带上条数。
+
+  测试验证过**能失败**：去掉映射列表的 SQL 分页后，它报出「一页返回了 269 行」。
+  （第一次验证没失败，因为我要替换的字符串在文件里的顺序与我想的不同，`replace` 悄悄没匹配上。
+  这是本项目第二次踩到「没改动所以通过」，两次都不是理论问题。）
+
+- **前端有了测试运行器，并抽出可测的折算层**（`frontend/vitest.config.ts`、`package.json`、
+  `src/api/normalise.ts` + `normalise.test.ts`、`src/i18n/translate.test.ts`、`src/i18n/text.test.ts`、
+  `.github/workflows/ci.yml`）。
+  [当前限制](docs/limitations.md)里写着「前端没有测试运行器」，理由是那是**关于依赖的产品决定**。
+  这个决定就是：**只加运行器，不加 DOM**。测试跑在 `node` 里，不引 jsdom、不引 Testing Library、
+  不渲染组件——测的是「线上格式到界面之间」那层纯代码，而静默失效一直住在那里。
+  为了让载荷归一化可测，它们从 `api/index.ts` 移进了 `api/normalise.ts`：
+  四次「整列为空」都是同一个函数在读 `snake_case` 载荷上的 `camelCase` 字段，
+  而缺陷与它的成因同在一个文件里、后半截从测试里够不到。现在 42 个用例逐条钉住
+  每个界面读的字段名，载荷用的是端点真实发出的拼写。
+  已验证这些测试**能失败**：把 `normalizeTool` 的 `?? item.tool_type` 去掉，测试立刻报出失效的那个字段。
+  （第一次验证时它没失败——因为我要替换的字符串根本没匹配上，文件没变。
+  「没改动所以通过」正是最危险的那种假绿。）
+
+- **列表端点的 `limit` 不再能被用来取走整张表**（`decisions.py`、`workflow_permission.py`、
+  `routers/model_governance_routes.py`、`tests/test_query_limit_clamping.py`）。
+  四个端点（`/governance/audit-log`、`/governance/model-invocations`、`/governance/decisions`、
+  `/tools/pending-reviews`）接受 `limit` 之后**原样送进 SQL**，而 SQLite 把 `LIMIT -1` 读作「不限制」。
+  实测：种子实例上默认返回 50 行，`?limit=-1` 返回**全部 5015 行**，`?limit=1000000000` 同样。
+  那不是「响应有点大」——审计日志、决策留痕、模型调用记录是平台**自己行为正确的证据**，
+  一个按请求把它们全部序列化的端点，是一个没人决定要建的导出端点，而代价只是一段查询串。
+  同代码库里另有五处早已写成 `max(1, min(limit, N))`，所以这是**没跟上既有约定**而不是没有约定。
+
+  钳制加在服务层（SQL 所在处）而不是只在路由上——边缘的检查会被下一个调用方绕过。
+  两个方向的检查：带恶意 `limit` 的**真实请求**（夹具把每张表都灌到上限之上，
+  否则「没有返回更多」是一句不可能为假的话），以及一条**源码检查**，
+  沿着值走：每个取 `limit` 的路由要么自己钳制，要么交出去的每个函数都钳制。
+  后者顺带解释了为什么 `adapters.browse_rows` 这类看起来没钳制的函数是安全的——
+  它只被已钳制的调用方触达，而「跟着值走」而不是「扫每个函数」正是这条检查说真话的原因。
+
+- **拒绝语的登记从 20 条扩到 51 条**（`error_codes.py`、`messages/errors.ts`、`file_adapter.py`、
+  `tests/test_error_codes.py`）。机制立起来之后，这一轮补的是控制台上真会撞到的那些句子：
+  已发布本体的十一种不可改（聚合定义、派生属性、属性单位、跨源对应、事件定义、实例解析器、
+  类型层级、值域映射，各自一个码——**名词是写在句子里的字面量而不是变量**，
+  所以一条带占位符的模板匹配不上它们，而英文句子里叫不出名词只会比中文更含糊）、
+  发布门禁与被覆盖的规则、上传与 Word 解析、模型端点配置、租户与配额、SSO 断言、工作流守卫。
+  单句中文拒绝语 101 条，已登记 **51** 条；上限断言随之从 81 收紧到 50。
+
+  剩下 50 条**刻意不登记**：它们大多是读者够不到的内部不变量
+  （`instance_key` 拒绝格式错误的实例键、`schema` 拒绝空的 DDL 声明、注册表拒绝重名），
+  给这些写翻译只会看起来像覆盖。
+
+  这一轮里测试又抓到两次问题，两次都不是文字问题：
+  **15 条模板我按记忆截断了**——匹配锚定到句子结尾，所以截断的模板永远匹配不上，而它长得和能用的一模一样；
+  **`source_file_missing` 有两个相邻占位符**（表名 + 常量后缀 `.csv`），正则无法在它们之间切分。
+  后者的修法在领域层：把两个值合成一个再插值，**读到的句子一个字都不变**，
+  但句子变得可以被识别——这是「给读者看的句子」与「能被机器认出的句子」第一次出现取舍，
+  而它选了不改读者看到的东西。
+
+- **失败信息也有码了，所以英文界面上不再只显示中文**（`error_codes.py`、`api.py`、`api/index.ts`、
+  `i18n/translate.ts`、`messages/errors.ts`、`tests/test_error_codes.py`）。
+  这是[当前限制](docs/limitations.md)里剩下的头号一条：建议、门禁评语、审计发现、判定建议、推理链
+  都早已带着 code 发出来，唯独**出错时**读者拿到的是服务端写的中文句子——而那正是他最需要看懂的瞬间。
+  做法不是把 code 一路穿过 103 个 `HTTPException` 与它们背后的整个领域层（那是为一个显示问题重写领域层），
+  而是**在出口认出这句话**：每条要登记的句子都由本平台自己写下、别处不会写，因此匹配是识别而不是猜测
+  （`advice.recommendation_code` 早就是这么做的）。模板用 `{name}` 表示它说的那个值，
+  匹配时按字面片段依次走，于是这些值作为 `facts` 回到前端，由前端用自己语言的语序拼句子。
+  未登记的句子不带 `code` 键——不是空串——控制台照旧显示服务端那句：依然成立、依然可读。
+  覆盖认证与鉴权（含中间件自己那两个码）、登录与口令规则、发布与已发布本体的治理拒绝、
+  未绑定来源表、以及上传校验。已登记 20 条，未登记 81 条，由测试**按上限断言**，因此只会降不会升。
+  `tests/test_error_codes.py` 里有两条检查是这次真正起作用的部分，因为注册表本质上是
+  **一张关于别处文本的断言表**，而这类断言会静默腐烂：
+  每条模板的字面片段必须能在后端源码的句子里找到（第一次运行就抓出我凭印象写下的三条
+  ——「角色不存在」「工具不存在」「业务 API 不存在」，平台根本不这么说——以及一条被我截断、
+  永远匹配不上的）；每条模板捕获的 `facts` 必须与界面句子里的占位符完全一致，
+  否则读者会看到一个裸露的花括号。
+  顺带修掉两处前端自己写死的中文：会话过期与 403 的兜底句子原本在拦截器里，
+  而拦截器不在组件树内、拿不到 `t()`，于是**英文模式下每一次会话失效与每一次越权都仍说中文**——
+  这正是读者最常撞上的两个失败。`i18n/translate.ts` 把查表抽成不需要 React 的纯函数，
+  语言从 provider 写的同一处存储读，所以开关与它按构造一致。
+- **`MarkdownMessage` 从 782 kB 降到 215 kB**（`components/codeLanguages.ts`）。
+  `import { Prism } from 'react-syntax-highlighter'` 把包内**全部 300 种语法**打进了产物
+  （光是 `refractor` 磁盘上就有 2.8 MB），比 antd 核心还大，约为应用外壳的九倍。
+  按平台答案里真正会出现的那几种（SQL／JSON／Python／Bash／JS／TS／YAML／标记）按需注册后，
+  gzip 从 **270 kB 降到 66 kB**。未注册的语言不会出错：库会兜住并降级为纯文本，
+  已用真实渲染验证（`sql`/`python`/`bash` 正常高亮带语言标签，`fortran` 文本完整保留），
+  并顺带修掉一处「标签承诺了下面没有的处理」——未知语言此前也会把自己的名字印在代码块上方。
+
 - **新装实例的第一次打开现在有人看**（`scripts/ui_smoke.py`、`.github/workflows/ci.yml`、
   `docs/testing.md`）。
   渲染扫描跑在**有种子数据**的实例上——没有行的表格什么都检查不了——于是**每个部署都会经过的那个状态**没人看：
@@ -342,6 +450,46 @@
   是这件事最误导的一种呈现。现改为三态：未知、关闭、启用。
 ### Changed
 
+- **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
+  （`BackupManager.tsx`、`OntologyList.tsx`、`governance/index.tsx`、`MappingList.tsx`、
+  `PermissionManager.tsx`、`DataSourceList.tsx`、`WorkflowManager.tsx`、`OntologyChat.tsx`）。
+  这 12 条不是噪音：加载函数每次渲染重建，而 effect 的依赖数组里没有它——
+  于是 effect 读的是「上一次碰巧跑过的那个渲染」里的闭包，而这是**没有测试能看见的一类 bug**。
+  现在函数由 `useCallback` 固定，effect 依赖它，语言切换时该重跑的才会重跑。
+  两处行为随之明确改变了：权限页与工作流页此前在挂载时加载一次，
+  现在语言切换会重新拉取——多一次请求，换来的是失败时那句话是当前语言的。
+  工作流页的 `useEffect(() => { loadWorkflows(); loadOntologies(); }, [])` 一行两调用
+  也拆成了带 `void` 的两行，因为前者的返回 promise 此前从未被处理。
+  剩下的 3 条是 `locale.tsx` 的 `only-export-components`：
+  该文件按设计同时导出 provider 与 `useT`／`useLocale`／`useLabel`，
+  而这三个 hook 被 30 多处 import，拆文件的改动量换来的只是编辑该文件时的热更新粒度。
+
+- **`zustand` 是声明了却零引用的依赖**（`package.json`）。移除。
+
+- **字典键从「运行时才发现」变成「构建时就报错」**（`i18n/text.ts`、`MainLayout.tsx`、
+  `ModelConfig.tsx`、`DataSourceList.tsx`、`FeedbackConsole.tsx`、`workbench/index.tsx`、
+  `test_ui_messages.py`，另 7 个页面）。
+  前端有 24 处 `t(someKey as never)`。这个断言让代码编得过，也让**检查消失**：
+  键写错时类型检查器不说话，`t()` 在界面上渲染出 `⟦key⟧`，而 `scripts/i18n_audit.py` 读的是中日韩字符，
+  所以一个缺失的英文键也不是它能看见的东西。24 处**全是同一种形状**——
+  一张标签映射表或预设表声明成 `Record<string, string>`，于是调用处不得不加断言。
+  现在映射表声明为 `Record<string, MessageKey>`，类型检查器能一路走到调用处；
+  唯一真按值查表的地方（服务端给的 code）收敛成 `i18n/text.ts` 的 `codedText`：
+  `t()` 对未知键渲染 `⟦key⟧`，这个哨兵正是回落成立的条件，
+  而同一段「查表、认哨兵、否则用服务端那句」此前在 5 个页面里抄了 8 遍、每遍带一个断言。
+  **两处断言都没有了**，`test_no_call_site_turns_the_key_check_off` 与
+  `test_the_label_maps_are_keyed_by_message_keys` 守住这件事——后者盯的是声明处，
+  因为类型安全用在调用点、错在定义处，是同一个缺陷前移了一步。
+
+- **空状态的四处补齐，形状统一**（`components/GuidedEmpty.tsx`、`BackupManager.tsx`、
+  `PermissionManager.tsx`、`messages/backup.ts`、`messages/permission.ts`）。
+  全新实例上角色、策略、工具、备份四张表都是 0 行，页面对四种情况说的是同一句话：暂无数据。
+  读者分不出「还没用」与「坏了」，也无从知道行是从哪一屏产生的。
+  现在四处由同一个组件渲染：缺的是什么、它管什么、去哪产生它。
+- **19 个文案文件头部那句「待迁移」删掉了**（`i18n/messages/*.ts`）。
+  迁移早已完成，而这行说明还在告诉每个读到它的人：这个文件的文案还没填。
+  新的头部说的是它实际是什么，以及缺一个键时会发生什么。
+
 - **界面把所有后端枚举原样显示**（新增 `frontend/src/i18n/labels.ts`）。
   一个中文控制台在治理表格里显示 `draft`、`blocking`、`pending`、`rejected`——
   **读自己的看板要先懂后端的词汇表**。措辞其实早就有，只是散着：一处写「已发布」，
@@ -538,6 +686,66 @@
   把该端点移出清单之后，它会像别的一样被抓住。
 
 ### Fixed
+
+- **四个导出版本按钮与内核包按钮，点开的是一页 401 的 JSON**（`api/index.ts`、
+  `OntologyDetail.tsx`、`DataSourceDetail.tsx`、`BackupManager.tsx`、
+  `tests/test_frontend_type_agreement.py`）。
+  五个按钮都在做同一件事：把一个接口地址交给 `window.open(url, '_blank')`。
+  而这套平台的鉴权是 `Authorization: Bearer` 头、且**刻意不设 Cookie**——
+  浏览器自己打开的新标签页不会带上它。实测：带令牌 `200` 加 43 KB 的 `ontology-1-v0.1.0.jsonld`，
+  不带令牌就是 `{"detail":"缺少访问令牌"}`。**每一个部署里这五个按钮都是坏的**，
+  而代码读起来没有一处不对：地址对、端点对，缺的只是凭证。
+  改为走 `api/index.ts` 的 `downloadFile`：同一个 axios 实例（因此带令牌、也过错误拦截器），
+  响应当 blob，用一次性的对象 URL 交给浏览器保存——**失败时也 revoke**，
+  否则 blob 会留到本次会话结束；文件名优先取服务端的 `Content-Disposition`
+  （它给出的 `ontology-1-v0.1.0.jsonld` 带版本号，比调用方自己拼的更准）。
+  备份下载原本自己手写这套动作、并把文件名拼成 `${name}.tar.gz`，现在也走同一个函数。
+
+  补的检查不是第五次修补：`test_no_page_navigates_to_a_protected_endpoint` 从 OpenAPI
+  取出所有端点首段，扫 `window.open`／`location.assign`／`location.href =` 的目标，
+  命中即失败。**第一版检查是错的、而且静默**——它要求前缀紧跟在引号后，
+  而页面写的地址是 `/api/ontologies/…`（代理会剥掉 `/api`）、axios 写的是 `/ontologies/…`，
+  两种写法它都看不见；把旧代码放回去验证时它照样通过，才发现的。
+
+- **模型配置页的七条预设说明，写好了却从来没显示过**（`ModelConfig.tsx`、`messages/model.ts`）。
+  每个预设都有一个 `note` 字段，七个全填了中文，**没有任何代码读它**。
+  而它们写的正是这一屏最容易出错的地方：Azure 用 `api-key` 头而不是 Bearer、Base URL 必须含部署名与
+  api-version、vLLM 对未知字段直接返回 400。现在套用预设后那一条会显示在表单上方——
+  读者最需要它的时刻，正是他最不会去翻文档的时刻。文案同时进了字典（原本是写死的中文）。
+
+- **四处「写审核人」的请求体，服务端根本不读这些字段**（`api/index.ts`、`types/index.ts`、
+  `MappingList.tsx`、`PermissionManager.tsx`、`tests/test_frontend_type_agreement.py`）。
+  四处同形：前端在请求体里带一个身份字段（映射审核的 `reviewer: '前端用户'`、
+  派生版本的 `actor: 'system'`、工具执行审核的 `reviewer: 'admin'`），
+  而服务端**记录的是认证主体**，请求模型里没有这个字段——Pydantic 默认丢弃多余字段，
+  于是请求成功、字段消失，而调用处读起来像「这次审核是 admin 做的」。
+  第四处更严重一层：`note: '工作台批量审核'` 服务端**确实会收**，并写进
+  `semantic_mapping.evidence` 与 `audit_log.detail`——一句写死的文案落进了留痕，
+  而它是英文界面下操作时以中文存入的，之后任何语言切换都够不着它。
+  `publish` 早有一条注释记录了这个 bug 并修掉了自己，另外三处漏网；
+  真正的原因是**行内对象字面量没有接口可比对**，而原有的类型契约测试只认命名接口。
+  因此补的是检查而不是第四遍修补：`test_no_request_body_sends_a_field_the_api_discards`
+  从 `api/index.ts` 里解析出每一个 `api.post/put/patch(url, {…})` 的字面量请求体，
+  按路由表找到该端点的请求模型，逐个比对字段；解析器自带反例测试
+  （嵌套对象、含逗号的字符串、简写属性），因为它要抓的四处**全是简写**。
+  `BulkMappingReviewCreate`、`ToolExecutionReview` 因此被提升为命名接口并纳入原有契约。
+
+- **「更多」菜单里点进租户管理，选中的那一项是看不见的**（`MainLayout.tsx`）。
+  高亮分组用的是一条手写的 `startsWith` 链，而 `/tenancy` 是「更多」的子项却不在链上——
+  于是从链接、书签或刷新进入租户页时分组是收起的。下一个加进去的子项会一样静默地漏掉，
+  因为没有任何东西把两份清单绑在一起。现在它从**渲染菜单的那同一个 `children` 数组**读，
+  且路由首段只算一次，选中与展开不会再各算一份。
+
+- **失败时看到的是 axios 的英文内部措辞**（`BackupManager.tsx`、`DataSourceList.tsx`、
+  `LoginPage.tsx`）。这七处手写了 `error instanceof Error ? error.message : t(…)`，
+  而 axios 自己的 message 是 `Request failed with status code 500` / `Network Error`——
+  中文界面上的一行英文，且登录页那处是**每个用户都会经过的第一屏**。
+  `requestErrorMessage` 存在的理由就是这个：有服务端写的理由就显示它，否则显示调用方自己的译文。
+  `BackupManager` 与 `DataSourceList` 里其余 96 处早就在用它，只有这七处没有。
+
+- **认证状态校验那行提示不跟着语言走**（`RequireAuth.tsx`、`messages/shell.ts`）。
+  `tip="正在校验登录状态"` 是写死的中文，而它在**每一次刷新**的整屏 loading 上。
+  界面迁移时它被漏掉了，因为它在受保护路由的**外壳**上而不是某个页面里。
 
 - **文档里的 15 张截图还是旧界面**（`scripts/capture_screenshots.py`、`docs/images/`、
   `docs/screenshots.md`、`docs/screenshots.zh-CN.md`、`semantic/index.tsx`、`chat/OntologyChat.tsx`）。

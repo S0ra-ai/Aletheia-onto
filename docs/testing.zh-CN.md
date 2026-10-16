@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1736 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1778 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -39,6 +39,9 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | 文件 | 数量 | 覆盖 |
 |---|--:|---|
 | `test_documentation_links.py` | 126 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
+| `test_query_limit_clamping.py` | 8 | 调用方给的 `limit` 无法越过上限把整张表取走（SQLite 把 `LIMIT -1` 读作「不限制」） |
+| `test_list_pagination.py` | 17 | 每个随客户数据增长的列表都接受分页；不传 limit 仍然返回全部 |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -81,7 +84,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
-| `test_frontend_type_agreement.py` | 90 | The frontend's hand-written types must agree with the API they mirror, on both sides |
+| `test_frontend_type_agreement.py` | 97 | The frontend's hand-written types must agree with the API they mirror, on both sides |
 | `test_frontend_serving.py` | 4 | 同源生产管理端与 API 传输前缀 |
 | `test_metrics.py` | 5 | Prometheus 兼容运行指标与安全重复初始化 |
 | `test_migrations.py` | 12 | Versioned migrations: the schema changes `SchemaBundle` cannot express |
@@ -94,7 +97,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_ui_smoke_guards.py` | 15 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | 表格列不许把枚举原样打印出来，必须走标签映射 |
 | `test_demo_bootstrap.py` | 2 | 演示按钮第二次按下时，报告它清掉了什么 |
-| `test_ui_messages.py` | 7 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键 |
+| `test_ui_messages.py` | 9 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键，也没有 `as never` 关掉键检查 |
 | `test_ci_workflow.py` | 3 | CI 跑的就是文件里写的那个工作流——折行与重复键 |
 | `test_smoke_seeding.py` | 4 | 渲染检查的种子数据真的给每个页面填了行，且只报告它做过的事 |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
@@ -115,8 +118,9 @@ cd frontend && npm run build
 
 以上都抓不到「列的 `dataIndex` 与接口返回的字段名不一致」。antd 对不存在的键什么都不画，
 linter 看到的是一个合法字符串，mypy 看到的是合法 `string`。
-**而前端根本没有测试运行器**——没有 vitest、没有 Testing Library、`package.json` 里没有 test 脚本，
-所以不存在「渲染了表格但没断言单元格有文字」的那种组件测试。这一段此前声称它存在。
+**前端现在有测试运行器了**（`npm test`），但它跑在 `node` 里、没有 DOM，
+所以**仍然没有渲染组件的测试**——不存在「渲染了表格但没断言单元格有文字」的那一种。
+补上它意味着引入 jsdom 与渲染库，那是与「加一个运行器」不同的另一个决定。
 
 治理审计表的 3 列与模型调用表的 4 列就这样**每一行都是空白**，只有浏览器能看见。
 现在盯这一类的是两处：下面的渲染检查读**画出来的行**，
@@ -219,7 +223,7 @@ job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单
 
 ## 规模
 
-87 个后端模块约 36300 行，156 个 API 端点，45 张平台表，前端 React + antd。
+89 个后端模块约 38100 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `scaffold` job，走的是**新部署**那条路——`aletheia new`、安装、`init`、
 `connect`、`model`、`verify.py`——因为那条路上的三个缺陷都是**靠人工走一遍**发现的，
