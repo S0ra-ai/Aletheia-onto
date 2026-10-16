@@ -139,6 +139,16 @@ class DriverSpec:
     module: str
     # Shown when the module is missing. An actionable message, not an ImportError.
     install_hint: str = ""
+    # The same sentence, as a code and the facts it names. Everything above this line is a
+    # declaration a third party writes; the sentence is what a *reader* gets, and this platform
+    # has two readers with different languages. `advice.py` and `release_readiness._gate` carry
+    # the same pair for the same reason: the sentence stays for the CLI's JSON and for clients
+    # that do not know the codes, and the code is what a bilingual surface says instead.
+    #
+    # `driver_missing_installable` when the package is on PyPI, `driver_missing_vendor` when it
+    # ships with the database client and `pip install` would be wrong advice.
+    install_hint_code: str = ""
+    install_hint_facts: dict[str, str] = field(default_factory=dict)
     # Attribute on the module to call. `connect` for almost everything.
     connect_attribute: str = "connect"
     connect_arguments: Callable[[str], dict[str, Any]] = default_connect_arguments
@@ -344,6 +354,8 @@ BUNDLED_SPECS: tuple[DriverSpec, ...] = (
         dialect=ORACLE,
         module="oracledb",
         install_hint="Oracle 接入需要安装 oracledb：pip install oracledb",
+        install_hint_code="driver_missing_installable",
+        install_hint_facts={"label": "Oracle", "module": "oracledb", "package": "oracledb"},
         # oracledb accepts `user`/`password`/`dsn`; the DSN carries host, port and
         # service name, which a generic URI parser cannot reconstruct correctly.
         connect_arguments=lambda uri: _oracle_arguments(uri),
@@ -353,6 +365,8 @@ BUNDLED_SPECS: tuple[DriverSpec, ...] = (
         dialect=SQLSERVER,
         module="pymssql",
         install_hint="SQL Server 接入需要安装 pymssql：pip install pymssql",
+        install_hint_code="driver_missing_installable",
+        install_hint_facts={"label": "SQL Server", "module": "pymssql", "package": "pymssql"},
         timeout_argument="timeout",
     ),
     DriverSpec(
@@ -360,12 +374,16 @@ BUNDLED_SPECS: tuple[DriverSpec, ...] = (
         dialect=DAMENG,
         module="dmPython",
         install_hint="达梦接入需要安装 dmPython（随达梦客户端提供，不在 PyPI 上）。",
+        install_hint_code="driver_missing_vendor",
+        install_hint_facts={"label": "Dameng", "module": "dmPython", "vendor": "Dameng"},
     ),
     DriverSpec(
         source_type="kingbase",
         dialect=KINGBASE,
         module="ksycopg2",
         install_hint="人大金仓接入需要安装 ksycopg2（随 KingbaseES 客户端提供）。",
+        install_hint_code="driver_missing_vendor",
+        install_hint_facts={"label": "KingbaseES", "module": "ksycopg2", "vendor": "KingbaseES"},
         connect_arguments=whole_uri,
         passes_uri_positionally=True,
     ),
@@ -377,6 +395,8 @@ BUNDLED_SPECS: tuple[DriverSpec, ...] = (
         dialect=POSTGRESQL,
         module="psycopg2",
         install_hint="openGauss 接入需要安装 psycopg2。",
+        install_hint_code="driver_missing_installable",
+        install_hint_facts={"label": "openGauss", "module": "psycopg2", "package": "psycopg2"},
         connect_arguments=whole_uri,
         passes_uri_positionally=True,
     ),
@@ -431,6 +451,8 @@ def describe_bundled_sql_sources() -> list[dict[str, Any]]:
             "driverModule": spec.module,
             "driverAvailable": spec.driver_available(),
             "installHint": spec.install_hint,
+            "installHintCode": spec.install_hint_code,
+            "installHintFacts": dict(spec.install_hint_facts),
         }
         for spec in BUNDLED_SPECS
     ]

@@ -78,6 +78,8 @@ its row with it rather than leaving a promise behind.
 | A list that grows with the customer's data takes a page | `backend/ontology_platform/pagination.py` | `tests/test_list_pagination.py` |
 | A caller-supplied limit cannot take the whole table | `backend/ontology_platform/config.py` | `tests/test_query_limit_clamping.py` |
 | A bilingual console, checked by reading it in both languages | `frontend/src/i18n/locale.tsx` | `tests/test_ui_messages.py` |
+| A bilingual CLI, whose `--help` follows the flag that its own parser reads | `backend/ontology_platform/cli_messages.py` | `tests/test_cli_language.py` |
+| Cells rendered and read in process, so a blank column fails a unit test and not only a browser sweep | `frontend/src/components/TableColumns.test.tsx` | `tests/test_frontend_type_agreement.py` |
 
 ## Not there yet
 
@@ -89,9 +91,8 @@ project.
 | Gap | What it costs a third party |
 |---|---|
 | **Frontend types are hand-mirrored from the backend** (`frontend/src/types/index.ts`). The request side is checked against the API models; the response side is not generated, because every endpoint returns `dict[str, object]` and a generator would emit `unknown`. | A backend field rename is caught by a test, not by the compiler. Four "column blank for every row" defects arrived this way. |
-| **No component tests.** `npm test` runs vitest in `node` with no DOM, so the pure layer between the wire and the screens is covered and the rendered output is not. | A mis-sorted list or a button wired to the wrong handler is found by a browser sweep, if somebody runs one. |
-| **The CLI is Chinese-only.** The console is bilingual; `aletheia` is not, and has no `--lang`. | A non-Chinese-reading operator works from the API or from the English docs. |
+| **Component tests cover two tables, not every screen.** `src/components/TableColumns.test.tsx` renders the mapping and rule lists and asserts every cell has text; the rest are covered by the browser sweep. | A blank column on a screen nobody wrote a test for is still found by a browser, if somebody runs one. |
 | **Untranslated refusals remain**: 51 of 101 single-sentence Chinese refusals carry a code the console can translate. The rest are internal invariants a reader cannot reach. | An English console can still show a Chinese sentence for an unusual failure. |
-| **`aletheia preflight` warns about rate limiting rather than blocking**, because the CLI does not know which address the service will bind. `serve` **does** know, and blocks. | An operator who checks with `preflight` and then exposes the service is protected by `serve` refusing; one who skips both is not. |
-| **Connection pooling is off by default** (`ONTOLOGY_CONNECTION_POOL_SIZE`). | A high-traffic PostgreSQL deployment pays a handshake per request until an operator turns it on. |
+| **The API's own sentences stay Chinese even in English mode** — in the CLI as well as the console, which fall back to them for a code they do not know. | Deliberate: the payload's shape and vocabulary are the contract a pipeline parses, and translating it would make the same response say different things to different callers. |
 | **No pluggable model-provider SPI with a conformance suite** — model endpoints are configured, and the extension points with published contracts are instance resolvers, data source adapters, retrieval backends, embedding models and writeback executors. | Adding a genuinely new provider protocol means reading `model_client.py`. |
+| **No cursor pagination**, only `limit`/`offset`. | A page requested while rows are being inserted can skip or repeat one; the platform's lists are review queues and audit views rather than live feeds, so it has not bitten. |

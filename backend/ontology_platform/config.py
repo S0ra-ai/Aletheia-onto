@@ -69,18 +69,20 @@ class QueryLimits:
 class ConnectionPooling:
     """Whether platform-database connections are reused.
 
-    Off by default, and deliberately: turning it on changes how many connections a deployment
-    holds open, and a framework that silently changed that on upgrade would be trading an
-    operator's capacity planning for a latency win they did not ask for. `0` means every
-    `connect()` opens one, which is what every deployment before this did.
+    On by default at a small size, because a feature nobody turns on is a feature that does not
+    exist -- and because the argument for leaving it off does not survive the SQLite exception
+    below. Most deployments run SQLite, and those are unaffected whatever this says: SQLite
+    connections are bound to the thread that opened them (`check_same_thread`), so a pool handing
+    one to another thread fails inside whichever query runs first. That is a correctness boundary
+    rather than a preference, and it means the setting only ever changes anything for PostgreSQL
+    and MySQL -- the deployments that gain from it. The bound is eight idle connections per
+    `(type, URI, schema)`, which is within the envelope any of those deployments already allows.
 
-    Only PostgreSQL and MySQL are pooled. SQLite connections are bound to the thread that
-    opened them (`check_same_thread`), so a pool handing one to another thread fails inside
-    whichever query runs first -- see `connection_pool` for why that makes this a correctness
-    boundary rather than a preference.
+    `0` restores one connection per `connect()`, which is what every deployment did before this
+    existed.
     """
 
-    size: int = _int_env("ONTOLOGY_CONNECTION_POOL_SIZE", 0)
+    size: int = _int_env("ONTOLOGY_CONNECTION_POOL_SIZE", 8)
 
 
 @dataclass(frozen=True)

@@ -186,9 +186,13 @@ By design, not bugs. These are the next phase's work.
   is true and readable, just in the other language. What is left is mostly internal invariants a user
   cannot reach at all (`instance_key` rejecting a malformed key, `schema` rejecting an empty DDL
   declaration, the extension registry rejecting a duplicate name), where a translation nobody reads
-  would only look like coverage. The CLI's output is Chinese-first throughout and
-  has no `--lang`; it is a tool for the operator who deployed the platform, not for the console's
-  reader.
+  would only look like coverage. **The CLI is bilingual too** (`--lang en`, or `ONTOLOGY_LANG`),
+  covering everything it says about itself: help text, its own errors, the sentences it composes
+  about what it just did, and the `doctor` hints that explain why a driver is missing. What it
+  does not translate is the JSON it prints — that is the API's output, and it stays Chinese for
+  the same reason the English console falls back to it: the payload's shape and vocabulary are
+  the contract a pipeline parses, and translating it would make one response say different things
+  to different callers.
 
 - **The frontend has a test runner now, and it covers the layer it can.** `npm test` runs
   vitest in `node` with **no DOM** -- no jsdom, no Testing Library, no component rendering --

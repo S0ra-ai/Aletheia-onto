@@ -46,6 +46,23 @@ from typing import Any, Optional, Sequence
 
 PROGRAM = "aletheia"
 
+# The language the tool speaks about itself, resolved once per invocation from `--lang` or
+# `ONTOLOGY_LANG`. Module state rather than a parameter threaded through thirty call sites: every
+# one of them is printing to the same two streams, and a CLI invocation has exactly one language.
+_LANGUAGE = "zh"
+
+
+def _t(key: str, **params: Any) -> str:
+    """One of this tool's own sentences, in the language this invocation is using.
+
+    What it does *not* cover is the JSON these commands print: that is the API's output, whose
+    shape and vocabulary are the contract a pipeline parses. It stays Chinese exactly as the
+    English console's fallback does, and for the same reason -- see `cli_messages`.
+    """
+    from .cli_messages import translate
+
+    return translate(key, _LANGUAGE, **params)
+
 
 def program_name() -> str:
     """What to call this CLI in the hints it prints.
@@ -78,7 +95,7 @@ def _with_init_hint(message: str) -> str:
     command the reader has to run. `doctor` had this hint and nothing else did.
     """
     if "no such table" in message:
-        return f"{message}\n平台库尚未初始化，请先运行 {program_name()} init"
+        return f"{message}\n{_t('platform_db_uninitialized', program=program_name())}"
     return message
 
 
@@ -132,7 +149,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         {
             "platformDb": str(platform_db),
             "bootstrapAdmin": credentials,
-            "note": "首次登录后请立即修改该密码；它只在本次初始化时输出一次。",
+            "note": _t("init_password_once"),
         }
     )
     return 0
@@ -209,7 +226,7 @@ def cmd_model(args: argparse.Namespace) -> int:
             "objects": [item["code"] for item in draft.get("objects", [])],
             "ruleCount": len(draft.get("rules", [])),
             "status": ontology.get("status"),
-            "note": "草案中的映射为 pending，需审核后才能发布。",
+            "note": _t("model_mappings_pending"),
         }
     )
     return 0
@@ -263,10 +280,10 @@ def cmd_publish(args: argparse.Namespace) -> int:
     except ReleaseGateBlocked as error:
         # Only here is force the answer. Offering it for a missing ontology -- as this used
         # to -- points the reader at a flag that cannot help them.
-        return _fail(f"发布被拒绝：{error}\n如确认要覆盖门禁，请显式传 --force（会写入审计）。")
+        return _fail(_t("publish_refused", reason=error) + "\n" + _t("publish_force_hint"))
     except ValueError as error:
         # The refusal's own wording is the useful output here, not a traceback.
-        return _fail(f"发布被拒绝：{error}")
+        return _fail(_t("publish_refused", reason=error))
     _print(result)
     return 0
 
@@ -338,7 +355,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         return 0
 
     if not args.name:
-        return _fail("需要项目名：aletheia new <name> [--extension datasource ...]")
+        return _fail(_t("new_needs_name", program=program_name()))
 
     target = Path(args.directory) if args.directory else Path(args.name)
     try:
@@ -405,7 +422,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
             "ontologyId": result["ontologyId"],
             "objectCode": result["objectCode"],
             "decision": result["decision"],
-            "next": f"{program_name()} serve  # 打开 http://127.0.0.1:8000/docs",
+            "next": f"{program_name()}{_t('demo_next_steps')}",
         }
     )
     return 0
@@ -426,9 +443,9 @@ def cmd_passwd(args: argparse.Namespace) -> int:
         # in shell history or in the process list.
         import getpass
 
-        password = getpass.getpass(f"为 {args.username} 设置新口令: ")
-        if password != getpass.getpass("再输入一次: "):
-            return _fail("两次输入的口令不一致。")
+        password = getpass.getpass(_t("passwd_for", username=args.username))
+        if password != getpass.getpass(_t("passwd_again")):
+            return _fail(_t("passwd_mismatch"))
     try:
         result = reset_password(_platform_db(args), args.username, password, actor=args.actor)
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -444,11 +461,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except ImportError:
         # A missing optional extra is a configuration problem, so it gets an
         # instruction rather than a traceback.
-        return _fail("HTTP 层需要 web extra，请先安装：pip install 'aletheia-onto[web]'")
+        return _fail(_t("serve_needs_web_extra"))
 
     workers = max(1, int(args.workers))
     if args.reload and workers != 1:
-        return _fail("--reload 不能与多个 worker 同时使用，请将 --workers 设为 1")
+        return _fail(_t("serve_reload_with_workers"))
 
     # Binding to anything other than loopback means the service is reachable from the
     # network, so the preflight blockers become exploitable rather than theoretical. Run it
@@ -461,10 +478,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         report = check_deployment(platform_db=_platform_db(args), worker_count=workers, listen_host=args.host)
         if not report.ready:
             print(report.summary(), file=sys.stderr)
-            return _fail(
-                f"监听地址 {args.host} 可从网络访问，但部署前自检未通过。"
-                "修复上述阻断项，或显式传 --skip-preflight（不建议）。"
-            )
+            return _fail(_t("serve_exposed_preflight_failed", host=args.host))
 
     if not args.platform_db:
         uvicorn.run(
@@ -502,7 +516,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     environment[PLATFORM_DB_FILE_ENV] = resolved
     # Announced because a silent correct default and a silent wrong default look identical
     # from outside, and this is the value that decides whether a deployment sees its own data.
-    print(f"[serve] 平台库: {resolved}", file=sys.stderr)
+    print(_t("serve_platform_db", path=resolved), file=sys.stderr)
 
     command = [
         sys.executable,
@@ -572,7 +586,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 "sourceType": item["sourceType"],
                 "driver": item["driverModule"],
                 "available": item["driverAvailable"],
-                "hint": "" if item["driverAvailable"] else item["installHint"],
+                # Empty when the driver is installed: a hint for a problem the reader does not
+                # have is noise on the one screen that answers "why is Oracle not in the list".
+                "hint": "" if item["driverAvailable"] else _driver_hint(item),
             }
             for item in describe_bundled_sql_sources()
         ],
@@ -590,9 +606,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except Exception as error:
         report["initialised"] = False
         report["error"] = str(error)
-        report["hint"] = f"平台库尚未初始化，请先运行 {PROGRAM} init"
+        report["hint"] = _t("platform_db_uninitialized", program=PROGRAM)
     _print(report)
     return 0
+
+
+def _driver_hint(item: dict[str, Any]) -> str:
+    """Why a declared SQL driver is not available, said in the language this invocation uses.
+
+    `doctor` is what an operator runs when something they expected is missing from the list, and
+    this hint is the answer. The declaration carries the sentence *and* a code with the facts it
+    names -- the same pair `advice.py` and the release gates carry -- so the sentence is composed
+    here rather than printed as given. The declaration's own sentence is the fallback for a code
+    this build does not know, which is also what the Chinese side gets: recomposing it there
+    would be a second place for the same sentence to be phrased differently.
+    """
+    code = item.get("installHintCode") or ""
+    facts = item.get("installHintFacts") or {}
+    if _LANGUAGE == "zh" or code not in ("driver_missing_installable", "driver_missing_vendor"):
+        return str(item.get("installHint") or "")
+    return _t(code, **{key: str(value) for key, value in facts.items()})
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -610,13 +643,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
     )
 
     if args.list or not args.suite:
-        _print({"suites": describe_suites(), "note": f"用法: {PROGRAM} verify <suite> [--source-type X | --name Y]"})
+        _print(
+            {
+                "suites": describe_suites(),
+                "note": _t("usage", usage=f"{PROGRAM} verify <suite> [--source-type X | --name Y]"),
+            }
+        )
         return 0
 
     suite = args.suite
     if suite == "data_source_adapter":
         if not args.source_type or not args.uri:
-            return _fail("data_source_adapter 契约需要 --source-type 与 --uri（契约是行为性的，必须连上真实数据源）")
+            return _fail(_t("verify_needs_source"))
         from .adapters import get_adapter
 
         report = check_data_source_adapter(
@@ -633,10 +671,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         name = args.name or ""
         report = check_embedding_model(get_embedding_model(name), subject=name or "default")
     else:
-        return _fail(
-            f"{suite} 契约需要一个活的被测对象，无法从命令行构造。"
-            f"请在代码中调用 ontology_platform.conformance.check_{suite}()，见 docs/extending.md。"
-        )
+        return _fail(_t("verify_needs_live_subject", name=suite))
 
     _print(report.as_dict())
     # Non-zero on failure so this works as a CI gate without extra scripting.
@@ -661,6 +696,12 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         platform_db=_platform_db(args),
         expected_origins=tuple(item.strip() for item in args.expect_origin.split(",") if item.strip()),
         worker_count=args.workers,
+        # `serve` passes the address it is about to bind and blocks on what that makes
+        # exploitable; a manual `preflight` does not know one, so it assumes loopback. Passing
+        # `--listen-host` is how an operator checks before exposing rather than after --
+        # otherwise the same configuration is a warning here and a refusal there, and the
+        # difference looks like a bug in whichever one they ran second.
+        listen_host=args.listen_host,
     )
     _print(report.as_dict())
     if not report.ready:
@@ -677,149 +718,178 @@ def _version() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROGRAM,
-        description="Aletheia：为传统业务系统安装可核验的业务语义内核",
+        description=_t("program_description"),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
+    # Resolved once, before anything can print. `--lang` beats `ONTOLOGY_LANG`, and both are
+    # read here rather than in each command so that a subcommand added tomorrow is covered
+    # without knowing this exists.
+    parser.add_argument("--lang", default="", help=_t("lang_help"))
     # Global, because every subcommand acts on a platform database and threading it
     # through each one separately would let two commands disagree about which.
     parser.add_argument(
         "--platform-db",
         default="",
-        help="平台库路径（默认：源码 checkout 下为 ./data，已安装包为 ~/.aletheia，可用 ONTOLOGY_DATA_DIR 覆盖目录）",
+        help=_t("platform_db_help"),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    init = sub.add_parser("init", help="初始化平台库并创建引导管理员")
+    init = sub.add_parser("init", help=_t("init_help"))
     init.set_defaults(func=cmd_init)
 
-    connect_cmd = sub.add_parser("connect", help="登记传统业务系统并扫描元数据")
-    connect_cmd.add_argument("uri", help="连接串，如 sqlite:///path.db 或 postgresql://...")
-    connect_cmd.add_argument("--name", default="传统业务系统", help="系统名称")
-    connect_cmd.add_argument("--type", default="sqlite", help="数据源类型：sqlite/postgresql/mysql 或已注册类型")
-    connect_cmd.add_argument("--domain", default="", help="业务域，用于推断行业蓝图")
+    connect_cmd = sub.add_parser("connect", help=_t("connect_help"))
+    connect_cmd.add_argument("uri", help=_t("connect_uri_help"))
+    connect_cmd.add_argument("--name", default=_t("connect_name_default"), help=_t("connect_name_help"))
+    connect_cmd.add_argument("--type", default="sqlite", help=_t("connect_type_help"))
+    connect_cmd.add_argument("--domain", default="", help=_t("connect_domain_help"))
     connect_cmd.set_defaults(func=cmd_connect)
 
-    model = sub.add_parser("model", help="从已扫描的数据源生成本体草案")
+    model = sub.add_parser("model", help=_t("model_help"))
     model.add_argument("data_source_id", type=int)
-    model.add_argument("--name", default="", help="本体名称")
-    model.add_argument("--domain", default="", help="业务域")
-    model.add_argument("--blueprint", default="", help="指定行业蓝图 id")
+    model.add_argument("--name", default="", help=_t("model_name_help"))
+    model.add_argument("--domain", default="", help=_t("model_domain_help"))
+    model.add_argument("--blueprint", default="", help=_t("model_blueprint_help"))
     model.set_defaults(func=cmd_model)
 
-    assess = sub.add_parser("assess", help="对一个实例产出判定")
+    assess = sub.add_parser("assess", help=_t("assess_help"))
     assess.add_argument("ontology_id", type=int)
     assess.add_argument("object_code")
     assess.add_argument("instance_id")
-    assess.add_argument("--verbose", action="store_true", help="输出完整证据而非仅判定与未通过规则")
+    assess.add_argument("--verbose", action="store_true", help=_t("assess_evidence_help"))
     assess.add_argument(
         "--as-of",
         default="",
-        help="按该时间点的历史值判定（YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS），用于回答「当时是否合规」",
+        help=_t("assess_asof_help"),
     )
     assess.set_defaults(func=cmd_assess)
 
-    publish = sub.add_parser("publish", help="发布本体版本（受发布门禁约束）")
+    publish = sub.add_parser("publish", help=_t("publish_help"))
     publish.add_argument("ontology_id", type=int)
-    publish.add_argument("--actor", default="cli", help="记入审计的操作者")
-    publish.add_argument("--force", action="store_true", help="覆盖发布门禁，未通过项数会写入审计")
+    publish.add_argument("--actor", default="cli", help=_t("publish_actor_help"))
+    publish.add_argument("--force", action="store_true", help=_t("publish_force_help"))
     publish.set_defaults(func=cmd_publish)
 
-    export_cmd = sub.add_parser("export", help="导出本体：平台词汇（jsonld／turtle）或标准词汇（owl／shacl）")
+    export_cmd = sub.add_parser("export", help=_t("export_help"))
     export_cmd.add_argument("ontology_id", type=int)
     export_cmd.add_argument(
         "--format",
         default="owl",
         choices=("jsonld", "turtle", "owl", "shacl"),
-        help="owl／shacl 为 OWL/RDFS/SHACL 标准词汇，可被外部 RDF 工具解释；jsonld／turtle 为平台词汇，字段更全",
+        help=_t("export_format_help"),
     )
-    export_cmd.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
+    export_cmd.add_argument("--output", default="", help=_t("export_output_help"))
     export_cmd.set_defaults(func=cmd_export)
 
-    audit = sub.add_parser("audit", help="生成一段时间的审计报表（存在阻断级发现时退出码非 0）")
-    audit.add_argument("--start", required=True, help="起始时刻（含），如 2026-08-01")
-    audit.add_argument("--end", required=True, help="结束时刻（不含），如 2026-09-01")
-    audit.add_argument("--ontology-id", type=int, default=None, help="仅统计某个本体")
+    audit = sub.add_parser("audit", help=_t("audit_help"))
+    audit.add_argument("--start", required=True, help=_t("audit_start_help"))
+    audit.add_argument("--end", required=True, help=_t("audit_end_help"))
+    audit.add_argument("--ontology-id", type=int, default=None, help=_t("audit_ontology_help"))
     audit.set_defaults(func=cmd_audit)
 
-    new_cmd = sub.add_parser("new", help="生成一个项目骨架（依赖平台，不是 fork）")
-    new_cmd.add_argument("name", nargs="?", default="", help="项目名，同时作为 Python 包名")
-    new_cmd.add_argument("--directory", default="", help="输出目录，缺省与项目名同名")
+    new_cmd = sub.add_parser("new", help=_t("new_help"))
+    new_cmd.add_argument("name", nargs="?", default="", help=_t("new_name_help"))
+    new_cmd.add_argument("--directory", default="", help=_t("new_output_help"))
     new_cmd.add_argument(
         "--extension",
         action="append",
         default=[],
-        help="要生成的扩展点，可重复。用 --list-extensions 查看可选项",
+        help=_t("new_extension_help"),
     )
-    new_cmd.add_argument("--domain", default="", help="业务域，写入示例配置")
-    new_cmd.add_argument("--list-extensions", action="store_true", help="列出可选扩展点及各自适用场景")
+    new_cmd.add_argument("--domain", default="", help=_t("new_domain_help"))
+    new_cmd.add_argument("--list-extensions", action="store_true", help=_t("new_list_help"))
     new_cmd.set_defaults(func=cmd_new)
 
-    codegen = sub.add_parser("codegen", help="由已发布本体生成 TypeScript 类型与客户端")
+    codegen = sub.add_parser("codegen", help=_t("codegen_help"))
     codegen.add_argument("ontology_id", type=int)
-    codegen.add_argument("--output", default="", help="输出文件路径；缺省写到标准输出")
+    codegen.add_argument("--output", default="", help=_t("export_output_help"))
     codegen.add_argument(
         "--allow-draft",
         action="store_true",
-        help="允许从草案生成（仅供本地迭代：草案的对象与属性会在映射审核期间变动）",
+        help=_t("codegen_allow_draft_help"),
     )
     codegen.set_defaults(func=cmd_codegen)
 
-    demo = sub.add_parser("demo", help="用内置样例系统跑通完整闭环")
-    demo.add_argument("--sample-db", default="", help="样例业务库输出路径")
+    demo = sub.add_parser("demo", help=_t("demo_help"))
+    demo.add_argument("--sample-db", default="", help=_t("demo_sample_db_help"))
     demo.add_argument(
         "--quiet",
         action="store_true",
-        help="只输出最终结果文档（便于脚本解析；初始化产生的引导口令仍会写入日志）",
+        help=_t("demo_quiet_help"),
     )
     demo.set_defaults(func=cmd_demo)
 
-    passwd = sub.add_parser("passwd", help="重置某个账号的口令（引导口令只打印一次，这是找回路径）")
-    passwd.add_argument("--username", default="admin", help="要重置的账号，默认 admin")
-    passwd.add_argument("--password", default="", help="新口令；缺省则交互式输入，避免进入 shell 历史")
-    passwd.add_argument("--actor", default="cli", help="写入审计的操作者标识")
+    passwd = sub.add_parser("passwd", help=_t("passwd_help"))
+    passwd.add_argument("--username", default="admin", help=_t("passwd_username_help"))
+    passwd.add_argument("--password", default="", help=_t("passwd_password_help"))
+    passwd.add_argument("--actor", default="cli", help=_t("passwd_actor_help"))
     passwd.set_defaults(func=cmd_passwd)
 
-    serve = sub.add_parser("serve", help="启动 HTTP 服务")
-    serve.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")
+    serve = sub.add_parser("serve", help=_t("serve_help"))
+    serve.add_argument("--host", default="127.0.0.1", help=_t("serve_host_help"))
     serve.add_argument("--port", type=int, default=8000)
-    serve.add_argument("--workers", type=int, default=1, help="工作进程数；SQLite 生产部署应保持 1")
+    serve.add_argument("--workers", type=int, default=1, help=_t("serve_workers_help"))
     serve.add_argument(
         "--log-level",
         default="info",
         choices=("trace", "debug", "info", "warning", "error", "critical"),
-        help="Uvicorn 日志级别",
+        help=_t("serve_log_level_help"),
     )
-    serve.add_argument("--reload", action="store_true", help="开发模式自动重载")
+    serve.add_argument("--reload", action="store_true", help=_t("serve_reload_help"))
     serve.add_argument(
         "--skip-preflight",
         action="store_true",
-        help="监听非本机地址时跳过部署前自检（不建议：自检拦的正是免鉴权暴露这类问题）",
+        help=_t("serve_skip_preflight_help"),
     )
     serve.set_defaults(func=cmd_serve)
 
-    doctor = sub.add_parser("doctor", help="报告当前配置、已安装 extra 与已注册扩展点")
+    doctor = sub.add_parser("doctor", help=_t("doctor_help"))
     doctor.set_defaults(func=cmd_doctor)
 
-    verify = sub.add_parser("verify", help="对已注册的扩展运行一致性契约（失败时退出码非 0，可作 CI 门禁）")
-    verify.add_argument("suite", nargs="?", default="", help="契约名称，留空或加 --list 查看全部")
-    verify.add_argument("--list", action="store_true", help="列出全部契约及其对应扩展点")
-    verify.add_argument("--source-type", default="", help="data_source_adapter 契约：被测数据源类型")
-    verify.add_argument("--uri", default="", help="data_source_adapter 契约：连接串（需含至少一表一行）")
-    verify.add_argument("--table", default="", help="data_source_adapter 契约：期望扫描到的表名")
-    verify.add_argument("--name", default="", help="检索后端／嵌入模型契约：已注册名称，留空用默认")
+    verify = sub.add_parser("verify", help=_t("verify_help"))
+    verify.add_argument("suite", nargs="?", default="", help=_t("verify_name_help"))
+    verify.add_argument("--list", action="store_true", help=_t("verify_list_help"))
+    verify.add_argument("--source-type", default="", help=_t("verify_source_type_help"))
+    verify.add_argument("--uri", default="", help=_t("verify_uri_help"))
+    verify.add_argument("--table", default="", help=_t("verify_table_help"))
+    verify.add_argument("--name", default="", help=_t("verify_subject_help"))
     verify.set_defaults(func=cmd_verify)
 
-    preflight = sub.add_parser("preflight", help="部署前自检：配置在生产环境是否安全（阻断项存在时退出码非 0）")
-    preflight.add_argument("--list", action="store_true", help="列出全部检查项")
-    preflight.add_argument("--environment", default="production", help="环境名称，仅用于报告标注")
-    preflight.add_argument("--workers", type=int, default=1, help="计划启动的工作进程数（用于判断 SQLite 是否合适）")
-    preflight.add_argument("--expect-origin", default="", help="逗号分隔的前端来源，校验它们确实在 CORS 允许列表中")
+    preflight = sub.add_parser("preflight", help=_t("preflight_help"))
+    preflight.add_argument("--list", action="store_true", help=_t("preflight_list_help"))
+    preflight.add_argument(
+        "--listen-host",
+        default="",
+        help=_t("preflight_listen_host_help"),
+    )
+    preflight.add_argument("--environment", default="production", help=_t("preflight_environment_help"))
+    preflight.add_argument("--workers", type=int, default=1, help=_t("preflight_workers_help"))
+    preflight.add_argument("--expect-origin", default="", help=_t("preflight_origin_help"))
     preflight.set_defaults(func=cmd_preflight)
 
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Entry point: resolve the language, then run the parsed command."""
+    global _LANGUAGE
+
+    # The language has to be known *before* the parser is built, because the help text is one of
+    # the things being translated -- and `--lang` is parsed by that parser. So it is read out of
+    # the raw arguments here, accepting both `--lang en` and `--lang=en`, and `argparse` then
+    # sees it again as an ordinary flag. Reading it after parsing would leave `--help` in
+    # Chinese for the reader who asked for English, which is the one invocation where the
+    # language matters most.
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
+    explicit = ""
+    for index, token in enumerate(raw_argv):
+        if token.startswith("--lang="):
+            explicit = token.split("=", 1)[1]
+        elif token == "--lang" and index + 1 < len(raw_argv):
+            explicit = raw_argv[index + 1]
+    from .cli_messages import resolve_language
+
+    _LANGUAGE = resolve_language(explicit)
+
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

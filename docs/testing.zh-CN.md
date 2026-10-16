@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1811 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1824 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -42,8 +42,9 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
 | `test_query_limit_clamping.py` | 8 | 调用方给的 `limit` 无法越过上限把整张表取走（SQLite 把 `LIMIT -1` 读作「不限制」） |
 | `test_list_pagination.py` | 17 | 每个随客户数据增长的列表都接受分页；不传 limit 仍然返回全部 |
-| `test_connection_pool.py` | 13 | 池化连接绝不会交给 schema 或数据库不同的上下文，也绝不会带着未结束的事务被归还 |
+| `test_connection_pool.py` | 14 | 池化连接绝不会交给 schema 或数据库不同的上下文，也绝不会带着未结束的事务被归还 |
 | `test_framework_readiness.py` | 9 | 框架成熟度那一页上的每条引用仍然成立，且缺口清单还在 |
+| `test_cli_language.py` | 12 | CLI 自己的句子双语，包括「由解析器产出、而 `--lang` 也由它解析」的帮助文本 |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -225,7 +226,7 @@ job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单
 
 ## 规模
 
-91 个后端模块约 38500 行，156 个 API 端点，45 张平台表，前端 React + antd。
+92 个后端模块约 38800 行，156 个 API 端点，45 张平台表，前端 React + antd。
 
 CI 另有一个 `scaffold` job，走的是**新部署**那条路——`aletheia new`、安装、`init`、
 `connect`、`model`、`verify.py`——因为那条路上的三个缺陷都是**靠人工走一遍**发现的，

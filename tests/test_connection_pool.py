@@ -239,3 +239,32 @@ def test_a_nonsensical_size_is_clamped_rather_than_trusted(size: int) -> None:
     pool = ConnectionPool(size=size)
     assert pool.size >= 0
     assert pool.enabled is False
+
+
+def test_the_default_is_on_for_network_databases_and_irrelevant_for_sqlite() -> None:
+    """Why a non-zero default is safe here, asserted rather than argued.
+
+    A feature nobody turns on is a feature that does not exist, and the reason for leaving this
+    off -- "it changes how many connections a deployment holds open" -- does not survive the
+    SQLite exception: SQLite is never pooled whatever the setting, and most deployments run
+    SQLite. So the default only ever affects PostgreSQL and MySQL, which are the deployments that
+    gain from it.
+    """
+    from ontology_platform.config import CONNECTION_POOL
+
+    assert CONNECTION_POOL.size > 0, (
+        "默认值被改回 0 了。那会让这个特性只存在于文档里——请连同这一段一起改，而不是只改配置。"
+    )
+
+    # And the exception the argument rests on, restated where the default lives.
+    from ontology_platform import connection_pool
+    from ontology_platform.context import PlatformContext
+
+    pool = connection_pool._reset_pool(CONNECTION_POOL.size)
+    try:
+        context = PlatformContext(db_type="sqlite", connection_uri=":memory:")
+        with context.connect() as connection:
+            assert connection._pool is None, "SQLite 不应被池化，无论默认值是多少"
+        assert pool.reused == 0
+    finally:
+        connection_pool._reset_pool(0)

@@ -10,6 +10,39 @@
 
 ### Added
 
+- **CLI 也会说英文了**（`cli_messages.py`、`cli.py`、`generic_sql_adapter.py`、
+  `tests/test_cli_language.py`）。
+  控制台双语很久了，`aletheia` 没有——而它是采用者最先碰到的东西：`aletheia --help`、
+  `aletheia demo`、`aletheia new`。`--lang en`（或 `ONTOLOGY_LANG`）覆盖它**关于自己所说的一切**：
+  帮助文本、自己的错误、它拼出来描述刚做完什么的句子、以及 `doctor` 里解释「为什么这个驱动不可用」的提示；
+  不翻译的是它打印的 JSON——那是 API 的输出，理由与英文控制台回落到它相同。
+
+  两处值得记下来：
+  **帮助文本是最难的一半**，因为它由解析器产出、而 `--lang` 也由那个解析器解析——
+  解析之后再决定语言，会让要英文的那位读者看到中文的 `--help`，而那恰恰是最需要它的那次调用。
+  所以语言是从原始 argv 里先读出来的，`argparse` 随后当作普通参数再看一遍。
+
+  **`doctor` 的驱动提示不能就地翻译**：它是适配器声明里的平台句子。
+  于是按本项目既有的做法（`advice.py`、发布门禁）给它加了**码与事实**，
+  由显示方拼句子——`driver_missing_installable`（在 PyPI 上）与 `driver_missing_vendor`
+  （随客户端提供，`pip install` 是错的建议），认不出的码回落到声明里那句。
+
+  写这段时我自己踩了一次：加码的那次替换把 `install_hint=` 整行吃掉了，
+  而**英文路径是从码组装的**，正好把「中文句子没了」这件事盖住——中文那一侧才暴露出来。
+
+- **组件测试：把「每行都是空的列」变成单元测试**（`TableColumns.test.tsx`、`test-setup.ts`、
+  `vitest.config.ts`、jsdom 与 Testing Library）。
+  七次「整列为空」都是同一形状：antd 对 `dataIndex` 不存在就是什么都不画，
+  于是类型过了、linter 过了、请求也成功了。浏览器扫描能报，但它要真浏览器加活实例，
+  属于「谁想起来谁跑」的诊断而不是每次改动的门禁。现在同样的读法在进程内做：
+  用端点真实发出的行渲染真实组件，断言每个单元格有字。
+  验证过能失败——把一列的 `dataIndex` 改回 wire 拼写，测试**点名那一列**（`expected [ '类型' ]`）。
+
+  它自己第一次跑就抓到了写它的人：**fixture 是我凭记忆写的**，`snake_case` 而端点发 camelCase、
+  值用的 `column`／`table` 而真实词汇是 `column_to_attribute`／`table_to_object`——
+  于是它对一个正确的页面报了三个空列和一个原始枚举。**测试的好坏只等于交给它的载荷**，
+  这一点写进了文件头。
+
 - **框架成熟度有了可核对的一页**（`docs/framework-readiness.md`、`tests/test_framework_readiness.py`、
   `README.md`、`README.zh-CN.md`）。
   其余文档说的都是这套平台**做什么**；这一页回答评估者真正会问的那个问题：

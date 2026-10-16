@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1811 tests**, all passing. A case that needs something this machine does not have skips
+**1824 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -48,8 +48,9 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_error_codes.py` | 8 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
 | `test_query_limit_clamping.py` | 8 | A caller-supplied `limit` cannot widen a response past the cap (SQLite reads `LIMIT -1` as "no limit") |
 | `test_list_pagination.py` | 17 | Every list that grows with the customer's data takes a page; not passing a limit still returns everything |
-| `test_connection_pool.py` | 13 | A pooled connection is never handed to a context whose schema or database differs, and never returned with an open transaction |
+| `test_connection_pool.py` | 14 | A pooled connection is never handed to a context whose schema or database differs, and never returned with an open transaction |
 | `test_framework_readiness.py` | 9 | Every citation on the framework-readiness page still resolves, and its gap list is still there |
+| `test_cli_language.py` | 12 | The CLI's own sentences in both languages, including the help text a flag parsed by the parser cannot otherwise reach |
 | `test_instance_resolvers.py` | 57 | Instance resolvers: the conformance suite |
 | `test_sql_dialects_and_generic_adapter.py` | 54 | SQL dialect profiles and the generic DB-API adapter |
 | `test_cross_object_aggregation.py` | 46 | Cross-object aggregation: rules that reason over more than one instance |
@@ -262,7 +263,7 @@ which holds the two languages to the same placeholders and the same keys.
 
 ## Scale
 
-91 backend modules, roughly 38,500 lines, 156 API endpoints, 45 platform tables, React +
+92 backend modules, roughly 38,800 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `scaffold` job that walks the path a *new* deployment takes --
