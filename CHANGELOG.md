@@ -471,6 +471,14 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **英文里的「1 conversations」**（`workbench.ts`、`workbench/index.tsx`、`tests/test_ui_messages.py`）。
+  工作台的事项标题里带着计数，而英文只有复数形式：只剩一条会话待接手时，
+  第一屏上写的是「1 conversations were escalated」。计数为 1 时改用 `<key>.one`
+  （中文那两条一字不差——它本来就只有一种形式）。
+  守护测试**按占位符而不是按清单**来要求单数形式：凡是标题里含 `{count}` 的，
+  就必须有对应的 `.one` 条目，因此新加一个带计数的标题没法绕过这一条。
+  字典的其余部分仍是「只有复数」——框架没有复数支持，而这两处是控制台自己拼的句子。
+
 - **英文句子里夹着的中文数字**（`i18n/text.ts`、`ontology.ts`、`ontology.py`、
   `OntologyList.tsx`、`DemoCenter.tsx`、`tests/test_ui_messages.py`）。
   `discardedReport` 那一行英文读作「The draft was rebuilt; the previous {summary} was cleared with it」，

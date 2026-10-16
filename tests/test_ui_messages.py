@@ -144,6 +144,17 @@ def test_the_workbench_action_items_speak_the_readers_language() -> None:
     unknown = sorted(key for key in missing if key not in declared)
     assert not unknown, f"字典里缺少这些句子，英文界面上会露出服务端的中文：{unknown}"
 
+    # Every title that interpolates a count needs an English singular: `itemText` picks
+    # `<key>.one` at exactly one, and 「1 conversations were escalated」 on the first screen is
+    # the kind of English that reads as machine output. Keyed on the placeholder rather than on
+    # a list, so a new count-bearing title cannot ship without its pair.
+    singular = sorted(
+        key
+        for key in missing
+        if key.endswith(".title") and "{count}" in _entries()[key]["en"] and f"{key}.one" not in declared
+    )
+    assert not singular, f"这些标题带 {{{{count}}}} 却没有英文单数形式：{singular}"
+
 
 def test_the_rebuild_summary_is_composed_from_the_counts_not_quoted() -> None:
     """The server's sentence is Chinese, and it was being interpolated into an English one.

@@ -59,7 +59,10 @@ const WorkbenchPage: React.FC = () => {
   const itemText = (item: WorkbenchActionItem, field: 'title' | 'detail'): string => {
     const keys = ITEM_CODES[item.code];
     if (!keys) return item[field];
-    return t(keys[field] as never, { count: item.count });
+    // The count-bearing titles have an English singular (`<key>.one`); the details do not take
+    // a count at all. Chinese has one form, so its two entries read the same.
+    const key = field === 'title' && item.count === 1 ? `${keys.title}.one` : keys[field];
+    return t(key as never, { count: item.count });
   };
   const [data, setData] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
