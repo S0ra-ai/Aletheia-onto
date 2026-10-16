@@ -507,7 +507,7 @@ def get_model_config(platform_db: PlatformDb) -> dict[str, Any]:
     }
 
 
-def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dict[str, Any]:
+def update_model_config(platform_db: PlatformDb, payload: dict[str, Any], *, actor: str = "system") -> dict[str, Any]:
     current = OpenRouterConfig.from_db_or_env(platform_db)
     api_key = payload.get("apiKey")
     if api_key is None or api_key == "":
@@ -583,7 +583,7 @@ def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dic
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
             (
-                "system",
+                actor,
                 "update_model_config",
                 "model_config",
                 "1",
@@ -593,12 +593,31 @@ def update_model_config(platform_db: PlatformDb, payload: dict[str, Any]) -> dic
     return {"success": True, "message": "模型配置已保存。"}
 
 
-def reset_model_config(platform_db: PlatformDb) -> dict[str, Any]:
+def reset_model_config(platform_db: PlatformDb, *, actor: str = "system") -> dict[str, Any]:
+    """Drop the stored configuration, falling back to the environment.
+
+    The audit row names what went: whether a key was stored, and which model and endpoint were
+    discarded. Read from the row itself rather than from the resolved configuration -- after a
+    reset the resolution falls back to the environment, so a deployment with `ONTOLOGY_MODEL`
+    set would report a key that was never in the table. The key's value is never written: an
+    audit log is read by more people than a credential store, and the table that answers "who
+    reset this" must not become the place the credential survives. But `detail: {}` answered
+    nothing at all -- an administrator reading this row afterwards could not tell whether a key
+    had just been destroyed or whether there had never been one.
+    """
     with connect(platform_db) as conn:
+        stored = conn.execute("select provider, api_key, model, base_url from model_config where id = 1").fetchone()
+        detail = {
+            "provider": stored["provider"] if stored else "",
+            "model": stored["model"] if stored else "",
+            "baseUrl": stored["base_url"] if stored else "",
+            "hasApiKey": bool(stored["api_key"]) if stored else False,
+            "hadStoredConfig": stored is not None,
+        }
         conn.execute("delete from model_config where id = 1")
         conn.execute(
             "insert into audit_log (actor, action, target_type, target_id, detail) values (?, ?, ?, ?, ?)",
-            ("system", "reset_model_config", "model_config", "1", "{}"),
+            (actor, "reset_model_config", "model_config", "1", json.dumps(detail, ensure_ascii=False)),
         )
     return {"success": True, "message": "模型配置已重置为环境变量默认值。"}
 

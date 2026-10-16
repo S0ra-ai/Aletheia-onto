@@ -20,13 +20,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..audit_reports import AuditPeriodError, build_audit_report, describe_report_sections
+from ..auth import Principal
 from ..database import connect
 from ..decisions import list_decisions
-from ..http_runtime import platform_db
+from ..http_runtime import current_principal, platform_db
 from ..model_client import (
     OpenRouterClient,
     OpenRouterConfig,
@@ -80,13 +81,19 @@ def get_openrouter_config() -> dict[str, object]:
 
 
 @router.post("/model/config")
-def update_openrouter_config(payload: ModelConfigUpdate) -> dict[str, object]:
-    return update_model_config(platform_db(), payload.model_dump(exclude_unset=True))
+def update_openrouter_config(
+    payload: ModelConfigUpdate,
+    principal: Principal = Depends(current_principal),
+) -> dict[str, object]:
+    return update_model_config(platform_db(), payload.model_dump(exclude_unset=True), actor=principal.actor)
 
 
 @router.delete("/model/config")
-def reset_openrouter_config() -> dict[str, object]:
-    return reset_model_config(platform_db())
+def reset_openrouter_config(principal: Principal = Depends(current_principal)) -> dict[str, object]:
+    # `actor` rather than the literal "system" both writers used: these routes sit behind
+    # `CAP_ADMIN`, so the caller is a person, and a configuration audit that says "system"
+    # for a human action names nobody -- which is the one thing an audit row exists to do.
+    return reset_model_config(platform_db(), actor=principal.actor)
 
 
 @router.get("/model/config/test")

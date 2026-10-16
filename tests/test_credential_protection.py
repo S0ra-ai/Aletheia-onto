@@ -13,7 +13,7 @@ from pathlib import Path
 from ontology_platform.credentials import mask_secret, redact_connection_uri, redact_headers
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.metadata import list_data_sources, register_data_source
-from ontology_platform.model_client import get_model_config, update_model_config
+from ontology_platform.model_client import get_model_config, reset_model_config, update_model_config
 from ontology_platform.onboarding import run_onboarding_pipeline
 from ontology_platform.sample_data import create_contract_sample_db
 
@@ -107,3 +107,65 @@ def test_model_config_never_returns_the_raw_api_key(tmp_path: Path) -> None:
     config = get_model_config(platform_db)
     assert SECRET not in json.dumps(config, ensure_ascii=False)
     assert config["hasApiKey"] is True
+
+
+def test_resetting_the_model_config_records_what_it_destroyed(tmp_path: Path) -> None:
+    """The audit row has to survive the reset, and has to say what stopped existing.
+
+    Two things were wrong with it. `actor` was the literal `"system"` while the route sits
+    behind `CAP_ADMIN`, so the one row that records a destructive administrative action named
+    nobody who could have done it. And `detail` was `{}`, so an administrator reading the log
+    afterwards could not tell whether a key had just been destroyed or whether there had never
+    been one -- the difference between "we need to re-enter the key" and "the model has been
+    broken for a week".
+
+    The key's *value* is still never written: this table is read by more people than a
+    credential store, and an audit log that quoted the secret would be a worse leak than the
+    one it documents.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+    update_model_config(
+        platform_db,
+        {"apiKey": f"or-{SECRET}-tail", "model": "openai/gpt-4o", "baseUrl": "https://relay.example.com/v1"},
+    )
+
+    reset_model_config(platform_db, actor="alice")
+
+    with connect(platform_db) as conn:
+        row = conn.execute(
+            "select actor, detail from audit_log where action = 'reset_model_config' order by id desc"
+        ).fetchone()
+    assert row is not None, "重置没有留下任何审计记录"
+    assert row["actor"] == "alice", f"审计把管理员的操作记成了「{row['actor']}」"
+    assert SECRET not in row["detail"], f"审计记录里出现了密钥本身：{row['detail']}"
+
+    detail = json.loads(row["detail"])
+    assert detail["hasApiKey"] is True, "审计没有说明这次重置删掉了一把密钥"
+    assert detail["model"] == "openai/gpt-4o"
+    assert detail["baseUrl"] == "https://relay.example.com/v1"
+
+    # And the reset really reset: the stored row is gone, so reads fall back to the
+    # environment rather than to half of the discarded configuration.
+    assert get_model_config(platform_db)["source"] != "database"
+
+
+def test_resetting_an_unconfigured_platform_says_so(tmp_path: Path) -> None:
+    """`detail` has to distinguish "a key was destroyed" from "there was nothing to destroy".
+
+    The resolved configuration cannot answer this: with `ONTOLOGY_MODEL_API_KEY` set in the
+    environment, a deployment that never saved anything still reports a key. Read from the
+    stored row instead.
+    """
+    platform_db = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform_db)
+
+    reset_model_config(platform_db, actor="alice")
+
+    with connect(platform_db) as conn:
+        row = conn.execute(
+            "select detail from audit_log where action = 'reset_model_config' order by id desc"
+        ).fetchone()
+    detail = json.loads(row["detail"])
+    assert detail["hasApiKey"] is False
+    assert detail["hadStoredConfig"] is False

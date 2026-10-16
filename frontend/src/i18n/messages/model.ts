@@ -29,6 +29,16 @@ export const model: Record<string, MessageEntry> = {
   'saveFailed': { zh: '保存失败', en: 'Could not save the configuration' },
   'resetDone': { zh: '配置已重置', en: 'Configuration reset' },
   'resetFailed': { zh: '重置失败', en: 'Could not reset the configuration' },
+  'resetConfirmTitle': { zh: '重置为默认值？', en: 'Reset to defaults?' },
+  'resetConfirmBody': {
+    zh: '这会删除库里保存的模型配置（含 API Key），回到环境变量提供的那一套。删掉的密钥无法从界面上找回，只能重新填写。',
+    en: 'This deletes the saved model configuration, including its API key, and falls back to whatever the environment provides. A key deleted here cannot be read back from the console — it has to be entered again.',
+  },
+  'resetConfirmButton': { zh: '重置', en: 'Reset' },
+  'resetNoKeyWarning': {
+    zh: '当前配置里有一把 API Key，重置会把它删掉。',
+    en: 'The saved configuration holds an API key; resetting deletes it.',
+  },
   'testSucceeded': { zh: '连接测试成功', en: 'Connection test succeeded' },
   'testFailed': { zh: '测试失败', en: 'The connection test failed' },
   'presetApplied': { zh: '已套用「{name}」预设，请补齐密钥后保存', en: 'Applied the {name} preset. Add the key, then save.' },

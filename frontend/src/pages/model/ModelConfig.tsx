@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Descriptions, Divider, Form, Input, InputNumber, Select,
+  Alert, Button, Card, Descriptions, Divider, Form, Input, InputNumber, Popconfirm, Select,
   Space, Spin, Switch, Tag, Tooltip, Typography, message,
 } from 'antd';
 import {
@@ -381,9 +381,27 @@ const ModelConfigPage: React.FC = () => {
             <Button icon={<ApiOutlined />} onClick={handleTest} loading={testLoading}>
               {t('model.testButton')}
             </Button>
-            <Button icon={<UndoOutlined />} onClick={handleReset} danger>
-              {t('model.resetButton')}
-            </Button>
+            <Popconfirm
+              title={t('model.resetConfirmTitle')}
+              description={
+                <>
+                  <div>{t('model.resetConfirmBody')}</div>
+                  {/* The warning is only true when there is a key to lose, and a modal that
+                      cries wolf on every reset is one people click through. */}
+                  {config?.hasApiKey && (
+                    <div style={{ marginTop: 8, fontWeight: 500 }}>{t('model.resetNoKeyWarning')}</div>
+                  )}
+                </>
+              }
+              okText={t('model.resetConfirmButton')}
+              cancelText={t('shell.common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleReset()}
+            >
+              <Button icon={<UndoOutlined />} danger>
+                {t('model.resetButton')}
+              </Button>
+            </Popconfirm>
           </Space>
         </Form>
 
