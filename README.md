@@ -95,6 +95,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 | 🔗 **Standard vocabulary** | Export OWL/RDFS and SHACL that external tools can *interpret*, not merely parse — an outside SPARQL query can answer "which class may relate to which". |
 | 🔐 **Multi-tenant & SSO** | Separate schema plus a `tenant_id` column, quotas the tenant cannot raise, and JWT SSO where an unmapped identity gets **no** access rather than a default role. |
 | 🛡️ **Deployment preflight** | `aletheia preflight` blocks the silent misconfigurations: a leftover auth switch, a wildcard CORS, SQLite with multiple workers. `serve` refuses to expose an unsafe config. |
+| 🌐 **Bilingual console** | Chinese-first and completely English — every screen, every status chip, and the sentences the server composes. The switch is in the header; `?lang=en` pins the language for a link or a kiosk. The CLI and the API's own error text stay Chinese. |
 | 🧾 **Audit reports** | Which published rules **never fired** this period, which publications overrode the gate, and how much of the period is re-examinable at all. |
 
 → **[Full capability matrix](docs/capabilities.md)** · [Current limitations](docs/limitations.md)

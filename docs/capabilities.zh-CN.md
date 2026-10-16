@@ -137,3 +137,6 @@
 | 定时调度器 | 📋 | 无任何 scheduler／cron |
 
 | MQ／RPC／直写库／存储过程内置执行器 | 📋 | 未内置，但可自行注册，见[扩展指南](extending.md) |
+| **管理控制台**（React + antd，上面每项能力都有页面） | ✅ | `frontend/` |
+| **中英双语控制台**（中文优先、英文完整；`?lang=en` 可以给链接钉住语言） | ✅ | `frontend/src/i18n/`、`test_ui_messages.py` |
+| 服务端自身错误文本的语言 | ⚠️ | 156 个端点的 `detail` 是中文；界面按 code 翻译拿到的那些句子，其余照原样显示 |

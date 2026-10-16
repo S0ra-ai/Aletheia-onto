@@ -77,4 +77,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 | Ontology import (SHACL / reasoner) | 📋 | export only |
 | **Cross-source entity resolution** (one object spanning two sources; matching is declared) | ✅ | `entity_resolution.py` |
 | **Cross-source aggregates** ("this customer's order total in the ERP") | ✅ | `aggregation.py`: `targetDataSourceId` |
+| **Admin console** (React + antd; every capability above has a screen) | ✅ | `frontend/` |
+| **Bilingual console** (Chinese-first, complete English; `?lang=en` pins it for a link) | ✅ | `frontend/src/i18n/`, `test_ui_messages.py` |
+| Console *copy* in the server's own error text | ⚠️ | the 156 endpoints' `detail` strings are Chinese; the console translates the sentences it is given codes for and shows the rest as sent |
 | Split into multiple PyPI distributions | 📋 | single package + extras for now |
