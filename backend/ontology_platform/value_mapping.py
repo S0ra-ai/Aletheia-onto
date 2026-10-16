@@ -27,8 +27,7 @@ from typing import Any
 
 from .context import PlatformDb
 from .database import connect, last_insert_id
-
-MAPPING_TYPE = "value_to_state"
+from .relations import MAPPING_VALUE_TO_STATE
 
 # `source_ref` is "table.column", `target_ref` is the semantic state name, and
 # the raw value lives in `evidence` as JSON so the pair stays queryable without
@@ -77,7 +76,7 @@ def register_value_mapping(
             select id from semantic_mapping
             where ontology_id = ? and mapping_type = ? and source_ref = ? and evidence = ?
             """,
-            (ontology_id, MAPPING_TYPE, source_ref, evidence),
+            (ontology_id, MAPPING_VALUE_TO_STATE, source_ref, evidence),
         ).fetchone()
         if existing is not None:
             conn.execute(
@@ -94,7 +93,7 @@ def register_value_mapping(
                 """,
                 (
                     ontology_id,
-                    MAPPING_TYPE,
+                    MAPPING_VALUE_TO_STATE,
                     source_ref,
                     state_name,
                     confidence,
@@ -133,7 +132,7 @@ def load_value_mappings_in_connection(
         select source_ref, target_ref, evidence from semantic_mapping
         where ontology_id = ? and mapping_type = ? and status in ({placeholders})
         """,
-        (ontology_id, MAPPING_TYPE, *statuses),
+        (ontology_id, MAPPING_VALUE_TO_STATE, *statuses),
     ).fetchall()
     mappings: dict[str, dict[str, str]] = {}
     for row in rows:

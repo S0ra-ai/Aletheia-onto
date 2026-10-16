@@ -4,7 +4,8 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { governanceApi, requestErrorMessage } from '../../api';
 import type { AuditLogItem, ModelInvocationItem, DecisionRecordItem } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
-import { useT } from '../../i18n/locale';
+import { CALL_STATUS, DECISION_STATUS, DECISION_TYPE } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import AuditReportPanel from './AuditReportPanel';
 
 const { Title } = Typography;
@@ -12,6 +13,7 @@ const { TabPane } = Tabs;
 
 const Governance: React.FC = () => {
   const t = useT();
+  const label = useLabel();
   const [tab, setTab] = useTabParam('audit');
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [modelInvocations, setModelInvocations] = useState<ModelInvocationItem[]>([]);
@@ -114,7 +116,7 @@ const Governance: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'success' ? 'green' : 'red'}>{status}</Tag>
+        <Tag color={status === 'success' ? 'green' : 'red'}>{label(CALL_STATUS, status)}</Tag>
       ),
     },
     {
@@ -134,15 +136,15 @@ const Governance: React.FC = () => {
       title: t('governance.column.type'),
       dataIndex: 'decisionType',
       key: 'decisionType',
-      render: (type: string) => <Tag color="blue">{type}</Tag>,
+      render: (type: string) => <Tag color="blue">{label(DECISION_TYPE, type)}</Tag>,
     },
     {
       title: t('governance.column.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'approved' || status === 'ready_for_execution' || status === 'executed' ? 'green' : status === 'review' ? 'orange' : 'red'}>
-          {status}
+        <Tag color={status === 'approved' ? 'green' : status === 'review' ? 'orange' : 'red'}>
+          {label(DECISION_STATUS, status)}
         </Tag>
       ),
     },

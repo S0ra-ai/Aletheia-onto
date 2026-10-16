@@ -8,6 +8,15 @@ from uuid import uuid4
 from .context import PlatformDb
 from .database import connect
 
+# What a decision record is *about*. Three writers, one vocabulary, and the console labels
+# it -- so it is declared as data for the same reason as `governance.VALID_MAPPING_STATUSES`:
+# `tests/test_documented_claims.py` checks the frontend's `DECISION_TYPE` map against it, and
+# a value with no entry renders the raw identifier in both languages.
+INSTANCE_ASSESSMENT = "instance_assessment"
+OPERATION_PREFLIGHT = "operation_preflight"
+OPERATION_EXECUTION = "operation_execution"
+DECISION_TYPES = (INSTANCE_ASSESSMENT, OPERATION_PREFLIGHT, OPERATION_EXECUTION)
+
 
 def record_decision(
     platform_db: PlatformDb,

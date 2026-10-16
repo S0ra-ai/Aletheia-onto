@@ -189,7 +189,7 @@ const SemanticService: React.FC = () => {
       title: t('semantic.decision'),
       dataIndex: 'decision',
       key: 'decision',
-      render: (decision: string) => <Tag color={decisionColor(decision)}>{decision}</Tag>,
+      render: (decision: string) => <Tag color={decisionColor(decision)}>{label(DECISION_STATUS, decision)}</Tag>,
     },
     {
       title: t('semantic.failedRuleCount'),

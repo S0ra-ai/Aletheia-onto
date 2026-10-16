@@ -72,6 +72,15 @@ AGGREGATION = "aggregation"
 ASSOCIATION = "association"
 RELATION_KINDS = (COMPOSITION, AGGREGATION, ASSOCIATION)
 
+# What a `semantic_mapping` row connects. Declared as data for the same reason as
+# `CARDINALITIES`: `tests/test_documented_claims.py` checks the frontend's `MAPPING_TYPE`
+# label map against it, and a value with no entry renders the raw identifier in both
+# languages -- which is what the first column of the mapping review queue used to show.
+MAPPING_TABLE_TO_OBJECT = "table_to_object"
+MAPPING_COLUMN_TO_ATTRIBUTE = "column_to_attribute"
+MAPPING_VALUE_TO_STATE = "value_to_state"
+MAPPING_TYPES = (MAPPING_TABLE_TO_OBJECT, MAPPING_COLUMN_TO_ATTRIBUTE, MAPPING_VALUE_TO_STATE)
+
 # The inverse of each cardinality, used to describe the reverse direction.
 INVERSE_CARDINALITY = {
     ONE_TO_ONE: ONE_TO_ONE,

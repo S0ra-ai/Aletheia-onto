@@ -165,7 +165,10 @@ const WorkflowManager: React.FC = () => {
     { title: t('workflow.object'), dataIndex: 'objectCode', key: 'objectCode', render: (v: string) => <Tag>{v}</Tag> },
     { title: t('workflow.ontology'), dataIndex: 'ontologyId', key: 'ontologyId' },
     { title: t('workflow.initialState'), dataIndex: 'initialState', key: 'initialState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
-    { title: t('workflow.status'), dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'active' ? 'green' : 'default'}>{v}</Tag> },
+    // No status column. `workflow_definition.status` is `active` and nothing ever changes
+    // it -- deleting a workflow removes the row -- so every cell read the same word, in
+    // English, under a heading that promises a lifecycle. Same reasoning as the detail
+    // panel's removed row, and the same fix: a field that cannot vary is not a column.
     {
       title: t('shell.common.actions'), key: 'action', width: 280,
       render: (_: any, record: WorkflowDefinition) => (

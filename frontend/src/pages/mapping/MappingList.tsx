@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MAPPING_STATUS, ONTOLOGY_STATUS } from '../../i18n/labels';
+import { MAPPING_STATUS, MAPPING_TYPE, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
@@ -77,7 +77,7 @@ const MappingList: React.FC = () => {
       title: t('mapping.colMappingType'),
       dataIndex: 'mappingType',
       key: 'mappingType',
-      render: (type: string) => <Tag>{type}</Tag>,
+      render: (type: string) => <Tag>{label(MAPPING_TYPE, type)}</Tag>,
     },
     {
       title: t('mapping.colSourceTable'),

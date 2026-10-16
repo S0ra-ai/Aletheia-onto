@@ -135,6 +135,31 @@ export const EXECUTION_STATUS: LabelMap = {
 };
 
 /**
+ * How a call to the outside world ended: a model invocation, or an agent's tool execution.
+ *
+ * One map for both because both write the same two words (`agent.py` sets `success`/`error`
+ * on the tool ledger, `record_model_invocation` the same on the invocation ledger), and they
+ * sit two tabs apart on the governance screen. Two maps would be two chances for the two tabs
+ * to name the same outcome differently.
+ */
+export const CALL_STATUS: LabelMap = {
+  success: { zh: '成功', en: 'Succeeded' },
+  error: { zh: '失败', en: 'Failed' },
+};
+
+/**
+ * What kind of decision a `decision_record` is, from `decisions.record_decision`'s callers.
+ *
+ * Not the verdict: the verdict is `DECISION_STATUS`, and this column sits next to it. The
+ * three values are the three things the platform records a decision about.
+ */
+export const DECISION_TYPE: LabelMap = {
+  instance_assessment: { zh: '实例判定', en: 'Instance assessment' },
+  operation_preflight: { zh: '操作预检', en: 'Operation preflight' },
+  operation_execution: { zh: '操作执行', en: 'Operation execution' },
+};
+
+/**
  * Readiness, coverage and operation-binding checks share this vocabulary, which is why they
  * share the maps: the three answer "is this source usable yet" in the same terms, and giving
  * each its own wording would invent a distinction the backend does not make.
@@ -184,6 +209,24 @@ export const RELATION_KIND: LabelMap = {
   composition: { zh: '组成', en: 'Composition' },
   aggregation: { zh: '聚合', en: 'Aggregation' },
   association: { zh: '关联', en: 'Association' },
+};
+
+/**
+ * What a `semantic_mapping` row connects, which is the first column of the mapping list.
+ *
+ * `table_to_object` and `column_to_attribute` are the structural mappings a scan produces;
+ * `value_to_state` comes from the value-domain mappings; the rest are extension points. The
+ * screen printed these raw, so the first column of the review queue -- the one that says what
+ * kind of claim you are confirming -- read `column_to_attribute` in both languages.
+ *
+ * An unknown value falls through to itself rather than to a placeholder: extensions define
+ * their own, and showing the raw name is how the person who wrote one recognises it.
+ */
+export const MAPPING_TYPE: LabelMap = {
+  table_to_object: { zh: '表 → 业务对象', en: 'Table → business object' },
+  column_to_attribute: { zh: '列 → 业务属性', en: 'Column → attribute' },
+  value_to_state: { zh: '取值 → 语义状态', en: 'Value → semantic state' },
+  aggregation: { zh: '聚合定义', en: 'Aggregate definition' },
 };
 
 /**

@@ -471,6 +471,26 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **十一张表格列把后端枚举原样打了出来**（`i18n/labels.ts`、`governance/`、`workbench/`、`permission/`、
+  `semantic/`、`mapping/`、`ontology/`、`datasource/`、`workflow/`、`tests/test_frontend_enum_rendering.py`）。
+  `label()` 在没有词条时会**回退成原值**——这是故意的，扩展自己定义的词汇至少还看得见。
+  但也正因如此，**漏掉一次 `label()` 调用在界面上一声不响**：
+  映射审核队列的第一列——你正要确认的是哪一类断言——在两种语言里都写着 `column_to_attribute`；
+  治理页写着 `instance_assessment` 和 `success`；工作台写着 `approved`。
+  字典测试看不见（映射本身可能是全的）、类型测试看不见（两边都是 string）、
+  渲染扫描也看不见（格子不是空的）。
+  一次扫出十一处，还有一处是**新写的守卫自己找到的**（工作台的「类型」列）。
+  于是加了一条双向的守卫：**有 `dataIndex` 是枚举字段的列就必须调用 `label()`**，
+  以及（补在原有那条里）**映射必须认识后端产出的每一个值**——
+  映射缺一个值，同样会把原值放回屏幕上。为让后一条能查，三处 `mapping_type` 写入点
+  与三处 `decision_type` 写入点现在共用一份声明为数据的词汇表。
+  修法不总是 `label()`：工作流列表的「状态」列被**删掉**了——
+  `workflow_definition.status` 恒为 `active`，没有一个值会变，
+  一整列都在说同一个单词的列不是列。**原样打印枚举意味着两种可能**：
+  「该翻译」或「这东西本不该在这」，而两种都比打印它好。
+  （`dataType` 不在名单里：`integer`、`decimal` 是类型的名字，
+  是源库自己的叫法，改叫别的反而让这一列对不上读者正在比对的 schema。）
+
 - **「一键体验」第二次按下时，删掉了规则、映射和工作流，然后显示一个绿色的成功**（`DemoCenter.tsx`、
   `types/index.ts`、`tests/test_demo_bootstrap.py`）。
   演示场景会注册数据源、扫描、生成本体草案——而**为已有草案的数据源再生成一次就是重建**，

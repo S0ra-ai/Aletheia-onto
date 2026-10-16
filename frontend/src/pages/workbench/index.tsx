@@ -3,7 +3,8 @@ import { Alert, Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Stat
 import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RocketOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { requestErrorMessage, workbenchApi } from '../../api';
-import { useT } from '../../i18n/locale';
+import { DECISION_STATUS, DECISION_TYPE } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import type { Workbench, WorkbenchActionItem } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -34,6 +35,7 @@ const DECISION_COLOR: Record<string, string> = {
 const WorkbenchPage: React.FC = () => {
   const navigate = useNavigate();
   const t = useT();
+  const label = useLabel();
   const [data, setData] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -235,11 +237,11 @@ const WorkbenchPage: React.FC = () => {
                     title: t('workbench.column.status'),
                     dataIndex: 'status',
                     width: 88,
-                    render: (status: string) => <Tag color={DECISION_COLOR[status] || 'default'}>{status}</Tag>,
+                    render: (status: string) => <Tag color={DECISION_COLOR[status] || 'default'}>{label(DECISION_STATUS, status)}</Tag>,
                   },
                   { title: t('workbench.column.object'), dataIndex: 'objectCode', width: 140, ellipsis: true },
                   { title: t('workbench.column.instance'), dataIndex: 'instanceId', width: 120, ellipsis: true },
-                  { title: t('workbench.column.type'), dataIndex: 'decisionType', ellipsis: true },
+                  { title: t('workbench.column.type'), dataIndex: 'decisionType', ellipsis: true, render: (v: string) => label(DECISION_TYPE, v) },
                   { title: t('workbench.column.createdAt'), dataIndex: 'createdAt', width: 160, ellipsis: true },
                 ]}
               />

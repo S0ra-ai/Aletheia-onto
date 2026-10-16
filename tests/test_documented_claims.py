@@ -302,6 +302,7 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
         adapters,
         automation,
         conversations,
+        decisions,
         events,
         governance,
         onboarding,
@@ -331,6 +332,12 @@ def test_the_frontend_label_maps_cover_the_backend_vocabulary() -> None:
         "FEEDBACK_STATUS": set(conversations.FEEDBACK_STATUSES),
         "CONNECTION_STATUS": set(adapters.CONNECTION_STATUSES),
         "ONBOARDING_STEP_STATUS": set(onboarding.ONBOARDING_STEP_STATUSES),
+        # Added with the sweep that fixed eleven columns rendering their enum raw: a map is
+        # only half the fix, and a map that does not know a value the backend produces puts
+        # the raw identifier back on the screen in both languages.
+        "MAPPING_TYPE": set(relations.MAPPING_TYPES),
+        "DECISION_TYPE": set(decisions.DECISION_TYPES),
+        "DECISION_STATUS": set(semantic_kernel.DECISION_STATUSES),
     }
     for name, vocabulary in expected.items():
         missing = vocabulary - entries(name)

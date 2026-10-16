@@ -17,7 +17,8 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import { auditApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { AuditBlockedDecision, AuditEvent, AuditReport, AuditReportSection, AuditRuleEntry } from '../../types';
-import { useT } from '../../i18n/locale';
+import { RULE_SEVERITY } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 
 const { Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -36,6 +37,7 @@ const { RangePicker } = DatePicker;
  */
 const AuditReportPanel: React.FC = () => {
   const t = useT();
+  const label = useLabel();
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => [dayjs().subtract(29, 'day').startOf('day'), dayjs()]);
   const [ontologyId, setOntologyId] = useState<number | undefined>();
   const [ontologies, setOntologies] = useState<{ value: number; label: string }[]>([]);
@@ -90,7 +92,9 @@ const AuditReportPanel: React.FC = () => {
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
-      render: (severity: string) => <Tag color={severity === 'blocking' ? 'red' : 'orange'}>{severity}</Tag>,
+      render: (severity: string) => (
+        <Tag color={severity === 'blocking' ? 'red' : 'orange'}>{label(RULE_SEVERITY, severity)}</Tag>
+      ),
     },
     { title: t('governance.column.evaluations'), dataIndex: 'evaluations', key: 'evaluations', width: 100 },
   ];

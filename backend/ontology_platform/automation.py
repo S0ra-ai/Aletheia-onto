@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.parse import urljoin
 
+from . import decisions
 from .context import PlatformDb
 from .database import connect
 from .decisions import record_decision
@@ -67,7 +68,7 @@ def preflight_operation(
             preflight["nextAction"] = "workflow_terminated"
     decision_record = record_decision(
         platform_db,
-        "operation_preflight",
+        decisions.OPERATION_PREFLIGHT,
         decision_status,
         assessment["decision"]["recommendation"],
         ontology_id=ontology_id,
@@ -464,7 +465,7 @@ def _record_execution_decision(
 ) -> dict[str, Any]:
     return record_decision(
         platform_db,
-        "operation_execution",
+        decisions.OPERATION_EXECUTION,
         result["status"],
         result["message"],
         ontology_id=preflight["target"]["ontologyId"],

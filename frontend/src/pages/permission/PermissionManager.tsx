@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ONTOLOGY_STATUS } from '../../i18n/labels';
+import { CALL_STATUS, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Badge, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
@@ -151,7 +151,7 @@ const PermissionManager: React.FC = () => {
     { title: t('permission.role'), dataIndex: 'agentRole', key: 'agentRole' },
     { title: t('permission.object'), dataIndex: 'objectCode', key: 'objectCode' },
     { title: t('permission.instance'), dataIndex: 'instanceId', key: 'instanceId' },
-    { title: t('permission.status'), dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'success' ? 'green' : 'red'}>{v}</Tag> },
+    { title: t('permission.status'), dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'success' ? 'green' : 'red'}>{label(CALL_STATUS, v)}</Tag> },
     { title: t('permission.duration'), dataIndex: 'durationMs', key: 'durationMs', render: (v: number) => `${v}ms` },
     { title: t('permission.createdAt'), dataIndex: 'createdAt', key: 'createdAt' },
     {

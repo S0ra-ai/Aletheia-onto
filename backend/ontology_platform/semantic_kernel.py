@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Sequence
 
+from . import decisions
 from .adapters import RuntimeDatabase, get_adapter
 from .aggregation import aggregate_context, compute_aggregates, load_aggregate_specs
 from .config import clamp_page_size, clamp_sample_size
@@ -268,7 +269,7 @@ def assess_instance(
         decision = _decision_from_results(failed)
         decision_record = record_decision_in_connection(
             platform,
-            "instance_assessment",
+            decisions.INSTANCE_ASSESSMENT,
             decision["status"],
             decision["recommendation"],
             ontology_id=ontology_id,
@@ -1022,7 +1023,7 @@ def _runtime_target(platform: sqlite3.Connection, ontology_id: int, object_code:
 
 
 def _status_counts(items: list[dict[str, Any]]) -> dict[str, int]:
-    counts = {"approved": 0, "review": 0, "blocked": 0}
+    counts = dict.fromkeys(DECISION_STATUSES, 0)
     for item in items:
         counts[item["decision"]] = counts.get(item["decision"], 0) + 1
     return counts
@@ -1044,6 +1045,12 @@ def _failed_rule_counts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # which is `mixed_with_blockers`, so a divided sample rendered the raw English enum inside a
 # Chinese console. `inconsistent` was in that map and in nothing else.
 CONSISTENCY_STATUSES = ("consistent", "mixed", "mixed_with_blockers", "incomplete", "empty")
+
+# The verdicts an assessment can reach. Declared as data for the same reason: the frontend's
+# `DECISION_STATUS` map is checked against them, and these three words also decide the
+# consistency verdict below -- `blocked` is what turns a divided sample into
+# `mixed_with_blockers`.
+DECISION_STATUSES = ("approved", "review", "blocked")
 
 
 def _consistency_status(status_counts: dict[str, int], errors: list[dict[str, str]]) -> str:

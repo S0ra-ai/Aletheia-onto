@@ -1,6 +1,6 @@
 import { joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RULE_SEVERITY } from '../../i18n/labels';
+import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RELATION_KIND, RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
@@ -905,7 +905,7 @@ const DataSourceDetail: React.FC = () => {
                 <Tabs
                   items={[
                     { key: 'steps', label: t('datasource.reasoningSteps'), children: <Steps direction="vertical" items={reasoningChain.steps.map(step => ({ title: step.label, description: step.type }))} /> },
-                    { key: 'relations', label: t('datasource.ontologyRelations'), children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: t('datasource.sourceObject'), dataIndex: 'sourceObject' }, { title: t('datasource.relation'), dataIndex: 'name' }, { title: t('datasource.targetObject'), dataIndex: 'targetObject' }, { title: t('datasource.type'), dataIndex: 'relationType' }]} /> },
+                    { key: 'relations', label: t('datasource.ontologyRelations'), children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: t('datasource.sourceObject'), dataIndex: 'sourceObject' }, { title: t('datasource.relation'), dataIndex: 'name' }, { title: t('datasource.targetObject'), dataIndex: 'targetObject' }, { title: t('datasource.type'), dataIndex: 'relationType', render: (v: string) => label(RELATION_KIND, v) }]} /> },
                     { key: 'chain-rules', label: t('datasource.reasoningRules'), children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: t('datasource.rules'), dataIndex: 'name' }, { title: t('datasource.object'), dataIndex: 'scopeObjectCode' }, { title: t('datasource.expression'), dataIndex: 'expression' }, { title: t('datasource.severity'), dataIndex: 'severity', render: (v: string) => label(RULE_SEVERITY, v) }]} /> },
                   ]}
                 />

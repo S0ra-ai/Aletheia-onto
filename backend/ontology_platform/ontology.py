@@ -21,6 +21,8 @@ from .relations import (
     CARDINALITY_LABELS,
     COMPOSITION,
     KIND_LABELS,
+    MAPPING_COLUMN_TO_ATTRIBUTE,
+    MAPPING_TABLE_TO_OBJECT,
     RelationSemantics,
     classify_foreign_key,
     detect_junction,
@@ -1110,7 +1112,7 @@ def _create_table_mapping(
         """,
         (
             ontology_id,
-            "table_to_object",
+            MAPPING_TABLE_TO_OBJECT,
             f"table:{table['table_name']}",
             f"business_object:{object_id}",
             confidence,
@@ -1143,7 +1145,7 @@ def _create_column_mapping(
         """,
         (
             ontology_id,
-            "column_to_attribute",
+            MAPPING_COLUMN_TO_ATTRIBUTE,
             f"table:{table['table_name']}.column:{column['column_name']}",
             f"business_object:{object_id}.attribute:{attribute_id}",
             confidence,

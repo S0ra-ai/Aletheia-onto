@@ -1,6 +1,6 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import { GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
+import { GATE_SEVERITY, MAPPING_TYPE, ONTOLOGY_STATUS, READINESS_STATUS, RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
@@ -120,7 +120,7 @@ const OntologyDetailPage: React.FC = () => {
   ];
 
   const mappingColumns = [
-    { title: t('ontology.type'), dataIndex: 'mappingType', key: 'mappingType', render: (type: string) => <Tag>{type}</Tag> },
+    { title: t('ontology.type'), dataIndex: 'mappingType', key: 'mappingType', render: (type: string) => <Tag>{label(MAPPING_TYPE, type)}</Tag> },
     { title: t('ontology.sourceTable'), dataIndex: 'sourceTable', key: 'sourceTable' },
     { title: t('ontology.sourceColumn'), dataIndex: 'sourceColumn', key: 'sourceColumn', render: (col: string) => col || '-' },
     { title: t('ontology.targetObject'), dataIndex: 'targetObjectCode', key: 'targetObjectCode' },
@@ -132,7 +132,7 @@ const OntologyDetailPage: React.FC = () => {
   const ruleColumns = [
     { title: t('ontology.code'), dataIndex: 'code', key: 'code' },
     { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
-    { title: t('ontology.severity'), dataIndex: 'severity', key: 'severity', render: (sev: string) => <Tag color={sev === 'error' ? 'red' : sev === 'warning' ? 'orange' : 'blue'}>{sev}</Tag> },
+    { title: t('ontology.severity'), dataIndex: 'severity', key: 'severity', render: (sev: string) => <Tag color={sev === 'blocking' ? 'red' : sev === 'warning' ? 'orange' : 'blue'}>{label(RULE_SEVERITY, sev)}</Tag> },
     { title: t('ontology.enabled'), dataIndex: 'enabled', key: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? t('ontology.yes') : t('ontology.no')}</Tag> },
     { title: t('ontology.expression'), dataIndex: 'expression', key: 'expression', render: (expr: string) => <code>{expr}</code> },
   ];
