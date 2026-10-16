@@ -31,6 +31,15 @@ rule-evaluation metadata needed to reproduce a verdict.
   `/conversations/{id}`'s messages are the one judgement call left: they are bounded by how long
   a person keeps typing, and a session long enough to need a page is not one this console has.
 
+  **The two append-only lists page by cursor.** `limit`/`offset` re-counts from the top every
+  time, so a row arriving between page one and page two pushes everything down by one and the
+  reader sees a row twice or -- on an audit trail, which is the one that matters -- never.
+  `/governance/audit-log` and `/governance/model-invocations` take `beforeId`/`afterId` and
+  return a `cursors` block, and `tests/test_list_pagination.py` demonstrates the offset defect
+  and then shows the cursor walking the whole trail while rows are being added underneath it.
+  The other lists keep offset paging: they are review queues and configuration tables that
+  nobody writes to while reading.
+
   The other half of the same sentence *was* a defect and is fixed: four endpoints
   (`/governance/audit-log`, `/governance/model-invocations`, `/governance/decisions`,
   `/tools/pending-reviews`) accepted a `limit` and forwarded it to SQL unclamped, and SQLite
@@ -130,6 +139,14 @@ By design, not bugs. These are the next phase's work.
   remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
   edges rather than a domain, and moving them would give a reader one more file to open to find
   where the SPA is served from.
+- **A column with a render fallback hides a rename from both checks.** `render: (x) => x || '-'`
+  is never blank, so neither `TableColumns.test.tsx` nor `scripts/ui_smoke.py` reports it -- found
+  by planting a rename on one and watching both stay green. The fallback is right for a field that
+  is genuinely optional and wrong for one that was renamed, and nothing at runtime tells those
+  apart. The generated types do: the row types that come from the wire are aliases of
+  `generated.ts`, so a rename fails `tsc` before it can render as a column of dashes. The checks
+  are complementary rather than redundant, and this is the gap between them.
+
 - **Response types are generated, and the screens read them where they can.** Seven row types
   (`Ontology`, `SemanticMapping`, `BusinessRule`, `PermissionRole`, `AuditLogItem`,
   `ModelInvocationItem`, `DecisionRecordItem`) are aliases of declarations in

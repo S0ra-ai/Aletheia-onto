@@ -80,6 +80,7 @@ its row with it rather than leaving a promise behind.
 | Backups and a restore that keeps the way back | `backend/ontology_platform/backup.py` | `tests/test_backup.py` |
 | Secrets that can stay out of the database entirely | `backend/ontology_platform/credentials.py` | `tests/test_credential_protection.py` |
 | A list that grows with the customer's data takes a page | `backend/ontology_platform/pagination.py` | `tests/test_list_pagination.py` |
+| The two append-only lists page by **cursor**, so a row inserted mid-read cannot be skipped | `backend/ontology_platform/pagination.py` | `tests/test_list_pagination.py` |
 | A caller-supplied limit cannot take the whole table | `backend/ontology_platform/config.py` | `tests/test_query_limit_clamping.py` |
 | A bilingual console, checked by reading it in both languages | `frontend/src/i18n/locale.tsx` | `tests/test_ui_messages.py` |
 | A bilingual CLI, whose `--help` follows the flag that its own parser reads | `backend/ontology_platform/cli_messages.py` | `tests/test_cli_language.py` |
@@ -98,4 +99,3 @@ project.
 | **Component tests cover two tables, not every screen.** `src/components/TableColumns.test.tsx` renders the mapping and rule lists and asserts every cell has text; the rest are covered by the browser sweep. | A blank column on a screen nobody wrote a test for is still found by a browser, if somebody runs one. |
 | **Untranslated refusals remain**: 51 of 101 single-sentence Chinese refusals carry a code the console can translate. The rest are internal invariants a reader cannot reach. | An English console can still show a Chinese sentence for an unusual failure. |
 | **The API's own sentences stay Chinese even in English mode** — in the CLI as well as the console, which fall back to them for a code they do not know. | Deliberate: the payload's shape and vocabulary are the contract a pipeline parses, and translating it would make the same response say different things to different callers. |
-| **No cursor pagination**, only `limit`/`offset`. | A page requested while rows are being inserted can skip or repeat one; the platform's lists are review queues and audit views rather than live feeds, so it has not bitten. |

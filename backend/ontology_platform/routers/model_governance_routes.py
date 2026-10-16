@@ -40,6 +40,7 @@ from ..model_client import (
     test_model_config,
     update_model_config,
 )
+from ..pagination import cursor_block, resolve_cursor
 
 router = APIRouter()
 
@@ -127,33 +128,50 @@ def ai_ontology_reasoning_chain(data_source_id: int) -> dict[str, object]:
 
 
 @router.get("/governance/audit-log")
-def audit_log(limit: int = 50) -> dict[str, object]:
+def audit_log(limit: int = 50, beforeId: Optional[int] = None, afterId: Optional[int] = None) -> dict[str, object]:
+    """The audit trail, newest first, paged by cursor rather than by offset.
+
+    Offset paging is wrong here for a reason specific to this table: it is append-only and it is
+    read *while* the platform is working, so rows arrive between page one and page two and every
+    one of them shifts a row across the boundary. A reader then sees a row twice or -- the one
+    that matters on an audit trail -- never.
+    """
+    cursor_sql, cursor_params = resolve_cursor(beforeId, afterId)
     with connect(platform_db()) as conn:
         rows = conn.execute(
-            """
-            select actor, action, target_type, target_id, detail, created_at
+            f"""
+            select id, actor, action, target_type, target_id, detail, created_at
             from audit_log
+            where 1 = 1 {cursor_sql}
             order by id desc
             limit ?
             """,
-            (clamp_page_size(limit),),
+            (*cursor_params, clamp_page_size(limit)),
         ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+        items = [dict(row) for row in rows]
+        return {"items": items, "cursors": cursor_block(rows=items, limit=clamp_page_size(limit))}
 
 
 @router.get("/governance/model-invocations")
-def model_invocations(limit: int = 50) -> dict[str, object]:
+def model_invocations(
+    limit: int = 50, beforeId: Optional[int] = None, afterId: Optional[int] = None
+) -> dict[str, object]:
+    """Model invocations, newest first, paged by cursor -- see `audit_log` for why."""
+    cursor_sql, cursor_params = resolve_cursor(beforeId, afterId)
     with connect(platform_db()) as conn:
         rows = conn.execute(
-            """
-            select provider, model, purpose, prompt_tokens, completion_tokens, total_tokens, status, error, created_at
+            f"""
+            select id, provider, model, purpose, prompt_tokens, completion_tokens, total_tokens, status,
+                   error, created_at
             from model_invocation
+            where 1 = 1 {cursor_sql}
             order by id desc
             limit ?
             """,
-            (clamp_page_size(limit),),
+            (*cursor_params, clamp_page_size(limit)),
         ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+        items = [dict(row) for row in rows]
+        return {"items": items, "cursors": cursor_block(rows=items, limit=clamp_page_size(limit))}
 
 
 @router.get("/governance/decisions")

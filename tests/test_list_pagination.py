@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from ontology_platform.config import QUERY_LIMITS
+from ontology_platform.database import connect
 from ontology_platform.pagination import page_block, resolve_page
 
 ADMIN_PASSWORD = "paged-list-password-123"
@@ -142,6 +143,15 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
             "insert into ontology (name, domain, version, status) values (?, '测试', '0.1.0', 'draft')",
             [(f"副本 {index}",) for index in range(FILLER)],
         )
+        # Enough audit rows that a page is a page and the offset-versus-cursor tests have a
+        # boundary to cross. Every action the platform has taken so far is also in this table;
+        # these are added on top of it.
+        conn.executemany(
+            "insert into audit_log (actor, action, target_type, target_id, detail)"
+            " values ('seeder', 'filler', 'test', ?, '{}')",
+            [(str(index),) for index in range(40)],
+        )
+
         user_hash, user_salt, _iterations = hash_password("filler-password-123")
         conn.executemany(
             "insert into platform_user (username, display_name, role_code, password_hash,"
@@ -254,3 +264,108 @@ def test_a_page_past_the_end_is_empty_rather_than_an_error(seeded_client: TestCl
     assert payload[key] == []
     assert payload["pagination"]["hasMore"] is False
     assert payload["pagination"]["total"] > 0, "空页不该把 total 也清掉——分页器要用它"
+
+
+# -- Cursors, for the two lists that are appended to while they are read --
+
+
+def test_offset_paging_loses_a_row_when_the_list_is_appended_to(seeded_client: TestClient) -> None:
+    """The defect cursors exist for, demonstrated rather than asserted in prose.
+
+    `limit`/`offset` answers "the rows after the first N" and re-counts N from the top every
+    time. On an append-only list that is being written to while it is read, a row arriving
+    between page one and page two pushes everything down by one -- so the last row of page one
+    reappears as the first row of page two and the reader never sees the row that fell across
+    the boundary. On an audit trail, "never" is the one that matters: the row that went missing
+    is exactly the kind an investigation is looking for.
+    """
+    headers = _headers(seeded_client)
+    path = "/governance/audit-log?limit=10"
+
+    first = seeded_client.get(path, headers=headers).json()["items"]
+    assert len(first) == 10
+    seen_first = {row["id"] for row in first}
+
+    # Somebody writes to the platform while the reader is looking at page one.
+    with connect(seeded_client.platform_db) as conn:  # type: ignore[attr-defined]
+        conn.execute(
+            "insert into audit_log (actor, action, target_type, target_id, detail)"
+            " values ('racer', 'arrived_between_pages', 'test', '1', '{}')"
+        )
+
+    second = seeded_client.get(path + "&offset=10", headers=headers).json()["items"]
+    seen_second = {row["id"] for row in second}
+
+    # The offset page repeats the row that slid across the boundary, and skips the one that
+    # slid off the end of page one. Both halves are the defect.
+    assert seen_first & seen_second, "偏移分页没有重复行——这个复现没有成立，断言因此没有意义"
+
+
+def test_cursor_paging_sees_every_row_despite_the_same_insert(seeded_client: TestClient) -> None:
+    """The same interleaving, with the cursor the endpoints now take.
+
+    A cursor names a position in the ordering rather than a count from the start, so an insert
+    elsewhere cannot move the boundary. This walks the whole trail in pages while rows are being
+    added, and asserts that everything that existed at the start is still seen exactly once.
+    """
+    headers = _headers(seeded_client)
+    with connect(seeded_client.platform_db) as conn:  # type: ignore[attr-defined]
+        before = {int(row["id"]) for row in conn.execute("select id from audit_log").fetchall()}
+
+    seen: list[int] = []
+    before_id = None
+    for _page in range(200):
+        query = "/governance/audit-log?limit=10"
+        if before_id is not None:
+            query += f"&beforeId={before_id}"
+        payload = seeded_client.get(query, headers=headers).json()
+        rows = payload["items"]
+        if not rows:
+            break
+        seen.extend(int(row["id"]) for row in rows)
+        before_id = payload["cursors"]["nextBefore"]
+        assert before_id is not None
+        # And somebody writes, between every pair of pages.
+        with connect(seeded_client.platform_db) as conn:  # type: ignore[attr-defined]
+            conn.execute(
+                "insert into audit_log (actor, action, target_type, target_id, detail)"
+                " values ('racer', 'arrived_between_pages', 'test', '1', '{}')"
+            )
+
+    assert len(seen) == len(set(seen)), "游标分页重复了行"
+    assert before <= set(seen), (
+        f"翻完整个审计日志，最初存在的行里少了 {sorted(before - set(seen))}——"
+        "而审计留痕里「少了一行」正是最要紧的那种丢失"
+    )
+
+
+def test_a_cursor_page_says_where_to_continue(seeded_client: TestClient) -> None:
+    """Both directions, because "older" and "newer" are different questions.
+
+    A reader walking back through an audit trail wants the rows before what they have; a poller
+    wants the rows after. Each is derivable from the other plus the ordering, which is a second
+    place for it to be wrong -- so both are sent.
+    """
+    headers = _headers(seeded_client)
+    payload = seeded_client.get("/governance/audit-log?limit=5", headers=headers).json()
+    ids = [row["id"] for row in payload["items"]]
+
+    assert payload["cursors"]["nextBefore"] == min(ids)
+    assert payload["cursors"]["nextAfter"] == max(ids)
+
+    # And it is usable: asking for what came after a row returns rows newer than it.
+    after = seeded_client.get(f"/governance/audit-log?limit=5&afterId={min(ids)}", headers=headers).json()["items"]
+    assert after, "afterId 没有返回任何行，游标不可用"
+    assert all(row["id"] > min(ids) for row in after)
+
+
+def test_cursors_are_absent_when_there_is_no_page(seeded_client: TestClient) -> None:
+    """An unpaginated response has no position to continue from, and saying `null` is the answer.
+
+    A client that paged anyway would ask for `beforeId=null` and get the newest rows again --
+    which on a polling loop is an infinite re-read of the same page.
+    """
+    from ontology_platform.pagination import cursor_block
+
+    assert cursor_block(rows=[], limit=10) == {"nextBefore": None, "nextAfter": None}
+    assert cursor_block(rows=[{"id": 1}], limit=None) == {"nextBefore": None, "nextAfter": None}

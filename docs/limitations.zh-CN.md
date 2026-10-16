@@ -34,6 +34,12 @@
 `/conversations/{id}` 的消息是唯一一处判断口径：它的长度由一个人愿意打多久决定，
 而这个控制台上不存在长到需要翻页的会话。
 
+**两个只追加的列表改为游标分页。** `limit`/`offset` 每次都从顶部重新数，
+于是第一页与第二页之间到达的一行会把所有行往下推一格，读者要么看到重复行，要么——在审计留痕上，这才是要紧的那个——**永远看不到某一行**。
+`/governance/audit-log` 与 `/governance/model-invocations` 现在接受 `beforeId`/`afterId` 并返回 `cursors` 块；
+`tests/test_list_pagination.py` 先**复现**偏移分页的丢行，再证明游标能在行不断插入的情况下走完整个审计日志。
+其余列表保留偏移分页：它们是审核队列与配置表，没人在读的同时写。
+
 同一句话的另一半**曾经是缺陷，已修**：四个端点（`/governance/audit-log`、
 `/governance/model-invocations`、`/governance/decisions`、`/tools/pending-reviews`）
 接受 `limit` 之后原样送进 SQL，而 SQLite 把 `LIMIT -1` 读作「不限制」——

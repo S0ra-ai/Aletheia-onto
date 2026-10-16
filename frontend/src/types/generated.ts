@@ -29,7 +29,13 @@
 
 
 export interface AuditLogEntry {
+  cursors: AuditLogEntryCursors;
   items: AuditLogEntryItems[];
+}
+
+export interface AuditLogEntryCursors {
+  nextAfter: number;
+  nextBefore: number;
 }
 
 export interface AuditLogEntryItems {
@@ -37,6 +43,7 @@ export interface AuditLogEntryItems {
   actor: string;
   created_at: string;
   detail: string;
+  id: number;
   target_id: string;
   target_type: string;
 }
@@ -138,13 +145,20 @@ export interface DecisionRecordEntryItems {
 }
 
 export interface ModelInvocationEntry {
+  cursors: ModelInvocationEntryCursors;
   items: ModelInvocationEntryItems[];
+}
+
+export interface ModelInvocationEntryCursors {
+  nextAfter: number;
+  nextBefore: number;
 }
 
 export interface ModelInvocationEntryItems {
   completion_tokens: number;
   created_at: string;
   error: string;
+  id: number;
   model: string;
   prompt_tokens: number;
   provider: string;

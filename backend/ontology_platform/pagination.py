@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["PAGE_KEYS", "page_block", "resolve_page"]
+__all__ = ["PAGE_KEYS", "page_block", "resolve_cursor", "resolve_page"]
 
 # The key every paginated list carries this block under. One name rather than two: the two
 # spellings that existed (`pagination` and `page`) were the same object, and a client reading
@@ -70,3 +70,47 @@ def page_block(*, limit: int | None, offset: int, total: int, returned: int) -> 
         # for it would send the reader to an empty screen.
         "hasMore": limit is not None and offset + returned < total,
     }
+
+
+def resolve_cursor(before_id: int | None, after_id: int | None) -> tuple[str, tuple[Any, ...]]:
+    """A `where` fragment and its parameters for a keyset page, or `("", ())`.
+
+    ## Why offset paging is wrong for these two lists and right for the others
+
+    `limit`/`offset` answers "the rows after the first N" -- and it re-counts N from the top every
+    time. On a list nobody writes to while it is being read, that is exact. On `audit_log` and
+    `model_invocation` it is not: both are append-only and both are read *while* the platform is
+    working, so rows arrive between page one and page two and every one of them shifts a row
+    across the boundary. The reader sees a row twice, or never -- and on an audit trail, "never"
+    is the one that matters, because the row that went missing is exactly the kind an
+    investigation is looking for.
+
+    A cursor names a *position in the ordering* rather than a count from the start. `before_id`
+    means "older than this row", `after_id` "newer than it", and an insert elsewhere cannot move
+    the boundary. `id` is the ordering key these lists already use (`order by id desc`), and it is
+    monotonic, which is what makes it a position.
+
+    Returned as a fragment rather than applied, because the callers build their SQL by hand and
+    a helper that took the query would have to know its parameter order.
+    """
+    if before_id is not None:
+        return "and id < ?", (int(before_id),)
+    if after_id is not None:
+        return "and id > ?", (int(after_id),)
+    return "", ()
+
+
+def cursor_block(*, rows: list[dict[str, Any]], limit: int | None, key: str = "id") -> dict[str, Any]:
+    """`{nextBefore, nextAfter}` -- the ids a client pages with, taken from the rows it got.
+
+    Both directions, because the two questions are different: "older" walks back through an
+    audit trail, "newer" polls for what has happened since. A client that wanted only one of them
+    would have to re-derive the other from the ordering, which is a second place for it to be
+    wrong.
+    """
+    if limit is None or not rows:
+        return {"nextBefore": None, "nextAfter": None}
+    ids: list[int] = [int(row[key]) for row in rows if row.get(key) is not None]
+    if not ids:
+        return {"nextBefore": None, "nextAfter": None}
+    return {"nextBefore": min(ids), "nextAfter": max(ids)}
