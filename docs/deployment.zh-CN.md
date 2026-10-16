@@ -56,3 +56,11 @@ aletheia preflight --workers 4 --expect-origin https://ontology.example.com
 拒绝它会让人索性跳过整个检查。
 
 完整取舍见 [ADR-0017](adr/0017-deployment-preflight.md)。
+
+## 上线之前
+
+[生产环境检查清单](production-checklist.md) 是要逐条走的那份清单——基础设施、密钥、
+以及那些值对评估环境安全、对生产环境不安全的设置。
+
+这份清单此前**从任何地方都到不了**：一个没人链接的页面就是一个没人读的页面，
+而这 79 行上线前检查一直躺在仓库里，没有读者。

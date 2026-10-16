@@ -10,7 +10,7 @@
 [![CI](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml/badge.svg)](https://github.com/S0ra-ai/Aletheia-onto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-1866%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
+[![Tests](https://img.shields.io/badge/tests-1867%20passing-brightgreen.svg)](docs/testing.zh-CN.md)
 
 [English](README.md) · 简体中文
 
@@ -109,7 +109,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 | 理解这个模型 | [核心概念](docs/concepts.zh-CN.md) · [架构](docs/architecture.zh-CN.md) |
 | 接一个平台不支持的库／规则函数／检索后端 | [扩展指南](docs/extending.md) |
 | 接 Azure OpenAI、vLLM 或中转网关 | [接入自定义模型服务](docs/model-endpoints.md) |
-| 上生产 | [私有化部署](docs/deployment.zh-CN.md) |
+| 上生产 | [私有化部署](docs/deployment.zh-CN.md) · [生产环境检查清单](docs/production-checklist.md) |
 | 理解某个设计为什么是这样 | [设计决策](docs/design-decisions.zh-CN.md) · [ADR 全集](docs/adr/) |
 | 核对 GB/T 48000.3—2026 对标情况 | [ADR-0019](docs/adr/0019-axioms-and-standard-vocabulary.md) |
 | 参与贡献 | [CONTRIBUTING](CONTRIBUTING.md) · [ROADMAP](ROADMAP.md) |
@@ -129,7 +129,7 @@ cd mycorp && pip install -e . && python -m mycorp init
 
 ## 项目状态
 
-1866 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
+1867 个测试，在 Python 3.11／3.12／3.13 上全绿。内核**零第三方依赖**——
 由 CI 在裸装环境校验，因此本体、规则引擎与决策留痕可以嵌入别人的应用。
 
 本文档里每一个可数的声明都由测试守着：测试总数、分布表、端点数、支持的 Python 版本，

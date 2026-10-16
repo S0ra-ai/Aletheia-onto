@@ -67,3 +67,13 @@ virtualenv's interpreter when the platform is installed in one. Environment vari
 [Configuration](configuration.md); restoring, including the snapshot taken before a restore, is in
 [Operations](operations.md).
 
+## Before you go live
+
+[The production checklist](production-checklist.md) is the list to work through -- infrastructure,
+secrets, the settings whose defaults are safe for an evaluation and not for a deployment. It is
+written in Chinese; the English equivalent is this page plus [Operations](operations.md).
+
+It was reachable from nowhere until a check for orphaned pages was added: a page nothing links
+to is a page nobody reads, and 79 lines of pre-production checks were sitting in the repository
+with no reader.
+

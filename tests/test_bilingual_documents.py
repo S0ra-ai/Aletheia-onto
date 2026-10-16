@@ -124,6 +124,50 @@ def test_no_code_block_is_in_one_edition_only() -> None:
     assert not missing, "两个语言版本的命令不一致——有一边的读者读到的能力比另一边少：\n  " + "\n  ".join(missing)
 
 
+def test_every_page_is_reachable_from_somewhere() -> None:
+    """A page nothing links to is a page nobody reads, and one was sitting in the repository.
+
+    `docs/production-checklist.md` -- 79 lines of pre-production checks, the list an operator
+    works through before going live -- was reachable from nowhere. Not from the README, not
+    from the deployment page, not from operations. It had been written, committed, and then
+    orphaned by whatever edit removed the last link to it.
+
+    Nothing noticed, and nothing could: `tests/test_documentation_links.py` checks that the
+    links a page *has* resolve, which says nothing about a page no link points at. The
+    framework-readiness page has had its own version of this check since it was written --
+    "an unlinked page is a page nobody evaluates against" -- and it was only ever applied to
+    that one page.
+
+    A page linked only by another orphan is still an orphan, so reachability is computed from
+    the READMEs outward rather than by counting references.
+    """
+    readmes = [ROOT / "README.md", ROOT / "README.zh-CN.md"]
+    pages = {path.name: path for path in DOCS.glob("*.md")}
+    link = re.compile(r"\]\(([^)#\s]+\.md)")
+
+    reachable: set[str] = set()
+    frontier = readmes
+    seen_files: set[Path] = set()
+    while frontier:
+        page = frontier.pop()
+        if page in seen_files or not page.exists():
+            continue
+        seen_files.add(page)
+        for target in link.findall(page.read_text(encoding="utf-8")):
+            name = Path(target).name
+            # Only pages in `docs/` are this test's subject; the READMEs link all over.
+            if name in pages and name not in reachable:
+                reachable.add(name)
+                frontier.append(pages[name])
+
+    orphaned = sorted(set(pages) - reachable)
+    assert not orphaned, (
+        "这些文档从 README 出发沿着链接走不到——没人链接的页面就是没人读的页面：\n  "
+        + "\n  ".join(f"docs/{name}" for name in orphaned)
+        + "\n把它链到读者会去找它的地方（通常是 README 的文档索引，或它所属的那条路径上）。"
+    )
+
+
 def test_the_two_capability_matrices_name_the_same_modules() -> None:
     """The page that answers "what does this do", counted the way a reader counts it.
 

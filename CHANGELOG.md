@@ -709,6 +709,18 @@
   `architecture-debt.md`、`framework-readiness.md` 六页**只有英文版**，
   而中文 README 与中文文档已经在链过去。这一条没有顺手做掉——「这些页面该不该有中文版」
   是产品判断，不是漂移。
+
+- **一份 79 行的上线前检查清单，从任何地方都到不了**（`docs/production-checklist.md`、
+  `deployment.md`、`deployment.zh-CN.md`、两份 README、`test_bilingual_documents.py`）。
+  `production-checklist.md` 没有被任何文档链接——不是 README、不是部署页、不是运维页。
+  它被写出来、提交、然后被某次删掉最后一处链接的编辑变成了孤儿，而**没有任何东西可能发现**：
+  `test_documentation_links.py` 检查的是「页面上有的链接能不能解析」，对「没有任何链接指向的页面」
+  一个字也说不了。框架成熟度那一页从写下第一天起就有这条检查的**它自己的版本**
+  （「没人链接的页面就是没人评估的页面」），而它一直只作用于那一页。
+
+  现在这份清单被链到了读者会去找它的地方（README 的文档索引、两种语言的部署页），
+  并且守卫从两份 README 出发沿链接走一遍，走不到的页面就点名。
+  页码链接也算数：只被另一个孤儿链接的页面仍然是孤儿，所以是**可达性**而不是引用计数。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
