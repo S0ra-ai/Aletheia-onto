@@ -133,7 +133,7 @@ const DataSourceList: React.FC = () => {
     try {
       // Both screens that scan report through `scanReport`, so they cannot say different
       // things about the same response.
-      const report = scanReport(await dataSourceApi.scan(id));
+      const report = scanReport(await dataSourceApi.scan(id), t);
       if (report.level === 'warning') message.warning(report.text, 8);
       else message.success(report.text);
       fetchDataSources();
@@ -149,7 +149,7 @@ const DataSourceList: React.FC = () => {
       // `void result` was the whole use of the response: the endpoint reports how many tables
       // it scanned and how many objects the reasoning chain has, and the message said
       // 「已初始化」. The counts are what tell the reader it produced anything at all.
-      message.success(initializeReport(record.name, result));
+      message.success(initializeReport(record.name, result, t));
       await fetchDataSources();
       navigate(`/datasource/${record.id}`);
     } catch (error) {

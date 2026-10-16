@@ -94,7 +94,7 @@ const DataSourceDetail: React.FC = () => {
     if (!id) return;
     setScanLoading(true);
     try {
-      const report = scanReport(await dataSourceApi.scan(parseInt(id)));
+      const report = scanReport(await dataSourceApi.scan(parseInt(id)), t);
       // Same words as the list page: both scan, and the one that was fixed first said
       // 「扫描完成」 while the other reported the tables. `scanReport` is where that lives now.
       if (report.level === 'warning') message.warning(report.text, 8);

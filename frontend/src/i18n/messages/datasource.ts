@@ -35,6 +35,19 @@ export const datasource: Record<string, MessageEntry> = {
 
   'initializeButton': { zh: '初始化知识库', en: 'Initialise the knowledge base' },
   'scanButton': { zh: '扫描', en: 'Scan' },
+  // The scan's own report, composed by `i18n/text.ts`. It was the last Chinese sentence the
+  // English interface still printed verbatim -- two screens' worth of it.
+  'scanReportOk': { zh: '扫描完成：{tables} 张表', en: 'Scan finished: {tables} tables' },
+  'scanReportBehind': {
+    zh: '扫描完成：{tables} 张表，其中 {missing} 张草案里还没有（{names}）。需要时点「重新生成草案」纳入——那会清空现有草案上的规则、映射与工作流。',
+    en: 'Scan finished: {tables} tables, {missing} of which the draft does not cover yet ({names}). Use "Regenerate draft" to take them in — that clears the rules, mappings and workflows on the current draft.',
+  },
+  'initializeReport': {
+    zh: '{name} 已初始化：{tables} 张表、{objects} 个业务对象，可在对话模块选择',
+    en: '{name} initialized: {tables} tables, {objects} business objects — selectable in the chat module',
+  },
+  // Punctuation is part of the language, so the separator is a message like any other.
+  'listSeparator': { zh: '、', en: ', ' },
   'testButton': { zh: '测试', en: 'Test' },
   'detailButton': { zh: '详情', en: 'Details' },
   'reasoningButton': { zh: 'AI推理链', en: 'AI reasoning chain' },

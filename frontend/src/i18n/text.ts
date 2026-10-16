@@ -2,6 +2,17 @@
  * Text helpers for displaying backend-provided strings.
  */
 
+import type { MessageKey } from './messages';
+
+/**
+ * The translate function, as a parameter.
+ *
+ * These helpers build sentences, and a sentence belongs to a language. Keeping them pure and
+ * passing `t` in -- rather than reaching for a module-level current locale -- is what let the
+ * two of them stop being Chinese-only text that the bilingual interface carried unchanged.
+ */
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
+
 /**
  * Join sentences that may already end in their own punctuation.
  *
@@ -39,23 +50,32 @@ export const joinSentences = (items: readonly (string | undefined | null)[]): st
  */
 export const scanReport = (
   result: { tables?: unknown[]; modelledOntologyId?: number | null; unmodelledTables?: string[] } | undefined,
+  t: Translate,
 ): { level: 'success' | 'warning'; text: string } => {
   const tables = result?.tables?.length ?? 0;
   const unmodelled = result?.unmodelledTables ?? [];
   if (result?.modelledOntologyId && unmodelled.length) {
     return {
       level: 'warning',
-      text:
-        `扫描完成：${tables} 张表，其中 ${unmodelled.length} 张草案里还没有（${unmodelled.join('、')}）。` +
-        '需要时点「重新生成草案」纳入——那会清空现有草案上的规则、映射与工作流。',
+      text: t('datasource.scanReportBehind', {
+        tables,
+        missing: unmodelled.length,
+        // The list separator is punctuation, and punctuation is part of the language: the
+        // English sentence needs `, ` where the Chinese one takes `、`.
+        names: unmodelled.join(t('datasource.listSeparator')),
+      }),
     };
   }
-  return { level: 'success', text: `扫描完成：${tables} 张表` };
+  return { level: 'success', text: t('datasource.scanReportOk', { tables }) };
 };
 
 /** The same treatment for initialising a knowledge base: say what it produced. */
-export const initializeReport = (name: string, result: { scan?: { tables?: number }; reasoningChain?: { objects?: unknown[] } } | undefined): string => {
+export const initializeReport = (
+  name: string,
+  result: { scan?: { tables?: number }; reasoningChain?: { objects?: unknown[] } } | undefined,
+  t: Translate,
+): string => {
   const tables = result?.scan?.tables ?? 0;
   const objects = result?.reasoningChain?.objects?.length ?? 0;
-  return `${name} 已初始化：${tables} 张表、${objects} 个业务对象，可在对话模块选择`;
+  return t('datasource.initializeReport', { name, tables, objects });
 };
