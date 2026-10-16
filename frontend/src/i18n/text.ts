@@ -176,3 +176,24 @@ export const explanationParts = (
     })
     .join('');
 };
+
+/**
+ * A message that counts things, in the form the count asks for.
+ *
+ * English inflects and Chinese does not, so `<key>.one` is tried first at a count of exactly
+ * one and the plain key is the fallback -- which is also what happens for the many counters that
+ * have no singular form, because a missing key renders `⟦key⟧` and that is checked for here.
+ * 「1 drafts」 and 「1 discussions」 were on the workbench's stat cards before this.
+ */
+export const countText = (
+  key: MessageKey,
+  count: number,
+  t: Translate,
+  params: Record<string, string | number> = {},
+): string => {
+  if (count === 1) {
+    const singular = t(`${key}.one` as MessageKey, { ...params, count });
+    if (!singular.startsWith('⟦')) return singular;
+  }
+  return t(key, { ...params, count });
+};

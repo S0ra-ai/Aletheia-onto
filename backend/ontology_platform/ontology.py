@@ -221,7 +221,7 @@ def explain_instance(
         return {
             "ontology": {
                 "id": runtime.ontology_id,
-                "name": runtime.object_name,
+                "name": runtime.ontology_name,
                 "version": runtime.ontology_version,
             },
             "object": {"code": runtime.object_code, "name": runtime.object_name},

@@ -132,9 +132,9 @@ promoting it goes through governance (ADR-0002).
 
 The one screen that shows a business object *as an object*: instances read through the
 instance resolver, with the object's declared attributes as columns, and the caller's
-row-level filter applied. The drawer on the right is a single instance: its values with the
-source column each was read from, its events and its value history. Browsing the raw source table
-is a different thing -- it skips the
+row-level filter applied. The drawer on the right is a single instance: its values, each naming
+the source column it was read from, and the events recorded against it -- with its value history
+below those. Browsing the raw source table is a different thing -- it skips the
 resolver, skips the filter, and shows columns rather than the modelled contract.
 
 An empty table says which of the two reasons applies. "Nothing is visible to your role" and

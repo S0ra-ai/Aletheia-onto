@@ -98,11 +98,19 @@ DETAIL_DATA_ENDPOINTS = (
 # was showing 「优先审核待确认语义映射…」: the sentence had been subtracted as data because it
 # arrived from an endpoint on the list. Advice is exactly what has to be translated, so
 # subtracting it makes the check blind to its own subject.
-ADVICE_KEYS = frozenset({"nextActions", "limitation", "remediation", "evidence"})
+ADVICE_KEYS = frozenset({"nextActions", "limitation", "remediation", "evidence", "categoryLabel"})
 
 # The instance timeline, which needs an instance key as well. Its payloads are the instance's
 # data too -- an event's `reason` is a string a workflow wrote, and the timeline renders the
 # payload as JSON, so a payload value with no translation looks exactly like untranslated copy.
+# Kept as a named path but **not** harvested: everything it returns that is a *sentence* is the
+# platform's wording, and the payloads that are the instance's own content arrive in the drawer
+# from the explain endpoint, which is harvested.
+# The instance timeline, harvested for the same reason as everything else on the list: an event's
+# payload is content somebody's workflow wrote (`{"reason": "进入工作流"}`), and it renders as
+# JSON, so a payload value with no translation looks exactly like untranslated copy. The labels
+# the endpoint *resolves* -- `categoryLabel` -- are the platform's words and are skipped by key
+# below, which is the same rule the rest of this list follows.
 TIMELINE = "/ontologies/{ontology}/objects/{object}/instances/{instance}/events?limit=200"
 
 # Chinese the *server* composes and the console prints as-is. Empty, and that is the point:

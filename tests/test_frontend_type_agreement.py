@@ -582,6 +582,10 @@ BARE_ENUM_ALLOWED = {
     # A machine-facing code shown on purpose, in a column labelled as a code.
     "h.actionCode",
     "a.actionCode",
+    # The server's own word, rendered only for a category this build's map does not have --
+    # the branch beside it goes through `label(EVENT_CATEGORY, ...)`. An extension that adds a
+    # category should still see something, and the alternative is a blank cell.
+    "row.categoryLabel",
 }
 
 ENUM_ISH = re.compile(

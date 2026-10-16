@@ -127,6 +127,11 @@ def capture(browser: str, url: str, target: Path, *, width: int, height: int, sc
             # Without this the scrollbar is in every image and the layout is 15px narrower than
             # the one a reader sees.
             "--hide-scrollbars",
+            # Animations off. The instance drawer slides in, and a capture that races it gets a
+            # drawer half off the right edge -- or an empty page, because the drawer had mounted
+            # but not yet moved. It is a screenshot tool: it wants the settled frame, and
+            # `prefers-reduced-motion` is what the web already uses to ask for one.
+            "--force-prefers-reduced-motion",
             f"--window-size={width},{height}",
             f"--force-device-scale-factor={scale}",
             # The pages fetch on mount; the budget is the same one the render sweep relies on.

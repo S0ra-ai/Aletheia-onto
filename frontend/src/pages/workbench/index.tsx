@@ -4,6 +4,7 @@ import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, Rocke
 import { useNavigate } from 'react-router-dom';
 import { requestErrorMessage, workbenchApi } from '../../api';
 import { DECISION_STATUS, DECISION_TYPE } from '../../i18n/labels';
+import { countText } from '../../i18n/text';
 import { useLabel, useT } from '../../i18n/locale';
 import type { Workbench, WorkbenchActionItem } from '../../types';
 
@@ -198,7 +199,7 @@ const WorkbenchPage: React.FC = () => {
           <Card size="small">
             <Statistic title={t('workbench.businessObjects')} value={ontologies.objects} suffix={t('workbench.countSuffix')} />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {t('workbench.relations', { count: ontologies.relations })} · {t('workbench.publishedOntologies', { count: ontologies.published })} · {t('workbench.draftOntologies', { count: ontologies.draft })}
+              {countText('workbench.relations', ontologies.relations, t)} · {countText('workbench.publishedOntologies', ontologies.published, t)} · {countText('workbench.draftOntologies', ontologies.draft, t)}
             </Text>
           </Card>
         </Col>

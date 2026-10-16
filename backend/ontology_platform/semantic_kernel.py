@@ -85,6 +85,10 @@ __all__ = [
 class SemanticRuntime:
     ontology_id: int
     ontology_version: str
+    # The *ontology's* name, which is not the object's. The explanation used to label the
+    # ontology row with `object_name`, so the instance drawer showed 「合同 v0.1.0」 under
+    # "Ontology" and the same string under "Business object" directly below it.
+    ontology_name: str
     object_code: str
     object_name: str
     source_table: str
@@ -661,6 +665,7 @@ def build_runtime(
     return SemanticRuntime(
         ontology_id=ontology_id,
         ontology_version=ontology["version"],
+        ontology_name=ontology["name"],
         object_code=object_code,
         object_name=business_object["name"],
         source_table=source_table["table_name"],

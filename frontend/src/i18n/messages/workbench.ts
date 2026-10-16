@@ -45,8 +45,10 @@ export const workbench: Record<string, MessageEntry> = {
 
   'businessObjects': { zh: '业务对象', en: 'Business objects' },
   'relations': { zh: '{count} 条关系', en: '{count} relations' },
+  'relations.one': { zh: '{count} 条关系', en: '{count} relation' },
   'publishedOntologies': { zh: '{count} 个已发布本体', en: '{count} published' },
   'draftOntologies': { zh: '{count} 个草案', en: '{count} drafts' },
+  'draftOntologies.one': { zh: '{count} 个草案', en: '{count} draft' },
 
   'businessRules': { zh: '业务规则', en: 'Business rules' },
   'blockingRules': { zh: '阻断级 {count}', en: '{count} blocking' },

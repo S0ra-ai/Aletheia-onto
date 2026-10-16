@@ -162,6 +162,7 @@ def test_assessment_serializes_date_values_from_external_sources(tmp_path: Path,
         return SemanticRuntime(
             ontology_id=ontology_id,
             ontology_version=ontology["version"],
+            ontology_name=ontology["name"],
             object_code=object_code,
             object_name="合同",
             source_table="contract",

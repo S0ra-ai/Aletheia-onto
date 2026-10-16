@@ -224,11 +224,22 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       ),
     },
     {
+      // The code, not the server's `categoryLabel`: the categories are a closed vocabulary
+      // (`events.EVENT_CATEGORIES`) with a label map on this side, and rendering the server's
+      // Chinese word left 「状态变更」 in the middle of the English drawer. The server's label is
+      // the fallback for a category an extension adds.
       title: t('objects.categoryColumn'),
-      dataIndex: 'categoryLabel',
-      key: 'categoryLabel',
+      dataIndex: 'category',
+      key: 'category',
       width: 110,
-      render: (label: string) => (label ? <Tag>{label}</Tag> : <Text type="secondary">—</Text>),
+      render: (category: string, row: InstanceEvent) =>
+        category ? (
+          <Tag>{label(EVENT_CATEGORY, category)}</Tag>
+        ) : row.categoryLabel ? (
+          <Tag>{row.categoryLabel}</Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
     },
     { title: t('objects.actorColumn'), dataIndex: 'actor', key: 'actor', width: 140 },
     {
