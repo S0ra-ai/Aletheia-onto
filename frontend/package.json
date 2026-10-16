@@ -10,26 +10,26 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ant-design/icons": "^6.3.2",
+    "@ant-design/icons": "^6.3.4",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "antd": "^6.6.1",
-    "axios": "^1.19.0",
+    "antd": "^6.6.6",
+    "axios": "^1.20.0",
     "dayjs": "^1.11.23",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-markdown": "10.1.0",
-    "react-router-dom": "^7.18.2",
-    "react-syntax-highlighter": "^16.1.1",
+    "react-router-dom": "^7.18.4",
+    "react-syntax-highlighter": "^16.1.2",
     "remark-gfm": "4.0.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.0.5",
-    "oxlint": "^1.79.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.88.0",
     "typescript": "~7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.3.4"
   }
 }
