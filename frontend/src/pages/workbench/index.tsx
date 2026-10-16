@@ -4,9 +4,10 @@ import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, Rocke
 import { useNavigate } from 'react-router-dom';
 import { requestErrorMessage, workbenchApi } from '../../api';
 import { DECISION_STATUS, DECISION_TYPE } from '../../i18n/labels';
-import { countText } from '../../i18n/text';
+import { codedText, countText } from '../../i18n/text';
 import { useLabel, useT } from '../../i18n/locale';
 import type { Workbench, WorkbenchActionItem } from '../../types';
+import type { MessageKey } from '../../i18n/messages';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -21,7 +22,7 @@ const { Title, Text, Paragraph } = Typography;
 
 // Keys, not labels: a label written here would be fixed at import, in whichever language
 // the bundle happened to start in.
-const SEVERITY_META: Record<WorkbenchActionItem['severity'], { color: string; labelKey: string }> = {
+const SEVERITY_META: Record<WorkbenchActionItem['severity'], { color: string; labelKey: MessageKey }> = {
   blocker: { color: 'red', labelKey: 'workbench.severity.blocker' },
   warning: { color: 'orange', labelKey: 'workbench.severity.warning' },
   info: { color: 'blue', labelKey: 'workbench.severity.info' },
@@ -63,7 +64,7 @@ const WorkbenchPage: React.FC = () => {
     // The count-bearing titles have an English singular (`<key>.one`); the details do not take
     // a count at all. Chinese has one form, so its two entries read the same.
     const key = field === 'title' && item.count === 1 ? `${keys.title}.one` : keys[field];
-    return t(key as never, { count: item.count });
+    return codedText(t, key, item[field], { count: item.count });
   };
   const [data, setData] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,7 +176,7 @@ const WorkbenchPage: React.FC = () => {
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<Tag color={SEVERITY_META[item.severity].color}>{t(SEVERITY_META[item.severity].labelKey as never)}</Tag>}
+                  avatar={<Tag color={SEVERITY_META[item.severity].color}>{t(SEVERITY_META[item.severity].labelKey)}</Tag>}
                   title={itemText(item, 'title')}
                   description={itemText(item, 'detail')}
                 />

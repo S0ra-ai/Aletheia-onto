@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { tenancyApi, requestErrorMessage } from '../../api';
 import { useT } from '../../i18n/locale';
+import { codedText } from '../../i18n/text';
 import type {
   QuotaResource,
   QuotaState,
@@ -101,10 +102,8 @@ const TenancyManager: React.FC = () => {
     if (selected) void loadDetail(selected);
   }, [selected, loadDetail]);
 
-  const resourceText = (resource: string, fallback: string): string => {
-    const translated = t(`tenancy.resource.${resource}` as never);
-    return translated.startsWith('⟦') ? fallback : translated;
-  };
+  const resourceText = (resource: string, fallback: string): string =>
+    codedText(t, `tenancy.resource.${resource}`, fallback);
 
   const handleCreate = async (values: { tenant: string }) => {
     setBusy(true);

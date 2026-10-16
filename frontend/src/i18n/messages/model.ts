@@ -1,7 +1,8 @@
 /**
  * model —— 页面：pages/model/ModelConfig.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('model.…')`。
+ * 两种语言都在这里，页面通过 `t('model.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -52,6 +53,41 @@ export const model: Record<string, MessageEntry> = {
   'preset.vllm': { zh: '自建 vLLM / Ollama', en: 'Self-hosted vLLM / Ollama' },
   'preset.dashscope': { zh: '阿里云百炼 / 通义', en: 'Alibaba Cloud DashScope / Qwen' },
   'preset.deepseek': { zh: 'DeepSeek 官方 API', en: 'DeepSeek official API' },
+
+  // What each preset gets right, and where it goes wrong. These were written when the
+  // presets were, and then never rendered: a `note` field on every preset that nothing read.
+  // They belong on the screen where endpoint configuration actually fails -- an Azure base
+  // URL without the deployment and api-version, or a vLLM that answers 400 to a field it
+  // does not know -- because that is the moment a reader needs them and the moment they are
+  // least likely to go looking for documentation.
+  'note.openrouter': {
+    zh: '支持 service_tier 与 session_id 等扩展字段，因此扩展字段保持开启。',
+    en: 'Accepts OpenRouter’s extra fields such as service_tier and session_id, so provider extras stay on.',
+  },
+  'note.openai': {
+    zh: '官方接口不接受 OpenRouter 的扩展字段，已默认关闭；打开会得到 400。',
+    en: 'The official API rejects OpenRouter’s extra fields, so they are off by default; turning them on returns a 400.',
+  },
+  'note.relay': {
+    zh: '多数中转站兼容 OpenAI 协议；若返回 400，先把「扩展字段」关掉再试。',
+    en: 'Most relays speak the OpenAI protocol; if you get a 400, turn provider extras off and try again.',
+  },
+  'note.azure': {
+    zh: 'Azure 用 api-key 请求头而不是 Bearer，且 Base URL 必须是含部署名与 api-version 的完整路径；模型名填部署名。',
+    en: 'Azure authenticates with an api-key header rather than Bearer, and the base URL must be the full path including the deployment and api-version; the model name is the deployment name.',
+  },
+  'note.vllm': {
+    zh: '本地服务通常不校验密钥，但对未知字段会直接返回 400，因此扩展字段保持关闭。',
+    en: 'A local server usually ignores the key but returns 400 on any field it does not know, so provider extras stay off.',
+  },
+  'note.dashscope': {
+    zh: '走 OpenAI 兼容模式端点，模型名用通义系列的标识（如 qwen-max）。',
+    en: 'Uses the OpenAI-compatible endpoint; the model name is the Qwen identifier, such as qwen-max.',
+  },
+  'note.deepseek': {
+    zh: '走 DeepSeek 官方的 OpenAI 兼容接口，密钥填 DeepSeek 的 API Key。',
+    en: 'Uses DeepSeek’s own OpenAI-compatible endpoint; the key is a DeepSeek API key.',
+  },
 
   'authStyle.bearer': { zh: 'Bearer Token（多数服务）', en: 'Bearer token (most services)' },
   'authStyle.apiKey': { zh: 'api-key 请求头（Azure）', en: 'api-key header (Azure)' },

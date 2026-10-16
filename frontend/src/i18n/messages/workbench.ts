@@ -1,7 +1,8 @@
 /**
  * workbench —— 页面：pages/workbench/index.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('workbench.…')`。
+ * 两种语言都在这里，页面通过 `t('workbench.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 

@@ -22,8 +22,9 @@ import {
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useLocale } from '../i18n/locale';
+import type { MessageKey } from '../i18n/messages';
 
-const ROLE_KEYS: Record<string, string> = {
+const ROLE_KEYS: Record<string, MessageKey> = {
   admin: 'shell.role.admin',
   ontology_engineer: 'shell.role.ontology_engineer',
   business_expert: 'shell.role.business_expert',
@@ -36,7 +37,14 @@ const { Header, Sider, Content } = Layout;
 
 // Keep the first screen focused on the single business path. Advanced tools remain
 // reachable under “更多”, so nothing is hidden by role or permission.
-const menuItems = [
+interface MenuItem {
+  key: string;
+  icon: React.ReactNode;
+  labelKey: MessageKey;
+  children?: MenuItem[];
+}
+
+const menuItems: MenuItem[] = [
   {
     key: '/workbench',
     icon: <DashboardOutlined />,
@@ -101,34 +109,47 @@ const MainLayout: React.FC = () => {
    * chosen language -- a module-scope array is translated once, at import, and stays in
    * whichever language the bundle happened to start in.
    */
+  // Inferred rather than annotated: antd's `ItemType` is a union whose `children` is required
+  // on one arm and absent on the other, and naming the shape explicitly makes the two arms
+  // collapse into one optional property that no longer matches either. `labelKey` is
+  // deliberately not carried through -- the dictionary key is the source's business, and a
+  // spread would leave a second, unchecked place for the rendered label to come from.
   const items = menuItems.map((item) => {
-    const label = t(item.labelKey as never);
-    const children = 'children' in item ? (item.children ?? []) : [];
+    const label = t(item.labelKey);
+    const children = item.children ?? [];
     if (!children.length) return { key: item.key, icon: item.icon, label };
     return {
       key: item.key,
       icon: item.icon,
       label,
-      children: children.map((child) => ({ ...child, label: t(child.labelKey as never) })),
+      children: children.map((child) => ({ key: child.key, icon: child.icon, label: t(child.labelKey) })),
     };
   });
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
 
+  // The route's first segment, which is what every menu key is written against. Computed
+  // once because both the selection and the open group are derived from it, and two copies
+  // of `path.split('/')[1]` are two chances to disagree about what page this is.
+  const firstSegment = location.pathname === '/' ? '/workbench' : '/' + location.pathname.split('/')[1];
+
   const getSelectedKey = () => {
-    const path = location.pathname;
-    if (path === '/') return '/workbench';
-    const firstSegment = '/' + path.split('/')[1];
-    const navigableItems = items.flatMap(item => 'children' in item ? item.children : [item]);
+    const navigableItems = items.flatMap(item => ('children' in item ? item.children : [item]));
     return navigableItems.find(item => item?.key === firstSegment)?.key || '/';
   };
 
-  const openKeys = location.pathname.startsWith('/graph') || location.pathname.startsWith('/knowledge')
-    || location.pathname.startsWith('/mapping') || location.pathname.startsWith('/rules')
-    || location.pathname.startsWith('/feedback') || location.pathname.startsWith('/workflow')
-    || location.pathname.startsWith('/permission') || location.pathname.startsWith('/data-backup')
-    || location.pathname.startsWith('/model') ? ['/more'] : [];
+  // Which submenu contains the current route, so the group is open when a page inside it is
+  // open. Derived from the menu rather than listed by hand.
+  //
+  // It was a hand-written chain of `startsWith` calls, and it had already drifted: `/tenancy`
+  // is a child of 更多 but was missing from the chain, so arriving at Tenancy -- by link, by
+  // bookmark, by refresh -- left the group collapsed and the selected item invisible. The
+  // next child added would have done the same, silently, because nothing tied the two lists
+  // together. Reading the same `children` array that renders the menu cannot drift.
+  const openKeys = items
+    .filter(item => 'children' in item && (item.children ?? []).some(child => child.key === firstSegment))
+    .map(item => item.key);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -184,7 +205,7 @@ const MainLayout: React.FC = () => {
             {t('shell.app.name')}
           </div>
           <Space size="middle">
-            <Tag color="blue">{user?.roleCode ? t((ROLE_KEYS[user.roleCode] ?? 'shell.role.operator') as never) : ''}</Tag>
+            <Tag color="blue">{user?.roleCode ? t(ROLE_KEYS[user.roleCode] ?? 'shell.role.operator') : ''}</Tag>
             {/* The switch sits in the header, next to the account: it is a property of the
                 person reading, not of a page. Both languages are written in their own script
                 (`中文` / `English`) so the choice is legible before it is made. */}

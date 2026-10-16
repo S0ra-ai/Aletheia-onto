@@ -14,6 +14,34 @@ import type { Locale, MessageKey } from './messages';
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 /**
+ * A sentence keyed by a code the *server* chose, said in the reader's language.
+ *
+ * The server names what it means -- `nextActionCodes`, `recommendationCode`, a readiness
+ * check's `code`, an audit finding's `code` -- and sends its own Chinese sentence beside each
+ * name for the CLI and for clients that do not know the vocabulary. The console looks the
+ * code up in its dictionary and says *that*; for a code this build does not have (a newer
+ * server, an extension that added a check), it keeps the sentence it was given.
+ *
+ * `t()` renders `⟦key⟧` for a key that is not in the dictionary, which is what makes the
+ * fallback possible without a second lookup -- and why a missing key is visible rather than
+ * blank. That sentinel test was written out eight times across five screens before this
+ * helper existed, each copy with its own `as never` cast turning the key check off.
+ *
+ * The key is built by the caller rather than from a `(prefix, code)` pair, because some of
+ * these carry a second discriminator -- a readiness check's evidence is keyed by code *and*
+ * status -- and a helper that only took a prefix would not have fitted them.
+ */
+export const codedText = (
+  t: Translate,
+  key: string,
+  fallback: string,
+  params?: Record<string, string | number>,
+): string => {
+  const translated = t(key as MessageKey, params);
+  return translated.startsWith('⟦') ? fallback : translated;
+};
+
+/**
  * Join sentences that may already end in their own punctuation.
  *
  * Every list this is used for arrives from the backend as complete sentences that end with
@@ -150,8 +178,7 @@ export const adviceTexts = (
   (actions ?? []).map((action, index) => {
     const code = codes?.[index];
     if (!code) return action;
-    const translated = t(`${namespace}.advice.${code}` as MessageKey);
-    return translated.startsWith('⟦') ? action : translated;
+    return codedText(t, `${namespace}.advice.${code}`, action);
   });
 
 /**

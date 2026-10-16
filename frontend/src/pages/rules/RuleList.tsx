@@ -30,11 +30,17 @@ const statusColor: Record<string, string> = {
   disabled: 'default',
 };
 
+// Rows per request, matching the mapping queue. The server clamps at
+// `ONTOLOGY_MAX_PAGE_SIZE` (200) whatever is asked for.
+const PAGE_SIZE = 50;
+
 const RuleList: React.FC = () => {
   const label = useLabel();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [rules, setRules] = useState<BusinessRule[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   // Kept apart from an empty list: both leave `rules` empty.
   const [loadError, setLoadError] = useState('');
   const [selectedOntology, setSelectedOntology] = useState<number | null>(null);
@@ -66,17 +72,23 @@ const RuleList: React.FC = () => {
     }
   }, [t]);
 
-  const fetchRules = useCallback(async (ontologyId: number) => {
+  const fetchRules = useCallback(async (ontologyId: number, page = 1) => {
     setLoading(true);
     setLoadError('');
     try {
-      const items = await ontologyApi.getRules(ontologyId);
-      setRules(items as BusinessRule[]);
+      const { items, pagination } = await ontologyApi.getRules(ontologyId, {
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
+      setRules(items);
+      setTotal(pagination.total);
+      setPage(page);
     } catch (error) {
       // A failed read used to render as an empty rule list, which reads as "this ontology
       // has no rules" -- on the page where a reviewer checks that the controls they believe
       // are running actually exist.
       setRules([]);
+      setTotal(0);
       setLoadError(requestErrorMessage(error, t('rules.rulesLoadFailed')));
     } finally {
       setLoading(false);
@@ -87,9 +99,12 @@ const RuleList: React.FC = () => {
 
   useEffect(() => {
     if (selectedOntology) {
-      fetchRules(selectedOntology);
+      void fetchRules(selectedOntology, page);
     }
-  }, [selectedOntology, fetchRules]);
+    // `fetchRules` is stable (it is a `useCallback` over `t`); `page` changing means the pager
+    // moved, which is a fetch this effect should make. Listing it is what makes that true --
+    // omitting it left the effect reading a `page` from whichever render happened to run.
+  }, [selectedOntology, fetchRules, page]);
 
   const handleCreate = () => {
     setEditingRule(null);
@@ -116,7 +131,7 @@ const RuleList: React.FC = () => {
     try {
       await ontologyApi.deleteRule(selectedOntology, rule.id);
       message.success(t('rules.deleted', { code: rule.code }));
-      fetchRules(selectedOntology);
+      void fetchRules(selectedOntology, page);
     } catch (error) {
       message.error(requestErrorMessage(error, t('rules.deleteFailed')));
     }
@@ -128,7 +143,7 @@ const RuleList: React.FC = () => {
     try {
       await ontologyApi.toggleRuleStatus(selectedOntology, rule.id, newStatus);
       message.success(newStatus === 'published' ? t('rules.enabled') : t('rules.disabled'));
-      fetchRules(selectedOntology);
+      void fetchRules(selectedOntology, page);
     } catch (error) {
       message.error(requestErrorMessage(error, t('rules.toggleFailed')));
     }
@@ -149,7 +164,7 @@ const RuleList: React.FC = () => {
         message.success(t('rules.created'));
       }
       setModalVisible(false);
-      fetchRules(selectedOntology);
+      void fetchRules(selectedOntology, page);
     } catch (error: any) {
       if (error?.errorFields) return;
       message.error(editingRule ? t('rules.updateFailed') : t('rules.createFailed'));
@@ -174,7 +189,7 @@ const RuleList: React.FC = () => {
       } else {
         message.success(t('rules.importedFromWord', { count: result.importedCount }));
       }
-      fetchRules(selectedOntology);
+      void fetchRules(selectedOntology, page);
     } catch (error) {
       message.error(requestErrorMessage(error, t('rules.importFailed')));
     } finally {
@@ -285,7 +300,7 @@ const RuleList: React.FC = () => {
         <Col><Title level={3}>{t('rules.title')}</Title></Col>
         <Col>
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => selectedOntology && fetchRules(selectedOntology)}>
+            <Button icon={<ReloadOutlined />} onClick={() => selectedOntology && void fetchRules(selectedOntology, page)}>
               {t('rules.refresh')}
             </Button>
           </Space>
@@ -328,7 +343,7 @@ const RuleList: React.FC = () => {
             showIcon
             message={t('rules.rulesLoadFailed')}
             description={loadError}
-            action={<Button onClick={() => selectedOntology && fetchRules(selectedOntology)}>{t('rules.retry')}</Button>}
+            action={<Button onClick={() => selectedOntology && void fetchRules(selectedOntology, page)}>{t('rules.retry')}</Button>}
           />
         ) : rules.length === 0 && !loading ? (
           // Three different situations, and "请选择本体" told the reader to pick something
@@ -349,7 +364,15 @@ const RuleList: React.FC = () => {
             dataSource={rules}
             rowKey="id"
             loading={loading}
-            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => t('rules.totalRules', { total }) }}
+            pagination={{
+              current: page,
+              pageSize: PAGE_SIZE,
+              total,
+              showSizeChanger: false,
+              showTotal: (count) => t('rules.totalRules', { count }),
+              // `total` is the server's count, not `rules.length`: this table holds one page.
+              onChange: (next) => void fetchRules(selectedOntology as number, next),
+            }}
             scroll={{ x: 1100 }}
             size="middle"
           />

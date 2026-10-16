@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { modelApi, requestErrorMessage } from '../../api';
 import { useT } from '../../i18n/locale';
+import type { MessageKey } from '../../i18n/messages';
 import type { ModelConfig, ModelConfigUpdate } from '../../types';
 
 const { Title, Paragraph, Text } = Typography;
@@ -23,84 +24,93 @@ const { Title, Paragraph, Text } = Typography;
  */
 
 interface Preset {
-  labelKey: string;
+  /**
+   * Declared as a `MessageKey` rather than a `string` so a typo is a compile error.
+   *
+   * Both keys below reach `t()` through a variable, and a variable key cannot be checked the
+   * way `t('model.note.azure')` can. The casts that used to sit at those two call sites
+   * (`as never`) did not fix that -- they turned the check off, which is how a whole screen's
+   * worth of keys can be missing while the type checker stays quiet.
+   */
+  labelKey: MessageKey;
   provider: string;
   baseUrl: string;
   model: string;
   authStyle: string;
   authHeader?: string;
   sendProviderExtras: boolean;
-  note: string;
+  /** Dictionary key for what this preset gets right, and what it gets wrong. */
+  noteKey: MessageKey;
 }
 
 /** Starting points for the shapes we have actually had to support. */
 const PRESETS: Record<string, Preset> = {
   openrouter: {
     labelKey: 'model.preset.openrouter',
+    noteKey: 'model.note.openrouter',
     provider: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini',
     authStyle: 'bearer',
     sendProviderExtras: true,
-    note: '支持 service_tier 与 session_id 等扩展字段。',
   },
   openai: {
     labelKey: 'model.preset.openai',
+    noteKey: 'model.note.openai',
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
     authStyle: 'bearer',
     sendProviderExtras: false,
-    note: '官方接口不接受 OpenRouter 扩展字段，已默认关闭。',
   },
   relay: {
     labelKey: 'model.preset.relay',
+    noteKey: 'model.note.relay',
     provider: 'custom',
     baseUrl: 'https://your-relay.example.com/v1',
     model: 'gpt-4o-mini',
     authStyle: 'bearer',
     sendProviderExtras: false,
-    note: '多数中转站兼容 OpenAI 协议；若返回 400，先关闭扩展字段。',
   },
   azure: {
     labelKey: 'model.preset.azure',
+    noteKey: 'model.note.azure',
     provider: 'azure',
     baseUrl: 'https://<资源名>.openai.azure.com/openai/deployments/<部署名>/chat/completions?api-version=2024-02-01',
     model: '<部署名>',
     authStyle: 'api-key',
     sendProviderExtras: false,
-    note: 'Azure 使用 api-key 请求头，且 Base URL 需含完整路径与 api-version。',
   },
   vllm: {
     labelKey: 'model.preset.vllm',
+    noteKey: 'model.note.vllm',
     provider: 'local',
     baseUrl: 'http://127.0.0.1:8000/v1',
     model: 'qwen2.5-7b-instruct',
     authStyle: 'none',
     sendProviderExtras: false,
-    note: '本地服务通常无需密钥，且对未知字段严格返回 400。',
   },
   dashscope: {
     labelKey: 'model.preset.dashscope',
+    noteKey: 'model.note.dashscope',
     provider: 'dashscope',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-max',
     authStyle: 'bearer',
     sendProviderExtras: false,
-    note: '使用 OpenAI 兼容模式端点。',
   },
   deepseek: {
     labelKey: 'model.preset.deepseek',
+    noteKey: 'model.note.deepseek',
     provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
     authStyle: 'bearer',
     sendProviderExtras: false,
-    note: '使用 DeepSeek 官方 OpenAI 兼容接口；填写 DeepSeek API Key。',
   },
 };
 
-const AUTH_STYLE_KEYS: Record<string, string> = {
+const AUTH_STYLE_KEYS: Record<string, MessageKey> = {
   bearer: 'model.authStyle.bearer',
   'api-key': 'model.authStyle.apiKey',
   custom: 'model.authStyle.custom',
@@ -149,6 +159,8 @@ const ModelConfigPage: React.FC = () => {
     void fetchConfig();
   }, [fetchConfig]);
 
+  const [appliedPreset, setAppliedPreset] = useState<Preset | null>(null);
+
   const applyPreset = (key: string) => {
     const preset = PRESETS[key];
     if (!preset) return;
@@ -161,7 +173,8 @@ const ModelConfigPage: React.FC = () => {
       sendProviderExtras: preset.sendProviderExtras,
     });
     setAuthStyle(preset.authStyle);
-    message.info(t('model.presetApplied', { name: t(preset.labelKey as never) }));
+    setAppliedPreset(preset);
+    message.info(t('model.presetApplied', { name: t(preset.labelKey) }));
   };
 
   const handleSave = async (values: Record<string, unknown>) => {
@@ -257,7 +270,7 @@ const ModelConfigPage: React.FC = () => {
             {config?.hasApiKey ? <Tag color="green">{config.apiKey}</Tag> : <Tag color="red">{t('model.notSet')}</Tag>}
           </Descriptions.Item>
           <Descriptions.Item label={t('model.authStyleLabel')}>
-            <Tag>{AUTH_STYLE_KEYS[config?.authStyle || 'bearer'] ? t(AUTH_STYLE_KEYS[config?.authStyle || 'bearer'] as never) : config?.authStyle}</Tag>
+            <Tag>{AUTH_STYLE_KEYS[config?.authStyle || 'bearer'] ? t(AUTH_STYLE_KEYS[config?.authStyle || 'bearer']) : config?.authStyle}</Tag>
           </Descriptions.Item>
           <Descriptions.Item label={t('model.resolvedEndpoint')} span={2}>
             <Text code copyable style={{ fontSize: 12 }}>{config?.resolvedEndpoint || '-'}</Text>
@@ -274,11 +287,23 @@ const ModelConfigPage: React.FC = () => {
               style={{ width: 200 }}
               placeholder={t('model.providerPlaceholder')}
               onChange={applyPreset}
-              options={Object.entries(PRESETS).map(([key, preset]) => ({ value: key, label: t(preset.labelKey as never) }))}
+              options={Object.entries(PRESETS).map(([key, preset]) => ({ value: key, label: t(preset.labelKey) }))}
             />
           </Space>
         }
       >
+        {appliedPreset && (
+          // The preset's note, shown while it is the one that was applied. It is a caveat
+          // about the endpoint being configured (Azure's header and full path, vLLM's 400 on
+          // unknown fields), which is exactly the thing that goes wrong here -- and the
+          // presets carried one for each of the seven all along, rendered nowhere.
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={t(appliedPreset.noteKey)}
+          />
+        )}
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="provider" label={t('model.providerLabel')} hidden>
             <Input />
@@ -320,7 +345,7 @@ const ModelConfigPage: React.FC = () => {
               onChange={setAuthStyle}
               options={(config?.authStyleOptions || ['bearer', 'api-key', 'custom', 'none']).map(value => ({
                 value,
-                label: AUTH_STYLE_KEYS[value] ? t(AUTH_STYLE_KEYS[value] as never) : value,
+                label: AUTH_STYLE_KEYS[value] ? t(AUTH_STYLE_KEYS[value]) : value,
               }))}
             />
           </Form.Item>

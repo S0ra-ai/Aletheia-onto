@@ -63,6 +63,11 @@ export const shell = {
   'login.passwordRequired': { zh: '请输入密码', en: 'Enter a password' },
   'login.submit': { zh: '登录', en: 'Sign in' },
   'login.failed': { zh: '登录失败，请重试。', en: 'Sign-in failed. Try again.' },
+  // Shown while the stored session is being checked, which is the first thing every
+  // signed-in visitor sees on every refresh. It was a Chinese literal on the component, so
+  // in English mode the loading state of the whole application was the one screen that
+  // stayed in the other language.
+  'login.verifying': { zh: '正在校验登录状态', en: 'Checking your session…' },
   'login.firstRun': {
     zh: '首次使用：管理员账号是 admin，口令在 aletheia init 的输出里，只显示一次。忘记了就在服务器上运行 aletheia passwd 重设（会提示输入新口令）。',
     en: 'First run: the administrator account is admin, and its password is printed once by aletheia init. If it is lost, run aletheia passwd on the server to set a new one (it prompts, so the password stays out of your shell history).',

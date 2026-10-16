@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse, Empty } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -8,11 +8,15 @@ import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestError
 import { initializeReport, scanReport } from '../../i18n/text';
 import MarkdownMessage from '../../components/MarkdownMessage';
 import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult, OntologyReasoningChainResult } from '../../types';
+import type { MessageKey } from '../../i18n/messages';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const ONBOARDING_STEP_KEYS: Record<string, string> = {
+// Typed as `MessageKey`, not `string`: the value reaches `t()` through a variable, so a
+// `string` declaration would make every call below need a cast -- and a cast is what turns
+// a misspelled key into a `⟦key⟧` on the screen instead of an error at build time.
+const ONBOARDING_STEP_KEYS: Record<string, MessageKey> = {
   register_data_source: 'datasource.stepRegisterDataSource',
   test_connection: 'datasource.stepTestConnection',
   test_api_gateway: 'datasource.stepTestApiGateway',
@@ -42,7 +46,7 @@ const DataSourceList: React.FC = () => {
   const [initializingId, setInitializingId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
-  const fetchDataSources = async () => {
+  const fetchDataSources = useCallback(async () => {
     setLoading(true);
     try {
       const data = await dataSourceApi.list();
@@ -52,12 +56,12 @@ const DataSourceList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchDataSources();
+    void fetchDataSources();
     industryBlueprintApi.list().then(setBlueprints).catch(() => undefined);
-  }, [t]);
+  }, [fetchDataSources]);
 
   const parseApiHeaders = (value?: string): Record<string, string> => {
     if (!value?.trim()) return {};
@@ -92,7 +96,7 @@ const DataSourceList: React.FC = () => {
       form.resetFields();
       fetchDataSources();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('datasource.createFailed'));
+      message.error(requestErrorMessage(error, t('datasource.createFailed')));
     }
   };
 
@@ -198,7 +202,7 @@ const DataSourceList: React.FC = () => {
         fetchDataSources();
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('datasource.onboardingFailed'));
+      message.error(requestErrorMessage(error, t('datasource.onboardingFailed')));
     } finally {
       setOnboardingLoading(false);
     }
@@ -460,7 +464,7 @@ const DataSourceList: React.FC = () => {
                 direction="vertical"
                 size="small"
                 items={onboardingResult.steps.map(step => ({
-                  title: ONBOARDING_STEP_KEYS[step.code] ? t(ONBOARDING_STEP_KEYS[step.code] as never) : step.code,
+                  title: ONBOARDING_STEP_KEYS[step.code] ? t(ONBOARDING_STEP_KEYS[step.code]) : step.code,
                   description: step.message,
                   status: step.status === 'completed' ? 'finish' : step.status === 'failed' ? 'error' : 'wait',
                 }))}

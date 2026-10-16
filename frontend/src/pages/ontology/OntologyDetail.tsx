@@ -1,4 +1,4 @@
-import { joinSentences } from '../../i18n/text';
+import { codedText, joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { GATE_SEVERITY, MAPPING_TYPE, ONTOLOGY_STATUS, READINESS_STATUS, RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useLocale, useT } from '../../i18n/locale';
@@ -63,6 +63,18 @@ const OntologyDetailPage: React.FC = () => {
   // blocker, so the button being disabled is never the end of the story.
   const canPublish =
     !!ontology && ontology.ontology.status !== 'published' && blockers.length === 0;
+
+  // The download goes through the API client, so a failure is a message rather than a blank
+  // tab: these four buttons used to hand a URL to `window.open`, and the API authenticates
+  // with a bearer header a browser does not attach on its own.
+  const handleExport = async (format: 'jsonld' | 'turtle' | 'owl' | 'shacl') => {
+    if (!id) return;
+    try {
+      await ontologyApi.downloadExport(parseInt(id), format);
+    } catch (error) {
+      message.error(requestErrorMessage(error, t('ontology.exportFailed')));
+    }
+  };
 
   const handlePublish = async () => {
     if (!id) return;
@@ -194,15 +206,13 @@ const OntologyDetailPage: React.FC = () => {
       // word -- 「当前状态 draft。」 The reader gets 「当前状态 草案。」 instead.
       status: label(ONTOLOGY_STATUS, gate.status),
     };
-    const known = (key: string): string => {
-      const translated = t(key as never, params);
-      // `t()` renders ⟦key⟧ for a key it does not have, which is how a message that may or may
-      // not exist is asked for. Two of the gates have evidence that reads differently depending
-      // on the status (the axioms gate says "all declared axioms hold" or lists the violations),
-      // and the rest have one sentence for both -- so the status-specific key is tried first
-      // and the plain one is the fallback.
-      return translated && !translated.startsWith('⟦') ? translated : '';
-    };
+    // `t()` renders ⟦key⟧ for a key it does not have, which is how a message that may or may not
+    // exist is asked for -- `codedText` turns that into the empty string this caller wants rather
+    // than into a fallback sentence. Two of the gates have evidence that reads differently
+    // depending on the status (the axioms gate says "all declared axioms hold" or lists the
+    // violations), and the rest have one sentence for both -- so the status-specific key is
+    // tried first and the plain one is the fallback.
+    const known = (key: string): string => codedText(t, key, '', params);
     const candidates =
       field === 'evidence' && gate.status
         ? [`ontology.gate.${subject}.evidence.${gate.status}`, `ontology.gate.${subject}.evidence`]
@@ -269,25 +279,25 @@ const OntologyDetailPage: React.FC = () => {
             should not have to discover that two of the four exist. */}
         <Button
           icon={<DownloadOutlined />}
-          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'jsonld'), '_blank')}
+          onClick={() => void handleExport('jsonld')}
         >
           JSON-LD
         </Button>
         <Button
           icon={<DownloadOutlined />}
-          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'turtle'), '_blank')}
+          onClick={() => void handleExport('turtle')}
         >
           Turtle
         </Button>
         <Button
           icon={<DownloadOutlined />}
-          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'owl'), '_blank')}
+          onClick={() => void handleExport('owl')}
         >
           OWL/RDFS
         </Button>
         <Button
           icon={<DownloadOutlined />}
-          onClick={() => window.open(ontologyApi.exportUrl(ontology.ontology.id, 'shacl'), '_blank')}
+          onClick={() => void handleExport('shacl')}
         >
           SHACL
         </Button>

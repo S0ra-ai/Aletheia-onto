@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { discardedReport } from '../../i18n/text';
@@ -24,7 +24,7 @@ const OntologyList: React.FC = () => {
   const [form] = Form.useForm();
   const [blueprintForm] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const sources = await dataSourceApi.list();
@@ -37,11 +37,11 @@ const OntologyList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchData();
-  }, [t]);
+    void fetchData();
+  }, [fetchData]);
 
   const handleCreateDraft = async (values: OntologyDraftCreate) => {
     try {

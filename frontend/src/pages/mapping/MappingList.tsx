@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { MAPPING_STATUS, MAPPING_TYPE, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
@@ -9,17 +9,24 @@ import type { Ontology, SemanticMapping } from '../../types';
 const { Text, Title } = Typography;
 const { Option } = Select;
 
+// Rows per request. Larger than antd's default of 10 because this is a review queue -- a
+// reviewer reads through pending mappings rather than hunting for one -- and small enough that
+// a page is a page. `ONTOLOGY_MAX_PAGE_SIZE` on the server is 200 and clamps anything larger.
+const PAGE_SIZE = 50;
+
 const MappingList: React.FC = () => {
   const label = useLabel();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [mappings, setMappings] = useState<SemanticMapping[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [selectedOntology, setSelectedOntology] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   // Kept apart from an empty list: both leave `mappings` empty.
   const [loadError, setLoadError] = useState('');
 
-  const fetchOntologies = async () => {
+  const fetchOntologies = useCallback(async () => {
     try {
       const items = (await ontologyApi.list()) as Ontology[];
       setOntologies(items);
@@ -32,41 +39,65 @@ const MappingList: React.FC = () => {
     } catch (error) {
       message.error(requestErrorMessage(error, t('mapping.loadOntologiesFailed')));
     }
-  };
+  }, [t]);
 
-  const fetchMappings = async (ontologyId: number) => {
+  const fetchMappings = useCallback(async (ontologyId: number, page = 1) => {
     setLoading(true);
     setLoadError('');
     try {
-      setMappings(await ontologyApi.getMappings(ontologyId) as SemanticMapping[]);
+      // Server-side paging. The queue is one row per mapped column -- a legacy schema with
+      // hundreds of tables produces thousands -- and the page used to fetch all of them and
+      // let antd paginate in the browser.
+      const { items, pagination } = await ontologyApi.getMappings(ontologyId, {
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
+      setMappings(items);
+      setTotal(pagination.total);
+      setPage(page);
     } catch (error) {
       // This used to `console.error` and then set the list to empty, so a failed request
       // rendered the same "请选择本体查看映射关系" as an ontology that genuinely has none.
       // On the mapping review queue -- the governance surface -- reporting a fetch failure
       // as "nothing to review" is a false statement about what has been reviewed.
       setMappings([]);
+      setTotal(0);
       setLoadError(requestErrorMessage(error, t('mapping.loadMappingsFailed')));
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchOntologies();
   }, [t]);
 
   useEffect(() => {
+    void fetchOntologies();
+  }, [fetchOntologies]);
+
+  useEffect(() => {
     if (selectedOntology) {
-      fetchMappings(selectedOntology);
+      void fetchMappings(selectedOntology);
     }
-  }, [selectedOntology, t]);
+  }, [selectedOntology, fetchMappings]);
 
   const handleBulkReview = async (status: string) => {
     if (!selectedOntology) return;
     try {
-      await ontologyApi.reviewMappings(selectedOntology, { status, reviewer: '前端用户', note: '工作台批量审核' });
-      message.success(status === 'confirmed' ? t('mapping.bulkConfirmDone') : t('mapping.bulkRejectDone'));
-      fetchMappings(selectedOntology);
+      // `status` alone. This used to send `reviewer: '前端用户'` -- a name the server does
+      // not accept (it credits the authenticated principal) so it was dropped, and a
+      // `note: '工作台批量审核'` that the server *did* accept and wrote into
+      // `semantic_mapping.evidence`. A canned note is stored in whatever language the
+      // console was in, and no later language switch can reach it; the bulk action is
+      // already recorded structurally in `audit_log` as `bulk_review_semantic_mappings`
+      // with its status and count, which is the provenance this note was standing in for.
+      const result = await ontologyApi.reviewMappings(selectedOntology, { status });
+      // The count, because paging made the button ambiguous: it reviews every *pending*
+      // mapping of the ontology, not the rows on the visible page, and a reader looking at
+      // page one of nine has no way to tell that from the label alone.
+      message.success(
+        t(status === 'confirmed' ? 'mapping.bulkConfirmDone' : 'mapping.bulkRejectDone', {
+          count: result?.reviewedCount ?? 0,
+        }),
+      );
+      void fetchMappings(selectedOntology, 1);
     } catch (error) {
       message.error(requestErrorMessage(error, t('mapping.reviewFailed')));
     }
@@ -189,6 +220,17 @@ const MappingList: React.FC = () => {
             dataSource={mappings}
             rowKey="id"
             loading={loading}
+            pagination={{
+              current: page,
+              pageSize: PAGE_SIZE,
+              total,
+              showSizeChanger: false,
+              // `total` comes from the server's count, not from `mappings.length`: this table
+              // holds one page, and a pager built from the rows it is holding would always say
+              // it is on the last one.
+              showTotal: (count) => t('mapping.totalRows', { count }),
+              onChange: (next) => void fetchMappings(selectedOntology as number, next),
+            }}
           />
         )}
       </Card>

@@ -1,7 +1,8 @@
 /**
  * datasource —— 页面：pages/datasource/DataSourceList.tsx、DataSourceDetail.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('datasource.…')`。
+ * 两种语言都在这里，页面通过 `t('datasource.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -391,6 +392,7 @@ export const datasource: Record<string, MessageEntry> = {
   'pendingMappings': { zh: '待审核映射', en: 'Mappings to review' },
   'nextActions': { zh: '下一步动作', en: 'Next actions' },
   'downloadKernel': { zh: '下载语义内核包', en: 'Download the semantic kernel package' },
+  'downloadKernelFailed': { zh: '下载内核包失败', en: 'Could not download the kernel package' },
 
   'notInitialized': { zh: '数据源尚未初始化为本体知识库', en: 'This data source has not been initialised as an ontology knowledge base' },
   'notInitializedHint': { zh: '请返回数据源列表执行初始化。', en: 'Go back to the data source list and initialise it.' },

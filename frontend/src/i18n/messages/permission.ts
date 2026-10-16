@@ -1,7 +1,8 @@
 /**
  * permission —— 页面：pages/permission/PermissionManager.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('permission.…')`。
+ * 两种语言都在这里，页面通过 `t('permission.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -56,6 +57,42 @@ export const permission: Record<string, MessageEntry> = {
   'declareMapping': { zh: '声明组映射', en: 'Declare a group mapping' },
   'pendingReviews': { zh: '待审核', en: 'Pending review' },
   'pendingExecutions': { zh: '待审核工具执行', en: 'Tool executions pending review' },
+
+  // Empty states. A fresh platform has no rows in any of these three tables, and antd's
+  // default 暂无数据 says the same thing about all of them: nothing, and nothing about why.
+  // Each of these names where the rows come from, because a reader who has just arrived
+  // cannot tell "unused" from "broken" and has no way to find out from the table.
+  'noRolesTitle': { zh: '还没有自定义角色', en: 'No custom roles yet' },
+  'noRolesBody': {
+    zh: '平台自带 admin、本体工程师、业务专家、操作员、分析员、智能体六个内置角色，它们出现在账号与策略的选择框里，但不在这张表中。',
+    en: 'The platform ships six built-in roles — admin, ontology engineer, business expert, operator, analyst and agent. They appear in the account and policy pickers but not in this table.',
+  },
+  'noRolesHint': {
+    zh: '这张表列出的是额外增加的角色。当内置角色的权限范围不适用时（例如只有一类合同可以查看的「合同专员」），在这里新建一个，再为它配置策略。',
+    en: 'This table lists roles you add. Create one here when a built-in role is too broad — a contracts clerk who may read one category, say — and then give it policies.',
+  },
+
+  'noPoliciesTitle': { zh: '还没有权限策略', en: 'No permission policies yet' },
+  'noPoliciesBody': {
+    zh: '策略决定某个角色能读、写、执行、删除哪个业务对象的数据。没有策略时，除 admin 外没有任何角色能访问业务对象。',
+    en: 'A policy decides which business object’s data a role may read, write, execute on or delete. With no policies, no role other than admin can reach a business object at all.',
+  },
+  'noPoliciesHint': {
+    zh: '策略依附于已发布本体中的业务对象，所以先在「数据接入」扫描业务库、在「知识建模」生成本体并发布，再回到这里。',
+    en: 'A policy attaches to a business object in a published ontology — scan the source under Data sources, generate and publish an ontology under Modelling, then come back here.',
+  },
+
+  'noToolsTitle': { zh: '还没有注册工具', en: 'No tools registered' },
+  'noToolsBody': {
+    zh: '工具是智能体可以调用的动作，每个都指向一个已登记的业务 API 操作。注册时声明它的风险等级，高风险工具的执行会先进入待审核队列。',
+    en: 'A tool is an action an agent may take, and each one points at a registered business API operation. Its risk level is declared when it is registered; a high-risk execution is held for review first.',
+  },
+  'noToolsHint': {
+    zh: '先在「数据接入」的详情页导入业务系统的 OpenAPI 描述（或手工登记接口），接口才会出现在这里供注册。',
+    en: 'Import the business system’s OpenAPI description — or register an interface by hand — on the data source’s detail page first; only then can it be registered here.',
+  },
+  'goToDataSources': { zh: '去数据接入', en: 'Go to data sources' },
+  'goToOntology': { zh: '去知识建模', en: 'Go to modelling' },
 
   'ssoUnknownTitle': { zh: '无法读取 SSO 状态', en: 'Could not read the SSO status' },
   'ssoUnknownDesc': { zh: '这不表示 SSO 已启用或已关闭，只表示这次读取失败。请刷新重试；若持续失败，查看服务端日志。', en: 'This does not mean SSO is on or off; it means this read failed. Reload to try again, and check the server logs if it keeps failing.' },

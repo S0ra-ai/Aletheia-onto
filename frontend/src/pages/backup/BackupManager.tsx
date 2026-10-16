@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Modal, Space, Table, Tag, Typography, message } from 'antd';
 import { DatabaseOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { backupApi } from '../../api';
+import { backupApi, requestErrorMessage } from '../../api';
+import GuidedEmpty from '../../components/GuidedEmpty';
 import { useT } from '../../i18n/locale';
 
 const { Title, Text } = Typography;
@@ -29,20 +30,23 @@ const BackupManager: React.FC = () => {
   const [restoreModal, setRestoreModal] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState('');
 
-  const loadBackups = async () => {
+  // `useCallback`, so the effect below can name it. The alternative the linter reports is a
+  // loader re-created every render: listing it as a dependency without this wraps it in a loop,
+  // and leaving it out means the effect reads a closure from whichever render happened to run.
+  const loadBackups = useCallback(async () => {
     setLoading(true);
     try {
       setBackups(await backupApi.list());
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('backup.listFailed'));
+      message.error(requestErrorMessage(error, t('backup.listFailed')));
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void loadBackups();
-  }, [t]);
+  }, [loadBackups]);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -51,7 +55,7 @@ const BackupManager: React.FC = () => {
       message.success(t('backup.createSuccess'));
       await loadBackups();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('backup.createFailed'));
+      message.error(requestErrorMessage(error, t('backup.createFailed')));
     } finally {
       setCreating(false);
     }
@@ -59,15 +63,9 @@ const BackupManager: React.FC = () => {
 
   const handleDownload = async (name: string) => {
     try {
-      const blob = await backupApi.download(name);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${name}.tar.gz`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await backupApi.download(name);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('backup.downloadFailed'));
+      message.error(requestErrorMessage(error, t('backup.downloadFailed')));
     }
   };
 
@@ -88,7 +86,7 @@ const BackupManager: React.FC = () => {
       setRestoreModal(false);
       void loadBackups();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('backup.restoreFailed'));
+      message.error(requestErrorMessage(error, t('backup.restoreFailed')));
     } finally {
       setRestoring(false);
     }
@@ -167,7 +165,19 @@ const BackupManager: React.FC = () => {
         </Button>
       </Space>
 
-      <Table columns={columns} dataSource={backups} rowKey="name" loading={loading} pagination={false} />
+      {!loading && backups.length === 0 ? (
+        <GuidedEmpty
+          title={t('backup.emptyTitle')}
+          body={t('backup.emptyBody')}
+          hint={t('backup.emptyHint')}
+        >
+          <Button type="primary" icon={<DatabaseOutlined />} loading={creating} onClick={() => void handleCreate()}>
+            {t('backup.createButton')}
+          </Button>
+        </GuidedEmpty>
+      ) : (
+        <Table columns={columns} dataSource={backups} rowKey="name" loading={loading} pagination={false} />
+      )}
 
       <Modal
         title={t('backup.restoreConfirmTitle')}

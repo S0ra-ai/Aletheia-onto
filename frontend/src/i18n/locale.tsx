@@ -18,12 +18,11 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { MESSAGES, type Locale, type MessageKey } from './messages';
+import { type Locale, type MessageKey } from './messages';
 import { labelIn, type LabelMap } from './labels';
+import { LOCALE_STORAGE_KEY as STORAGE_KEY, translateIn } from './translate';
 
 export type { Locale };
-
-const STORAGE_KEY = 'ontology.session.locale';
 
 /** `?lang=en` wins over the stored choice: see `readStoredLocale`. */
 function localeFromUrl(): Locale | null {
@@ -104,19 +103,7 @@ export const LocaleProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   const t = useCallback(
-    (key: MessageKey, params?: Record<string, string | number>) => {
-      const entry = MESSAGES[key];
-      if (!entry) {
-        // Visible in the interface on purpose: a key that resolves to nothing should be
-        // obvious while it is being written, not silently blank.
-        return `⟦${key}⟧`;
-      }
-      let text: string = entry[locale] ?? entry.zh;
-      for (const [name, value] of Object.entries(params ?? {})) {
-        text = text.replaceAll(`{${name}}`, String(value));
-      }
-      return text;
-    },
+    (key: MessageKey, params?: Record<string, string | number>) => translateIn(locale, key, params),
     [locale],
   );
 

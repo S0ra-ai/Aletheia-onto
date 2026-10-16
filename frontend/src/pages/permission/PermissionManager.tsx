@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CALL_STATUS, ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Badge, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { permissionApi, requestErrorMessage, ssoApi, toolApi } from '../../api';
+import GuidedEmpty from '../../components/GuidedEmpty';
 import { useTabParam } from '../../hooks/useTabParam';
 import type {
   PermissionRole,
@@ -17,6 +19,7 @@ import type {
 const PermissionManager: React.FC = () => {
   const label = useLabel();
   const [tab, setTab] = useTabParam('roles');
+  const navigate = useNavigate();
   const [roles, setRoles] = useState<PermissionRole[]>([]);
   const [policies, setPolicies] = useState<PermissionPolicy[]>([]);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
@@ -36,7 +39,7 @@ const PermissionManager: React.FC = () => {
   const [policyForm] = Form.useForm();
   const t = useT();
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const [r, p, t, pr, ssoStatus] = await Promise.all([
@@ -58,9 +61,11 @@ const PermissionManager: React.FC = () => {
       message.error(requestErrorMessage(error, t('permission.loadFailed')));
     }
     setLoading(false);
-  };
+  }, [t]);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
   const handleCreateRole = async (values: any) => {
     try {
@@ -96,7 +101,7 @@ const PermissionManager: React.FC = () => {
 
   const handleReview = async (logId: number, decision: string) => {
     try {
-      await toolApi.reviewExecution(logId, { reviewer: 'admin', decision });
+      await toolApi.reviewExecution(logId, { decision });
       message.success(decision === 'approved' ? t('permission.reviewApproved') : t('permission.reviewRejected'));
       loadAll();
     } catch (error) {
@@ -199,7 +204,19 @@ const PermissionManager: React.FC = () => {
           label: t('permission.rolesTab'),
           children: (
             <Card title={t('permission.roleList')} extra={<Button icon={<PlusOutlined />} onClick={() => setRoleModalOpen(true)}>{t('permission.newRole')}</Button>}>
-              <Table dataSource={roles} columns={roleColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              {!loading && roles.length === 0 ? (
+                <GuidedEmpty
+                  title={t('permission.noRolesTitle')}
+                  body={t('permission.noRolesBody')}
+                  hint={t('permission.noRolesHint')}
+                >
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setRoleModalOpen(true)}>
+                    {t('permission.newRole')}
+                  </Button>
+                </GuidedEmpty>
+              ) : (
+                <Table dataSource={roles} columns={roleColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              )}
             </Card>
           ),
         },
@@ -208,7 +225,20 @@ const PermissionManager: React.FC = () => {
           label: t('permission.policiesTab'),
           children: (
             <Card title={t('permission.policiesTab')} extra={<Button icon={<PlusOutlined />} onClick={() => setPolicyModalOpen(true)}>{t('permission.newPolicy')}</Button>}>
-              <Table dataSource={policies} columns={policyColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              {!loading && policies.length === 0 ? (
+                <GuidedEmpty
+                  title={t('permission.noPoliciesTitle')}
+                  body={t('permission.noPoliciesBody')}
+                  hint={t('permission.noPoliciesHint')}
+                >
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setPolicyModalOpen(true)}>
+                    {t('permission.newPolicy')}
+                  </Button>
+                  <Button onClick={() => navigate('/ontology')}>{t('permission.goToOntology')}</Button>
+                </GuidedEmpty>
+              ) : (
+                <Table dataSource={policies} columns={policyColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              )}
             </Card>
           ),
         },
@@ -217,7 +247,17 @@ const PermissionManager: React.FC = () => {
           label: t('permission.toolsTab'),
           children: (
             <Card title={t('permission.registeredTools')}>
-              <Table dataSource={tools} columns={toolColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              {!loading && tools.length === 0 ? (
+                <GuidedEmpty
+                  title={t('permission.noToolsTitle')}
+                  body={t('permission.noToolsBody')}
+                  hint={t('permission.noToolsHint')}
+                >
+                  <Button onClick={() => navigate('/datasource')}>{t('permission.goToDataSources')}</Button>
+                </GuidedEmpty>
+              ) : (
+                <Table dataSource={tools} columns={toolColumns} rowKey="id" loading={loading} pagination={false} size="small" />
+              )}
             </Card>
           ),
         },

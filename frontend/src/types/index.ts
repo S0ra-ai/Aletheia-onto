@@ -364,6 +364,34 @@ export interface OntologyDraftCreate {
   blueprintId?: string;
 }
 
+/**
+ * Body of `POST /ontologies/{id}/mappings/review` (`BulkMappingReviewCreate`).
+ *
+ * Declared as a named interface rather than inline at the call site so that
+ * `tests/test_frontend_type_agreement.py` can hold it against the API model -- an inline
+ * object type is invisible to that check, which is how a `reviewer` field the server does
+ * not declare survived here while the identical mistake one method away had already been
+ * fixed and commented.
+ *
+ * `note` is written into `semantic_mapping.evidence`, so it is the reviewer's own words;
+ * nothing in the console fills it in on the reviewer's behalf.
+ */
+export interface BulkMappingReviewCreate {
+  status: string;
+  note?: string;
+}
+
+/**
+ * Body of `POST /tools/logs/{id}/review` (`ToolExecutionReview`).
+ *
+ * `decision` is the whole body. There is deliberately no `reviewer`: the review of a held
+ * tool execution is credited to the authenticated caller, and a field the server drops is
+ * worse than a missing one -- it reads at the call site as though it decided the record.
+ */
+export interface ToolExecutionReview {
+  decision: string;
+}
+
 export interface IndustryBlueprint {
   id: string;
   name: string;
@@ -509,6 +537,23 @@ export interface ReleaseReadinessResult {
 }
 
 // 语义映射相关类型
+/**
+ * How much of a list a response is.
+ *
+ * `limit: null` means no limit was applied -- these endpoints return everything when the caller
+ * does not ask for a page, so a client can tell "these are all the rows" from "these are the
+ * first fifty of nine hundred" without having to remember whether it passed a limit.
+ *
+ * `total` is a real count rather than `offset + rows.length`. A pager that shows "51 of 51"
+ * when there are nine hundred rows is worse than no pager, because it looks like an answer.
+ */
+export interface PageInfo {
+  limit: number | null;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+}
+
 export interface SemanticMapping {
   id: number;
   ontologyId: number;

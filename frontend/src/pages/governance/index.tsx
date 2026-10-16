@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Table, Typography, Tabs, Tag, Button, message } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { governanceApi, requestErrorMessage } from '../../api';
@@ -7,6 +7,7 @@ import { useTabParam } from '../../hooks/useTabParam';
 import { CALL_STATUS, DECISION_STATUS, DECISION_TYPE } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
 import AuditReportPanel from './AuditReportPanel';
+import { codedText } from '../../i18n/text';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
@@ -20,7 +21,7 @@ const Governance: React.FC = () => {
   const [decisions, setDecisions] = useState<DecisionRecordItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [logs, invocations, decisionItems] = await Promise.all([
@@ -36,11 +37,11 @@ const Governance: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchData();
-  }, [t]);
+    void fetchData();
+  }, [fetchData]);
 
   const auditColumns = [
     {
@@ -175,8 +176,7 @@ const Governance: React.FC = () => {
       render: (_: string, row: { recommendation: string; recommendationCode?: string }) => {
         const code = row.recommendationCode;
         if (!code) return row.recommendation;
-        const translated = t(`semantic.recommendation.${code}` as never);
-        return translated.startsWith('⟦') ? row.recommendation : translated;
+        return codedText(t, `semantic.recommendation.${code}`, row.recommendation);
       },
       ellipsis: true,
     },

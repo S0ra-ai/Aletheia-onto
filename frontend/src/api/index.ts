@@ -1,7 +1,21 @@
 import axios from 'axios';
 import { clearSession, getToken } from '../auth/session';
 import { appHref } from '../routing';
+import { translateNow } from '../i18n/translate';
+import { MESSAGES, type MessageKey } from '../i18n/messages';
 import type { AuthUser } from '../auth/session';
+import {
+  filenameFromDisposition,
+  normalizeDataSource,
+  normalizePolicy,
+  normalizeRole,
+  normalizeSourceApi,
+  normalizeSourceTable,
+  normalizeTool,
+  normalizeToolExecution,
+  normalizeWorkflow,
+  normalizeWorkflowInstance,
+} from './normalise';
 import type {
   DataSource,
   DataSourceCreate,
@@ -16,6 +30,11 @@ import type {
   SemanticCoverageResult,
   OperationBindingResult,
   OntologyDraftCreate,
+  BulkMappingReviewCreate,
+  BusinessRule,
+  Ontology,
+  PageInfo,
+  ToolExecutionReview,
   OntologyDetail,
   ReleaseReadinessResult,
   DemoBootstrapResult,
@@ -49,11 +68,10 @@ import type {
   AgentChatPayload,
   AgentChatResult,
   WorkflowDefinition,
-  WorkflowState,
-  WorkflowTransition,
   WorkflowInstance,
   WorkflowHistoryItem,
   PermissionRole,
+  SemanticMapping,
   PermissionPolicy,
   ToolDefinition,
   ToolExecutionLog,
@@ -86,6 +104,54 @@ const api = axios.create({
   },
 });
 
+/**
+ * Fetch a protected file and hand it to the browser as a download.
+ *
+ * `window.open(url, '_blank')` is how the four export buttons and the kernel-package button
+ * did this, and it cannot work: this platform authenticates with an `Authorization: Bearer`
+ * header and deliberately sets no cookie (`SECURITY.md`), so a URL the browser opens on its
+ * own carries no credential. Every one of those five buttons opened a tab containing
+ * `{"detail":"缺少访问令牌"}`.
+ *
+ * A download therefore has to be a request *this* module makes -- through the same axios
+ * instance as everything else, so it carries the token and goes through the error interceptor
+ * that turns a refusal into something readable. The response is a blob, and the browser saves
+ * it through a temporary object URL that is revoked either way: revoking only on success leaks
+ * the blob for the rest of the session, and never revoking leaks it for the life of the tab.
+ */
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const response = await api.get(url, { responseType: 'blob' });
+  const filename = filenameFromDisposition(response.headers?.['content-disposition']) ?? fallbackName;
+  const objectUrl = URL.createObjectURL(response.data as Blob);
+  try {
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+
+/**
+ * The page block a list endpoint sends, with the unpaginated case spelled out.
+ *
+ * Every one of these endpoints returns the whole list when the caller does not ask for a page,
+ * and a `pagination` block either way. This is the one place that decides what a missing block
+ * means -- an older server, or an endpoint that has not been given one yet -- so a screen never
+ * has to.
+ */
+function pageInfo(payload: unknown): PageInfo {
+  const block = (payload as { pagination?: Partial<PageInfo> })?.pagination;
+  return {
+    limit: block?.limit ?? null,
+    offset: block?.offset ?? 0,
+    total: block?.total ?? 0,
+    hasMore: block?.hasMore ?? false,
+  };
+}
+
 // Attach the bearer token to every request, and surface auth failures in one
 // place instead of at each call site.
 /**
@@ -102,6 +168,32 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * The console's own sentence for a refusal the server named, or `''` when it has none.
+ *
+ * The server sends both: the sentence it wrote (`detail`, Chinese, and what the CLI prints)
+ * and a code identifying which refusal it is. When the dictionary knows the code, the console
+ * says *its* sentence in the reader's language and the server's is not shown at all -- the
+ * point of the code. When it does not, this returns nothing and the caller falls back to
+ * `detail`, which is still true and still readable.
+ *
+ * The facts travel with the code so the sentence can name what it is about. A key that exists
+ * but whose placeholders do not match the facts would render a literal brace, so the lookup
+ * treats a missing placeholder as a miss and falls back -- the server's sentence, in the wrong
+ * language, is better than a broken template.
+ */
+function codedReason(payload: unknown): string {
+  const code = (payload as { code?: unknown })?.code;
+  if (typeof code !== 'string' || !code) return '';
+  const facts = (payload as { facts?: unknown })?.facts;
+  const key = `errors.api.${code}` as MessageKey;
+  if (!(key in MESSAGES)) return '';
+  const text = translateNow(key, (facts ?? {}) as Record<string, string>);
+  // `translateNow` renders `⟦key⟧` for a key it cannot find; this checks the *other* failure,
+  // an unfilled placeholder, which is the one a fact-name mismatch produces.
+  return /\{\w+\}|⟦/.test(text) ? '' : text;
 }
 
 /**
@@ -129,7 +221,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    const detail = error?.response?.data?.detail;
+    const payload = error?.response?.data;
+    const detail = payload?.detail;
+    // The reader's language wins over the server's when the console can name the refusal.
+    const named = codedReason(payload);
     if (status === 401) {
       clearSession();
       // Both halves of this used to compare against the *router* path while the address bar
@@ -142,16 +237,16 @@ api.interceptors.response.use(
       if (!window.location.pathname.startsWith(loginPath)) {
         window.location.assign(loginPath);
       }
-      return Promise.reject(new ApiError(detail || '登录已失效，请重新登录。'));
+      return Promise.reject(new ApiError(named || detail || translateNow('errors.sessionExpired')));
     }
     if (status === 403) {
-      const capability = error?.response?.data?.requiredCapability;
-      return Promise.reject(
-        new ApiError(detail || `当前角色无权执行该操作${capability ? `（需要 ${capability}）` : ''}。`),
-      );
+      // `named` carries the role and the capability it was missing, because the middleware
+      // sends them as facts. It falls back to the server's sentence, and then to a generic
+      // one, for the 403s that come from something other than this platform's own middleware.
+      return Promise.reject(new ApiError(named || detail || translateNow('errors.forbidden')));
     }
-    if (detail) {
-      return Promise.reject(new ApiError(detail));
+    if (named || detail) {
+      return Promise.reject(new ApiError(named || detail));
     }
     // Rejected as-is: there is no curated message, and the caller's fallback is the better
     // thing to show than axios's own wording.
@@ -197,152 +292,6 @@ export const authApi = {
     return data;
   },
 };
-
-const normalizeDataSource = (item: any): DataSource => ({
-  id: item.id,
-  name: item.name,
-  sourceType: item.sourceType ?? item.source_type,
-  connectionUri: item.connectionUri ?? item.connection_uri,
-  apiBaseUrl: item.apiBaseUrl ?? item.api_base_url ?? '',
-  apiHeadersConfigured: item.apiHeadersConfigured ?? item.api_headers_configured ?? false,
-  apiHeaderNames: item.apiHeaderNames ?? item.api_header_names ?? [],
-  domain: item.domain ?? '',
-  systemCategory: item.systemCategory ?? item.system_category ?? 'database',
-  capabilities: item.capabilities ?? [],
-  createdAt: item.createdAt ?? item.created_at,
-});
-
-const normalizeSourceApi = (item: any): SourceApi => ({
-  id: item.id,
-  dataSourceId: item.dataSourceId ?? item.data_source_id,
-  operationCode: item.operationCode ?? item.operation_code,
-  name: item.name,
-  method: item.method,
-  path: item.path,
-  semanticAction: item.semanticAction ?? item.semantic_action ?? '',
-  requestSchema: item.requestSchema ?? item.request_schema ?? {},
-  responseSchema: item.responseSchema ?? item.response_schema ?? {},
-});
-
-/**
- * Permission and tool rows, mapped from the wire to the shape the screens use.
- *
- * These three endpoints send snake_case (`role_code`, `can_read`, `tool_type`,
- * `risk_level`) while their TypeScript types declared camelCase. The types therefore
- * checked out, autocompleted, and described fields that were `undefined` at runtime --
- * and antd draws nothing for a missing `dataIndex`, so the permission policy table
- * rendered twenty rows of blank cells on the screen that answers "who may do what".
- *
- * Normalised here rather than at each call site: the boundary between the wire and the
- * application is this file's job, and the alternative -- correcting one page at a time --
- * is how the same defect arrived three times.
- */
-/**
- * A workflow definition, mapped from the wire to the shape the screens use.
- *
- * `/workflows` sends `object_code`, `ontology_id`, `initial_state`; the definition type
- * declared camelCase, so the list table's 业务对象 / 本体 / 初始状态 columns were blank for
- * every row. Nothing failed -- an antd column whose `dataIndex` does not exist draws
- * nothing -- and it stayed invisible while no workflow existed, because the check that
- * would have caught it reads rendered rows.
- */
-const normalizeWorkflowState = (item: any): WorkflowState => ({
-  ...item,
-  workflowId: item.workflowId ?? item.workflow_id,
-  isTerminal: item.isTerminal ?? item.is_terminal ?? 0,
-  sortOrder: item.sortOrder ?? item.sort_order ?? 0,
-});
-
-const normalizeWorkflowTransition = (item: any): WorkflowTransition => ({
-  ...item,
-  workflowId: item.workflowId ?? item.workflow_id,
-  actionCode: item.actionCode ?? item.action_code ?? '',
-  fromState: item.fromState ?? item.from_state ?? '',
-  toState: item.toState ?? item.to_state ?? '',
-  guardExpression: item.guardExpression ?? item.guard_expression ?? '',
-  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
-  reviewRole: item.reviewRole ?? item.review_role ?? '',
-  sortOrder: item.sortOrder ?? item.sort_order ?? 0,
-});
-
-const normalizeWorkflow = (item: any): WorkflowDefinition => ({
-  ...item,
-  ontologyId: item.ontologyId ?? item.ontology_id,
-  objectCode: item.objectCode ?? item.object_code ?? '',
-  initialState: item.initialState ?? item.initial_state ?? '',
-  createdAt: item.createdAt ?? item.created_at ?? '',
-  // The nested rows go through their own normalisers. Spreading `...item` and passing
-  // `item.states` through left them in wire spelling, so the transition table's 动作 / 来源 /
-  // 目标 / 需审核 columns were blank while the definition above them was translated.
-  states: (item.states || []).map(normalizeWorkflowState),
-  transitions: (item.transitions || []).map(normalizeWorkflowTransition),
-});
-
-const normalizeWorkflowInstance = (item: any): WorkflowInstance => ({
-  ...item,
-  workflowId: item.workflowId ?? item.workflow_id,
-  objectCode: item.objectCode ?? item.object_code ?? '',
-  instanceId: item.instanceId ?? item.instance_id ?? '',
-  currentState: item.currentState ?? item.current_state ?? '',
-});
-
-const normalizeToolExecution = (item: any): ToolExecutionLog => ({
-  ...item,
-  toolId: item.toolId ?? item.tool_id,
-  toolCode: item.toolCode ?? item.tool_code ?? '',
-  agentRole: item.agentRole ?? item.agent_role ?? '',
-  objectCode: item.objectCode ?? item.object_code ?? '',
-  instanceId: item.instanceId ?? item.instance_id ?? '',
-  inputArgs: item.inputArgs ?? item.input_args ?? '',
-  resultSummary: item.resultSummary ?? item.result_summary ?? '',
-  durationMs: item.durationMs ?? item.duration_ms ?? 0,
-  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
-  reviewedBy: item.reviewedBy ?? item.reviewed_by ?? null,
-  reviewedAt: item.reviewedAt ?? item.reviewed_at ?? null,
-  reviewDecision: item.reviewDecision ?? item.review_decision ?? '',
-  createdAt: item.createdAt ?? item.created_at ?? '',
-});
-
-const normalizePolicy = (item: any): PermissionPolicy => ({
-  id: item.id,
-  roleId: item.roleId ?? item.role_id,
-  roleCode: item.roleCode ?? item.role_code ?? '',
-  roleName: item.roleName ?? item.role_name ?? '',
-  objectCode: item.objectCode ?? item.object_code ?? '',
-  canRead: item.canRead ?? item.can_read ?? 0,
-  canWrite: item.canWrite ?? item.can_write ?? 0,
-  canExecute: item.canExecute ?? item.can_execute ?? 0,
-  canDelete: item.canDelete ?? item.can_delete ?? 0,
-  filterExpression: item.filterExpression ?? item.filter_expression ?? '',
-  description: item.description ?? '',
-});
-
-const normalizeRole = (item: any): PermissionRole => ({
-  ...item,
-  isSystem: item.isSystem ?? item.is_system ?? 0,
-  createdAt: item.createdAt ?? item.created_at ?? '',
-});
-
-const normalizeTool = (item: any): ToolDefinition => ({
-  id: item.id,
-  code: item.code,
-  name: item.name,
-  description: item.description ?? '',
-  toolType: item.toolType ?? item.tool_type ?? '',
-  inputSchema: item.inputSchema ?? item.input_schema ?? '',
-  riskLevel: item.riskLevel ?? item.risk_level ?? '',
-  requiresReview: item.requiresReview ?? item.requires_review ?? 0,
-  status: item.status ?? '',
-  createdAt: item.createdAt ?? item.created_at ?? '',
-});
-
-const normalizeSourceTable = (item: any): SourceTable => ({
-  id: item.id,
-  tableName: item.tableName ?? item.table_name,
-  rowCount: item.rowCount ?? item.row_count,
-  primaryKey: item.primaryKey ?? item.primary_key,
-  scannedAt: item.scannedAt ?? item.scanned_at,
-});
 
 // 数据源 API
 export const dataSourceApi = {
@@ -403,9 +352,18 @@ export const dataSourceApi = {
     return data as SourceScanResult;
   },
 
-  getApis: async (id: number): Promise<SourceApi[]> => {
-    const { data } = await api.get(`/data-sources/${id}/apis`);
-    return ((data as { apis: unknown[] }).apis || []).map(normalizeSourceApi);
+  getApis: async (
+    id: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: SourceApi[]; pagination: PageInfo }> => {
+    const params: Record<string, number> = {};
+    if (options.limit != null) {
+      params.limit = options.limit;
+      params.offset = options.offset ?? 0;
+    }
+    const { data } = await api.get(`/data-sources/${id}/apis`, { params });
+    const items = ((data as { apis?: unknown[] }).apis || []).map(normalizeSourceApi);
+    return { items, pagination: pageInfo(data) };
   },
 
   getReadiness: async (id: number): Promise<DataSourceReadiness> => {
@@ -452,7 +410,14 @@ export const dataSourceApi = {
     };
   },
 
-  kernelPackageUrl: (dataSourceId: number): string => `/api/data-sources/${dataSourceId}/kernel-package/download`,
+  /**
+   * Download the scaffolded kernel package for a data source.
+   *
+   * Was `kernelPackageUrl(...)`, a string the page handed to `window.open` -- which carries no
+   * token, so the button opened a tab of 401 JSON. See `downloadFile`.
+   */
+  downloadKernelPackage: async (dataSourceId: number): Promise<void> =>
+    downloadFile(`/data-sources/${dataSourceId}/kernel-package/download`, `kernel-package-${dataSourceId}.zip`),
 };
 
 export const knowledgeBaseApi = {
@@ -474,9 +439,20 @@ export const onboardingApi = {
 
 // 本体 API
 export const ontologyApi = {
-  list: async (): Promise<any[]> => {
-    const { data } = await api.get('/ontologies');
-    return (data.items || data.ontologies || []) as any[];
+  list: async (options: { limit?: number; offset?: number } = {}): Promise<Ontology[]> => {
+    const params: Record<string, number> = {};
+    if (options.limit != null) {
+      params.limit = options.limit;
+      params.offset = options.offset ?? 0;
+    }
+    const { data } = await api.get('/ontologies', { params });
+    return (data.items || data.ontologies || []) as Ontology[];
+  },
+
+  /** One page of ontology versions, with the count a pager needs. */
+  listPage: async (options: { limit: number; offset: number }): Promise<{ items: Ontology[]; pagination: PageInfo }> => {
+    const { data } = await api.get('/ontologies', { params: options });
+    return { items: (data.items || data.ontologies || []) as Ontology[], pagination: pageInfo(data) };
   },
 
   get: async (id: number): Promise<OntologyDetail> => {
@@ -494,12 +470,46 @@ export const ontologyApi = {
     return data as OntologyDetail;
   },
 
-  getMappings: async (ontologyId: number, status?: string): Promise<any[]> => {
-    const { data } = await api.get(`/ontologies/${ontologyId}/mappings`, { params: status ? { status } : {} });
-    return data.items || [];
+  /**
+   * Mappings of one ontology. Paged when `limit` is given, and the whole list when it is not.
+   *
+   * This is the list with the largest realistic length in the console: a row is written per
+   * mapped column, so a legacy schema with hundreds of tables produces thousands of them on the
+   * queue that gates publication -- which the page used to load in one piece and hand to antd
+   * to paginate in the browser.
+   */
+  getMappings: async (
+    ontologyId: number,
+    options: { status?: string; limit?: number; offset?: number } = {},
+  ): Promise<{ items: SemanticMapping[]; pagination: PageInfo }> => {
+    const params: Record<string, string | number> = {};
+    if (options.status) params.status = options.status;
+    if (options.limit != null) {
+      params.limit = options.limit;
+      params.offset = options.offset ?? 0;
+    }
+    const { data } = await api.get(`/ontologies/${ontologyId}/mappings`, { params });
+    return {
+      items: (data.items || []) as SemanticMapping[],
+      pagination: (data.pagination ?? { limit: null, offset: 0, total: 0, hasMore: false }) as PageInfo,
+    };
   },
 
-  reviewMappings: async (ontologyId: number, payload: { status: string; reviewer?: string; note?: string }): Promise<any> => {
+  /**
+   * Bulk-review every pending mapping of an ontology.
+   *
+   * No `reviewer` argument, for the same reason `publish` has no `publisher`: the server
+   * credits the authenticated principal, and its request model declares `status` and `note`
+   * only. A `reviewer` sent from here was dropped on the floor while looking like it decided
+   * who the audit recorded.
+   *
+   * `note` is a *reviewer's* note and is persisted into `semantic_mapping.evidence`. The
+   * default is empty rather than a canned sentence: a system-generated note written here
+   * would be stored in the language the console happened to be in, and no language switch
+   * afterwards can reach it -- the provenance is already recorded structurally in
+   * `audit_log` (`action`, `count`, `status`).
+   */
+  reviewMappings: async (ontologyId: number, payload: BulkMappingReviewCreate): Promise<any> => {
     const { data } = await api.post(`/ontologies/${ontologyId}/mappings/review`, payload);
     return data;
   },
@@ -514,14 +524,27 @@ export const ontologyApi = {
     return data as OntologyPublication;
   },
 
-  derive: async (ontologyId: number, version: string, actor = 'system'): Promise<any> => {
-    const { data } = await api.post(`/ontologies/${ontologyId}/derive`, { version, actor });
+  /**
+   * Derive a new draft version. No `actor` argument: `OntologyDeriveCreate` declares
+   * `version` alone and the server credits the authenticated caller, so the `actor` this
+   * used to send was dropped without an error.
+   */
+  derive: async (ontologyId: number, version: string): Promise<any> => {
+    const { data } = await api.post(`/ontologies/${ontologyId}/derive`, { version });
     return data;
   },
 
-  getRules: async (ontologyId: number): Promise<any[]> => {
-    const { data } = await api.get(`/ontologies/${ontologyId}/rules`);
-    return data.items || [];
+  getRules: async (
+    ontologyId: number,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: BusinessRule[]; pagination: PageInfo }> => {
+    const params: Record<string, number> = {};
+    if (options.limit != null) {
+      params.limit = options.limit;
+      params.offset = options.offset ?? 0;
+    }
+    const { data } = await api.get(`/ontologies/${ontologyId}/rules`, { params });
+    return { items: (data.items || []) as BusinessRule[], pagination: pageInfo(data) };
   },
 
   importRulesFromWord: async (ontologyId: number, file: File, apply = true): Promise<RuleWordImportResult> => {
@@ -588,11 +611,18 @@ export const ontologyApi = {
     return data;
   },
 
-  /** `jsonld`/`turtle` are this platform's vocabulary; `owl`/`shacl` are the standard ones. */
-  exportUrl: (
+  /**
+   * Download an ontology in one of the four formats the endpoint takes.
+   *
+   * `jsonld`/`turtle` are this platform's vocabulary; `owl`/`shacl` are the standard ones.
+   * Was `exportUrl(...)` -- see `downloadFile` for why a URL opened by the browser cannot
+   * download from an API that authenticates with a header.
+   */
+  downloadExport: async (
     ontologyId: number,
     format: 'jsonld' | 'turtle' | 'owl' | 'shacl',
-  ): string => `/api/ontologies/${ontologyId}/export?format=${format}`,
+  ): Promise<void> =>
+    downloadFile(`/ontologies/${ontologyId}/export?format=${format}`, `ontology-${ontologyId}.${format}`),
 };
 
 export const industryBlueprintApi = {
@@ -1041,9 +1071,13 @@ export const toolApi = {
     return ((data.items || []) as unknown[]).map(normalizeToolExecution);
   },
 
-  reviewExecution: async (logId: number, payload: {
-    reviewer: string; decision: string;
-  }): Promise<ToolExecutionLog> => {
+  /**
+   * Review a tool execution that was held for approval. No `reviewer` argument: the server's
+   * request model declares `decision` alone and credits the authenticated principal, so the
+   * `reviewer` this used to require was dropped -- while reading, at the call site, as though
+   * it decided who the audit recorded.
+   */
+  reviewExecution: async (logId: number, payload: ToolExecutionReview): Promise<ToolExecutionLog> => {
     const { data } = await api.post(`/tools/logs/${logId}/review`, payload);
     return data as ToolExecutionLog;
   },
@@ -1168,12 +1202,16 @@ export const backupApi = {
     return data as BackupItem;
   },
 
-  download: async (name: string): Promise<Blob> => {
-    const { data } = await api.get(`/admin/backup/download/${encodeURIComponent(name)}`, {
-      responseType: 'blob',
-    });
-    return data as Blob;
-  },
+  /**
+   * Save an archive to the user's disk. Returns when the browser has been handed the file.
+   *
+   * The page used to do the object-URL dance itself and name the file `${name}.tar.gz` from
+   * the list row. That name is the server's to choose -- it is the archive it produced, and it
+   * sets `Content-Disposition` saying so -- and the dance is the same one three callers now
+   * need, so it lives in `downloadFile`.
+   */
+  download: async (name: string): Promise<void> =>
+    downloadFile(`/admin/backup/download/${encodeURIComponent(name)}`, `${name}.tar.gz`),
 
   restore: async (name: string): Promise<{ name: string; restoredAt: string; safetyCopy?: string }> => {
     const { data } = await api.post(`/admin/backup/restore/${encodeURIComponent(name)}`);

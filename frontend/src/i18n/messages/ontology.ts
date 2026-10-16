@@ -1,7 +1,8 @@
 /**
  * ontology —— 页面：pages/ontology/OntologyList.tsx、OntologyDetail.tsx、ModellingExtensions.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('ontology.…')`。
+ * 两种语言都在这里，页面通过 `t('ontology.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -80,6 +81,7 @@ export const ontology: Record<string, MessageEntry> = {
   'detailTitle': { zh: '本体详情', en: 'Ontology detail' },
   'retry': { zh: '重试', en: 'Retry' },
   'notFound': { zh: '未找到本体数据', en: 'No ontology found' },
+  'exportFailed': { zh: '导出失败', en: 'Could not export the ontology' },
   'published': { zh: '本体已发布：{name} v{version}', en: 'Ontology published: {name} v{version}' },
   'publishFailed': { zh: '发布失败', en: 'Could not publish' },
   'domainUnset': { zh: '未标注', en: 'Not set' },

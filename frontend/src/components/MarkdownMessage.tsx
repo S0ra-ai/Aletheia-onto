@@ -1,8 +1,8 @@
 import React from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import SyntaxHighlighter, { LABELLED_LANGUAGES } from './codeLanguages';
 
 /**
  * Renders an agent answer as Markdown with syntax-highlighted code blocks.
@@ -79,9 +79,13 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             if (isBlock) {
               // Extract the language from the class name (e.g. "language-python")
               const language = (className ?? '').replace('language-', '') || 'text';
+              // Only labelled for a language the highlighter actually knows. An
+              // unrecognised fence used to print its own name above unhighlighted code --
+              // a caption promising a treatment the block below it does not have.
+              const labelled = LABELLED_LANGUAGES.has(language);
               return (
                 <div style={{ margin: '6px 0 8px' }}>
-                  {language !== 'text' && (
+                  {labelled && (
                     <div style={{
                       fontSize: 11,
                       color: mutedColor,
@@ -94,11 +98,11 @@ const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
                     </div>
                   )}
                   <SyntaxHighlighter
-                    language={language === 'txt' || language === 'text' ? 'text' : language}
+                    language={language === 'txt' ? 'text' : language}
                     style={oneLight}
                     customStyle={{
                       margin: 0,
-                      borderRadius: language === 'text' ? 6 : '0 0 6px 6px',
+                      borderRadius: labelled ? '0 0 6px 6px' : 6,
                       padding: '10px 12px',
                       fontSize: 12.5,
                       lineHeight: 1.6,

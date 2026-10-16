@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { conversationApi, feedbackApi, requestErrorMessage } from '../../api';
 import { useLabel, useT } from '../../i18n/locale';
 import type { AnswerFeedback, Conversation, FeedbackSummary } from '../../types';
+import type { MessageKey } from '../../i18n/messages';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -25,7 +26,7 @@ const { Title, Text, Paragraph } = Typography;
  *   shows the text and links to the decision rather than offering to apply it.
  */
 
-const RATING_META: Record<string, { color: string; labelKey: string }> = {
+const RATING_META: Record<string, { color: string; labelKey: MessageKey }> = {
   incorrect: { color: 'red', labelKey: 'feedback.rating.incorrect' },
   unhelpful: { color: 'orange', labelKey: 'feedback.rating.unhelpful' },
   helpful: { color: 'green', labelKey: 'feedback.rating.helpful' },
@@ -221,7 +222,7 @@ const FeedbackConsolePage: React.FC = () => {
                 width: 110,
                 render: (rating: string) => (
                   <Tag color={RATING_META[rating]?.color || 'default'}>
-                    {RATING_META[rating] ? t(RATING_META[rating].labelKey as never) : rating}
+                    {RATING_META[rating] ? t(RATING_META[rating].labelKey) : rating}
                   </Tag>
                 ),
               },

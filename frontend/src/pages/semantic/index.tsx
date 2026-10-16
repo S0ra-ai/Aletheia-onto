@@ -1,4 +1,4 @@
-import { adviceTexts, explanationParts, joinSentences } from '../../i18n/text';
+import { adviceTexts, codedText, explanationParts, joinSentences } from '../../i18n/text';
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
@@ -27,8 +27,7 @@ const SemanticService: React.FC = () => {
 const recommendationText = (source: { recommendation?: string; recommendationCode?: string }): string => {
   const code = source.recommendationCode;
   if (!code) return source.recommendation ?? '';
-  const translated = t(`semantic.recommendation.${code}` as never);
-  return translated.startsWith('⟦') ? source.recommendation ?? '' : translated;
+  return codedText(t, `semantic.recommendation.${code}`, source.recommendation ?? '');
 };
 
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);

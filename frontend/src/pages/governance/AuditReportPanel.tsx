@@ -19,6 +19,7 @@ import { auditApi, ontologyApi, requestErrorMessage } from '../../api';
 import type { AuditBlockedDecision, AuditEvent, AuditFinding, AuditReport, AuditReportSection, AuditRuleEntry } from '../../types';
 import { RULE_SEVERITY } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
+import { codedText } from '../../i18n/text';
 
 const { Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -83,9 +84,7 @@ const AuditReportPanel: React.FC = () => {
   // from `describe_report_sections()`; it is the fallback for a section this build has no
   // message for -- the CLI prints it, and a new section should not arrive as a ⟦key⟧.
   const sectionAnswer = (key: string): string => {
-    const translated = t(`governance.section.${key}` as never);
-    if (translated && !translated.startsWith('⟦')) return translated;
-    return sections.find((item) => item.section === key)?.answers ?? '';
+    return codedText(t, `governance.section.${key}`, sections.find((item) => item.section === key)?.answers ?? '');
   };
 
   // A finding's sentence, from the code and the number the server sends beside it. Falls back
@@ -93,12 +92,15 @@ const AuditReportPanel: React.FC = () => {
   const findingText = (finding: AuditFinding, field: 'finding' | 'action'): string => {
     const base = `governance.finding.${finding.code ?? ''}.${field}`;
     const key = field === 'finding' && finding.count === 1 ? `${base}.one` : base;
-    const translated = t(key as never, {
-      count: finding.count ?? 0,
-      ratio: typeof finding.ratio === 'number' ? `${Math.round(finding.ratio * 100)}%` : '',
-    });
-    if (translated && !translated.startsWith('⟦')) return translated;
-    return finding[field];
+    return codedText(
+      t,
+      key,
+      finding[field],
+      {
+        count: finding.count ?? 0,
+        ratio: typeof finding.ratio === 'number' ? `${Math.round(finding.ratio * 100)}%` : '',
+      },
+    );
   };
 
   const ruleColumns = [

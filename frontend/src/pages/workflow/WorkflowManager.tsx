@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Empty, Card, Table, Button, Modal, Form, Input, Select, Space, Tag, message, Popconfirm, Descriptions, Timeline } from 'antd';
 import { PlusOutlined, DeleteOutlined, RightOutlined, HistoryOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, workflowApi } from '../../api';
@@ -27,7 +27,7 @@ const WorkflowManager: React.FC = () => {
   const [transitionWorkflowId, setTransitionWorkflowId] = useState(0);
   const [form] = Form.useForm();
 
-  const loadWorkflows = async () => {
+  const loadWorkflows = useCallback(async () => {
     setLoading(true);
     try {
       const items = await workflowApi.list();
@@ -36,9 +36,9 @@ const WorkflowManager: React.FC = () => {
       message.error(requestErrorMessage(error, t('workflow.loadFailed')));
     }
     setLoading(false);
-  };
+  }, [t]);
 
-  const loadOntologies = async () => {
+  const loadOntologies = useCallback(async () => {
     try {
       const items = await ontologyApi.list();
       setOntologies(items.map((o: any) => ({ id: o.id, name: o.name, domain: o.domain || '' })));
@@ -47,9 +47,12 @@ const WorkflowManager: React.FC = () => {
       // pick an ontology" had no answer on screen.
       message.error(requestErrorMessage(error, t('workflow.loadOntologiesFailed')));
     }
-  };
+  }, [t]);
 
-  useEffect(() => { loadWorkflows(); loadOntologies(); }, []);
+  useEffect(() => {
+    void loadWorkflows();
+    void loadOntologies();
+  }, [loadWorkflows, loadOntologies]);
 
   const handleCreate = async (values: any) => {
     try {

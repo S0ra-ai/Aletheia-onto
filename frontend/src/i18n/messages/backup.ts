@@ -1,7 +1,8 @@
 /**
  * backup —— 页面：pages/backup/BackupManager.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('backup.…')`。
+ * 两种语言都在这里，页面通过 `t('backup.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -31,4 +32,16 @@ export const backup: Record<string, MessageEntry> = {
 
   'restoreSuccess': { zh: '恢复成功，请停止服务后重启平台。恢复前的平台库已存为备份 {name}', en: 'Restore complete. Stop the service and restart the platform. The platform database from before the restore was saved as backup {name}' },
   'restoreSuccessNoSnapshot': { zh: '恢复成功，请停止服务后重启平台', en: 'Restore complete. Stop the service and restart the platform' },
+
+  // Empty state. A fresh install has no archives, and the table said 暂无数据 under a button
+  // whose purpose nothing on the page had explained.
+  'emptyTitle': { zh: '还没有任何备份', en: 'No backups yet' },
+  'emptyBody': {
+    zh: '这份备份是平台库（本体、规则、映射、决策留痕、账号）的一个快照。它不包含你接入的业务库——那些数据仍在你自己的系统里，请用它们各自的备份工具。',
+    en: 'A backup here is a snapshot of the platform database: ontologies, rules, mappings, decision records and accounts. It does not contain the business systems you connected — that data stays in your own systems and needs their own backup tools.',
+  },
+  'emptyHint': {
+    zh: '恢复会替换当前的平台库，因此替换前平台会自动把现有库另存为一份 before-restore-… 备份。归档保存在服务器的备份目录中，服务端数据库请使用原生备份工具。',
+    en: 'A restore replaces the current platform database, so the platform first saves it as a before-restore-… archive. Archives live in the server’s backup directory; for a server-side database, use its native backup tools.',
+  },
 };

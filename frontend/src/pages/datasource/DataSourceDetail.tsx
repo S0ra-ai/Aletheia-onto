@@ -1,29 +1,43 @@
-import { adviceTexts, joinSentences, scanReport } from '../../i18n/text';
+import { adviceTexts, codedText, joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RELATION_KIND, RULE_SEVERITY } from '../../i18n/labels';
+import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RELATION_KIND, RULE_SEVERITY, RULE_TYPE } from '../../i18n/labels';
 import { useLabel, useLocale, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
 import { aiApi, dataSourceApi, ontologyApi, requestErrorMessage } from '../../api';
-import type { DataSource, SourceTable, SourceApi, DataSourceReadiness, ReadinessCheck, IndustryBlueprint, SchemaDriftResult, SchemaDriftTableChange, SemanticCoverageResult, SemanticCoverageObject, OperationBindingResult, ReasoningChain, RuleWordImportResult, SourceTableRows } from '../../types';
+import type {
+  BusinessRule,
+  DataSource,
+  DataSourceReadiness,
+  IndustryBlueprint,
+  OperationBindingResult,
+  ReadinessCheck,
+  ReasoningChain,
+  RuleWordImportResult,
+  SchemaDriftResult,
+  SchemaDriftTableChange,
+  SemanticCoverageObject,
+  SemanticCoverageResult,
+  SourceApi,
+  SourceTable,
+  SourceTableRows,
+} from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
 
-type DataSourceRule = {
-  id: number;
-  ontologyId: number;
-  code: string;
-  name: string;
-  rule_type: string;
-  scope_object_code: string;
-  expression: string;
-  severity: string;
-  natural_language: string;
-  status: string;
-};
+/**
+ * A rule as this page renders it: the rule list's own shape, plus the ontology it came from.
+ *
+ * The columns below used to ask for the wire spellings (`rule_type`, `scope_object_code`,
+ * `natural_language`) because the endpoint sent them; it now sends camelCase as well
+ * (`ontology.business_rule_row` emits both, and says why). Reading the camelCase half here
+ * rather than the compatibility half means one fewer place relying on the dual emission --
+ * which exists for older clients, not for new code.
+ */
+type DataSourceRule = BusinessRule & { ontologyId: number };
 
 const DataSourceDetail: React.FC = () => {
   const label = useLabel();
@@ -68,15 +82,17 @@ const DataSourceDetail: React.FC = () => {
         dataSourceApi.getOperationBindings(parseInt(id)),
       ]);
       setTables(tablesData);
-      setApis(apisData);
+      setApis(apisData.items);
       setReadiness(readinessData);
       setSemanticCoverage(coverageData);
       setOperationBindings(bindingData);
       const ontologyIds = Array.from(new Set(coverageData.objects.map(item => item.ontologyId)));
       const ruleGroups = await Promise.all(
         ontologyIds.map(async ontologyId => {
-          const rules = await ontologyApi.getRules(ontologyId);
-          return rules.map((rule: any) => ({ ...rule, ontologyId }));
+          // No limit: this list is "every rule of every ontology this source feeds", which is
+          // a summary rather than a screen with a pager, so it wants all of them.
+          const { items } = await ontologyApi.getRules(ontologyId);
+          return items.map((rule) => ({ ...rule, ontologyId }));
         })
       );
       setBusinessRules(ruleGroups.flat());
@@ -90,6 +106,17 @@ const DataSourceDetail: React.FC = () => {
       setLoading(false);
     }
   }, [id, t]);
+
+  // Through the API client: this button used to hand a URL to `window.open`, which the
+  // browser fetches without the bearer token the endpoint requires.
+  const handleDownloadKernel = async () => {
+    if (!id) return;
+    try {
+      await dataSourceApi.downloadKernelPackage(parseInt(id));
+    } catch (error) {
+      message.error(requestErrorMessage(error, t('datasource.downloadKernelFailed')));
+    }
+  };
 
   const handleScan = async () => {
     if (!id) return;
@@ -353,9 +380,7 @@ const DataSourceDetail: React.FC = () => {
       field === 'evidence' && check.status
         ? `datasource.check.${check.code}.evidence.${check.status}`
         : `datasource.check.${check.code}.${field}`;
-    const translated = t(key as never, params);
-    if (translated && !translated.startsWith('⟦')) return translated;
-    return check[field];
+    return codedText(t, key, check[field], params);
   };
 
   const readinessColumns = [
@@ -382,8 +407,7 @@ const DataSourceDetail: React.FC = () => {
       dataIndex: 'remediation',
       key: 'remediation',
       render: (_: string, check: ReadinessCheck) => {
-        const translated = t(`datasource.advice.${check.code}` as never);
-        return translated && !translated.startsWith('⟦') ? translated : check.remediation;
+        return codedText(t, `datasource.advice.${check.code}`, check.remediation);
       },
     },
     {
@@ -522,16 +546,21 @@ const DataSourceDetail: React.FC = () => {
     },
     {
       title: t('datasource.object'),
-      dataIndex: 'scope_object_code',
+      dataIndex: 'scopeObjectCode',
       key: 'scope_object_code',
       width: 130,
       render: (objectCode: string) => <Tag>{objectCode}</Tag>,
     },
     {
       title: t('datasource.type'),
-      dataIndex: 'rule_type',
-      key: 'rule_type',
+      dataIndex: 'ruleType',
+      key: 'ruleType',
       width: 120,
+      // Through `labels.ts` like every other vocabulary column. Renaming the key from the wire
+      // spelling to the camelCase one made the enum-rendering check see this column for the
+      // first time -- the value it was printing raw (`validation`, `compliance`) is the same
+      // either way; the name was what hid it.
+      render: (ruleType: string) => <Tag>{label(RULE_TYPE, ruleType)}</Tag>,
     },
     {
       title: t('datasource.severity'),
@@ -707,7 +736,7 @@ const DataSourceDetail: React.FC = () => {
         {id && (
           <Button
             icon={<DownloadOutlined />}
-            onClick={() => window.open(dataSourceApi.kernelPackageUrl(parseInt(id)), '_blank')}
+            onClick={() => void handleDownloadKernel()}
           >
             {t('datasource.downloadKernel')}
           </Button>
@@ -915,7 +944,7 @@ const DataSourceDetail: React.FC = () => {
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label={t('datasource.ontologyId')}>{record.ontologyId}</Descriptions.Item>
                     <Descriptions.Item label={t('datasource.ruleExpression')}><code>{record.expression}</code></Descriptions.Item>
-                    <Descriptions.Item label={t('datasource.naturalLanguageNote')}>{record.natural_language}</Descriptions.Item>
+                    <Descriptions.Item label={t('datasource.naturalLanguageNote')}>{record.naturalLanguage}</Descriptions.Item>
                   </Descriptions>
                 ),
               }}

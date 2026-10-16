@@ -3,6 +3,7 @@ import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/useAuth';
+import { requestErrorMessage } from '../../api';
 import { useT } from '../../i18n/locale';
 
 const { Title, Paragraph } = Typography;
@@ -29,7 +30,11 @@ const LoginPage: React.FC = () => {
       await signIn(values.username, values.password);
       navigate(redirectTo, { replace: true });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : t('shell.login.failed'));
+      // Not `submitError.message`: an axios rejection carries its own English internals, so a
+      // server that is unreachable printed “Network Error” under a Chinese form. The helper
+      // shows the server's curated reason when there is one and the translated fallback
+      // otherwise, which is the only two things worth putting here.
+      setError(requestErrorMessage(submitError, t('shell.login.failed')));
     } finally {
       setSubmitting(false);
     }

@@ -206,6 +206,14 @@ const OntologyChat: React.FC = () => {
     // `ask` reads the role and knowledge base from state that loads asynchronously, so it is
     // called again below once those arrive -- asking against an empty picker would send the
     // question to whichever role happened to be first.
+    //
+    // `ask` is deliberately not in this list, and the rule is what is wrong here rather than
+    // the code: naming it would mean declaring it above this effect, and a `useCallback`'s
+    // dependency array is read *during* the render that defines it -- so the const below would
+    // be in its temporal dead zone and the whole page would fail to render. The effect's own
+    // dependencies are the state `ask` reads, which is what it needs to re-run for; the ref
+    // above then makes the second and later runs do nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, roles, knowledgeBases]);
 
   // Message ids come from a counter rather than `Date.now()`. The id is both the React key

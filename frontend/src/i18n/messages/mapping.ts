@@ -1,7 +1,8 @@
 /**
  * mapping —— 页面：pages/mapping/MappingList.tsx
  *
- * 待迁移：本页面的中文文案填到这里，页面里改用 `t('mapping.…')`。
+ * 两种语言都在这里，页面通过 `t('mapping.…')` 取用。缺一个键会让 `t()` 渲染出
+ * `⟦key⟧` 而不是空白——缺口在界面上就能看见，并由 tests/test_ui_messages.py 断言。
  */
 import type { MessageEntry } from './shell';
 
@@ -14,8 +15,11 @@ export const mapping: Record<string, MessageEntry> = {
 
   'bulkConfirm': { zh: '批量确认', en: 'Bulk confirm' },
   'bulkReject': { zh: '批量拒绝', en: 'Bulk reject' },
-  'bulkConfirmDone': { zh: '已批量确认', en: 'Confirmed in bulk' },
-  'bulkRejectDone': { zh: '已批量拒绝', en: 'Rejected in bulk' },
+  // The count is in the message because paging makes the button ambiguous: it reviews every
+  // *pending* mapping of the ontology, not the rows on the visible page.
+  'bulkConfirmDone': { zh: '已确认 {count} 条待审核映射', en: 'Confirmed {count} pending mappings' },
+  'bulkRejectDone': { zh: '已拒绝 {count} 条待审核映射', en: 'Rejected {count} pending mappings' },
+  'totalRows': { zh: '共 {count} 条', en: '{count} total' },
 
   'colMappingType': { zh: '映射类型', en: 'Mapping type' },
   'colSourceTable': { zh: '来源表', en: 'Source table' },
