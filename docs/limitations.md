@@ -96,6 +96,14 @@ By design, not bugs. These are the next phase's work.
   tab in the URL), tables that render only after a click, and cells holding an icon rather
   than text, which were reported as empty forever. A diagnostic that reports a standing
   false positive is teaching its reader to skim past the real findings.
+- **The interface is only half translated: the shell is bilingual, the screens are not.**
+  The language switch, navigation, login page, not-found page and the error boundary read from
+  `i18n/messages/`, and the switch also moves antd's own copy -- but the rest of the screens are
+  still written in Chinese. **Messages the backend returns (errors, preflight, audit wording) are
+  Chinese too**: that needs the same scaffolding on the API side (chosen by `Accept-Language`,
+  with 156 endpoints' worth of wording gone through), which is a step of its own. Saying so matters
+  because "the interface is in English" and "what you read is in English" are different claims, and
+  the gap between them is widest exactly when something goes wrong.
 - **The frontend has no test runner.** No vitest, no Testing Library, no `test` script in
   `package.json` -- so nothing in `frontend/src` is unit-tested: not `label()`'s fallback,
   not the payload normalisers in `api/index.ts`, not the pure helpers in `i18n/`. The

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/useAuth';
+import { useT } from '../../i18n/locale';
 
 const { Title, Paragraph } = Typography;
 
@@ -12,6 +13,7 @@ interface LoginFormValues {
 }
 
 const LoginPage: React.FC = () => {
+  const t = useT();
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,7 +29,7 @@ const LoginPage: React.FC = () => {
       await signIn(values.username, values.password);
       navigate(redirectTo, { replace: true });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '登录失败，请重试。');
+      setError(submitError instanceof Error ? submitError.message : t('shell.login.failed'));
     } finally {
       setSubmitting(false);
     }
@@ -46,10 +48,10 @@ const LoginPage: React.FC = () => {
     >
       <Card style={{ width: 400, maxWidth: '100%' }}>
         <Title level={3} style={{ marginBottom: 4 }}>
-          本体改造研发平台
+          {t('shell.login.title')}
         </Title>
         <Paragraph type="secondary" style={{ marginBottom: 24 }}>
-          请使用平台账号登录。
+          {t('shell.login.subtitle')}
         </Paragraph>
 
         {/*
@@ -59,9 +61,7 @@ const LoginPage: React.FC = () => {
           to use or that there is a way to reset it.
         */}
         <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 16 }}>
-          首次使用：管理员账号是 <Typography.Text code>admin</Typography.Text>，
-          口令在 <Typography.Text code>aletheia init</Typography.Text> 的输出里，只显示一次。
-          忘记了就在服务器上运行 <Typography.Text code>aletheia passwd</Typography.Text> 重设（会提示输入新口令）。
+          {t('shell.login.firstRun')}
         </Paragraph>
 
         {error ? (
@@ -71,30 +71,30 @@ const LoginPage: React.FC = () => {
         <Form<LoginFormValues> layout="vertical" onFinish={handleSubmit} requiredMark={false}>
           <Form.Item
             name="username"
-            label="用户名"
-            rules={[{ required: true, message: '请输入用户名' }]}
+            label={t('shell.login.username')}
+            rules={[{ required: true, message: t('shell.login.usernameRequired') }]}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="用户名"
+              placeholder={t('shell.login.username')}
               autoComplete="username"
               autoFocus
             />
           </Form.Item>
           <Form.Item
             name="password"
-            label="密码"
-            rules={[{ required: true, message: '请输入密码' }]}
+            label={t('shell.login.password')}
+            rules={[{ required: true, message: t('shell.login.passwordRequired') }]}
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="密码"
+              placeholder={t('shell.login.password')}
               autoComplete="current-password"
             />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={submitting} block>
-              登录
+              {t('shell.login.submit')}
             </Button>
           </Form.Item>
         </Form>

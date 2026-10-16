@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Result } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { useT } from '../i18n/locale';
 
 /**
  * The page for a path the application does not have.
@@ -12,15 +13,16 @@ import { useNavigate } from 'react-router-dom';
  */
 const NotFound: React.FC = () => {
   const navigate = useNavigate();
+  const t = useT();
 
   return (
     <Result
       status="404"
-      title="页面不存在"
-      subTitle="这个地址没有对应的页面。可能是链接已失效，或地址被手写时有出入。"
+      title={t('shell.notFound.title')}
+      subTitle={t('shell.notFound.subtitle')}
       extra={
         <Button type="primary" onClick={() => navigate('/workbench')}>
-          返回工作台
+          {t('shell.notFound.back')}
         </Button>
       }
     />

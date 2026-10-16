@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import enUS from 'antd/locale/en_US';
+import { LocaleProvider, useLocale, useT } from './i18n/locale';
 import MainLayout from './layouts/MainLayout';
 import NotFound from './pages/NotFound';
 import { AuthProvider } from './auth/AuthContext';
@@ -32,11 +34,14 @@ const PermissionManager = lazy(() => import('./pages/permission/PermissionManage
 const BackupManager = lazy(() => import('./pages/backup/BackupManager'));
 
 // Loading fallback component
-const PageLoader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-    <Spin size="large" tip="加载中..." />
-  </div>
-);
+const PageLoader = () => {
+  const t = useT();
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+      <Spin size="large" tip={t('shell.app.loading')} />
+    </div>
+  );
+};
 
 // Vite serves the app at `/` during development; the production image mounts it at
 // `/admin` beside the API. Keeping the base conditional avoids making the dev server
@@ -45,7 +50,20 @@ const ROUTER_BASENAME = import.meta.env.PROD ? '/admin' : '/';
 
 const App: React.FC = () => {
   return (
-    <ConfigProvider locale={zhCN}>
+    <LocaleProvider>
+      <AppLocale />
+    </LocaleProvider>
+  );
+};
+
+/**
+ * antd renders its own copy -- pagination, an empty table, the date picker -- so the choice
+ * has to reach `ConfigProvider` too, or half the interface changes language.
+ */
+const AppLocale: React.FC = () => {
+  const { locale } = useLocale();
+  return (
+    <ConfigProvider locale={locale === 'zh' ? zhCN : enUS}>
       <BrowserRouter basename={ROUTER_BASENAME}>
         <ErrorBoundary>
           <AuthProvider>
