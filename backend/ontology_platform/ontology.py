@@ -815,6 +815,13 @@ _ATTACHED = (
 )
 
 
+# The categories a rebuild reports, in the order the server words them. Declared as data so
+# the console's phrases can be checked against them (`tests/test_ui_messages.py`): the console
+# composes its own sentence from these counts, and a category it has no phrase for would drop
+# out of the sentence on one side while still being counted on the other.
+DISCARDED_CATEGORIES = tuple(key for _table, key, _label in _ATTACHED)
+
+
 def _count_attached_rows(conn: sqlite3.Connection, ontology_id: int) -> dict[str, int]:
     counts: dict[str, int] = {}
     for table, key, _label in _ATTACHED:

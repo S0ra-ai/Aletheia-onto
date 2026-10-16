@@ -33,6 +33,24 @@ export const ontology: Record<string, MessageEntry> = {
     zh: '草案已重新生成；原有 {summary} 已随之清除',
     en: 'The draft was rebuilt; the previous {summary} was cleared with it',
   },
+  // What a rebuild removed, counted. The server sends the counts and a sentence of its own;
+  // the sentence is Chinese, and it was being interpolated into the English one -- "the
+  // previous 9 条规则、32 条映射 was cleared". So the console says it from the numbers, and
+  // keeps the server's sentence only for a category it has no phrase for.
+  // The `<category>.one` entries exist because English inflects and Chinese does not: the
+  // Chinese text is the same sentence, repeated so the dictionary stays one shape. The
+  // composer picks `.one` at a count of exactly one -- "the previous 1 workflows was cleared"
+  // is the kind of English that reads as a machine wrote it.
+  'discarded.rules': { zh: '{count} 条规则', en: '{count} rules' },
+  'discarded.rules.one': { zh: '{count} 条规则', en: '{count} rule' },
+  'discarded.mappings': { zh: '{count} 条映射', en: '{count} mappings' },
+  'discarded.mappings.one': { zh: '{count} 条映射', en: '{count} mapping' },
+  'discarded.relations': { zh: '{count} 条关系', en: '{count} relations' },
+  'discarded.relations.one': { zh: '{count} 条关系', en: '{count} relation' },
+  'discarded.workflows': { zh: '{count} 个工作流', en: '{count} workflows' },
+  'discarded.workflows.one': { zh: '{count} 个工作流', en: '{count} workflow' },
+  'discarded.documents': { zh: '{count} 份知识文档', en: '{count} knowledge documents' },
+  'discarded.documents.one': { zh: '{count} 份知识文档', en: '{count} knowledge document' },
   'createFailed': { zh: '生成失败', en: 'Could not generate the draft' },
   'blueprintImported': { zh: '行业蓝图已导入', en: 'Industry blueprint imported' },
   'blueprintJsonInvalid': { zh: '蓝图 JSON 格式不正确', en: 'The blueprint JSON is not valid' },

@@ -4,6 +4,7 @@ import { RocketOutlined, FileTextOutlined, SettingOutlined } from '@ant-design/i
 import { useNavigate } from 'react-router-dom';
 import { DECISION_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
+import { discardedReport } from '../../i18n/text';
 import { demoApi, requestErrorMessage } from '../../api';
 import type { DemoBootstrapResult } from '../../types';
 
@@ -32,6 +33,10 @@ const DemoCenter: React.FC = () => {
       setLoading(null);
     }
   };
+
+  // Computed once, above the JSX: the warning's text and its condition are the same value,
+  // and a composition this cheap is still not one to run twice per render.
+  const lost = result ? discardedReport(result.ontology.discarded, t, result.ontology.discardedSummary || '') : '';
 
   return (
     <div>
@@ -106,12 +111,12 @@ const DemoCenter: React.FC = () => {
               a rebuild clears the rules, mappings and workflows attached to the old one. The
               backend has reported that since the rebuild landed; this screen answered with a
               green tick, which is a silent loss wearing a success message. */}
-          {result.ontology.discardedSummary && (
+          {lost && (
             <Alert
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message={t('ontology.draftRebuilt', { summary: result.ontology.discardedSummary })}
+              message={t('ontology.draftRebuilt', { summary: lost })}
             />
           )}
           <Result

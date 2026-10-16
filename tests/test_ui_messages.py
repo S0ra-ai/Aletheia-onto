@@ -143,3 +143,37 @@ def test_the_workbench_action_items_speak_the_readers_language() -> None:
     missing = [f"workbench.item.{code}.{field}" for code in ACTION_ITEM_CODES for field in ("title", "detail")]
     unknown = sorted(key for key in missing if key not in declared)
     assert not unknown, f"字典里缺少这些句子，英文界面上会露出服务端的中文：{unknown}"
+
+
+def test_the_rebuild_summary_is_composed_from_the_counts_not_quoted() -> None:
+    """The server's sentence is Chinese, and it was being interpolated into an English one.
+
+    `discardedSummary` is 「9 条规则、32 条映射、3 条关系、1 个工作流」, and the console dropped it
+    into `ontology.draftRebuilt` -- 「The draft was rebuilt; the previous 9 条规则、32 条映射 was
+    cleared with it」. English grammar, Chinese inside it, and neither language reads it as
+    wrong at a glance. The counts are structured, so the console says it itself; the server's
+    sentence stays as the fallback for a category this build has no phrase for.
+
+    Both forms are required per category. English inflects and the count is one as often as it
+    is nine; the Chinese text repeats because it has one form, which is what a dictionary
+    shared by two languages looks like.
+    """
+    import sys
+
+    sys.path.insert(0, str(ROOT / "backend"))
+    from ontology_platform.ontology import DISCARDED_CATEGORIES
+
+    declared = set(_entries())
+    missing = [
+        key
+        for category in DISCARDED_CATEGORIES
+        for key in (f"ontology.discarded.{category}", f"ontology.discarded.{category}.one")
+        if key not in declared
+    ]
+    assert not missing, f"字典里缺少这些计数短语，句子里会漏掉或露出控制台不认识的键：{missing}"
+
+    # The sentence that carries them has to carry the placeholder in both languages, or the
+    # phrase list is computed and then dropped on the floor.
+    for language in ("zh", "en"):
+        sentence = _entries()["ontology.draftRebuilt"][language]
+        assert "{summary}" in sentence, f"draftRebuilt 的 {language} 文本里没有 {{summary}}：{sentence}"

@@ -46,8 +46,6 @@ export const datasource: Record<string, MessageEntry> = {
     zh: '{name} 已初始化：{tables} 张表、{objects} 个业务对象，可在对话模块选择',
     en: '{name} initialized: {tables} tables, {objects} business objects — selectable in the chat module',
   },
-  // Punctuation is part of the language, so the separator is a message like any other.
-  'listSeparator': { zh: '、', en: ', ' },
   'testButton': { zh: '测试', en: 'Test' },
   'detailButton': { zh: '详情', en: 'Details' },
   'reasoningButton': { zh: 'AI推理链', en: 'AI reasoning chain' },

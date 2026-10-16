@@ -75,6 +75,8 @@ export const shell = {
   'common.confirm': { zh: '确认', en: 'Confirm' },
   'common.cancel': { zh: '取消', en: 'Cancel' },
   'common.actions': { zh: '操作', en: 'Actions' },
+  // Punctuation is part of the language, so the separator is a message like any other.
+  'common.listSeparator': { zh: '、', en: ', ' },
   'common.empty': { zh: '暂无数据', en: 'No data' },
   'common.loadFailed': { zh: '加载失败', en: 'Could not load' },
 } as const;

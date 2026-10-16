@@ -471,6 +471,20 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **英文句子里夹着的中文数字**（`i18n/text.ts`、`ontology.ts`、`ontology.py`、
+  `OntologyList.tsx`、`DemoCenter.tsx`、`tests/test_ui_messages.py`）。
+  `discardedReport` 那一行英文读作「The draft was rebuilt; the previous {summary} was cleared with it」，
+  而 `{summary}` 是服务端拼的「9 条规则、32 条映射、3 条关系、1 个工作流」——
+  **句子的语法是英文的，里面的数字是中文的**，而两种语言读起来都不刺眼。
+  计数本来就是结构化的（`discarded` 字段），所以现在由前端自己说这句话；
+  服务端那句中文保留为兜底：遇到这个版本还没有短语的分类，宁可露出服务端的措辞，
+  也好过把数字丢掉。
+  英文需要单数而中文不需要，所以每个分类都是两条词条（`.one` 与复数），
+  中文那两条一字不差——两种语言共用一本字典，看起来就是这样。
+  守护测试两个方向都查：**后端会报的每个分类都要有这两种短语**，
+  以及 `draftRebuilt` 在两种语言里都必须留着 `{summary}` 占位符
+  （否则短语算出来却被扔掉，界面上只剩一句没有数字的话）。
+
 - **工作台那句「该做什么」在英文界面里是中文的**（`workbench.py`、`workbench/index.tsx`、
   `i18n/messages/workbench.ts`、`tests/test_ui_messages.py`）。
   那批事项的句子由服务端拼（它才知道计数），一直只有中文——

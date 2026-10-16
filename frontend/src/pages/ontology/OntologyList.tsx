@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ONTOLOGY_STATUS } from '../../i18n/labels';
 import { useLabel, useT } from '../../i18n/locale';
+import { discardedReport } from '../../i18n/text';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -48,8 +49,9 @@ const OntologyList: React.FC = () => {
       // Say what the rebuild cost. 「本体草案生成成功」 was the whole message while a draft's
       // hand-written rules and workflows were being deleted: the operation is destructive by
       // design, and a user who asked for a rebuild still deserves to know what it took.
-      if (draft?.discardedSummary) {
-        message.warning(t('ontology.draftRebuilt', { summary: draft.discardedSummary }), 6);
+      const lost = discardedReport(draft?.discarded, t, draft?.discardedSummary || '');
+      if (lost) {
+        message.warning(t('ontology.draftRebuilt', { summary: lost }), 6);
       } else {
         message.success(t('ontology.draftCreated'));
       }

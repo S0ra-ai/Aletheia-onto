@@ -62,7 +62,7 @@ export const scanReport = (
         missing: unmodelled.length,
         // The list separator is punctuation, and punctuation is part of the language: the
         // English sentence needs `, ` where the Chinese one takes `、`.
-        names: unmodelled.join(t('datasource.listSeparator')),
+        names: unmodelled.join(t('shell.common.listSeparator')),
       }),
     };
   }
@@ -78,4 +78,33 @@ export const initializeReport = (
   const tables = result?.scan?.tables ?? 0;
   const objects = result?.reasoningChain?.objects?.length ?? 0;
   return t('datasource.initializeReport', { name, tables, objects });
+};
+
+/**
+ * What a draft rebuild removed, from the counts the server sends.
+ *
+ * `discardedSummary` is the server's own sentence, and it is Chinese: interpolating it into a
+ * translated sentence produced 「The draft was rebuilt; the previous 9 条规则、32 条映射 was
+ * cleared with it」 -- English grammar with Chinese inside it. The counts are structured data,
+ * so the console can say the whole thing itself; the server's sentence stays as the fallback
+ * for a category this build has no phrase for, which is better than dropping the number.
+ */
+export const discardedReport = (
+  discarded: Record<string, number> | undefined,
+  t: Translate,
+  fallback = '',
+): string => {
+  const counted = Object.entries(discarded ?? {}).filter(([, count]) => count > 0);
+  if (!counted.length) return fallback;
+  return counted
+    .map(([category, count]) => {
+      // `.one` at exactly one: Chinese has one form, English needs two, and this is the only
+      // place the console composes a number into a noun phrase itself.
+      const key = count === 1 ? `ontology.discarded.${category}.one` : `ontology.discarded.${category}`;
+      const phrase = t(key as MessageKey, { count, category });
+      // `t()` renders ⟦key⟧ for a key it does not have; that is the signal to use the
+      // server's wording instead of shipping a sentence with braces in it.
+      return phrase.startsWith('⟦') ? `${count} ${category}` : phrase;
+    })
+    .join(t('shell.common.listSeparator'));
 };
