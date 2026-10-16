@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from ontology_platform.credentials import mask_secret, redact_connection_uri, redact_headers
 from ontology_platform.database import connect, initialize_platform_db
 from ontology_platform.metadata import list_data_sources, register_data_source
@@ -169,3 +170,95 @@ def test_resetting_an_unconfigured_platform_says_so(tmp_path: Path) -> None:
     detail = json.loads(row["detail"])
     assert detail["hasApiKey"] is False
     assert detail["hadStoredConfig"] is False
+
+
+# -- The way in: keeping the secret out of the database entirely --
+
+
+def test_a_reference_resolves_at_the_point_of_use(monkeypatch) -> None:
+    """`env:NAME` and `file:/path`, and nothing else.
+
+    The documented mitigation for "the platform database is the credential store" was "prefer
+    environment variables". That advice was only actionable for OpenRouter and DeepSeek, whose
+    variables the model layer knew by name; a custom provider's key -- Azure, a relay, a local
+    gateway -- had nowhere to go but the row. A reference is the general form.
+    """
+    from ontology_platform.credentials import is_reference, resolve_secret
+
+    monkeypatch.setenv("CREDENTIAL_TEST_DSN", "postgresql://u:p@h/db")
+    assert resolve_secret("env:CREDENTIAL_TEST_DSN") == "postgresql://u:p@h/db"
+
+    # Not a reference: returned untouched, which is what every ordinary value relies on.
+    assert resolve_secret("sqlite:///tmp/x.db") == "sqlite:///tmp/x.db"
+    assert resolve_secret("") == ""
+    assert resolve_secret(None) == ""
+
+    assert is_reference("env:X") is True
+    assert is_reference("file:/run/secrets/x") is True
+    # Case-sensitive: a connection URI always contains `://`, so `env:` cannot collide with a
+    # scheme, and half-recognising `ENV:` would send a typo down the wrong branch.
+    assert is_reference("ENV:X") is False
+    assert is_reference("postgresql://h/db") is False
+
+
+def test_a_reference_that_points_at_nothing_is_an_error_rather_than_empty(monkeypatch, tmp_path) -> None:
+    """An empty credential fails as "the password is wrong", which is the wrong diagnosis.
+
+    The reader has to work out that the platform never had it. Raising says which variable or
+    which file, at the moment the connection is attempted, which is the moment it can be fixed.
+    """
+    from ontology_platform.credentials import UnresolvedSecret, resolve_secret
+
+    monkeypatch.delenv("CREDENTIAL_TEST_MISSING", raising=False)
+    with pytest.raises(UnresolvedSecret, match="CREDENTIAL_TEST_MISSING"):
+        resolve_secret("env:CREDENTIAL_TEST_MISSING")
+
+    with pytest.raises(UnresolvedSecret, match="读不到"):
+        resolve_secret(f"file:{tmp_path / 'not-there'}")
+
+
+def test_a_secret_file_loses_its_trailing_newline(tmp_path) -> None:
+    """Every tool that writes a secret file writes a newline, and `echo` writes one too.
+
+    A password with a trailing newline fails to authenticate against most systems, and the
+    failure looks like a wrong password rather than like a stray byte.
+    """
+    from ontology_platform.credentials import resolve_secret
+
+    path = tmp_path / "key"
+    path.write_text("sk-abc123\n")
+    assert resolve_secret(f"file:{path}") == "sk-abc123"
+
+
+def test_the_adapter_connects_with_a_resolved_reference(tmp_path, monkeypatch) -> None:
+    """End to end through `get_adapter`, which is the only place every caller goes through.
+
+    Resolved there rather than in each adapter's `runtime`: there are five implementations and
+    eight call sites in this package alone, and a per-site approach is the one that misses the
+    next adapter somebody registers.
+    """
+    from ontology_platform.adapters import get_adapter
+    from ontology_platform.database import initialize_platform_db
+    from ontology_platform.sample_data import create_contract_sample_db
+
+    sample = tmp_path / "legacy.sqlite3"
+    create_contract_sample_db(sample)
+    initialize_platform_db(tmp_path / "platform.sqlite3")
+
+    monkeypatch.setenv("CREDENTIAL_TEST_SOURCE", str(sample))
+    adapter = get_adapter("sqlite")
+
+    # The reference resolves, so this reaches the file and reports what is in it.
+    resolved = adapter.test_connection("env:CREDENTIAL_TEST_SOURCE")
+    assert resolved["reachable"] is True, resolved
+
+    # The path itself still works, unchanged.
+    assert adapter.test_connection(str(sample))["reachable"] is True
+
+    # And a reference pointing nowhere fails loudly instead of reporting an unreachable source,
+    # which would read as "your database is down" and send the reader to the wrong system.
+    monkeypatch.delenv("CREDENTIAL_TEST_SOURCE", raising=False)
+    from ontology_platform.credentials import UnresolvedSecret
+
+    with pytest.raises(UnresolvedSecret):
+        adapter.test_connection("env:CREDENTIAL_TEST_SOURCE")

@@ -69,13 +69,25 @@ By design, not bugs. These are the next phase's work.
   drop-in: connections here are tenant-scoped, and returning one to a shared pool without
   respecting the schema it was opened against would hand a caller another tenant's data.
   Also no unified transaction boundary across `connect()` calls.
-- **Credentials are stored as given — there is no encryption at rest.** Data source
-  passwords and model API keys sit in the platform database in plaintext, so that database
-  *is* the credential store: protect it with filesystem permissions and database access
-  controls, and prefer environment variables for the model keys
-  (`docs/configuration.md`). A per-row encryption layer needs a crypto dependency the
-  zero-dependency kernel does not carry, and an encryption layer whose key is stored beside
-  the ciphertext is worse than none, because it looks like protection.
+- **Credentials are still not encrypted at rest — but they no longer have to be stored.** A
+  data source password or a model API key written straight into the row sits in the platform
+  database in plaintext, so in that configuration that database *is* the credential store:
+  protect it with filesystem permissions and database access controls. What changed is that
+  there is now an alternative. Either value may be a **reference** instead of the secret:
+
+      connection_uri = "env:CONTRACTS_DSN"
+      api_key        = "file:/run/secrets/azure-openai-key"
+
+  Resolved at connect time, in the one place every adapter goes through (`get_adapter`), and
+  never on a display path — the settings page shows the reference, which is what tells an
+  operator which secret a row is using. A reference that resolves to nothing raises rather than
+  connecting with an empty credential, because an empty password fails as *"the password is
+  wrong"* and sends the reader to the wrong problem.
+
+  This is deliberately not encryption. A per-row encryption layer needs a crypto dependency the
+  zero-dependency kernel does not carry, and one whose key is stored beside the ciphertext is
+  worse than none because it looks like protection. Not storing the secret is the option that
+  needs nothing, and it removes the row rather than obscuring it.
 - **Rate limiting is off unless configured.** Set `ONTOLOGY_RATE_LIMIT_PER_MINUTE`;
   `aletheia preflight` reports an externally reachable deployment that has not. Counters are
   per process, so the effective limit is the configured value times the worker count.

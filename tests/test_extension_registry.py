@@ -130,7 +130,14 @@ def test_builtin_adapters_are_registered() -> None:
     ],
 )
 def test_builtin_adapter_aliases_resolve(requested: str, expected: str) -> None:
-    assert type(get_adapter(requested)).__name__ == expected
+    """`.wrapped`, because `get_adapter` returns a credential-resolving wrapper.
+
+    Asking through it rather than around it is the point: the wrapper is what every caller
+    actually gets, so a test that unwrapped by reaching for a private name would be verifying a
+    path nothing uses.
+    """
+    adapter = get_adapter(requested)
+    assert type(adapter.wrapped).__name__ == expected
 
 
 def test_unknown_adapter_raises_valueerror_naming_the_alternatives() -> None:
@@ -154,8 +161,11 @@ class _StubAdapter:
 
 def test_a_third_party_adapter_becomes_usable_without_touching_platform_code() -> None:
     register_adapter("stubdb", _StubAdapter, aliases=("stub",))
-    assert isinstance(get_adapter("stubdb"), _StubAdapter)
-    assert isinstance(get_adapter("stub"), _StubAdapter)
+    # Through the wrapper, because that is what a caller gets. This one has no
+    # `test_connection` result to check, so unwrapping is the only way to ask -- and it is the
+    # same question the built-in alias test asks, answered the same way.
+    assert isinstance(get_adapter("stubdb").wrapped, _StubAdapter)
+    assert isinstance(get_adapter("stub").wrapped, _StubAdapter)
     assert "stubdb" in supported_source_types()
 
 

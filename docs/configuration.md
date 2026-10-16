@@ -122,6 +122,32 @@ uses DeepSeek's OpenAI-compatible endpoint, defaults to `deepseek-flash`, and di
 OpenRouter-only body extensions. The web model settings page also provides a “DeepSeek official
 API” preset.
 
+### Keeping a secret out of the database
+
+Those two variables are the ones the model layer knows by name. For any other endpoint — Azure,
+an internal gateway, a local vLLM — the key is configured on the settings page, and there is a
+way to do that without the key ever being written to the platform database: store a **reference**
+instead, and it is read when the connection is made.
+
+```bash
+export CONTRACTS_DSN='postgresql://reader:...@10.0.0.5:5432/contracts'
+export AZURE_OPENAI_KEY='...'
+```
+
+| Stored value | Read as |
+|---|---|
+| `env:CONTRACTS_DSN` | the environment variable, at connect time |
+| `file:/run/secrets/azure-openai-key` | the file's contents, trimmed of the trailing newline |
+| anything else | the value itself, unchanged |
+
+Both a data source's connection URI and a model API key accept a reference. A reference that
+points at nothing is an error rather than an empty credential — an empty password fails as
+“the password is wrong”, which sends the reader to the wrong problem.
+
+The settings page shows the reference rather than the resolved value, which is what tells an
+operator which secret a row is using. This is not encryption: the secret is not in the database
+at all, which is a stronger property than obscuring it and needs no crypto dependency.
+
 ## Related
 
 - [Self-hosted deployment](deployment.md) — and `aletheia preflight`, which blocks unsafe combinations

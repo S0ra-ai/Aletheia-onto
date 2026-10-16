@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1778 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1782 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -91,7 +91,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_retrieval_permission_filtering.py` | 12 | 检索期权限过滤。ROADMAP 阶段 B 的最后一项。 |
 | `test_data_source_knowledge_base.py` | 13 |  |
 | `test_platform_database_dialects.py` | 11 | Platform database durability and dialect tests |
-| `test_credential_protection.py` | 10 | Credential exposure tests |
+| `test_credential_protection.py` | 14 | 凭据不外泄，以及让密钥根本不落库的 `env:`／`file:` 引用 |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
 | `test_ui_smoke_guards.py` | 15 | The render check's own guards, exercised without a browser |

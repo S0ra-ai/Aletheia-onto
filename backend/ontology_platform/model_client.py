@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .config import MODEL_PROVIDER_DEFAULTS
 from .context import PlatformDb
+from .credentials import resolve_secret
 from .database import connect
 from .errors import describe_model_failure
 from .industry_blueprints import coerce_hints, rule_is_readable
@@ -160,7 +161,14 @@ class OpenRouterConfig:
             if not _row_get(row, "api_key") and env_config.provider != "openrouter":
                 return env_config
             return cls(
-                api_key=row["api_key"] or env_config.api_key,
+                # A stored key may be an `env:`/`file:` reference rather than the key itself,
+                # which is the only way an operator can keep a custom provider's credential
+                # (Azure, a relay, a local gateway) out of the platform database at all -- the
+                # environment fallback below covers OpenRouter and DeepSeek by name, and names
+                # nothing else. Resolved here, at the point of use, never on a display path:
+                # the settings page shows the reference, which is what tells an operator which
+                # secret the row is using.
+                api_key=resolve_secret(row["api_key"], what="模型 API Key") or env_config.api_key,
                 model=row["model"] or env_config.model,
                 base_url=(row["base_url"] or env_config.base_url).rstrip("/"),
                 http_referer=row["http_referer"] or env_config.http_referer,

@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol, Union
 from urllib.parse import urlparse
 
 from .config import QUERY_LIMITS
+from .credentials import resolve_secret
 from .errors import describe_data_source_failure
 from .instance_key import InstanceKey, parse_key_columns
 from .registry import Registry, RegistryError, load_entry_point_plugins
@@ -117,6 +118,47 @@ def register_adapter(
     return factory
 
 
+class _ResolvingAdapter:
+    """An adapter that resolves a `env:`/`file:` reference before it connects.
+
+    Wrapping here rather than in each adapter's `runtime` means a registered extension gets it
+    without knowing the feature exists -- and there are five implementations and eight call
+    sites in this package alone, which is exactly the scatter that makes a per-site approach
+    miss one.
+
+    Only the three methods that *use* the URI are wrapped. `source_type` and anything else pass
+    straight through, so an adapter is still itself in every way a caller can observe.
+    """
+
+    def __init__(self, inner: Any, what: str) -> None:
+        self._inner = inner
+        self._what = what
+
+    @property
+    def wrapped(self) -> Any:
+        """The adapter itself.
+
+        Public because "which adapter did the registry resolve this alias to" is a real question
+        -- the alias test asks it -- and a caller that had to reach through `_inner` would be a
+        caller depending on a private name.
+        """
+        return self._inner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def test_connection(self, connection_uri: str) -> dict[str, Any]:
+        return self._inner.test_connection(resolve_secret(connection_uri, what=self._what))
+
+    def scan(self, connection_uri: str) -> list[SourceTableInfo]:
+        return self._inner.scan(resolve_secret(connection_uri, what=self._what))
+
+    @contextmanager
+    def runtime(self, connection_uri: str) -> Iterator["RuntimeDatabase"]:
+        with self._inner.runtime(resolve_secret(connection_uri, what=self._what)) as runtime:
+            yield runtime
+
+
 def get_adapter(source_type: str) -> DatabaseAdapter:
     try:
         factory = ADAPTER_REGISTRY.get(source_type)
@@ -124,7 +166,7 @@ def get_adapter(source_type: str) -> DatabaseAdapter:
         # ValueError is what callers and the API layer already handle, so keep
         # the exception type stable while improving the message.
         raise ValueError(str(error)) from error
-    return factory()
+    return _ResolvingAdapter(factory(), "数据源连接串")  # type: ignore[return-value]
 
 
 def supported_source_types() -> tuple[str, ...]:
