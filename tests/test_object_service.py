@@ -434,3 +434,65 @@ class TestAnUnevaluableRowFilterIsNotAnEmptyResult:
         assert result["items"]
         assert result["rowFilterApplied"] is False
         assert result["rowFilterError"] == ""
+
+
+def test_a_row_is_keyed_by_its_source_columns_and_codes_can_differ(tmp_path: Path) -> None:
+    """The contract the object table reads by, stated where a change would break it.
+
+    A declared column keeps its spelling -- `Id`, `TotalAmount`, `CustomerName` -- while the
+    generated attribute code is folded to lowercase (or replaced by a blueprint's own name).
+    The console read `record[attribute.code]`, so on any source whose columns are not already
+    all-lowercase *every cell* rendered the 「—」 that means "this row has no value here":
+    a grid of plausible dashes over a table full of values. The demo schema is all-lowercase,
+    which is why it survived every check until an audit read the two spellings side by side.
+
+    So: `record` is keyed by source columns, and the two strings are not interchangeable.
+    """
+    source_path = tmp_path / "orders.sqlite3"
+    with sqlite3.connect(source_path) as source:
+        source.executescript(
+            """
+            create table orders (Id integer primary key, TotalAmount real, CustomerName text);
+            insert into orders values (1, 1250.5, '能源设备');
+            """
+        )
+
+    platform = tmp_path / "platform.sqlite3"
+    initialize_platform_db(platform)
+    with connect(platform) as conn:
+        init_workflow_and_permission_schema(conn)
+    source = register_data_source(platform, "订单系统", "sqlite", str(source_path), domain="订单管理")
+    scan_data_source(platform, source.id)
+    draft = generate_ontology_draft(platform, source.id)
+    ontology_id = int(draft["ontology"]["id"])
+    with connect(platform) as conn:
+        object_code = conn.execute(
+            "select bo.code from business_object bo join source_table st on st.id = bo.source_table_id "
+            "where bo.ontology_id = ? and st.table_name = 'orders'",
+            (ontology_id,),
+        ).fetchone()["code"]
+        pairs = [
+            (row["code"], row["column_name"])
+            for row in conn.execute(
+                """select ba.code, sc.column_name from business_attribute ba
+                   left join source_column sc on sc.id = ba.source_column_id
+                   where ba.object_id = (select id from business_object where ontology_id = ? and code = ?)""",
+                (ontology_id, object_code),
+            ).fetchall()
+        ]
+    role = create_role(platform, "order_reader", "订单只读")
+    upsert_permission_policy(platform, int(role["id"]), object_code, can_read=True, ontology_id=ontology_id)
+
+    page = list_object_instances(platform, ontology_id, object_code, role_code="order_reader", limit=5)
+    record = page["items"][0]["record"]
+
+    assert set(record) == {"Id", "TotalAmount", "CustomerName"}
+    assert {code for code, _column in pairs} != {column for _code, column in pairs}, (
+        "前提：示例的属性编码与来源列名应当不同，否则这条测试什么也没证明"
+    )
+    assert all(record.get(code) is None for code, _column in pairs), (
+        "属性编码在记录里取不到值——这正是「整表渲染成 —」的成因"
+    )
+    assert all(record.get(column) is not None for _code, column in pairs), (
+        "按来源列名取值应当拿得到值——界面就是靠这一条读出每个单元格的"
+    )

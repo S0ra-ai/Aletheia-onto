@@ -138,6 +138,30 @@ const ObjectBrowser: React.FC = () => {
   // ellipsis ("标…", "合…") and no value was readable. A declared width plus horizontal
   // scrolling keeps each value legible and the whole contract reachable.
   const ATTRIBUTE_WIDTH = 150;
+  /**
+   * A value from the row, found by the column the attribute was derived from.
+   *
+   * `record` is the row as the source returned it -- keyed by *column names*. The cells used
+   * to be read by `attribute.code`, which is a different string as soon as the source declares
+   * anything but an all-lowercase name: a column `ContractNo` yields an attribute code of
+   * `contractno` (or a blueprint's own name for it), and every cell in the table then rendered
+   * the 「—」 that means "this row has no value here". A table of plausible-looking dashes is
+   * the exact failure this platform cannot afford, and the demo schema is all-lowercase, so it
+   * never showed.
+   */
+  const valueFor = (row: InstanceRow, attribute: BusinessAttribute): unknown => {
+    const record = row.record ?? {};
+    for (const key of [attribute.sourceColumn, attribute.code]) {
+      if (key && key in record) return record[key];
+    }
+    // Adapters differ on identifier case (PostgreSQL folds unquoted names, MySQL keeps them),
+    // so a case-insensitive match is the last resort rather than a guess.
+    const wanted = [attribute.sourceColumn, attribute.code].filter(Boolean).map((key) => key.toLowerCase());
+    for (const [key, value] of Object.entries(record)) {
+      if (wanted.includes(key.toLowerCase())) return value;
+    }
+    return undefined;
+  };
   const columns = [
     { title: '实例', dataIndex: 'instanceId', key: 'instanceId', width: 100, fixed: 'left' as const },
     ...attributes.map((attribute) => ({
@@ -146,7 +170,7 @@ const ObjectBrowser: React.FC = () => {
       width: ATTRIBUTE_WIDTH,
       ellipsis: true,
       render: (_: unknown, row: InstanceRow) => {
-        const value = row.record?.[attribute.code];
+        const value = valueFor(row, attribute);
         if (value === null || value === undefined || value === '') return <Text type="secondary">—</Text>;
         return String(value);
       },

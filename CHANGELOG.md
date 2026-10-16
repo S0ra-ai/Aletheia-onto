@@ -424,7 +424,15 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
-- **工作流控制台的两个按钮永远是坏的**（`WorkflowManager.tsx`、`api/index.ts`、`docs/limitations*.md`）。
+- **列名不是全小写的来源上，对象浏览表整张渲染成「—」**（`ObjectBrowser.tsx`、`tests/test_object_service.py`）。
+  表里每个单元格都按**属性编码**去记录里取值，而记录是按**来源列名**键控的：
+  声明为 `Id`／`TotalAmount`／`CustomerName` 的表，生成的属性编码是小写的
+  `id`／`totalamount`／`customername`，于是**每一格都取不到值**，渲染成那个表示「这行这里没有值」的「—」——
+  **一张填满数据的表，看起来是一张空表**，而这正是这套系统最不能出的错。
+  演示 schema 恰好全小写，所以它躲过了此前所有的检查（包括渲染扫描）。
+  现在按来源列名取值、退回编码、再做一次大小写不敏感匹配（PG 折叠未加引号的标识符、MySQL 保留原样），
+  并用一条测试把这个契约钉住：记录按来源列名键控，两个字符串不可互换。
+- **工作流控制台的两个按钮永远是坏的**（`WorkflowManager.tsx`、`api/index.ts`、`docs/limitations*.md`）。（`WorkflowManager.tsx`、`api/index.ts`、`docs/limitations*.md`）。
   这是本轮审计（42 个 agent、六个视角、每条发现两名独立复核者）查出的第一条，两名复核者都实测复现：
   `get_available_actions` 返回 `workflow_transition` 的**原始行**（`action_code`／`to_state`），
   而客户端只写了一句类型断言、没像同文件其它调用那样归一化——于是每个动作按钮渲染成
