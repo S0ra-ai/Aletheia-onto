@@ -47,7 +47,7 @@ the conclusion can be interrogated.** Retrieval precision is an explicit non-goa
 
 <div align="center">
 
-![Semantic Q&A with evidence](docs/images/01-semantic-qa-with-evidence.png)
+![Semantic Q&A with evidence](docs/images/en/01-semantic-qa-with-evidence.png)
 
 *A verdict with its intent, confidence, recommended action and semantic evidence.*
 

@@ -155,10 +155,14 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
           },
           { title: t('ontology.objects'), dataIndex: 'objectCode', key: 'objectCode', width: 140 },
           {
+            // No fixed width, and that is a fix rather than a preference: at 110px the English
+            // 「Business interaction」 tag was wider than its column and spilled over the next
+            // one. A column sized for the shortest label in one language is a column that
+            // breaks in the other -- the tag decides its own width and the table lays out
+            // around it.
             title: t('ontology.category'),
             dataIndex: 'category',
             key: 'category',
-            width: 110,
             render: (category: string) => <Tag>{label(EVENT_CATEGORY, category)}</Tag>,
           },
           {

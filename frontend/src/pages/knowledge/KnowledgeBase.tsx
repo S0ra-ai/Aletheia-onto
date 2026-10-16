@@ -1,7 +1,7 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { MAPPING_STATUS } from '../../i18n/labels';
-import { useLabel, useT } from '../../i18n/locale';
+import { useLabel, useLocale, useT } from '../../i18n/locale';
 import {
   Alert, Button, Card, Col, Empty, Form, Input, Modal, Row, Select, Space,
   Spin, Table, Tag, Typography, Upload, message,
@@ -38,6 +38,7 @@ const STATUS_COLOR: Record<string, string> = {
 const KnowledgeBasePage: React.FC = () => {
   const label = useLabel();
   const t = useT();
+  const { locale } = useLocale();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   // The ontology is in the URL: "the documents of this system" is a place somebody can send.
   // Without it a bare `/admin/knowledge` opens whichever ontology the page picks by itself,
@@ -118,7 +119,7 @@ const KnowledgeBasePage: React.FC = () => {
                 showIcon
                 style={{ marginTop: 8 }}
                 message={t('knowledge.splitWarnings')}
-                description={joinSentences(result.warnings)}
+                description={joinSentences(result.warnings, locale)}
               />
             )}
           </div>

@@ -1,7 +1,7 @@
 import { adviceTexts, joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RELATION_KIND, RULE_SEVERITY } from '../../i18n/labels';
-import { useLabel, useT } from '../../i18n/locale';
+import { useLabel, useLocale, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
@@ -28,6 +28,7 @@ type DataSourceRule = {
 const DataSourceDetail: React.FC = () => {
   const label = useLabel();
   const t = useT();
+  const { locale } = useLocale();
   const [tab, setTab] = useTabParam('tables');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -329,7 +330,7 @@ const DataSourceDetail: React.FC = () => {
       title: t('datasource.gaps'),
       dataIndex: 'gaps',
       key: 'gaps',
-      render: (gaps: string[]) => gaps.length ? joinSentences(gaps) : '-',
+      render: (gaps: string[]) => gaps.length ? joinSentences(gaps, locale) : '-',
     },
   ];
 
@@ -597,7 +598,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
               message={t('datasource.governanceAdvice')}
-              description={joinSentences(adviceTexts(semanticCoverage.nextActions, semanticCoverage.nextActionCodes, t))}
+              description={joinSentences(adviceTexts(semanticCoverage.nextActions, semanticCoverage.nextActionCodes, t), locale)}
             />
           )}
         </div>
@@ -608,7 +609,7 @@ const DataSourceDetail: React.FC = () => {
           expandable={{
             expandedRowRender: (record) => (
               <Space direction="vertical" style={{ width: '100%' }}>
-                {record.gaps.length > 0 && <Alert type="warning" message={t('datasource.gaps')} description={joinSentences(record.gaps)} />}
+                {record.gaps.length > 0 && <Alert type="warning" message={t('datasource.gaps')} description={joinSentences(record.gaps, locale)} />}
                 <Table
                   size="small"
                   columns={apiColumns}
@@ -677,7 +678,7 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
               message={t('datasource.suggestedActions')}
-              description={joinSentences(adviceTexts(schemaDrift.nextActions, schemaDrift.nextActionCodes, t))}
+              description={joinSentences(adviceTexts(schemaDrift.nextActions, schemaDrift.nextActionCodes, t), locale)}
             />
           )}
           <Table
@@ -784,7 +785,7 @@ const DataSourceDetail: React.FC = () => {
               style={{ marginTop: 16 }}
               type={readiness.status === 'blocked' ? 'error' : 'warning'}
               message={t('datasource.nextActions')}
-              description={joinSentences(adviceTexts(readiness.nextActions, readiness.nextActionCodes, t))}
+              description={joinSentences(adviceTexts(readiness.nextActions, readiness.nextActionCodes, t), locale)}
             />
           )}
         </Card>
@@ -850,7 +851,7 @@ const DataSourceDetail: React.FC = () => {
                     style={{ marginTop: 16 }}
                     type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
                     message={t('datasource.bindingAdvice')}
-                    description={joinSentences(adviceTexts(operationBindings.nextActions, operationBindings.nextActionCodes, t))}
+                    description={joinSentences(adviceTexts(operationBindings.nextActions, operationBindings.nextActionCodes, t), locale)}
                   />
                 )}
               </div>
@@ -900,7 +901,7 @@ const DataSourceDetail: React.FC = () => {
                     description={joinSentences([
                       ...ruleImportResult.warnings,
                       ...ruleImportResult.errors.map(item => `${item.code}: ${item.error}`),
-                    ]) || t('datasource.sourceFile', { file: ruleImportResult.file.name })}
+                    ], locale) || t('datasource.sourceFile', { file: ruleImportResult.file.name })}
                   />
                 )}
               </Space>

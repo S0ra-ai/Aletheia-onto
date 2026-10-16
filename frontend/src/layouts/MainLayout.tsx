@@ -148,12 +148,20 @@ const MainLayout: React.FC = () => {
           lineHeight: '32px',
           overflow: 'hidden',
           whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
         }}>
           {/* `shell.app.name` was in the dictionary the whole time while this line kept its
               own copy of the Chinese -- the one string on every screen that had a translation
               and never used it. The collapsed form is short in either script, so it is a
-              message too: 「本体」 is one glyph and 'Aletheia' is the product's name. */}
-          {collapsed ? t('shell.app.nameShort') : t('shell.app.name')}
+              message too: 「本体」 is one glyph and 'Aletheia' is the product's name.
+
+              Expanded, the wordmark is its own message rather than the page title: the sider
+              is 200px wide and the English title does not fit, so it rendered as
+              「Aletheia Ontology P」 -- cut mid-word, with no ellipsis, on every English screen.
+              `textOverflow` is the backstop: a name that does not fit should trail off with …, 
+              which tells the reader it is truncated, rather than stop mid-word, which looks
+              like a typo in the product's own name. */}
+          {collapsed ? t('shell.app.nameShort') : t('shell.app.siderName')}
         </div>
         <Menu
           theme="dark"

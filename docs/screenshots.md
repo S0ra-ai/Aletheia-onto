@@ -11,12 +11,23 @@ Re-capture them with `scripts/capture_screenshots.py` after any change to the co
 screenshot that shows a layout the product no longer has is a claim the reader can check and
 find false. The script pairs each route with the file the docs reference, reads the ids it needs
 from the instance, and takes everything from the URL (`?tab=`, `?object=`, `?lang=`) so the same
-command produces the same pictures. `tests/test_documentation_links.py` holds both ends: every
-image the docs show must exist, and every file in `docs/images/` must be shown.
+command produces the same pictures.
+
+**Two sets, one per language**: the console is bilingual, so this page shows English screens and
+`docs/screenshots.zh-CN.md` shows the default ones. Both come from the same command:
+
+```bash
+python scripts/capture_screenshots.py --token "$TOKEN" --user "$USER"                     # 中文
+python scripts/capture_screenshots.py --token "$TOKEN" --user "$USER" --out docs/images/en --lang en
+```
+
+`tests/test_documentation_links.py` holds both ends: every image the docs show must exist, every
+file under `docs/images/` must be shown by a document, and an image captured in one language must
+not be shown by a document in the other.
 
 ## Workbench: what to do next, in one screen
 
-![Workbench](images/06-workbench.png)
+![Workbench](images/en/06-workbench.png)
 
 Action items are ordered blockers-first and each one links to the screen that
 resolves it. Every figure is a read-only projection of existing tables, so the
@@ -24,7 +35,7 @@ workbench cannot disagree with the screens it summarises.
 
 ## Semantic Q&A: verdict, governing rules, evidence
 
-![Semantic Q&A with evidence](images/01-semantic-qa-with-evidence.png)
+![Semantic Q&A with evidence](images/en/01-semantic-qa-with-evidence.png)
 
 An answer comes back as a verdict with its evidence attached, not as a paragraph of prose: the
 conclusion itself, and the tags naming what the platform understood -- the intent
@@ -40,35 +51,37 @@ onboarded domain; no industry roles are built in.
 
 ## Data source onboarding and metadata scan
 
-![Data source onboarding](images/02-data-source-onboarding.png)
+![Data source onboarding](images/en/02-data-source-onboarding.png)
 
-Tables, columns, types, foreign keys, enum candidates and a readiness score,
-scanned from an existing database. The password segment of the connection string
-is redacted.
+Tables, columns and foreign keys, counted and scored: what a scan read from an
+existing database, with a readiness score and the next actions that follow from
+it. The tabs below hold the scanned tables themselves and the API operations
+registered against the source. A connection string carrying a password arrives
+redacted; this one is a local file, which has none to show.
 
 ## Domain ontology and business objects
 
-![Ontology objects](images/03-ontology-objects.png)
+![Ontology objects](images/en/03-ontology-objects.png)
 
 ## Governance and the release gate
 
-![Governance and release gate](images/04-governance-release-gate.png)
+![Governance and release gate](images/en/04-governance-release-gate.png)
 
 Publishing is refused while blocking gates are open; a `force` override is
 written to the audit log together with the count of failed gates.
 
 ## Roles and object permissions
 
-![Roles and permissions](images/05-roles-and-permissions.png)
+![Roles and permissions](images/en/05-roles-and-permissions.png)
 
-> The row-filter expression field visible here **is enforced**: `check_permission` evaluates it
+> A policy can carry a row-filter expression, and it **is enforced**: `check_permission` evaluates it
 > in the rule sandbox, the object list applies it per candidate row and reports
 > `rowFilterApplied`, and an expression that cannot be evaluated **denies** rather than allows.
 > See [Current limitations](limitations.md) for what it costs (one row read per candidate).
 
 ## Knowledge graph preview
 
-![Knowledge graph preview](images/07-knowledge-graph.png)
+![Knowledge graph preview](images/en/07-knowledge-graph.png)
 
 An ontology is a graph, but every other screen renders it as tables, which hides
 the problems a reviewer needs to see: isolated objects nothing points at,
@@ -81,7 +94,7 @@ schema it read.
 
 ## Document knowledge base
 
-![Document knowledge base](images/09-knowledge-base.png)
+![Document knowledge base](images/en/09-knowledge-base.png)
 
 Policy and contract clauses are split on their numbering (`第3.2条`, `3.1`,
 `一、`, `Article 7`), preserving a locator a human can quote. Two governance
@@ -93,15 +106,19 @@ constraints are enforced by the workflow:
 2. **Confirming requires an anchor** (business object or rule). Unanchored text
    cannot answer "why does this passage support this verdict".
 
+The document in the frame has been through both steps: one clause, confirmed,
+anchored to `contract`.
+
 Retrieval narrows by anchor *before* ranking, which is the opposite of searching
 everything and inspecting the hits. That ordering is what makes a citation
 attributable rather than merely similar.
 
 ## Feedback loop
 
-![Feedback loop](images/10-feedback-loop.png)
+![Feedback loop](images/en/10-feedback-loop.png)
 
-Ratings attach to a specific message and its decision record -- "this verdict is
+One queue, one row per item. The rating in the frame marks a conclusion a reader
+called wrong and links back to the decision record it is about -- "this verdict is
 wrong" is only actionable when you know which verdict.
 
 Two deliberate omissions: there is no average satisfaction score, because an
@@ -111,11 +128,13 @@ promoting it goes through governance (ADR-0002).
 
 ## Business objects and their governed instances
 
-![Business object browser](images/11-object-browser.png)
+![Business object browser](images/en/11-object-browser.png)
 
 The one screen that shows a business object *as an object*: instances read through the
 instance resolver, with the object's declared attributes as columns, and the caller's
-row-level filter applied. Browsing the raw source table is a different thing -- it skips the
+row-level filter applied. The drawer on the right is a single instance: its values with the
+source column each was read from, its events and its value history. Browsing the raw source table
+is a different thing -- it skips the
 resolver, skips the filter, and shows columns rather than the modelled contract.
 
 An empty table says which of the two reasons applies. "Nothing is visible to your role" and
@@ -124,23 +143,25 @@ misconfiguration someone can fix, so it is stated rather than left to inference.
 
 ## Tenants and their quotas
 
-![Tenant management](images/12-tenants-and-quotas.png)
+![Tenant management](images/en/12-tenants-and-quotas.png)
 
 Multi-tenancy is opt-in, so an empty list on a single-tenant deployment is the expected
 answer rather than a failure. The page says so, names the isolation model in force, and shows
 usage beside limits -- a limit without usage cannot answer the question an operator has, which
 is "is this tenant about to be blocked". A resource with no declared limit is rendered as
-不限量 rather than as a large number or as zero.
+**Unlimited** rather than as a large number or as zero -- an unset quota permits the write,
+deliberately.
 
 ## The audit report: the questions an auditor arrives with
 
-![Audit report](images/13-audit-report.png)
+![Audit report](images/en/13-audit-report.png)
 
-The raw audit log next door answers "what happened recently". This answers the three questions
-an auditor actually brings: which published rules never evaluated anything this period, which
-releases overrode the gate, and how much of the period is re-examinable at all -- and the last
-one bounds the other two, because a conclusion with no explanation chain cannot be reviewed by
-anyone.
+The raw audit log next door answers "what happened recently". This answers the questions an
+auditor actually brings. Two of them are in this frame: which published rules never evaluated
+anything this period (four), and how much of the period is re-examinable at all (100%: every
+evaluation carries its explanation chain). The third, which releases overrode the gate, appears
+when a period has one. The last question bounds the first two, because a conclusion with no
+explanation chain cannot be reviewed by anyone.
 
 The findings come first, because the backend already states what is worth looking at
 ("4 published rules never evaluated anything") and a UI that buries that in a table has thrown
@@ -150,7 +171,7 @@ half-open boundary so the reader never has to infer it.
 
 ## One instance, explained
 
-![Instance explanation](images/14-instance-explanation.png)
+![Instance explanation](images/en/14-instance-explanation.png)
 
 The platform's central claim rendered as a screen: a business object is consumed through one
 stable interface, and every conclusion about it can be traced. Each attribute names the
@@ -165,10 +186,11 @@ act and belongs on a screen that says what it is doing.
 
 ## Declaring what can happen to an object
 
-![Modelling extensions](images/15-modelling-extensions.png)
+![Modelling extensions](images/en/15-modelling-extensions.png)
 
-Event types are the reason this screen exists. Recording an event whose code was never
-declared is refused — deliberately, so that «驳回», «拒绝» and «rejected» cannot become three
+Event types are the reason this screen exists, and what is in frame is the declaration side:
+this object's event types and the button that declares one. Recording an event whose code was
+never declared is refused — deliberately, so that «驳回», «拒绝» and «rejected» cannot become three
 unrelated facts and history stays queryable. The consequence is that a fresh deployment
 records nothing, and until now the console offered no way to declare one: the instance
 drawer said "declare an event type first" and pointed at nothing.
@@ -182,7 +204,7 @@ thing an audit trail must never do.
 
 ## Model configuration for custom endpoints
 
-![Model configuration](images/08-model-config.png)
+![Model configuration](images/en/08-model-config.png)
 
 The platform speaks the OpenAI chat-completions protocol, so any service
 implementing it works. A configurable base URL alone is not enough, because

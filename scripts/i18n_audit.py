@@ -87,7 +87,6 @@ DETAIL_DATA_ENDPOINTS = (
     "/data-sources/{source}/reasoning-chain",
     "/data-sources/{source}/semantic-coverage",
     "/data-sources/{source}/operation-bindings",
-    "/tenants/default/quotas",
     "/semantic/objects/{object}/instances?ontologyId={ontology}",
 )
 

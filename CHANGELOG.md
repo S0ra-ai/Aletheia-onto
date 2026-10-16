@@ -497,6 +497,30 @@
   补上的回归测试断言的是**性质**而非常量：**每一个 SPA 路由都必须能在无令牌时拿到外壳**——
   外壳必须先加载，令牌才可能出现。把旧路径加回该列表，测试会精确报出
   `/admin/backup -> 401 application/json`。
+- **英文文档现在配英文截图**（`docs/images/en/`、`docs/screenshots.md`、`README.md`、
+  `tests/test_documentation_links.py`）。
+  界面是双语的，文档此前却只有一套中文截图——读英文文档的人，看到的是一张自己读不懂的界面。
+  现在同一条命令加 `--lang en` 就有第二套，英文文档引用它，中文文档保持默认那套；
+  两张图都从同一个实例、同一批路由、同样的 1600×1200 拍出来。
+  守护测试跟着扩了一维：`docs/images/` 下的每个文件（含子目录）都必须被文档引用，
+  而且**一种语言拍的图不能被另一种语言的文档引用**——换了语言还在看别人的界面，是同一类错误。
+
+- **英文界面长出来的三处英文缺陷**（`MainLayout.tsx`、`i18n/text.ts`、`TenancyManager.tsx`、
+  `tenancy.ts`、`shell.ts`、`semantic/index.tsx`、`chat/OntologyChat.tsx`）。
+  这是**把英文截图逐张读一遍**找出来的，三处都只在英文下出现：
+  1. **侧边栏的品牌名被硬切**——「Aletheia Ontology Platform」放不进 200px 的 Sider，
+     渲染成「Aletheia Ontology P」，没有省略号，看着像产品把自己的名字拼错了。
+     中文名放得下，所以中文界面一直没露馅。现在侧边栏用自己的词条（英文只写 `Aletheia`），
+     并加上 `textOverflow: ellipsis` 兜底：**放不下的名字应该以 … 结尾**——那是在说「被截断了」，
+     而不是断在词中间——那是在说「这就是名字」。
+  2. **三个导航标签被省略号截断**（Knowledge ba…、Semantic map…、Model configu…），英文标签改短。
+  3. **`joinSentences` 把英文句子粘在一起**：`…before release.Confirm at least…`——
+     中文里句号本身就是间隔，英文里句号后面要有空格。这个规则属于**排版而不是文案**，
+     所以放在 `text.ts` 里按语言取，而不是塞进字典让译者去填「这里要加空格」。
+  另外顺手补了配额资源说明的中英翻译：**审计此前把这几句当数据减掉了**（它们随
+  `/tenants/.../quotas` 一起回来），这正是「数据清单里混进了平台自己的话」那类假阴性——
+  把该端点移出清单之后，它会像别的一样被抓住。
+
 ### Fixed
 
 - **文档里的 15 张截图还是旧界面**（`scripts/capture_screenshots.py`、`docs/images/`、

@@ -14,6 +14,10 @@ export interface MessageEntry {
 
 export const shell = {
   'app.name': { zh: '本体改造研发平台', en: 'Aletheia Ontology Platform' },
+  // The sidebar's wordmark, which is not the same string as the title: the sider is 200px and
+  // the full English name does not fit it -- it rendered as 「Aletheia Ontology P」, cut
+  // mid-word with no ellipsis, on every English screen.
+  'app.siderName': { zh: '本体改造研发平台', en: 'Aletheia' },
   // The sidebar's collapsed form. 「本体」 is one glyph wide in Chinese; the English one is the
   // product's name, because "Onto" is not a word.
   'app.nameShort': { zh: '本体', en: 'Aletheia' },
@@ -27,15 +31,16 @@ export const shell = {
   'nav.more': { zh: '更多工具', en: 'More tools' },
   'nav.objects': { zh: '对象浏览', en: 'Business objects' },
   'nav.graph': { zh: '本体图谱', en: 'Ontology graph' },
-  'nav.knowledge': { zh: '文档知识库', en: 'Knowledge base' },
-  'nav.mapping': { zh: '语义映射', en: 'Semantic mappings' },
+  // Short on purpose: the sider is 200px, and 「Knowledge base」 rendered as 「Knowledge ba…」.
+  'nav.knowledge': { zh: '文档知识库', en: 'Knowledge' },
+  'nav.mapping': { zh: '语义映射', en: 'Mappings' },
   'nav.rules': { zh: '业务规则', en: 'Business rules' },
   'nav.feedback': { zh: '反馈闭环', en: 'Feedback' },
   'nav.workflow': { zh: '工作流管理', en: 'Workflows' },
   'nav.permission': { zh: '权限管理', en: 'Permissions' },
   'nav.tenancy': { zh: '租户管理', en: 'Tenants' },
   'nav.backup': { zh: '数据备份', en: 'Backups' },
-  'nav.model': { zh: '模型配置', en: 'Model configuration' },
+  'nav.model': { zh: '模型配置', en: 'Model' },
   'nav.demo': { zh: '演示中心', en: 'Demo' },
 
   'role.admin': { zh: '系统管理员', en: 'Administrator' },

@@ -4,7 +4,7 @@ import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divide
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
 import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION } from '../../i18n/labels';
-import { useLabel, useT } from '../../i18n/locale';
+import { useLabel, useLocale, useT } from '../../i18n/locale';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
@@ -15,6 +15,7 @@ const { TabPane } = Tabs;
 const SemanticService: React.FC = () => {
   const label = useLabel();
   const t = useT();
+  const { locale } = useLocale();
   const [tab, setTab] = useTabParam('natural');
 /**
  * The kernel's recommendation, in the reader's language.
@@ -520,7 +521,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                     <Divider />
                     <Alert
                       message={t('semantic.governanceAdvice')}
-                      description={joinSentences(adviceTexts(consistencyResult.nextActions, consistencyResult.nextActionCodes, t, 'semantic'))}
+                      description={joinSentences(adviceTexts(consistencyResult.nextActions, consistencyResult.nextActionCodes, t, 'semantic'), locale)}
                       type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
                     />
                   </>

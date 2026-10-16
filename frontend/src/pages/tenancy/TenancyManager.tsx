@@ -101,6 +101,11 @@ const TenancyManager: React.FC = () => {
     if (selected) void loadDetail(selected);
   }, [selected, loadDetail]);
 
+  const resourceText = (resource: string, fallback: string): string => {
+    const translated = t(`tenancy.resource.${resource}` as never);
+    return translated.startsWith('⟦') ? fallback : translated;
+  };
+
   const handleCreate = async (values: { tenant: string }) => {
     setBusy(true);
     try {
@@ -239,7 +244,9 @@ const TenancyManager: React.FC = () => {
                     <Space direction="vertical" size={0}>
                       <Text strong>{resource}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {row.description}
+                        {/* The resource code is a closed vocabulary; the server's Chinese
+                            description is the fallback for one this build does not know. */}
+                        {resourceText(row.resource, row.description)}
                       </Text>
                     </Space>
                   ),

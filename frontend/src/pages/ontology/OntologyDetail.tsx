@@ -1,7 +1,7 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { GATE_SEVERITY, MAPPING_TYPE, ONTOLOGY_STATUS, READINESS_STATUS, RULE_SEVERITY } from '../../i18n/labels';
-import { useLabel, useT } from '../../i18n/locale';
+import { useLabel, useLocale, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
 import { ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -19,6 +19,7 @@ const OntologyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const t = useT();
+  const { locale } = useLocale();
   const [ontology, setOntology] = useState<OntologyDetail | null>(null);
   const [releaseReadiness, setReleaseReadiness] = useState<ReleaseReadinessResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -346,7 +347,7 @@ const OntologyDetailPage: React.FC = () => {
               style={{ marginTop: 16 }}
               type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
               message={t('ontology.nextActions')}
-              description={joinSentences(releaseActions)}
+              description={joinSentences(releaseActions, locale)}
             />
           )}
         </Card>

@@ -37,6 +37,23 @@ export const tenancy: Record<string, MessageEntry> = {
   'quotaIntroBefore': { zh: '未声明配额的资源为', en: 'A resource with no declared quota is ' },
   'unlimited': { zh: '不限量', en: 'Unlimited' },
   'quotaIntroAfter': { zh: '（而不是 0）——后者会让既有部署在这个特性上线的瞬间停止接受写入。用量按真实行数统计，不维护计数器。', en: ' (not 0) — treating it as 0 would stop an existing deployment from accepting writes the moment this feature goes live. Usage is counted from real rows; no counters are maintained.' },
+  // What each limitable resource is, keyed by the resource code the API uses
+  // (`quotas.QUOTA_RESOURCES`). The server sends its own Chinese description beside the code
+  // and the console falls back to it for a resource this build does not know -- a deployment
+  // that adds one through an extension should still see something.
+  'resource.data_sources': {
+    zh: '接入的传统业务系统数量',
+    en: 'Legacy systems connected',
+  },
+  'resource.ontologies': { zh: '本体数量（含各版本）', en: 'Ontologies, versions included' },
+  'resource.business_rules': { zh: '业务规则数量', en: 'Business rules' },
+  'resource.knowledge_documents': { zh: '知识文档数量', en: 'Knowledge documents' },
+  'resource.knowledge_entries': {
+    zh: '知识条目数量（切分后的条款）',
+    en: 'Knowledge entries (the clauses a document splits into)',
+  },
+  'resource.conversations': { zh: '会话数量', en: 'Conversations' },
+  'resource.decision_records': { zh: '判定留痕数量', en: 'Decision records' },
   'resource': { zh: '资源', en: 'Resource' },
   'countTable': { zh: '计数表', en: 'Count table' },
   'current': { zh: '当前', en: 'Current' },

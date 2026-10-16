@@ -171,12 +171,25 @@ def test_every_screenshot_is_referenced_by_a_document() -> None:
     renamed and its image quietly orphaned, so the file lingers while the claim it supported
     disappears.
     """
-    images = sorted(path.name for path in ROOT.joinpath("docs", "images").glob("*.png"))
+    # Recursive, and by relative path: the console is bilingual, so the images are too -- the
+    # default set sits in `docs/images/` and the English one in `docs/images/en/`. A glob of the
+    # top level would have been blind to the second the day it appeared, which is the same shape
+    # of mistake as an allowance that outlives its reason.
+    root = ROOT / "docs" / "images"
+    images = sorted(path.relative_to(root).as_posix() for path in root.rglob("*.png"))
     assert images, "docs/images 下没有截图"
 
     corpus = "\n".join(path.read_text(encoding="utf-8") for path in DOCUMENTS)
     orphaned = [name for name in images if name not in corpus]
     assert not orphaned, f"以下截图未被任何文档引用: {orphaned}"
+
+    # And the other direction, which the subdirectory makes worth stating: an image captured in
+    # one language must not be shown by a document in the other. A reader who switched the docs
+    # to English and still sees Chinese screens is looking at a product that is not theirs.
+    english = [name for name in images if name.startswith("en/")]
+    assert english, "docs/images/en 下没有英文截图"
+    default = [name for name in images if not name.startswith("en/")]
+    assert default, "docs/images 下没有默认截图"
 
 
 def test_the_docs_index_does_not_claim_shipped_features_are_missing() -> None:

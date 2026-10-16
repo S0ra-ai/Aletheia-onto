@@ -2,7 +2,7 @@
  * Text helpers for displaying backend-provided strings.
  */
 
-import type { MessageKey } from './messages';
+import type { Locale, MessageKey } from './messages';
 
 /**
  * The translate function, as a parameter.
@@ -27,13 +27,29 @@ type Translate = (key: MessageKey, params?: Record<string, string | number>) => 
  * The backend has the same rule for the same reason
  * (`knowledge_documents._looks_like_complete_sentence`), which is where the pattern came
  * from.
+ *
+ * **Two separators, because the two languages punctuate differently.** A finished sentence is
+ * followed by nothing in Chinese -- `。` is the gap -- and by a space in English. Joining with
+ * an empty string produced 「…before release.Confirm at least the key objects…」 in the English
+ * console: two sentences fused at the full stop. An *unfinished* fragment needs a separator in
+ * either language, and it differs too: `；` and `; `.
+ *
+ * The rules live here rather than in the dictionary because they are typography rather than
+ * copy: a translator should never be handed the instruction "put a space here", and the message
+ * guard rightly refuses an entry whose Chinese side is empty -- which is exactly what this
+ * language's sentence gap is.
  */
-export const joinSentences = (items: readonly (string | undefined | null)[]): string =>
-  items
+export const joinSentences = (items: readonly (string | undefined | null)[], locale: Locale): string => {
+  const gap = locale === 'zh' ? '' : ' ';
+  const separator = locale === 'zh' ? '；' : '; ';
+  return items
     .map((item) => (item ?? '').trim())
     .filter(Boolean)
-    .map((item, index, all) => (index < all.length - 1 && !/[。；！？!?.;]$/.test(item) ? `${item}；` : item))
+    .map((item, index, all) =>
+      index === all.length - 1 ? item : `${item}${/[。；！？!?.;]$/.test(item) ? gap : separator}`,
+    )
     .join('');
+};
 
 /**
  * What to say after a scan, in one place because two screens scan and they drifted.
