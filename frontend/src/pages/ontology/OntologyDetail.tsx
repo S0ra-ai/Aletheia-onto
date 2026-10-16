@@ -1,7 +1,7 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import { label, GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
 import { ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -14,6 +14,7 @@ const { Title } = Typography;
 const { TabPane } = Tabs;
 
 const OntologyDetailPage: React.FC = () => {
+  const label = useLabel();
   const [tab, setTab] = useTabParam('objects');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();

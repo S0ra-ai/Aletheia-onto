@@ -19,6 +19,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { MESSAGES, type Locale, type MessageKey } from './messages';
+import { labelIn, type LabelMap } from './labels';
 
 export type { Locale };
 
@@ -93,4 +94,18 @@ export function useLocale(): LocaleContextValue {
 /** The common case: a component that only needs to translate. */
 export function useT(): LocaleContextValue['t'] {
   return useLocale().t;
+}
+
+/**
+ * `label(map, value)` bound to the current language.
+ *
+ * The enum maps in `i18n/labels.ts` were Chinese-only, so every status chip in the
+ * application stayed Chinese in English mode -- the one place a reader looks to see what
+ * state something is in. A hook rather than a module-level "current locale": this is a
+ * display concern that already has a provider, and a hidden global is how two languages end
+ * up on one page.
+ */
+export function useLabel(): (map: LabelMap, value: unknown) => string {
+  const { locale } = useLocale();
+  return useCallback((map: LabelMap, value: unknown) => labelIn(map, value, locale), [locale]);
 }

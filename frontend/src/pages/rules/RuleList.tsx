@@ -1,5 +1,5 @@
-import { label, ONTOLOGY_STATUS, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { ONTOLOGY_STATUS, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert, Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
@@ -31,6 +31,7 @@ const statusColor: Record<string, string> = {
 };
 
 const RuleList: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [rules, setRules] = useState<BusinessRule[]>([]);
@@ -380,7 +381,7 @@ const RuleList: React.FC = () => {
             <Col span={8}>
               <Form.Item name="ruleType" label={t('rules.formType')} rules={[{ required: true }]}>
                 <Select
-                  options={Object.entries(RULE_TYPE).map(([value, text]) => ({ value, label: text }))}
+                  options={Object.entries(RULE_TYPE).map(([value]) => ({ value, label: label(RULE_TYPE, value) }))}
                 />
               </Form.Item>
             </Col>
@@ -392,7 +393,7 @@ const RuleList: React.FC = () => {
             <Col span={8}>
               <Form.Item name="severity" label={t('rules.severity')} rules={[{ required: true }]}>
                 <Select>
-                  {Object.entries(RULE_SEVERITY).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
+                  {Object.entries(RULE_SEVERITY).map(([value]) => <Option key={value} value={value}>{label(RULE_SEVERITY, value)}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
@@ -405,7 +406,7 @@ const RuleList: React.FC = () => {
           </Form.Item>
           <Form.Item name="status" label={t('rules.status')}>
             <Select>
-              {Object.entries(RULE_STATUS).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
+              {Object.entries(RULE_STATUS).map(([value]) => <Option key={value} value={value}>{label(RULE_STATUS, value)}</Option>)}
             </Select>
           </Form.Item>
         </Form>

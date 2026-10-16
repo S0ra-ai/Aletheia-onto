@@ -110,8 +110,17 @@ const BackupManager: React.FC = () => {
       dataIndex: 'created_at',
       key: 'createdAt',
       width: 210,
-      render: (value: string) =>
-        value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString() : '',
+      render: (value: string) => {
+        // Two shapes arrive here: the list endpoint's `YYYY-MM-DD HH:MM:SS` (UTC, no offset,
+        // as the platform stores instants) and the archive's own config, which is written with
+        // `datetime.isoformat()` and therefore already carries `+00:00`. Appending a `Z` to the
+        // second produces `+00:00Z`, which no engine parses -- the column read "Invalid Date"
+        // for every archive created by the current release.
+        if (!value) return '';
+        const iso = /[+-]\d{2}:?\d{2}$|Z$/.test(value) ? value : `${value.replace(' ', 'T')}Z`;
+        const parsed = new Date(iso);
+        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+      },
     },
     {
       title: t('backup.sizeColumn'),

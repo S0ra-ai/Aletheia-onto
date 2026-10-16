@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FEEDBACK_STATUS, label } from '../../i18n/labels';
+import { FEEDBACK_STATUS } from '../../i18n/labels';
 import {
   Alert, Button, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tag,
   Tooltip, Typography, message,
@@ -7,7 +7,7 @@ import {
 import { ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { conversationApi, feedbackApi, requestErrorMessage } from '../../api';
-import { useT } from '../../i18n/locale';
+import { useLabel, useT } from '../../i18n/locale';
 import type { AnswerFeedback, Conversation, FeedbackSummary } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -38,6 +38,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const FeedbackConsolePage: React.FC = () => {
+  const label = useLabel();
   const navigate = useNavigate();
   const t = useT();
   const [items, setItems] = useState<AnswerFeedback[]>([]);
@@ -104,7 +105,7 @@ const FeedbackConsolePage: React.FC = () => {
             // Derived from the vocabulary rather than retyped: the inline list had two of
             // the three states, so 已忽略 could not be filtered for at all.
             options={[
-              ...Object.entries(FEEDBACK_STATUS).map(([value, text]) => ({ value, label: text })),
+              ...Object.entries(FEEDBACK_STATUS).map(([value]) => ({ value, label: label(FEEDBACK_STATUS, value) })),
               { value: '', label: t('feedback.allStatuses') },
             ]}
           />

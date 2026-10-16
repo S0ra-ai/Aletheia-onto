@@ -3,8 +3,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divider, message, Tabs, Switch, Table, Space } from 'antd';
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
-import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
@@ -13,6 +13,7 @@ const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
 const SemanticService: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const [tab, setTab] = useTabParam('natural');
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);

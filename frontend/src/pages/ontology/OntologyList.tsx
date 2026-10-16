@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { ONTOLOGY_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ const { Title } = Typography;
 const { Option } = Select;
 
 const OntologyList: React.FC = () => {
+  const label = useLabel();
   const navigate = useNavigate();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);

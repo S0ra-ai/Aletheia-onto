@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Steps, List, Divider, Collapse, Empty } from 'antd';
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { CONNECTION_STATUS, READINESS_STATUS, label } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { CONNECTION_STATUS, READINESS_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
 import { initializeReport, scanReport } from '../../i18n/text';
 import MarkdownMessage from '../../components/MarkdownMessage';
@@ -24,6 +24,7 @@ const ONBOARDING_STEP_KEYS: Record<string, string> = {
 };
 
 const DataSourceList: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const navigate = useNavigate();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);

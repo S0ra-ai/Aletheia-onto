@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
-import { EVENT_CATEGORY, label } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { EVENT_CATEGORY } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import type { BusinessObject, EventTypeDeclaration } from '../../types';
 
 const { Text, Paragraph } = Typography;
@@ -29,6 +29,7 @@ interface Props {
  * and belongs beside the instance.
  */
 const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly }) => {
+  const label = useLabel();
   const t = useT();
   const [objectCode, setObjectCode] = useState<string | undefined>(objects[0]?.code);
   const [eventTypes, setEventTypes] = useState<EventTypeDeclaration[]>([]);
@@ -204,7 +205,7 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
             <Input placeholder={t('ontology.eventNamePlaceholder')} />
           </Form.Item>
           <Form.Item name="category" label={t('ontology.category')} rules={[{ required: true }]}>
-            <Select options={Object.entries(EVENT_CATEGORY).map(([value, text]) => ({ value, label: text }))} />
+            <Select options={Object.entries(EVENT_CATEGORY).map(([value]) => ({ value, label: label(EVENT_CATEGORY, value) }))} />
           </Form.Item>
           <Form.Item
             name="payloadFields"

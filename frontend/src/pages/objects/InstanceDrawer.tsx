@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Descriptions, Drawer, Empty, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
-import { EVENT_CATEGORY, label } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { EVENT_CATEGORY } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import type {
   EventTypeDeclaration,
   InstanceAttributeVersion,
@@ -45,6 +45,7 @@ interface Props {
  * belongs on a screen that says what it is doing, not on one a user opens to look.
  */
 const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, onClose }) => {
+  const label = useLabel();
   const t = useT();
   const [explain, setExplain] = useState<InstanceExplainResult | null>(null);
   const [events, setEvents] = useState<InstanceEvent[] | null>(null);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { label, ONTOLOGY_STATUS, MAPPING_STATUS } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { MAPPING_STATUS, ONTOLOGY_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
@@ -10,6 +10,7 @@ const { Title } = Typography;
 const { Option } = Select;
 
 const MappingList: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [mappings, setMappings] = useState<SemanticMapping[]>([]);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { ONTOLOGY_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { Alert, Badge, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { permissionApi, requestErrorMessage, ssoApi, toolApi } from '../../api';
@@ -15,6 +15,7 @@ import type {
 } from '../../types';
 
 const PermissionManager: React.FC = () => {
+  const label = useLabel();
   const [tab, setTab] = useTabParam('roles');
   const [roles, setRoles] = useState<PermissionRole[]>([]);
   const [policies, setPolicies] = useState<PermissionPolicy[]>([]);

@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { Alert, Button, Card, Divider, message, Result, Typography } from 'antd';
 import { RocketOutlined, FileTextOutlined, SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { DECISION_STATUS, label } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { DECISION_STATUS } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { demoApi, requestErrorMessage } from '../../api';
 import type { DemoBootstrapResult } from '../../types';
 
 const { Title, Paragraph } = Typography;
 
 const DemoCenter: React.FC = () => {
+  const label = useLabel();
   const navigate = useNavigate();
   const t = useT();
   const [loading, setLoading] = useState<'contract' | 'equipment' | null>(null);

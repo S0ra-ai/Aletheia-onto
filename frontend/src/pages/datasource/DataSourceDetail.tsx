@@ -1,13 +1,7 @@
 import { joinSentences, scanReport } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  DRIFT_STATUS,
-  label,
-  ONTOLOGY_STATUS,
-  READINESS_STATUS,
-  RULE_SEVERITY,
-} from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { DRIFT_STATUS, ONTOLOGY_STATUS, READINESS_STATUS, RULE_SEVERITY } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
@@ -32,6 +26,7 @@ type DataSourceRule = {
 };
 
 const DataSourceDetail: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const [tab, setTab] = useTabParam('tables');
   const { id } = useParams<{ id: string }>();

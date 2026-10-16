@@ -1,63 +1,76 @@
 /**
- * Backend values, as a user reads them.
+ * Backend values, as a user reads them -- in both languages.
  *
- * Every map here exists because the UI printed the API's enum verbatim: a Chinese-language
- * console showed `draft`, `blocking`, `pending` and `rejected` in its governance tables, so
- * reading your own dashboard required knowing the backend's vocabulary. The wording already
- * existed — scattered. One page said 「已发布」, another derived its own inline condition,
- * a third rendered the raw value, and `i18n/translations.ts` (since deleted) held a fourth
- * copy that nothing imported.
+ * Every map here exists because the UI printed the API's enum verbatim: a console showed
+ * `draft`, `blocking`, `pending` and `rejected` in its governance tables, so reading your own
+ * dashboard required knowing the backend's vocabulary. The wording already existed --
+ * scattered. One page said 「已发布」, another derived its own inline condition, a third
+ * rendered the raw value, and `i18n/translations.ts` (since deleted) held a fourth copy that
+ * nothing imported.
  *
  * `label()` falls through to the raw value rather than rendering blank or a placeholder: an
  * enum this file has not learned yet should read like today's behaviour, not like a hole in
- * the table. That also means adding a value on the backend degrades to English rather than
- * to nothing.
+ * the table. That also means a value added on the backend degrades to the raw spelling rather
+ * than to nothing.
+ *
+ * The maps became `{ zh, en }` when the console learned English. Until then every status chip
+ * in the application stayed Chinese in English mode -- the one place a reader looks to see
+ * what state something is in.
  */
 
+import type { Locale } from './messages';
+
+export interface LabelEntry {
+  zh: string;
+  en: string;
+}
+
+export type LabelMap = Record<string, LabelEntry>;
+
 /** The values `governance.VALID_ONTOLOGY_STATUSES` accepts. */
-export const ONTOLOGY_STATUS: Record<string, string> = {
-  draft: '草案',
-  reviewing: '审核中',
-  published: '已发布',
-  deprecated: '已废弃',
+export const ONTOLOGY_STATUS: LabelMap = {
+  draft: { zh: '草案', en: 'Draft' },
+  reviewing: { zh: '审核中', en: 'In review' },
+  published: { zh: '已发布', en: 'Published' },
+  deprecated: { zh: '已废弃', en: 'Deprecated' },
 };
 
 /** The values `governance.VALID_RULE_STATUSES` accepts. */
-export const RULE_STATUS: Record<string, string> = {
-  draft: '草案',
-  published: '已发布',
-  disabled: '已停用',
+export const RULE_STATUS: LabelMap = {
+  draft: { zh: '草案', en: 'Draft' },
+  published: { zh: '已发布', en: 'Published' },
+  disabled: { zh: '已停用', en: 'Disabled' },
 };
 
 /** The values `governance.VALID_MAPPING_STATUSES` accepts. */
-export const MAPPING_STATUS: Record<string, string> = {
-  pending: '待审核',
-  confirmed: '已确认',
-  rejected: '已驳回',
+export const MAPPING_STATUS: LabelMap = {
+  pending: { zh: '待审核', en: 'Pending review' },
+  confirmed: { zh: '已确认', en: 'Confirmed' },
+  rejected: { zh: '已驳回', en: 'Rejected' },
 };
 
 /** The values `governance.VALID_RULE_SEVERITIES` accepts, ordered by how hard they stop. */
-export const RULE_SEVERITY: Record<string, string> = {
-  info: '提示',
-  warning: '警告',
-  blocking: '阻断',
+export const RULE_SEVERITY: LabelMap = {
+  info: { zh: '提示', en: 'Info' },
+  warning: { zh: '警告', en: 'Warning' },
+  blocking: { zh: '阻断', en: 'Blocking' },
 };
 
 /** The values `governance.VALID_RULE_TYPES` accepts. */
-export const RULE_TYPE: Record<string, string> = {
-  validation: '校验',
-  derivation: '派生',
-  transition: '流转',
-  risk: '风险',
-  recommendation: '建议',
-  permission: '权限',
+export const RULE_TYPE: LabelMap = {
+  validation: { zh: '校验', en: 'Validation' },
+  derivation: { zh: '派生', en: 'Derivation' },
+  transition: { zh: '流转', en: 'Transition' },
+  risk: { zh: '风险', en: 'Risk' },
+  recommendation: { zh: '建议', en: 'Recommendation' },
+  permission: { zh: '权限', en: 'Permission' },
 };
 
 /** `semantic_kernel` verdicts, and the consistency report's own verdicts. */
-export const DECISION_STATUS: Record<string, string> = {
-  approved: '通过',
-  review: '待复核',
-  blocked: '阻断',
+export const DECISION_STATUS: LabelMap = {
+  approved: { zh: '通过', en: 'Approved' },
+  review: { zh: '待复核', en: 'Needs review' },
+  blocked: { zh: '阻断', en: 'Blocked' },
 };
 
 /**
@@ -69,56 +82,56 @@ export const DECISION_STATUS: Record<string, string> = {
  * produces, and lacked `mixed_with_blockers`, so a divided sample printed the raw English
  * enum inside a Chinese console.
  */
+export const CONSISTENCY_STATUS: LabelMap = {
+  consistent: { zh: '一致', en: 'Consistent' },
+  mixed: { zh: '存在分化', en: 'Mixed' },
+  mixed_with_blockers: { zh: '分化且含阻断', en: 'Mixed, with blockers' },
+  incomplete: { zh: '不完整', en: 'Incomplete' },
+  empty: { zh: '无可评估实例', en: 'No instances to assess' },
+};
+
 /** What a preflight tells the caller to do, from `automation.NEXT_ACTIONS`. */
-export const NEXT_ACTION: Record<string, string> = {
-  allow_automation: '允许自动执行',
-  block_and_require_correction: '阻断并要求修正',
-  route_to_human_review: '转人工复核',
+export const NEXT_ACTION: LabelMap = {
+  allow_automation: { zh: '允许自动执行', en: 'Allow automation' },
+  block_and_require_correction: { zh: '阻断并要求修正', en: 'Block and require a correction' },
+  route_to_human_review: { zh: '转人工复核', en: 'Route to human review' },
 };
 
 /** What a data source connection test concluded, from `adapters.CONNECTION_STATUSES`. */
-export const CONNECTION_STATUS: Record<string, string> = {
-  ok: '连接成功',
-  not_found: '文件或库不存在',
-  driver_missing: '缺少驱动',
-  connection_error: '连接失败',
+export const CONNECTION_STATUS: LabelMap = {
+  ok: { zh: '连接成功', en: 'Connected' },
+  not_found: { zh: '文件或库不存在', en: 'File or database not found' },
+  driver_missing: { zh: '缺少驱动', en: 'Driver not installed' },
+  connection_error: { zh: '连接失败', en: 'Connection failed' },
 };
 
 /** How one onboarding step ended, from `onboarding.ONBOARDING_STEP_STATUSES`. */
-export const ONBOARDING_STEP_STATUS: Record<string, string> = {
-  completed: '已完成',
-  failed: '失败',
-  skipped: '已跳过',
+export const ONBOARDING_STEP_STATUS: LabelMap = {
+  completed: { zh: '已完成', en: 'Completed' },
+  failed: { zh: '失败', en: 'Failed' },
+  skipped: { zh: '已跳过', en: 'Skipped' },
 };
 
 /** A conversation's state, from `conversations.CONVERSATION_STATUSES`. */
-export const CONVERSATION_STATUS: Record<string, string> = {
-  active: '进行中',
-  escalated: '已转人工',
-  resolved: '已解决',
-  closed: '已关闭',
+export const CONVERSATION_STATUS: LabelMap = {
+  active: { zh: '进行中', en: 'Active' },
+  escalated: { zh: '已转人工', en: 'Escalated' },
+  resolved: { zh: '已解决', en: 'Resolved' },
+  closed: { zh: '已关闭', en: 'Closed' },
 };
 
 /** A feedback item's state, from `conversations.FEEDBACK_STATUSES`. */
-export const FEEDBACK_STATUS: Record<string, string> = {
-  open: '待处理',
-  resolved: '已处理',
-  dismissed: '已忽略',
+export const FEEDBACK_STATUS: LabelMap = {
+  open: { zh: '待处理', en: 'Open' },
+  resolved: { zh: '已处理', en: 'Resolved' },
+  dismissed: { zh: '已忽略', en: 'Dismissed' },
 };
 
 /** What an execute call did, from `automation.EXECUTION_STATUSES`. */
-export const EXECUTION_STATUS: Record<string, string> = {
-  executed: '已执行',
-  ready_for_execution: '已生成执行计划（未执行）',
-  blocked_by_semantic_kernel: '被语义内核阻断',
-};
-
-export const CONSISTENCY_STATUS: Record<string, string> = {
-  consistent: '一致',
-  mixed: '存在分化',
-  mixed_with_blockers: '分化且含阻断',
-  incomplete: '不完整',
-  empty: '无可评估实例',
+export const EXECUTION_STATUS: LabelMap = {
+  executed: { zh: '已执行', en: 'Executed' },
+  ready_for_execution: { zh: '已生成执行计划（未执行）', en: 'Plan prepared, not executed' },
+  blocked_by_semantic_kernel: { zh: '被语义内核阻断', en: 'Blocked by the semantic kernel' },
 };
 
 /**
@@ -126,25 +139,25 @@ export const CONSISTENCY_STATUS: Record<string, string> = {
  * share the maps: the three answer "is this source usable yet" in the same terms, and giving
  * each its own wording would invent a distinction the backend does not make.
  */
-export const READINESS_STATUS: Record<string, string> = {
-  ready: '就绪',
-  review: '需复核',
-  blocked: '受阻',
-  partial: '部分就绪',
-  incomplete: '不完整',
-  bound: '已绑定',
-  not_modeled: '尚未建模',
-  not_configured: '未配置',
-  error: '检查失败',
+export const READINESS_STATUS: LabelMap = {
+  ready: { zh: '就绪', en: 'Ready' },
+  review: { zh: '需复核', en: 'Needs review' },
+  blocked: { zh: '受阻', en: 'Blocked' },
+  partial: { zh: '部分就绪', en: 'Partly ready' },
+  incomplete: { zh: '不完整', en: 'Incomplete' },
+  bound: { zh: '已绑定', en: 'Bound' },
+  not_modeled: { zh: '尚未建模', en: 'Not modelled yet' },
+  not_configured: { zh: '未配置', en: 'Not configured' },
+  error: { zh: '检查失败', en: 'Check failed' },
 };
 
 /** The categories `events.EVENT_CATEGORIES` accepts, in the same words it uses. */
-export const EVENT_CATEGORY: Record<string, string> = {
-  lifecycle: '生命周期',
-  state_change: '状态变更',
-  attribute_change: '属性变更',
-  interaction: '业务交互',
-  external: '外部事件',
+export const EVENT_CATEGORY: LabelMap = {
+  lifecycle: { zh: '生命周期', en: 'Lifecycle' },
+  state_change: { zh: '状态变更', en: 'State change' },
+  attribute_change: { zh: '属性变更', en: 'Attribute change' },
+  interaction: { zh: '业务交互', en: 'Business interaction' },
+  external: { zh: '外部事件', en: 'External event' },
 };
 
 /**
@@ -153,33 +166,37 @@ export const EVENT_CATEGORY: Record<string, string> = {
  * other, so putting gates in `RULE_SEVERITY` would translate half of them and print the rest
  * raw -- the kind of gap that reads as a styling inconsistency rather than a missing entry.
  */
-export const GATE_SEVERITY: Record<string, string> = {
-  blocker: '阻断',
-  warning: '警告',
+export const GATE_SEVERITY: LabelMap = {
+  blocker: { zh: '阻断', en: 'Blocker' },
+  warning: { zh: '警告', en: 'Warning' },
 };
 
 /** Structural drift between the modelled object and the live source. */
-export const DRIFT_STATUS: Record<string, string> = {
-  no_drift: '无漂移',
-  drift_detected: '检测到漂移',
-  error: '检查失败',
-  skipped: '已跳过',
+export const DRIFT_STATUS: LabelMap = {
+  no_drift: { zh: '无漂移', en: 'No drift' },
+  drift_detected: { zh: '检测到漂移', en: 'Drift detected' },
+  error: { zh: '检查失败', en: 'Check failed' },
+  skipped: { zh: '已跳过', en: 'Skipped' },
+};
+
+/** The relation kinds `relations.RELATION_KINDS` infers, in the same words it uses. */
+export const RELATION_KIND: LabelMap = {
+  composition: { zh: '组成', en: 'Composition' },
+  aggregation: { zh: '聚合', en: 'Aggregation' },
+  association: { zh: '关联', en: 'Association' },
 };
 
 /**
  * The word for a value, or the value itself when this file has not learned it.
  *
  * A function rather than direct indexing at each call site so the fallback is decided once:
- * `LABEL[value]` silently yields `undefined`, which React renders as nothing at all.
+ * `MAP[value]` silently yields `undefined`, which React renders as nothing at all. The locale
+ * is a parameter rather than a module-level setting: this file is imported by screens, and a
+ * hidden global is how two languages end up on one page.
  */
-export const label = (map: Record<string, string>, value: unknown): string => {
+export const labelIn = (map: LabelMap, value: unknown, locale: Locale): string => {
   const key = String(value ?? '');
-  return map[key] ?? key;
-};
-
-/** The relation kinds `relations.RELATION_KINDS` infers, in the same words it uses. */
-export const RELATION_KIND: Record<string, string> = {
-  composition: '组成',
-  aggregation: '聚合',
-  association: '关联',
+  const entry = map[key];
+  if (!entry) return key;
+  return entry[locale] ?? entry.zh;
 };

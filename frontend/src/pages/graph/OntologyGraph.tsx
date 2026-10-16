@@ -1,5 +1,5 @@
-import { label, ONTOLOGY_STATUS, RELATION_KIND } from '../../i18n/labels';
-import { useT } from '../../i18n/locale';
+import { ONTOLOGY_STATUS, RELATION_KIND } from '../../i18n/labels';
+import { useLabel, useT } from '../../i18n/locale';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { graphApi, ontologyApi, requestErrorMessage } from '../../api';
@@ -112,6 +112,7 @@ function nodeFill(node: OntologyGraphNode): string {
 }
 
 const OntologyGraphPage: React.FC = () => {
+  const label = useLabel();
   const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [selected, setSelected] = useState<number | null>(null);

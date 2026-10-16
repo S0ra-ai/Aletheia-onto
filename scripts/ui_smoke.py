@@ -488,6 +488,18 @@ def main() -> int:
     try:
         print(f"seeding from {entry}")
         for route in routes:
+            # The seed page lives inside the build output, and `npm run build` empties that
+            # directory before writing it. A build running during a sweep therefore deletes the
+            # page every route navigates through, and the report becomes "0 table(s)" for every
+            # route after it -- which reads as an application where nothing renders. Said here,
+            # where the cause is known, rather than inferred from the wreckage.
+            if not (assets / "seed.html").exists():
+                print(
+                    "\n种子页在扫描过程中消失了：构建产物目录被清空（`npm run build` 会先清空输出目录）。"
+                    "请在没有构建运行时重跑。",
+                    file=sys.stderr,
+                )
+                return 2
             html = dump_dom(browser, seeded_url(entry, route))
             page_tables = tables(html)
             examined = sum(len(rows) for _, rows in page_tables)
