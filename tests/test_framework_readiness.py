@@ -91,18 +91,39 @@ def test_every_row_says_where_the_capability_lives_and_what_holds_it() -> None:
     assert not bare, "以下能力行没有引用任何检查——它们就是本页所说的「主张」：\n  " + "\n  ".join(bare)
 
 
-def test_the_gap_list_is_present_and_not_empty() -> None:
+def test_the_gap_section_is_present_and_every_gap_states_its_cost() -> None:
     """The section a project deletes first when it wants to look finished.
 
     Its absence would not fail anything else: the capability tables above would still parse, the
     citations would still resolve, and the page would read as a framework with no caveats. That
     is the failure this asserts against.
+
+    **What it deliberately does not assert is that there *are* gaps.** The first version required
+    at least five rows, which made this file a reason for the project to stay unfinished --
+    closing a gap would have failed a test, and the way out would have been to invent one. A
+    check that forbids the state it is measuring has the sign backwards.
+
+    What it holds instead is the shape of whatever is there: a gap names what it costs the
+    reader, because "not done" without a consequence is a note rather than an answer. And the
+    day there are none, the section has to say that in a line rather than being deleted, so that
+    the emptiness is a statement somebody made rather than a section that went missing.
     """
     text = PAGE.read_text(encoding="utf-8")
     assert "## Not there yet" in text, "缺口一节被删掉了——那不是页面变好了"
+
     gaps = text.split("## Not there yet", 1)[1]
     rows = [line for line in gaps.splitlines() if line.startswith("| **")]
-    assert len(rows) >= 5, f"缺口一节只剩 {len(rows)} 行；它是这一页最该被读的部分"
+
+    if not rows:
+        assert re.search(r"nothing (is )?(outstanding|left|to report)", gaps, re.IGNORECASE), (
+            "缺口一节空了，但没有用一句话说明它为什么是空的。一节空白与一节被删掉，读者分不出区别。"
+        )
+        return
+
+    # Each row is `| **what is missing** | what it costs |`. A row that names the gap and not
+    # the consequence leaves the evaluator to guess, which is the same problem as no row.
+    costless = [row for row in rows if len([cell for cell in row.strip("|").split("|") if cell.strip()]) < 2]
+    assert not costless, "以下缺口没有说明它对使用者意味着什么：\n  " + "\n  ".join(costless)
 
 
 @pytest.mark.parametrize(

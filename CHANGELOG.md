@@ -10,6 +10,28 @@
 
 ### Added
 
+- **界面开始读生成的类型，而迁移替我做了一次判断**（`types/index.ts`、`generated.ts`、
+  `generate_types.py`、`test_generated_types.py`、`docs/limitations.md`）。
+  七个行类型（`Ontology`、`SemanticMapping`、`BusinessRule`、`PermissionRole`、`AuditLogItem`、
+  `ModelInvocationItem`、`DecisionRecordItem`）现在指向生成声明。
+  另外四个**迁移失败了，而失败本身就是答案**：`tsc` 拒绝 `PermissionPolicy`／`ToolDefinition`／
+  `SourceApi`／`SourceTable`，点名的正是 `canRead`、`toolType`、`tableName`——
+  这些端点在前端经过归一化，界面读的是**归一化之后**的形状。
+  硬把它们换成生成声明，等于删掉那七次「整列为空」赖以修复的归一化函数。
+
+  所以生成文件描述的是**线上格式**，这一点写进了它的头部：
+  谁是线上形状、谁是归一化形状、谁是视图模型，从声明的位置就能看出来。
+
+  生成器自身也修了一处会撒谎的推断：**全为 null 的字段曾被写成 `null`**，
+  那是「这个字段永远是 null」的断言，而样本只是没给证据——`reviewed_at` 在新实例上全是 null，
+  于是生成类型会声称映射表里没有审核时间。现在与空列表同样处理为 `unknown`。
+  另外它曾对空列表吐 `unknown[]` 却**不说明**，于是两个端点在种子里没有行时看起来像「字段类型没意思」——
+  现在这两处会**报错**（正是渲染扫描学到的那个教训），种子相应补齐。
+
+  写这段时我自己的迁移脚本两次把 `types/index.ts` 改坏：
+  用非贪婪正则 `\{.*?\n\}` 匹配声明，跨过了一条声明把下一条的文档注释一起吞掉。
+  改成括号配对，并改成**一次写完、一次验证**——逐步试错再回滚的写法正是损坏的来因。
+
 - **响应类型由生成器产出，并由 CI 判定是否过期**（`scripts/generate_types.py`、
   `frontend/src/types/generated.ts`、`tests/test_generated_types.py`、`.github/workflows/ci.yml`）。
   「前端类型手写镜像」是这份文档里最老的一条限制，理由是每个端点都返回 `dict[str, object]`，

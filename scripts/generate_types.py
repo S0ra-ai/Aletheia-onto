@@ -77,6 +77,19 @@ _HEADER = """/**
  * Optional (`?`) means the field was absent from at least one object of its kind. `unknown`
  * means it held more than one type across the sample, which is worth looking at rather than
  * papering over.
+ *
+ * ## This describes the wire, not what a screen reads
+ *
+ * Half the console's endpoints are normalised in `api/index.ts` before a screen sees them:
+ * `/permissions/policies` sends `can_read` and the policy table reads `canRead`. For those, this
+ * file describes what arrives and the screen's type describes what it becomes -- they are two
+ * different shapes on purpose, and forcing the screen onto the generated declaration would mean
+ * deleting the normaliser that the blank-column defects were fixed by.
+ *
+ * Which of the two a type is should be obvious from where it is declared, so: a type the screens
+ * import from `types/index.ts` as an alias of something here is a wire shape; one that is still
+ * written by hand beside them is either a normalised shape or a view model. `normalise.test.ts`
+ * holds the mapping between the two.
  */
 
 """
@@ -110,14 +123,26 @@ def _infer(value: Any) -> str:
 
 
 def _merge(types: list[str]) -> str:
-    """One type from several observations: `unknown` when they disagree."""
+    """One type from several observations: `unknown` when they disagree.
+
+    **A field observed only as `null` becomes `unknown`, not `null`.** The first version wrote
+    `null`, which is a *statement* -- "this field is always null" -- made from a sample in which
+    the field merely happened never to be set. `reviewed_at` is the case in point: every mapping
+    in a fresh instance is unreviewed, so the generated type said `reviewedAt: null`, and a
+    reviewer's timestamp would have contradicted a declaration that claimed to describe the API.
+
+    The same reasoning as an empty list becoming `unknown[]`: no evidence about the non-null case
+    is not evidence that there is none.
+    """
     unique = sorted(set(types))
-    # `null` alongside a real type is a nullable field rather than a union worth naming.
     without_null = [item for item in unique if item != "null"]
-    if len(without_null) == 1:
-        return without_null[0]
     if not without_null:
-        return "null"
+        return "unknown"
+    if len(without_null) == 1:
+        # A field that is sometimes a string and sometimes null is a nullable string, and
+        # `string` is the useful declaration; the null case is what `?` already tells the reader
+        # to be careful about.
+        return without_null[0]
     return "unknown"
 
 
@@ -234,6 +259,12 @@ def collect_payloads() -> dict[str, Any]:
         )
         del run_contract_demo
         _seed_smoke(platform_db)
+        # Two endpoints the seed above does not reach, and which the generator refuses to
+        # describe from nothing: a decision record (produced by assessing an instance) and a
+        # declared operation (produced by importing a business API). Without these the generated
+        # file would say `unknown[]` for both, which reads like a field with no interesting type
+        # rather than like nothing having been observed.
+        _seed_decisions_and_operations(platform_db)
 
         import ontology_platform.api as api_module
         from ontology_platform.auth import ensure_bootstrap_admin
@@ -251,11 +282,26 @@ def collect_payloads() -> dict[str, Any]:
                 token = _sign_in(client, platform_db)
                 headers = {"Authorization": f"Bearer {token}"}
                 payloads: dict[str, Any] = {}
+                unobserved: list[str] = []
                 for name, path in ENDPOINTS:
                     response = client.get(path, headers=headers)
                     if response.status_code != 200:
+                        unobserved.append(f"{name} ({response.status_code})")
                         continue
-                    payloads[name] = response.json()
+                    body = response.json()
+                    if _is_empty(body):
+                        # An endpoint that answered with nothing produces `unknown[]`, which
+                        # looks exactly like a field with no interesting type. That is the same
+                        # trap the render sweep documents: an empty table makes every column
+                        # look correct. Collected rather than ignored, and the test fails on it.
+                        unobserved.append(f"{name} (空)")
+                    payloads[name] = body
+                if unobserved:
+                    raise SystemExit(
+                        "以下端点在这份种子数据上没有产生任何行，生成的类型会是 unknown[]：\n  "
+                        + "\n  ".join(unobserved)
+                        + "\n请补种子数据（`_seed_smoke` 与 demo），或在 ENDPOINTS 里说明为什么不收录。"
+                    )
                 return payloads
         finally:
             database_module._platform_adapter = previous_adapter
@@ -284,6 +330,47 @@ def _seed_smoke(platform_db: Path) -> None:
     with connect(platform_db) as conn:
         prepare_database(conn)
     module.seed(platform_db)
+
+
+def _is_empty(body: Any) -> bool:
+    """Whether a response carries no rows at all, in any of the envelopes these endpoints use."""
+    if isinstance(body, list):
+        return not body
+    if not isinstance(body, dict):
+        return True
+    for key, value in body.items():
+        if key in ("pagination", "ontology", "object", "attributes", "summary", "period"):
+            continue
+        if isinstance(value, list) and value:
+            return False
+    return True
+
+
+def _seed_decisions_and_operations(platform_db: Path) -> None:
+    """One verdict and one declared operation, so those two endpoints have a row to describe."""
+    from ontology_platform.database import connect
+    from ontology_platform.metadata import register_source_api
+    from ontology_platform.semantic_kernel import assess_instance
+
+    with connect(platform_db) as conn:
+        source_id = int(conn.execute("select id from data_source").fetchone()["id"])
+        ontology_id = int(conn.execute("select id from ontology").fetchone()["id"])
+        object_code = conn.execute(
+            "select bo.code from business_object bo join source_table st on st.id = bo.source_table_id"
+            " where bo.ontology_id = ? order by bo.id limit 1",
+            (ontology_id,),
+        ).fetchone()["code"]
+
+    register_source_api(
+        platform_db,
+        source_id,
+        "submit_contract",
+        "提交合同审批",
+        "POST",
+        "/contracts/{id}/submit",
+        "contract.submit_for_approval",
+    )
+    assess_instance(platform_db, ontology_id, object_code, "1")
 
 
 def _sign_in(client: Any, platform_db: Path) -> str:

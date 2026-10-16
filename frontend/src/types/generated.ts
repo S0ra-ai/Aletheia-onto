@@ -12,6 +12,19 @@
  * Optional (`?`) means the field was absent from at least one object of its kind. `unknown`
  * means it held more than one type across the sample, which is worth looking at rather than
  * papering over.
+ *
+ * ## This describes the wire, not what a screen reads
+ *
+ * Half the console's endpoints are normalised in `api/index.ts` before a screen sees them:
+ * `/permissions/policies` sends `can_read` and the policy table reads `canRead`. For those, this
+ * file describes what arrives and the screen's type describes what it becomes -- they are two
+ * different shapes on purpose, and forcing the screen onto the generated declaration would mean
+ * deleting the normaliser that the blank-column defects were fixed by.
+ *
+ * Which of the two a type is should be obvious from where it is declared, so: a type the screens
+ * import from `types/index.ts` as an alias of something here is a wire shape; one that is still
+ * written by hand beside them is either a normalised shape or a view model. `normalise.test.ts`
+ * holds the mapping between the two.
  */
 
 
@@ -55,7 +68,7 @@ export interface BusinessRuleItems {
 
 export interface BusinessRulePagination {
   hasMore: boolean;
-  limit: null;
+  limit: unknown;
   offset: number;
   total: number;
 }
@@ -88,13 +101,40 @@ export interface DataSourceSummaryDataSources {
 
 export interface DataSourceSummaryPagination {
   hasMore: boolean;
-  limit: null;
+  limit: unknown;
   offset: number;
   total: number;
 }
 
 export interface DecisionRecordEntry {
-  items: unknown[];
+  items: DecisionRecordEntryItems[];
+}
+
+export interface DecisionRecordEntryItems {
+  actor: string;
+  createdAt: string;
+  created_at: string;
+  decisionId: string;
+  decisionType: string;
+  decision_id: string;
+  decision_type: string;
+  evidence: Record<string, unknown>;
+  id: number;
+  inputRef: Record<string, unknown>;
+  input_ref: Record<string, unknown>;
+  instanceId: string;
+  instance_id: string;
+  objectCode: string;
+  object_code: string;
+  ontologyId: number;
+  ontology_id: number;
+  operationCode: string;
+  operation_code: string;
+  recommendation: string;
+  recommendationCode: string;
+  ruleResults: Record<string, unknown>[];
+  rule_results: Record<string, unknown>[];
+  status: string;
 }
 
 export interface ModelInvocationEntry {
@@ -127,8 +167,8 @@ export interface OntologySummaryItems {
   name: string;
   objectCount: number;
   object_count: number;
-  publishedAt: null;
-  published_at: null;
+  publishedAt: unknown;
+  published_at: unknown;
   status: string;
   version: string;
 }
@@ -141,15 +181,15 @@ export interface OntologySummaryOntologies {
   name: string;
   objectCount: number;
   object_count: number;
-  publishedAt: null;
-  published_at: null;
+  publishedAt: unknown;
+  published_at: unknown;
   status: string;
   version: string;
 }
 
 export interface OntologySummaryPagination {
   hasMore: boolean;
-  limit: null;
+  limit: unknown;
   offset: number;
   total: number;
 }
@@ -201,7 +241,7 @@ export interface SemanticMappingItems {
   mapping_type: string;
   ontologyId: number;
   ontology_id: number;
-  reviewedAt: null;
+  reviewedAt: unknown;
   reviewer: string;
   sourceColumn: string;
   sourceRef: string;
@@ -218,19 +258,32 @@ export interface SemanticMappingItems {
 
 export interface SemanticMappingPagination {
   hasMore: boolean;
-  limit: null;
+  limit: unknown;
   offset: number;
   total: number;
 }
 
 export interface SourceApi {
-  apis: unknown[];
+  apis: SourceApiApis[];
   pagination: SourceApiPagination;
+}
+
+export interface SourceApiApis {
+  created_at: string;
+  data_source_id: number;
+  id: number;
+  method: string;
+  name: string;
+  operation_code: string;
+  path: string;
+  request_schema: string;
+  response_schema: string;
+  semantic_action: string;
 }
 
 export interface SourceApiPagination {
   hasMore: boolean;
-  limit: null;
+  limit: unknown;
   offset: number;
   total: number;
 }
@@ -299,7 +352,7 @@ export interface WorkbenchActionItemDecisions {
   approved: number;
   blocked: number;
   byStatus: Record<string, unknown>;
-  recent: unknown[];
+  recent: Record<string, unknown>[];
   review: number;
   total: number;
 }

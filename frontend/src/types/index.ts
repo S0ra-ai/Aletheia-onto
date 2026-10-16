@@ -1,3 +1,5 @@
+import type * as Generated from './generated';
+
 // 数据源相关类型
 /** What a scan reports: one entry per table, not three totals. */
 /**
@@ -344,18 +346,7 @@ export interface ScanResult {
 }
 
 // 本体相关类型
-export interface Ontology {
-  id: number;
-  name: string;
-  domain?: string;
-  dataSourceId?: number;
-  version: string;
-  status: string;
-  createdAt?: string;
-  publishedAt?: string | null;
-  /** Number of modelled business objects; distinguishes a real ontology from an empty one. */
-  objectCount?: number;
-}
+export type Ontology = Generated.OntologySummaryOntologies;
 
 export interface OntologyDraftCreate {
   dataSourceId: number;
@@ -554,41 +545,10 @@ export interface PageInfo {
   hasMore: boolean;
 }
 
-export interface SemanticMapping {
-  id: number;
-  ontologyId: number;
-  mappingType: string;
-  sourceRef?: string;
-  targetRef?: string;
-  sourceTable: string;
-  sourceColumn?: string;
-  targetObjectCode: string;
-  targetAttributeCode?: string;
-  confidence: number;
-  status: string;
-  evidence?: string;
-  reviewer?: string;
-  reviewedAt?: string | null;
-}
+export type SemanticMapping = Generated.SemanticMappingItems;
 
 // 业务规则相关类型
-export interface BusinessRule {
-  id: number;
-  ontologyId?: number;
-  code: string;
-  name: string;
-  ruleType: string;
-  scopeObjectCode: string;
-  expression: string;
-  severity: string;
-  naturalLanguage: string;
-  status: string;
-  priority?: number;
-  category?: string;
-  effectiveStart?: string;
-  effectiveEnd?: string;
-  dependsOn?: string[];
-}
+export type BusinessRule = Generated.BusinessRuleItems;
 
 // 语义服务相关类型
 
@@ -984,24 +944,7 @@ export interface ReasoningChain extends KnowledgeBase {
   steps: Array<{ type: string; label: string }>;
 }
 
-export interface DecisionRecordItem {
-  id: number;
-  decisionId: string;
-  decisionType: string;
-  ontologyId?: number;
-  objectCode: string;
-  instanceId: string;
-  operationCode: string;
-  status: string;
-  recommendation: string;
-  /** Which recommendation this is -- see `semantic_kernel._decision_from_results`. */
-  recommendationCode?: string;
-  inputRef: Record<string, unknown>;
-  ruleResults: unknown[];
-  evidence: Record<string, unknown>;
-  actor: string;
-  createdAt: string;
-}
+export type DecisionRecordItem = Generated.DecisionRecordEntryItems;
 
 // 治理审计相关类型
 //
@@ -1011,26 +954,9 @@ export interface DecisionRecordItem {
 // `record.createdAt` 通过类型检查、能被自动补全、运行时是 `undefined`。
 // 错误的类型声明不是中立的，它会给真实存在的 bug 盖章放行——
 // 这两处正是如此，rowKey 因此对每一行都算出 `undefined-<action>`。
-export interface AuditLogItem {
-  actor: string;
-  action: string;
-  target_type: string;
-  target_id: string;
-  detail: string;
-  created_at: string;
-}
+export type AuditLogItem = Generated.AuditLogEntryItems;
 
-export interface ModelInvocationItem {
-  provider: string;
-  model: string;
-  purpose: string;
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  status: string;
-  error?: string;
-  created_at: string;
-}
+export type ModelInvocationItem = Generated.ModelInvocationEntryItems;
 
 // 演示相关类型
 export interface DemoBootstrapResult {
@@ -1224,14 +1150,7 @@ export interface WorkflowHistoryItem {
 }
 
 // 权限相关类型
-export interface PermissionRole {
-  id: number;
-  code: string;
-  name: string;
-  description: string;
-  isSystem: number;
-  createdAt: string;
-}
+export type PermissionRole = Generated.PermissionRoleRoles;
 
 export interface PermissionPolicy {
   id: number;

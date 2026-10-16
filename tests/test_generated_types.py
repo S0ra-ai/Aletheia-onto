@@ -23,6 +23,7 @@ having if it can disagree with what somebody wrote by hand.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -140,3 +141,35 @@ def test_the_check_mode_reports_a_stale_file_rather_than_rewriting_it() -> None:
     )
     assert result.returncode == 1
     assert "不符" in result.stderr
+
+
+def test_the_screens_read_the_generated_declarations_where_they_can() -> None:
+    """The step that makes the generated file *used* rather than merely present.
+
+    `frontend/src/types/index.ts` still declares most of what the screens import, and that is
+    correct where it does: for the endpoints the client normalises, the screen's type is the
+    normalised shape rather than the wire one, and forcing it onto the generated declaration
+    would mean deleting the normaliser that the blank-column defects were fixed by.
+
+    What must not happen silently is the other direction -- a type that *can* be the generated
+    one drifting back into a hand-written copy. This asserts that every alias present resolves,
+    and that there is at least one, so the import cannot be dropped in a refactor and leave the
+    generated file an orphan that nothing reads.
+
+    `tsc` would catch a broken alias; it would not catch an orphan.
+    """
+    index = ROOT / "frontend" / "src" / "types" / "index.ts"
+    source = index.read_text(encoding="utf-8")
+
+    assert "from './generated'" in source, (
+        "types/index.ts 不再引用生成文件了——生成物会变成没人读的孤儿，而它在 CI 里仍然每天被判为「最新」。"
+    )
+
+    aliases = re.findall(r"export type (\w+) = Generated\.(\w+);", source)
+    assert aliases, "没有任何别名指向生成声明——这一层是空的"
+
+    generated = GENERATED.read_text(encoding="utf-8")
+    missing = [gen for _hand, gen in aliases if f"export interface {gen} " not in generated]
+    assert not missing, (
+        f"types/index.ts 指向了生成文件里没有的接口：{missing}。生成器改了命名或不再收录该端点，而界面仍在引用。"
+    )

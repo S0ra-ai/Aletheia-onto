@@ -130,20 +130,23 @@ By design, not bugs. These are the next phase's work.
   remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
   edges rather than a domain, and moving them would give a reader one more file to open to find
   where the SPA is served from.
-- **Response types are generated now; the screens still import the hand-written ones.**
-  `frontend/src/types/generated.ts` is produced by `scripts/generate_types.py`, which builds a
-  seeded instance, calls each read endpoint and writes down the shape that came back — the route
-  that needs no annotations, where OpenAPI has none to offer because every endpoint returns
-  `dict[str, object]`. `tests/test_generated_types.py` fails when the committed file stops
-  matching the API, so a renamed field is a diff on a generated file rather than a table that
-  quietly renders empty. What is *not* done is the last step: `frontend/src/types/index.ts` is
-  still hand-written, still what the screens import, and still carries view models the generator
-  knows nothing about. Moving the screens onto the generated declarations is the work that would
-  close this, and it is the next thing rather than a corner left unturned.
+- **Response types are generated, and the screens read them where they can.** Seven row types
+  (`Ontology`, `SemanticMapping`, `BusinessRule`, `PermissionRole`, `AuditLogItem`,
+  `ModelInvocationItem`, `DecisionRecordItem`) are aliases of declarations in
+  `frontend/src/types/generated.ts`, which is produced by `scripts/generate_types.py` and whose
+  staleness fails CI.
 
-  The hand-written file's other problem is recorded below and unchanged: **the naming convention
-  is not uniform.** \(The rest of the original entry, kept because it is still true of the file
-  the screens actually read.)
+  The rest are hand-written **on purpose, and the reason is worth stating rather than leaving as a
+  to-do.** The generated file describes the *wire*; half the console's endpoints are normalised in
+  `api/index.ts` before a screen sees them -- `/permissions/policies` sends `can_read` and the
+  policy table reads `canRead`. For those, the screen's type is the normalised shape, and forcing
+  it onto the generated declaration would mean deleting the normaliser that the blank-column
+  defects were fixed by. Aliasing them was tried: `tsc` rejected four of them, naming exactly the
+  fields (`canRead`, `toolType`, `tableName`) that the normalisers exist to produce.
+
+  So there are two mechanisms rather than one, and each is tested: `test_generated_types.py` for
+  the wire shapes, `normalise.test.ts` for the mapping onto what the screens read. A backend field
+  rename is caught by one or the other, and the generated file says which kind of type it is.
 - **The interface is bilingual, and most of what the server says can be translated with it; what is
   left is the CLI, and the refusals nobody has named yet.** Nineteen screens read from
   `i18n/messages/`; the sentences the server composes -- advice, gate verdicts, audit findings, the
