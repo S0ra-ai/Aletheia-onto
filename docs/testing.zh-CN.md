@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1735 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1736 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -91,7 +91,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_credential_protection.py` | 10 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 14 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 15 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | 表格列不许把枚举原样打印出来，必须走标签映射 |
 | `test_demo_bootstrap.py` | 2 | 演示按钮第二次按下时，报告它清掉了什么 |
 | `test_ui_messages.py` | 7 | 双语字典：两种语言都在、占位符一致、没有界面调不到的键 |
@@ -174,6 +174,22 @@ job 随后会**把豁免关掉再扫一遍**，断言它报出的正好是清单
 它会为每条路由打印检查了几张表、几行数据：**什么都没访问到的检查与什么都没发现的检查
 输出完全一样**。表格在标签页里的路由写成带标签的查询形式（`/admin/governance?tab=report`）——
 该工具只是加载路由再读 DOM，页面若不把当前标签写进 URL，第一个标签页之外的内容就在它的视野之外。
+
+## 最初的五分钟：一个数据都没有的时候
+
+上面的渲染扫描跑在**有种子数据**的实例上，因为没有行的表格什么都检查不了。
+于是**每个部署都会经过的那个状态**反而没人看——而没有数据的时候，一屏坏了代价最大，因为读者没有别的路可走。
+
+`python scripts/ui_smoke.py --expect-empty` 用同一批路由走一个平台库为空的实例，对每一屏只问一件事：
+**它渲染出来了吗？** 这里不该有表格、不该有「整列为空」、也不该有行，
+所以与数据有关的判定全部关掉，只剩下两个在这里真正有意义的检查——**页面崩了**，以及**返回的根本不是这个应用**。
+需要实例里还不存在的 id 的详情路由会被**逐条列出**，而不是悄悄跳过。
+
+手工跑一次就抓到了它被造出来要找的那两屏：`/admin/mapping` 说「没有可审核的本体」就没了下文，
+工作台的决策卡片说「尚无决策记录」。两处都没有说出下一步——而那一刻读者手里只有这句话。
+现在两处都说了。
+
+它作为独立的 CI 步骤运行，实例起在 8078 端口。
 
 ## 英文界面真的是英文吗
 

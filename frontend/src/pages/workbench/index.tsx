@@ -253,7 +253,17 @@ const WorkbenchPage: React.FC = () => {
         <Col xs={24} lg={14}>
           <Card title={t('workbench.recentDecisions')} size="small" extra={<Button type="link" onClick={() => navigate('/governance')}>{t('workbench.viewAll')}</Button>}>
             {decisions.recent.length === 0 ? (
-              <Empty description={t('workbench.noDecisions')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={
+                  <Space direction="vertical" size={4}>
+                    <Text strong>{t('workbench.noDecisions')}</Text>
+                    <Text type="secondary" style={{ maxWidth: 420, display: 'inline-block' }}>
+                      {t('workbench.noDecisionsHint')}
+                    </Text>
+                  </Space>
+                }
+              />
             ) : (
               <Table
                 size="small"

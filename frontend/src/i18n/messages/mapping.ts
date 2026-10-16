@@ -31,5 +31,12 @@ export const mapping: Record<string, MessageEntry> = {
   'reviewFailed': { zh: '审核失败', en: 'Review failed' },
   'retry': { zh: '重试', en: 'Retry' },
   'noOntologies': { zh: '没有可审核的本体', en: 'No ontologies to review' },
+  // Mapping is the *destination* of a flow, so an empty selector here is not a state to
+  // describe but a step to name. The page used to be a dead end on a fresh install: no
+  // ontologies, no rows, and nothing saying where they come from.
+  'noOntologiesHint': {
+    zh: '映射依附于本体，本体由扫描到的表结构生成。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成草案——之后待审核的映射会出现在这里。',
+    en: 'Mappings hang off an ontology, and an ontology comes from a scanned schema. Register and scan the source under Data sources, generate a draft under Modelling, and the mappings to review will appear here.',
+  },
   'noMappings': { zh: '该本体没有语义映射', en: 'This ontology has no semantic mappings' },
 };

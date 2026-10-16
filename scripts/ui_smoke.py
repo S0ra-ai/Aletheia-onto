@@ -37,6 +37,20 @@ it (sessionStorage), so this drives the same authenticated application a person 
 What it checks: every table cell that is empty in **every** data row, reported with the
 column title. A column that is legitimately sparse is not a finding; a column that is empty
 in every row is almost always a name mismatch, and the two are worth telling apart by eye.
+
+The fresh-install pass
+----------------------
+
+The sweep runs against a *seeded* instance, because a table with no rows checks nothing. That
+leaves the other state every deployment passes through untested: **the first five minutes, when
+there is no data at all.** `--expect-empty` walks the same routes against an instance with an
+empty platform database and asks one question -- did the page render? No table, no empty-column
+finding and no data are expected there, so the only result that means anything is a screen that
+crashed, answered with something that is not the application, or never finished loading.
+
+It is a separate pass rather than a flag on the main one because the two runs disagree about the
+same result: the main sweep fails when nothing rendered, which is exactly what an empty instance
+does on purpose.
 """
 
 from __future__ import annotations
@@ -170,6 +184,7 @@ def seed_page(base_url: str, token: str, user: dict | None, directory: Path) -> 
     Served from the built assets rather than from `/admin/`: any path under `/admin/` is
     answered by the SPA fallback, so a file placed there is never served and the app
     reports an unknown route instead -- which reads exactly like an application defect.
+
     """
     page = directory / "seed.html"
     session = "".join(
@@ -483,6 +498,11 @@ def main() -> int:
     parser.add_argument("--user", default="", help="the JSON user object, as /auth/login returns it")
     parser.add_argument("--routes", default="", help="comma-separated override of the routes to visit")
     parser.add_argument(
+        "--expect-empty",
+        action="store_true",
+        help="the fresh-install pass: no data anywhere, so only a page that failed to render counts",
+    )
+    parser.add_argument(
         "--allow",
         default=",".join(f"{route}:{column}" for route, column in KNOWN_SPARSE),
         help="comma-separated route:column pairs known to be empty for want of data",
@@ -575,7 +595,10 @@ def main() -> int:
             # actually reached. A route behind a tab that ignored the query would otherwise
             # report clean forever.
             empty_here = []
-            for index, (headers, rows) in enumerate(page_tables):
+            # Nothing is expected to have rows here, so a column empty in every row is the
+            # normal state rather than a finding. The crash check and the
+            # not-the-application check still apply -- those are what a fresh install gets wrong.
+            for index, (headers, rows) in enumerate([] if args.expect_empty else page_tables):
                 if not rows:
                     continue
                 # Matched with ids normalised, so the allowance does not depend on which
@@ -590,7 +613,7 @@ def main() -> int:
                 if empty:
                     findings += 1
                     empty_here.append(f"table #{index}: {', '.join(empty)}")
-            if not page_tables:
+            if not page_tables and not args.expect_empty:
                 tableless.append(route)
             detail = route_detail(route, tables_rendered=len(page_tables), empty_columns=empty_here, broken=broken)
             print(f"{route:44s} {len(page_tables):2d} table(s), {examined:4d} row(s){detail}")
@@ -614,8 +637,22 @@ def main() -> int:
     unexpected = sorted(
         route for route in tableless if _normalise_route(route) not in NO_TABLE_ROUTES and route not in broken_pages
     )
-    stale = sorted(route for route in NO_TABLE_ROUTES if route in routes and _normalise_route(route) not in tableless)
-    if skipped:
+    # Not in the fresh-install pass: with no data, a screen that has a table renders no table
+    # either, so "this route has no table" carries no information and neither direction of the
+    # allowance check means anything.
+    stale = (
+        []
+        if args.expect_empty
+        else sorted(route for route in NO_TABLE_ROUTES if route in routes and _normalise_route(route) not in tableless)
+    )
+    if skipped and args.expect_empty:
+        # An empty instance has no ontology, no source and no instance for the detail routes to
+        # point at, so there is nothing to fill them with -- which is the state, not a coverage
+        # loss. Named rather than counted, because "these were not checked" is information.
+        print(f"\n新装实例里没有可供详情页指向的记录，以下 {len(skipped)} 条路由这次没有访问（这是状态，不是缺陷）：")
+        for line in skipped:
+            print(f"  {line.split('（')[0]}")
+    elif skipped:
         # A route that was dropped is not a route that passed. Reported with the same weight
         # as an unexamined screen, because from the outside the two are the same thing.
         print(
@@ -646,6 +683,15 @@ def main() -> int:
         )
         return 1
 
+    if args.expect_empty:
+        # What this pass establishes, in one line: every screen a fresh deployment can reach
+        # rendered. Some of them do have rows -- the seeded roles, the default tenant -- and
+        # whether they do is not the question here.
+        print(
+            f"\n新装实例：{len(routes)} 条路由全部渲染出了页面，没有失败页，"
+            f"也没有把接口错误当成页面渲染；{len(skipped)} 条详情路由因实例里还没有记录而未访问。"
+        )
+        return 0
     if rows_seen == 0:
         # The headline below would otherwise read "no wholly-empty columns found" for a sweep
         # that rendered no data at all -- the same shape of false pass as an unauthenticated

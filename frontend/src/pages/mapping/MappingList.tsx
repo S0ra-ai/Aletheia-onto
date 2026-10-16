@@ -6,7 +6,7 @@ import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import type { Ontology, SemanticMapping } from '../../types';
 
-const { Title } = Typography;
+const { Text, Title } = Typography;
 const { Option } = Select;
 
 const MappingList: React.FC = () => {
@@ -173,7 +173,14 @@ const MappingList: React.FC = () => {
             action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>{t('mapping.retry')}</Button>}
           />
         ) : !selectedOntology ? (
-          <Empty description={t('mapping.noOntologies')} />
+          <Empty
+            description={
+              <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
+                <Text strong>{t('mapping.noOntologies')}</Text>
+                <Text type="secondary">{t('mapping.noOntologiesHint')}</Text>
+              </Space>
+            }
+          />
         ) : mappings.length === 0 && !loading ? (
           <Empty description={t('mapping.noMappings')} />
         ) : (

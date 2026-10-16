@@ -67,6 +67,12 @@ export const workbench: Record<string, MessageEntry> = {
   'recentDecisions': { zh: '最近决策', en: 'Recent decisions' },
   'viewAll': { zh: '全部', en: 'All' },
   'noDecisions': { zh: '尚无决策记录', en: 'No decisions recorded' },
+  // The workbench is where a new deployment lands, and an empty card with no next step is the
+  // first thing its reader sees.
+  'noDecisionsHint': {
+    zh: '决策来自一次研判：到「业务研判」对某个实例做一次判定，或到「演示中心」一键跑通接入、建模与判定的完整链路。',
+    en: 'A decision comes from an assessment: assess an instance under Assessment, or run the whole path -- connect, model, assess -- in one click from the Demo centre.',
+  },
   'column.status': { zh: '状态', en: 'Status' },
   'column.object': { zh: '对象', en: 'Object' },
   'column.instance': { zh: '实例', en: 'Instance' },

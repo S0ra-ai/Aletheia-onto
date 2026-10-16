@@ -322,3 +322,29 @@ def test_a_response_that_is_not_the_app_is_recognised() -> None:
 
     # Some other document that is not the app either, and that this cannot explain further.
     assert module.not_the_app("<html><body><h1>502 Bad Gateway</h1></body></html>") != ""
+
+
+def test_the_fresh_install_pass_asks_a_different_question() -> None:
+    """`--expect-empty` walks the same routes and must not inherit the seeded pass's rules.
+
+    A table with no rows checks nothing, so the main sweep fails when nothing rendered -- and an
+    empty instance renders nothing *on purpose*, on every screen. Running the two sets of rules
+    together would fail the fresh-install pass on every route, and "the new instance has no
+    data" is the one thing that pass already knows.
+
+    What it must keep is the two checks that do mean something there: a page that crashed, and a
+    response that is not the application. Those are what a new deployment can genuinely get
+    wrong, and they are the reason the pass exists.
+    """
+    source = (ROOT / "scripts" / "ui_smoke.py").read_text(encoding="utf-8")
+
+    # The flag exists, and the two data-shaped checks are switched off by it.
+    assert "--expect-empty" in source
+    assert "if page_tables and not args.expect_empty" in source or "[] if args.expect_empty else page_tables" in source
+    assert "if not page_tables and not args.expect_empty" in source
+    assert "if args.expect_empty" in source
+
+    # The crash checks are not conditional on it: they run in both passes.
+    assert "broken = failure_marker(html) or not_the_app(html)" in source
+    # And the pass reports what it skipped rather than passing silently.
+    assert "新装实例" in source

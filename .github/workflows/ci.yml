@@ -556,6 +556,39 @@ jobs:
         env:
           PYTHONPATH: backend
 
+      - name: 全新实例的第一次打开（没有数据时的每一屏）
+        # The sweep above runs against a seeded instance, because a table with no rows checks
+        # nothing. That leaves the state every deployment starts in untested. This starts a
+        # second instance whose platform database is empty and asks one question of each screen:
+        # did it render? No data is expected here, so a table-less page means nothing and a page
+        # that crashed means everything.
+        run: |
+          # `init` takes no flags: it creates the schema and a bootstrap admin with a password
+          # generated and printed once. This pass knows the password it needs, so it sets it.
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/empty.sqlite3" init > /dev/null
+          python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/empty.sqlite3" \
+            passwd --username admin --password 'CI-Empty-Passw0rd!x' > /dev/null
+          ONTOLOGY_ADMIN_USERNAME=admin ONTOLOGY_ADMIN_PASSWORD='CI-Empty-Passw0rd!x' \
+            python -m ontology_platform.cli --platform-db "$RUNNER_TEMP/empty.sqlite3" \
+            serve --port 8078 > "$RUNNER_TEMP/empty-server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8078/health > /dev/null && break
+            sleep 1
+          done
+          LOGIN=$(curl -s -X POST http://127.0.0.1:8078/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Empty-Passw0rd!x"}')
+          TOKEN=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.load(sys.stdin).get("token", ""))')
+          if [ -z "$TOKEN" ]; then
+            echo "登录没有返回令牌，服务响应为：$LOGIN"; cat "$RUNNER_TEMP/empty-server.log"; exit 1
+          fi
+          USER_JSON=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("user", {})))')
+          python scripts/ui_smoke.py --base-url http://127.0.0.1:8078 \
+            --token="$TOKEN" --user="$USER_JSON" --expect-empty
+        env:
+          PYTHONPATH: backend
+          CHROME_BIN: /usr/bin/google-chrome
+
       - name: 英文界面上不该出现没翻译的中文
         # The code above answers "does every screen render its data"; this answers the other
         # question a bilingual console raises and nothing else checked: is the English

@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1735 tests**, all passing. A case that needs something this machine does not have skips
+**1736 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -97,7 +97,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 10 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 14 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 15 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | No table column prints an enum value itself; it goes through the label maps |
 | `test_demo_bootstrap.py` | 2 | The demo buttons, and what they report having destroyed |
 | `test_ui_messages.py` | 7 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
@@ -201,6 +201,24 @@ silently visited nothing is indistinguishable from a check that found nothing. R
 keep their tables behind a tab are listed with the tab in the query
 (`/admin/governance?tab=report`): the tool loads a route and reads the DOM, so anything below
 the first tab is outside its reach unless the page puts the active tab in the URL.
+
+## The first five minutes, with no data at all
+
+The sweep above runs against a *seeded* instance, because a table with no rows checks nothing. That
+leaves the state every deployment starts in untested -- and it is the state where a wrong screen
+costs the most, because there is nothing else to try.
+
+`python scripts/ui_smoke.py --expect-empty` walks the same routes against an instance whose platform
+database is empty and asks one question of each: did it render? No table, no empty-column finding
+and no rows are expected, so the data-shaped checks are switched off and the two that remain are the
+ones that mean something here -- a page that crashed, and a response that is not the application.
+Detail routes that need an id the instance does not have are **named**, not silently dropped.
+
+Running it by hand found the two screens it was built to find: `/admin/mapping` said 「没有可审核的本体」
+and stopped, and the workbench's decision card said 「尚无决策记录」. Neither named a next step, which
+is the whole of what a reader has to go on at that point. Both now do.
+
+It runs in CI as its own step, against a second instance on port 8078.
 
 ## Is the English interface actually English?
 
