@@ -350,6 +350,48 @@ def test_the_documented_endpoint_count_matches_the_http_layer() -> None:
     assert not problems, "端点数量的描述与实际 HTTP 层不符：\n  " + "\n  ".join(problems)
 
 
+def test_the_component_coverage_number_matches_the_component_tests() -> None:
+    """The framework-readiness gap row counts tables, so the count has to come from the file.
+
+    It read "component tests cover five tables" while the file covered seven -- and grew to
+    thirteen in one round. A number in a **gap list** is trusted more than one in a feature list,
+    because the page has already shown it is willing to admit to shortfalls.
+
+    Counted by the convention the file follows: a case that reads a whole table is named
+    `renders a value in every cell of ...`. That convention is the contract -- a case that reads
+    a table without saying so would be invisible here, which is why the transitions case was
+    renamed to follow it rather than exempted.
+    """
+    source = (ROOT / "frontend" / "src" / "components" / "TableColumns.test.tsx").read_text(encoding="utf-8")
+    tables = len(re.findall(r"it\('renders a value in every cell of ", source))
+
+    claimed = re.search(
+        r"cover (\w+) tables across (\w+) screens",
+        (ROOT / "docs" / "framework-readiness.md").read_text(encoding="utf-8"),
+    )
+    assert claimed, "框架成熟度页面上的组件测试那一行改写了，这里要跟着改"
+    words = {
+        "five": 5,
+        "seven": 7,
+        "thirteen": 13,
+        "fourteen": 14,
+        "fifteen": 15,
+        "sixteen": 16,
+        "seventeen": 17,
+        "eighteen": 18,
+        "nineteen": 19,
+        "twenty": 20,
+    }
+    asserted = words.get(claimed.group(1))
+    assert asserted is not None, (
+        f"这一行用了一个这里认不出的数词：「{claimed.group(1)}」——数字会漂，所以它必须能被数出来。"
+    )
+    assert asserted == tables, (
+        f"框架成熟度页面说组件测试覆盖 {claimed.group(1)}（{asserted}）张表，"
+        f"而 TableColumns.test.tsx 里有 {tables} 个「每格都有内容」的用例。"
+    )
+
+
 def test_every_claimed_python_version_is_actually_tested() -> None:
     """The badge, the classifiers and the test matrix must agree.
 

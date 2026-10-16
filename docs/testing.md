@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1851 tests**, all passing. A case that needs something this machine does not have skips
+**1852 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -111,7 +111,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_ci_workflow.py` | 3 | The workflow GitHub runs is the workflow the file describes |
 | `test_smoke_seeding.py` | 4 | The render check's seeding gives every screen a row, and says only what it did |
 | `test_every_route_answers.py` | 1 | Every route called once; none may crash |
-| `test_documented_claims.py` | 17 | Documented numbers match the code they describe |
+| `test_documented_claims.py` | 18 | Documented numbers match the code they describe |
 | `test_module_boundaries.py` | 6 | Module boundaries: no import cycles, and no reaching into private names |
 | `test_object_service.py` | 14 | Generic business-object browsing over HTTP and in the service, metadata, pagination cost, row-level permission filtering |
 
