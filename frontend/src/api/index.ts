@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { clearSession, getToken } from '../auth/session';
+import { appHref } from '../routing';
 import type { AuthUser } from '../auth/session';
 import type {
   DataSource,
@@ -131,8 +132,15 @@ api.interceptors.response.use(
     const detail = error?.response?.data?.detail;
     if (status === 401) {
       clearSession();
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.assign('/login');
+      // Both halves of this used to compare against the *router* path while the address bar
+      // holds the mounted one. In production the app lives at `/admin`, so the guard never
+      // recognised the login page and the redirect asked the server for `/login` -- which the
+      // SPA is not mounted at, and which the auth middleware answers with
+      // `{"detail":"缺少访问令牌"}`. Every 401, including the one from the login page itself,
+      // ended on a page of raw JSON.
+      const loginPath = appHref('login');
+      if (!window.location.pathname.startsWith(loginPath)) {
+        window.location.assign(loginPath);
       }
       return Promise.reject(new ApiError(detail || '登录已失效，请重新登录。'));
     }

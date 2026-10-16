@@ -59,10 +59,12 @@ from urllib.parse import quote
 # The audit report and the release gate live there, and the bugs that prompted this script
 # -- columns rendering empty for every row -- are exactly the kind that hide behind a tab.
 ROUTES = (
-    # Not `/admin/...`: the login page sits outside the authenticated layout. Swept because a
-    # login page that fails to render is a deployment nobody can enter -- and because the
-    # guard that checks the token talks to the API, not to this screen.
-    "/login",
+    # `/admin/login`, not `/login`. The SPA is mounted at `/admin` in production, so the
+    # router's `/login` is only reachable through the mount point -- and `/login` is not a
+    # page the server serves at all: the auth middleware answers it with 401 JSON. This entry
+    # said `/login` for as long as this script has existed, and the sweep reported it as a
+    # route with no table, which is what the login page is. It never rendered the login page.
+    "/admin/login",
     "/admin/workbench",
     "/admin/datasource",
     "/admin/ontology",
@@ -212,7 +214,7 @@ NO_TABLE_ROUTES = {
     "/admin/semantic": "自然语言交互：答案是正文，没有表格",
     "/admin/semantic?tab=assess": "风险研判：结论以描述列表呈现，没有表格",
     "/admin/semantic?tab=preflight": "操作预检：结果以描述列表呈现，没有表格",
-    "/login": "登录页是表单，没有表格",
+    "/admin/login": "登录页是表单，没有表格",
     "/admin/permission?tab=sso": "SSO 是配置表单，没有表格",
     "/admin/graph": "本体图是画布，没有表格",
     "/admin/chat": "对话界面没有表格",
@@ -437,6 +439,32 @@ def token_authenticates(base_url: str, token: str) -> str:
     return f"sweeping as {who.get('username', '?')} ({who.get('roleCode', '?')})"
 
 
+def not_the_app(html: str) -> str:
+    """A reason when the response is not the application at all; empty when it is.
+
+    A route the server does not serve as HTML comes back as something else -- the auth
+    middleware answers an unmounted path with `{"detail":"缺少访问令牌"}`, and Chrome renders
+    that as a `<pre>` with a JSON viewer. Every marker this script knew about looked *inside*
+    the app's own text, so none of them fired: the page has no table, no empty column and no
+    failure message, and `/login` was reported as a clean route with no table for as long as
+    this script has existed. It had never once rendered the login page.
+
+    The check is the mount point. `index.html` has `<div id="root">` and the bundle renders
+    into it, so its absence means the browser is looking at a document the application did not
+    produce -- whatever that document happens to say.
+    """
+    if 'id="root"' in html:
+        return ""
+    # Chrome renders a JSON response as a document of its own, with `<pre>` inside a viewer
+    # wrapper. Named because the reason is worth naming: this is what the unmounted route
+    # returned, and "the server answered with JSON instead of a page" is the whole finding.
+    if 'class="json-formatter-container"' in html or (
+        "<pre>" in html[:400] and html.lstrip().startswith("<html><head>")
+    ):
+        return "服务端返回的是一段 JSON 而不是页面（多半是这个路径没有挂载前端）"
+    return '返回的文档里没有前端挂载点 <div id="root">，这不是应用渲染出来的页面'
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -524,8 +552,10 @@ def main() -> int:
             examined = sum(len(rows) for _, rows in page_tables)
             rows_seen += examined
             # A page that failed to render is a finding on its own, and the first thing to
-            # report: whatever its table count says is then meaningless.
-            broken = failure_marker(html)
+            # report: whatever its table count says is then meaningless. "Not the app at all"
+            # is the same finding one step further out -- the server answered with something
+            # that is not a document the application produced.
+            broken = failure_marker(html) or not_the_app(html)
             if broken:
                 findings += 1
                 broken_pages.append(route)

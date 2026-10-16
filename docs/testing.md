@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1732 tests**, all passing. A case that needs something this machine does not have skips
+**1733 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -97,7 +97,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_credential_protection.py` | 10 | Credential exposure tests |
 | `test_derive_completeness.py` | 7 | `derive` must carry forward everything that decides a verdict |
 | `test_platform_db_consistency.py` | 7 | `--platform-db` must mean the same database in every command, including `serve` |
-| `test_ui_smoke_guards.py` | 13 | The render check's own guards, exercised without a browser |
+| `test_ui_smoke_guards.py` | 14 | The render check's own guards, exercised without a browser |
 | `test_frontend_enum_rendering.py` | 2 | No table column prints an enum value itself; it goes through the label maps |
 | `test_demo_bootstrap.py` | 2 | The demo buttons, and what they report having destroyed |
 | `test_ui_messages.py` | 5 | The bilingual dictionary: both languages, one set of placeholders, no orphan keys |
@@ -138,9 +138,20 @@ the change.
 It runs in CI as its own job, where a browser is the subject rather than an incidental
 dependency — a job that cannot start one genuinely cannot do its work. The job builds the
 frontend, loads a demo instance, and sweeps 43 routes: every screen that charts a table, every
-tab that puts one behind it, the login page (outside the authenticated layout, and the one
-screen a deployment cannot be entered without), and the detail pages for the first
-ontology and data source, whose ids are read from the instance rather than written down.
+tab that puts one behind it, the login page, and the detail pages for the first ontology and
+data source, whose ids are read from the instance rather than written down.
+
+The login page is swept at **`/admin/login`**, and that is where the defect was. The SPA is
+mounted under `/admin` in production, so the router's `/login` is not a path the server serves
+as a page at all: the auth middleware answers it with `401 {"detail":"缺少访问令牌"}`, which
+Chrome renders as a `<pre>` of JSON. The sweep listed `/login` for as long as it has existed,
+read `0 table(s), 0 row(s)`, and found nothing to complain about — a route with no table is what
+the login page is, and the failure markers looked *inside* the application's own text, so none
+of them fired. **It had never rendered the login page once**, and the same mistake was in the
+redirect an expired session takes (`window.location.assign('/login')`), which put the reader on
+that page of JSON. Both are fixed, and the sweep now asks every dumped document for the
+application's mount point: a document without `<div id="root">` was produced by something else,
+whatever it says.
 
 The route list is held to the router, in both directions, by `tests/test_ui_smoke_guards.py`:
 every path `App.tsx` serves must be swept, and every swept path must be one it serves. Two
@@ -190,6 +201,37 @@ silently visited nothing is indistinguishable from a check that found nothing. R
 keep their tables behind a tab are listed with the tab in the query
 (`/admin/governance?tab=report`): the tool loads a route and reads the DOM, so anything below
 the first tab is outside its reach unless the page puts the active tab in the URL.
+
+## Is the English interface actually English?
+
+`scripts/i18n_audit.py` answers the other question a bilingual console raises, and the one
+nothing checked. The dictionary tests can only read the dictionary, so a screen that keeps its
+own copy of a Chinese string compiles, type-checks, and passes every test in the suite. One did:
+the sidebar rendered 「本体改造研发平台」 as a literal while `shell.app.name` sat in the dictionary
+unused — on every screen, for the whole life of the migration.
+
+It walks the same routes with `?lang=en` and reads the rendered text, then subtracts what the
+instance holds: ontology names, business objects, knowledge clauses, a reader's display name.
+Those belong in Chinese on an English screen — translating somebody's data would be a defect of
+its own — so the audit asks the API for its strings and treats a fragment as data when it
+survives them. What is left is the interface's own words.
+
+The first run put the size of the problem at three things: the sidebar's hardcoded brand, the
+static `<title>` in `index.html`, and sentences the *server* composes — the audit report, the
+release gate's wording, the reasoning chain, the consistency advice. Twenty of the 43 routes
+were already clean. The server's sentences are excused one by one in `KNOWN_BACKEND_PROSE`, each
+with a reason; an entry that matches nothing fails the run, because an allowance outlives its
+reason and the next thing it hides is a defect.
+
+The language is pinned with `?lang=en` or `?lang=zh`, which is a feature before it is a test
+hook: a link that opens in the other language, for a reader whose console is set to Chinese. The
+link's choice is adopted and the parameter is then taken back out of the address, so the switch
+in the header is not overruled by the URL on the next reload.
+
+It is not a proofreader. It reads CJK, so it catches "this sentence was never translated" and
+cannot catch "this sentence was translated badly" — that half is `tests/test_ui_messages.py`,
+which holds the two languages to the same placeholders and the same keys.
+
 ## Scale
 
 86 backend modules, roughly 36,100 lines, 156 API endpoints, 45 platform tables, React +

@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ROUTER_BASENAME } from './routing';
 import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
@@ -43,10 +44,8 @@ const PageLoader = () => {
   );
 };
 
-// Vite serves the app at `/` during development; the production image mounts it at
-// `/admin` beside the API. Keeping the base conditional avoids making the dev server
-// appear blank while still allowing a single-origin production deployment.
-const ROUTER_BASENAME = import.meta.env.PROD ? '/admin' : '/';
+// The mount point lives in `routing.ts` rather than here: the interceptor needs the same
+// answer for a full page load, and two copies of it is how they disagreed.
 
 const App: React.FC = () => {
   return (

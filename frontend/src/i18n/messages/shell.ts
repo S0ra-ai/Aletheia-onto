@@ -13,7 +13,10 @@ export interface MessageEntry {
 }
 
 export const shell = {
-  'app.name': { zh: '本体改造研发平台', en: 'Ontology Platform' },
+  'app.name': { zh: '本体改造研发平台', en: 'Aletheia Ontology Platform' },
+  // The sidebar's collapsed form. 「本体」 is one glyph wide in Chinese; the English one is the
+  // product's name, because "Onto" is not a word.
+  'app.nameShort': { zh: '本体', en: 'Aletheia' },
   'app.loading': { zh: '加载中…', en: 'Loading…' },
 
   'nav.workbench': { zh: '工作台', en: 'Workbench' },
@@ -47,7 +50,7 @@ export const shell = {
   'account.chinese': { zh: '中文', en: '中文' },
   'account.english': { zh: 'English', en: 'English' },
 
-  'login.title': { zh: '本体改造研发平台', en: 'Ontology Platform' },
+  'login.title': { zh: '本体改造研发平台', en: 'Aletheia Ontology Platform' },
   'login.subtitle': { zh: '请使用平台账号登录。', en: 'Sign in with a platform account.' },
   'login.username': { zh: '用户名', en: 'Username' },
   'login.password': { zh: '密码', en: 'Password' },

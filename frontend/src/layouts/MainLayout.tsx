@@ -149,7 +149,11 @@ const MainLayout: React.FC = () => {
           overflow: 'hidden',
           whiteSpace: 'nowrap',
         }}>
-          {collapsed ? '本体' : '本体改造研发平台'}
+          {/* `shell.app.name` was in the dictionary the whole time while this line kept its
+              own copy of the Chinese -- the one string on every screen that had a translation
+              and never used it. The collapsed form is short in either script, so it is a
+              message too: 「本体」 is one glyph and 'Aletheia' is the product's name. */}
+          {collapsed ? t('shell.app.nameShort') : t('shell.app.name')}
         </div>
         <Menu
           theme="dark"

@@ -556,6 +556,30 @@ jobs:
         env:
           PYTHONPATH: backend
 
+      - name: 英文界面上不该出现没翻译的中文
+        # The code above answers "does every screen render its data"; this answers the other
+        # question a bilingual console raises and nothing else checked: is the English
+        # interface actually English. It walks the same routes with `?lang=en` and reads the
+        # rendered text, subtracting the instance's own content -- which is Chinese on purpose.
+        #
+        # Sentences the *server* composes are listed in the script with a reason each, and the
+        # list may not have entries that matched nothing: an allowance outlives its reason and
+        # then starts hiding the thing the check exists to find.
+        run: |
+          LOGIN=$(curl -s -X POST http://127.0.0.1:8077/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Smoke-Passw0rd!x"}')
+          TOKEN=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.load(sys.stdin).get("token", ""))')
+          if [ -z "$TOKEN" ]; then
+            echo "登录没有返回令牌，服务响应为：$LOGIN"; exit 1
+          fi
+          USER_JSON=$(printf '%s' "$LOGIN" | python -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("user", {})))')
+          python scripts/i18n_audit.py --base-url http://127.0.0.1:8077 \
+            --token="$TOKEN" --user="$USER_JSON"
+        env:
+          PYTHONPATH: backend
+          CHROME_BIN: /usr/bin/google-chrome
+
   scaffold:
     name: 生成骨架的文档路径可执行性验证
     runs-on: ubuntu-latest

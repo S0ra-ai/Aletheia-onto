@@ -142,21 +142,27 @@ def _app_routes() -> set[str]:
     it would be a second copy, which is how the sweep came to hold `/admin/backup` while the
     application served `/admin/data-backup`: a path that reads correct, is not a route, and
     renders nothing.
+
+    **Every route is prefixed, including the ones written absolutely in `App.tsx`.** A
+    `basename` on `<BrowserRouter>` is not a rule about how child paths are spelled; it is
+    prepended to whatever they say. So `<Route path="/login">` renders at `/admin/login` in
+    the production build, and `/login` is served by nothing at all -- the auth middleware
+    answers it with `{"detail":"缺少访问令牌"}`.
+
+    This function used to exempt the absolute one, on the reasoning that prefixing it would
+    ask for a path the router does not serve. That reasoning was the defect, written down as a
+    guard: it agreed with the sweep's `/login` entry, both of them passed, and the login page
+    was never rendered by either. A checker that encodes the same wrong assumption as the code
+    it checks is worse than no checker, because it is evidence.
     """
     source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
     routes = set()
     for path in re.findall(r'<Route\s+path="([^"]+)"', source):
         # `*` is the not-found page and `/` is the layout itself, whose index redirects to the
-        # workbench, swept under its own path. `login` is outside the authenticated layout and
-        # is still a screen the router serves -- and one a deployment cannot be entered without,
-        # which is why the sweep visits it too.
+        # workbench, swept under its own path.
         if path.strip("/") in ("*", ""):
             continue
-        # Child routes are relative and live under the `/admin` basename the production build
-        # sets; one is written absolutely (`/login`), and prefixing that one would ask for a
-        # path the router does not serve.
-        normalised = path.strip("/")
-        routes.add(f"/{normalised}" if path.startswith("/") else f"/admin/{normalised}")
+        routes.add(f"/admin/{path.strip('/')}")
     # A detail path is compared by shape, not by parameter name: the router writes `:id` and
     # the sweep writes `{ontology}`, and neither spelling is the thing being asserted.
     return {re.sub(r"/:[A-Za-z_]+", "/*", path) for path in routes}
@@ -276,3 +282,30 @@ def test_a_description_list_is_not_counted_as_a_table() -> None:
     )
     assert module.tables(description) == []
     assert len(module.tables(data)) == 1
+
+
+def test_a_response_that_is_not_the_app_is_recognised() -> None:
+    """The check `/login` needed and nothing had.
+
+    The sweep knew how to read a *failed* page -- the error boundary's text. It could not
+    tell that the server had answered a route with something that is not a page at all: the
+    auth middleware's `{"detail":"缺少访问令牌"}`, which Chrome renders as a `<pre>` inside its
+    JSON viewer. No table, no empty column, no failure marker, so `/login` was reported as a
+    clean route with no table for as long as the script existed -- and the login screen, the
+    one a deployment cannot be entered without, was never rendered by it.
+
+    The mount point is the test. Every document the application produces has `<div id="root">`;
+    a document without it came from somewhere else, whatever it says.
+    """
+    module = _load_script()
+    app = '<html><body><div id="root"><div class="ant-layout"></div></div></body></html>'
+    assert module.not_the_app(app) == ""
+
+    unauthorised = (
+        '<html><head><meta charset="utf-8"></head><body><pre>{"detail":"缺少访问令牌",'
+        '"code":"unauthenticated"}</pre><div class="json-formatter-container"></div></body></html>'
+    )
+    assert "JSON" in module.not_the_app(unauthorised), module.not_the_app(unauthorised)
+
+    # Some other document that is not the app either, and that this cannot explain further.
+    assert module.not_the_app("<html><body><h1>502 Bad Gateway</h1></body></html>") != ""
