@@ -7,6 +7,7 @@ import {
 import { ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { conversationApi, feedbackApi, requestErrorMessage } from '../../api';
+import { useT } from '../../i18n/locale';
 import type { AnswerFeedback, Conversation, FeedbackSummary } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -24,10 +25,10 @@ const { Title, Text, Paragraph } = Typography;
  *   shows the text and links to the decision rather than offering to apply it.
  */
 
-const RATING_META: Record<string, { color: string; label: string }> = {
-  incorrect: { color: 'red', label: '结论错误' },
-  unhelpful: { color: 'orange', label: '没有帮助' },
-  helpful: { color: 'green', label: '有帮助' },
+const RATING_META: Record<string, { color: string; labelKey: string }> = {
+  incorrect: { color: 'red', labelKey: 'feedback.rating.incorrect' },
+  unhelpful: { color: 'orange', labelKey: 'feedback.rating.unhelpful' },
+  helpful: { color: 'green', labelKey: 'feedback.rating.helpful' },
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -38,6 +39,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 const FeedbackConsolePage: React.FC = () => {
   const navigate = useNavigate();
+  const t = useT();
   const [items, setItems] = useState<AnswerFeedback[]>([]);
   const [summary, setSummary] = useState<FeedbackSummary | null>(null);
   const [escalated, setEscalated] = useState<Conversation[]>([]);
@@ -56,11 +58,11 @@ const FeedbackConsolePage: React.FC = () => {
       setSummary(feedback.summary);
       setEscalated(conversations);
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载反馈失败'));
+      message.error(requestErrorMessage(error, t('feedback.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [ratingFilter, statusFilter]);
+  }, [ratingFilter, statusFilter, t]);
 
   useEffect(() => {
     void load();
@@ -69,10 +71,10 @@ const FeedbackConsolePage: React.FC = () => {
   const handleResolve = async (item: AnswerFeedback, resolution: string) => {
     try {
       await feedbackApi.resolve(item.id, resolution);
-      message.success(resolution === 'resolved' ? '已标记为已处理' : '已忽略');
+      message.success(resolution === 'resolved' ? t('feedback.resolveDone') : t('feedback.dismissDone'));
       await load();
     } catch (error) {
-      message.error(requestErrorMessage(error, '操作失败'));
+      message.error(requestErrorMessage(error, t('feedback.actionFailed')));
     }
   };
 
@@ -80,8 +82,8 @@ const FeedbackConsolePage: React.FC = () => {
     <div>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <Title level={4} style={{ marginBottom: 4 }}>反馈闭环</Title>
-          <Text type="secondary">用户对判定结论的评价、纠正建议与转人工队列</Text>
+          <Title level={4} style={{ marginBottom: 4 }}>{t('feedback.title')}</Title>
+          <Text type="secondary">{t('feedback.subtitle')}</Text>
         </div>
         <Space>
           <Select
@@ -89,10 +91,10 @@ const FeedbackConsolePage: React.FC = () => {
             value={ratingFilter}
             onChange={setRatingFilter}
             options={[
-              { value: '', label: '全部评价' },
-              { value: 'incorrect', label: '结论错误' },
-              { value: 'unhelpful', label: '没有帮助' },
-              { value: 'helpful', label: '有帮助' },
+              { value: '', label: t('feedback.allRatings') },
+              { value: 'incorrect', label: t('feedback.rating.incorrect') },
+              { value: 'unhelpful', label: t('feedback.rating.unhelpful') },
+              { value: 'helpful', label: t('feedback.rating.helpful') },
             ]}
           />
           <Select
@@ -103,10 +105,10 @@ const FeedbackConsolePage: React.FC = () => {
             // the three states, so 已忽略 could not be filtered for at all.
             options={[
               ...Object.entries(FEEDBACK_STATUS).map(([value, text]) => ({ value, label: text })),
-              { value: '', label: '全部状态' },
+              { value: '', label: t('feedback.allStatuses') },
             ]}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>{t('shell.common.refresh')}</Button>
         </Space>
       </Space>
 
@@ -115,23 +117,23 @@ const FeedbackConsolePage: React.FC = () => {
           <Col xs={12} sm={6}>
             <Card size="small">
               <Statistic
-                title="标记为错误"
+                title={t('feedback.statIncorrect')}
                 value={summary.incorrect}
                 valueStyle={summary.incorrect ? { color: '#cf1322' } : undefined}
               />
-              <Text type="secondary" style={{ fontSize: 12 }}>最强的复核信号</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>{t('feedback.statIncorrectHint')}</Text>
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card size="small"><Statistic title="没有帮助" value={summary.unhelpful} /></Card>
+            <Card size="small"><Statistic title={t('feedback.rating.unhelpful')} value={summary.unhelpful} /></Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card size="small"><Statistic title="有帮助" value={summary.helpful} /></Card>
+            <Card size="small"><Statistic title={t('feedback.rating.helpful')} value={summary.helpful} /></Card>
           </Col>
           <Col xs={12} sm={6}>
             <Card size="small">
-              <Statistic title="纠正建议" value={summary.corrections} />
-              <Text type="secondary" style={{ fontSize: 12 }}>需人工判断是否入规则</Text>
+              <Statistic title={t('feedback.statCorrections')} value={summary.corrections} />
+              <Text type="secondary" style={{ fontSize: 12 }}>{t('feedback.statCorrectionsHint')}</Text>
             </Card>
           </Col>
         </Row>
@@ -141,14 +143,14 @@ const FeedbackConsolePage: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="纠正建议不会自动生效"
-        description="用户提交的纠正是一方主张，不是新规则。若确认应当调整判定，请在业务规则或文档知识库中走正常的治理与发布流程。"
+        message={t('feedback.correctionsAlertTitle')}
+        description={t('feedback.correctionsAlertBody')}
       />
 
       {escalated.length > 0 && (
         <Card
           size="small"
-          title={<Space><span>转人工队列</span><Tag color="orange">{escalated.length}</Tag></Space>}
+          title={<Space><span>{t('feedback.escalationQueue')}</span><Tag color="orange">{escalated.length}</Tag></Space>}
           style={{ marginBottom: 16 }}
         >
           <Table
@@ -157,16 +159,16 @@ const FeedbackConsolePage: React.FC = () => {
             pagination={false}
             dataSource={escalated}
             columns={[
-              { title: '会话', dataIndex: 'title', ellipsis: true },
-              { title: '指派给', dataIndex: 'escalatedTo', width: 120, render: (v: string) => v || '—' },
-              { title: '原因', dataIndex: 'escalationReason', ellipsis: true },
+              { title: t('feedback.column.conversation'), dataIndex: 'title', ellipsis: true },
+              { title: t('feedback.column.assignee'), dataIndex: 'escalatedTo', width: 120, render: (v: string) => v || '—' },
+              { title: t('feedback.column.reason'), dataIndex: 'escalationReason', ellipsis: true },
               {
                 title: '',
                 key: 'go',
                 width: 80,
                 render: (_: unknown, row: Conversation) => (
                   <Button type="link" size="small" onClick={() => navigate(`/conversations?session=${row.sessionId}`)}>
-                    查看
+                    {t('feedback.view')}
                   </Button>
                 ),
               },
@@ -175,9 +177,9 @@ const FeedbackConsolePage: React.FC = () => {
         </Card>
       )}
 
-      <Card size="small" title={`反馈条目（${items.length}）`}>
+      <Card size="small" title={t('feedback.itemsTitle', { count: items.length })}>
         {items.length === 0 ? (
-          <Empty description="没有符合条件的反馈" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t('feedback.noItems')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <Table
             size="small"
@@ -189,68 +191,68 @@ const FeedbackConsolePage: React.FC = () => {
                 <div style={{ paddingInlineStart: 8 }}>
                   {row.comment && (
                     <Paragraph style={{ marginBottom: 6 }}>
-                      <Text strong>用户评论：</Text>{row.comment}
+                      <Text strong>{t('feedback.commentLabel')}</Text>{row.comment}
                     </Paragraph>
                   )}
                   {row.correction && (
                     <Paragraph style={{ marginBottom: 6 }}>
-                      <Text strong>纠正建议：</Text>{row.correction}
+                      <Text strong>{t('feedback.correctionLabel')}</Text>{row.correction}
                     </Paragraph>
                   )}
                   {row.decisionId && (
                     <Paragraph style={{ marginBottom: 0 }}>
-                      <Text strong>关联决策：</Text><Text code>{row.decisionId}</Text>
+                      <Text strong>{t('feedback.decisionLabel')}</Text><Text code>{row.decisionId}</Text>
                       <Text type="secondary" style={{ fontSize: 12, marginInlineStart: 8 }}>
-                        可在治理与留痕中查看该判定的规则与证据链
+                        {t('feedback.decisionHint')}
                       </Text>
                     </Paragraph>
                   )}
                   {!row.comment && !row.correction && !row.decisionId && (
-                    <Text type="secondary">该反馈没有附加说明。</Text>
+                    <Text type="secondary">{t('feedback.noNote')}</Text>
                   )}
                 </div>
               ),
             }}
             columns={[
               {
-                title: '评价',
+                title: t('feedback.column.rating'),
                 dataIndex: 'rating',
                 width: 110,
                 render: (rating: string) => (
                   <Tag color={RATING_META[rating]?.color || 'default'}>
-                    {RATING_META[rating]?.label || rating}
+                    {RATING_META[rating] ? t(RATING_META[rating].labelKey as never) : rating}
                   </Tag>
                 ),
               },
               {
-                title: '纠正',
+                title: t('feedback.column.correction'),
                 key: 'correction',
                 width: 80,
                 render: (_: unknown, row: AnswerFeedback) =>
-                  row.correction ? <Tag color="blue">有</Tag> : <Text type="secondary">—</Text>,
+                  row.correction ? <Tag color="blue">{t('feedback.hasCorrection')}</Tag> : <Text type="secondary">—</Text>,
               },
               {
-                title: '关联决策',
+                title: t('feedback.column.decision'),
                 dataIndex: 'decisionId',
                 width: 190,
                 ellipsis: true,
                 render: (value: string) =>
                   value ? (
-                    <Tooltip title="反馈已关联到具体判定，可回溯规则与证据">
+                    <Tooltip title={t('feedback.decisionTooltip')}>
                       <Text code style={{ fontSize: 12 }}>{value}</Text>
                     </Tooltip>
                   ) : (
                     <Text type="secondary">—</Text>
                   ),
               },
-              { title: '提交人', dataIndex: 'actor', width: 110, render: (v: string) => v || '匿名' },
+              { title: t('feedback.column.actor'), dataIndex: 'actor', width: 110, render: (v: string) => v || t('feedback.anonymous') },
               {
-                title: '状态',
+                title: t('feedback.column.status'),
                 dataIndex: 'status',
                 width: 90,
                 render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(FEEDBACK_STATUS, status)}</Tag>,
               },
-              { title: '时间（UTC）', dataIndex: 'createdAt', width: 160, ellipsis: true },
+              { title: t('feedback.column.createdAt'), dataIndex: 'createdAt', width: 160, ellipsis: true },
               {
                 title: '',
                 key: 'action',
@@ -259,10 +261,10 @@ const FeedbackConsolePage: React.FC = () => {
                   row.status === 'open' ? (
                     <Space size={4}>
                       <Button type="link" size="small" onClick={() => void handleResolve(row, 'resolved')}>
-                        已处理
+                        {t('feedback.resolve')}
                       </Button>
                       <Button type="link" size="small" onClick={() => void handleResolve(row, 'dismissed')}>
-                        忽略
+                        {t('feedback.dismiss')}
                       </Button>
                     </Space>
                   ) : (

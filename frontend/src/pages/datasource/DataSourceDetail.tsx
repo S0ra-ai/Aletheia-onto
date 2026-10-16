@@ -7,6 +7,7 @@ import {
   READINESS_STATUS,
   RULE_SEVERITY,
 } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, message, Spin, Progress, Alert, Modal, Form, Input, Upload, Steps } from 'antd';
 import { ApiOutlined, ArrowLeftOutlined, ScanOutlined, PlusOutlined, ImportOutlined, DownloadOutlined, BulbOutlined, BranchesOutlined, UploadOutlined } from '@ant-design/icons';
@@ -31,6 +32,7 @@ type DataSourceRule = {
 };
 
 const DataSourceDetail: React.FC = () => {
+  const t = useT();
   const [tab, setTab] = useTabParam('tables');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -87,11 +89,11 @@ const DataSourceDetail: React.FC = () => {
       const source = sources.find(s => s.id === parseInt(id));
       if (source) setDataSource(source);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取数据详情失败'));
+      message.error(requestErrorMessage(error, t('datasource.loadDetailFailed')));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   const handleScan = async () => {
     if (!id) return;
@@ -105,7 +107,7 @@ const DataSourceDetail: React.FC = () => {
       setSchemaDrift(null);
       fetchData();
     } catch (error) {
-      message.error(requestErrorMessage(error, '扫描失败'));
+      message.error(requestErrorMessage(error, t('datasource.scanFailed')));
     } finally {
       setScanLoading(false);
     }
@@ -119,12 +121,12 @@ const DataSourceDetail: React.FC = () => {
       const result = specUrl
         ? await dataSourceApi.importOpenApiUrl(parseInt(id), specUrl)
         : await dataSourceApi.importOpenApi(parseInt(id), JSON.parse(values.specJson || ''));
-      message.success(`已导入 ${result.count} 个业务 API`);
+      message.success(t('datasource.importedApis', { count: result.count }));
       setOpenApiModalVisible(false);
       openApiForm.resetFields();
       fetchData();
     } catch (error) {
-      message.error(error instanceof SyntaxError ? 'OpenAPI JSON 格式不正确' : 'OpenAPI 导入失败');
+      message.error(error instanceof SyntaxError ? t('datasource.openApiJsonInvalid') : t('datasource.openApiImportFailed'));
     } finally {
       setImportLoading(false);
     }
@@ -137,14 +139,14 @@ const DataSourceDetail: React.FC = () => {
       const result = await dataSourceApi.getSchemaDrift(parseInt(id));
       setSchemaDrift(result);
       if (result.status === 'drift_detected') {
-        message.warning('检测到结构漂移，请先评估影响再重新扫描');
+        message.warning(t('datasource.driftDetected'));
       } else if (result.status === 'not_scanned') {
-        message.info('当前数据源还没有扫描基线');
+        message.info(t('datasource.noScanBaseline'));
       } else {
-        message.success('未发现结构漂移');
+        message.success(t('datasource.noDrift'));
       }
     } catch (error) {
-      message.error(requestErrorMessage(error, '结构漂移分析失败'));
+      message.error(requestErrorMessage(error, t('datasource.driftAnalysisFailed')));
     } finally {
       setDriftLoading(false);
     }
@@ -157,9 +159,9 @@ const DataSourceDetail: React.FC = () => {
       const result = await aiApi.getBlueprintDraft(parseInt(id));
       setBlueprintDraft(result.blueprint);
       setBlueprintDraftVisible(true);
-      message.success(result.usedRemoteModel ? '已由 OpenRouter 生成蓝图草案' : '已生成本地蓝图草案');
+      message.success(result.usedRemoteModel ? t('datasource.blueprintRemoteDone') : t('datasource.blueprintLocalDone'));
     } catch (error) {
-      message.error(requestErrorMessage(error, '生成蓝图草案失败'));
+      message.error(requestErrorMessage(error, t('datasource.blueprintGenerateFailed')));
     } finally {
       setBlueprintDraftLoading(false);
     }
@@ -171,7 +173,7 @@ const DataSourceDetail: React.FC = () => {
     try {
       setTableBrowser(await dataSourceApi.browseTable(parseInt(id), tableName, 50, offset));
     } catch (error) {
-      message.error(requestErrorMessage(error, '读取数据表失败，请确认连接和账号权限'));
+      message.error(requestErrorMessage(error, t('datasource.browseTableFailed')));
     } finally {
       setTableBrowserLoading(false);
     }
@@ -184,9 +186,9 @@ const DataSourceDetail: React.FC = () => {
     } catch (error) {
       // The server's reason was discarded here (the catch had no binding), so a permission
       // or server failure read as a generic "加载…失败".
-      message.error(requestErrorMessage(error, '加载本体推理链失败'));
+      message.error(requestErrorMessage(error, t('datasource.reasoningLoadFailed')));
     }
-  }, [id]);
+  }, [id, t]);
 
   // Declared after both loaders: reading a `const` callback from an effect above its
   // declaration is what the initialisation-order warning was about, and listing the real
@@ -200,7 +202,7 @@ const DataSourceDetail: React.FC = () => {
   const handleImportRulesFromWord = async (file: File) => {
     const ontologyId = Array.from(new Set(semanticCoverage?.objects.map(item => item.ontologyId) || []))[0];
     if (!ontologyId) {
-      message.warning('当前数据源还没有关联本体，请先生成本体草案');
+      message.warning(t('datasource.noOntologyForRules'));
       return;
     }
     setRuleImporting(true);
@@ -208,14 +210,14 @@ const DataSourceDetail: React.FC = () => {
       const result = await ontologyApi.importRulesFromWord(ontologyId, file, true);
       setRuleImportResult(result);
       if (result.errorCount > 0) {
-        message.warning(`识别 ${result.rules.length} 条规则，成功导入 ${result.importedCount} 条，失败 ${result.errorCount} 条`);
+        message.warning(t('datasource.ruleImportPartial', { recognized: result.rules.length, imported: result.importedCount, failed: result.errorCount }));
       } else {
-        message.success(`已从 Word 导入 ${result.importedCount} 条自定义规则`);
+        message.success(t('datasource.ruleImportSuccess', { count: result.importedCount }));
       }
       await fetchData();
       await loadReasoningChain();
     } catch (error) {
-      message.error(requestErrorMessage(error, '规则 Word 导入失败，请确认文件格式和规则字段'));
+      message.error(requestErrorMessage(error, t('datasource.ruleImportFailed')));
     } finally {
       setRuleImporting(false);
     }
@@ -233,7 +235,7 @@ const DataSourceDetail: React.FC = () => {
       }
       fetchData();
     } catch (error) {
-      message.error(requestErrorMessage(error, '业务 API 网关测试失败'));
+      message.error(requestErrorMessage(error, t('datasource.gatewayTestFailed')));
     } finally {
       setGatewayTesting(false);
     }
@@ -241,30 +243,30 @@ const DataSourceDetail: React.FC = () => {
 
   const tableColumns = [
     {
-      title: '表名',
+      title: t('datasource.tableName'),
       dataIndex: 'tableName',
       key: 'tableName',
     },
     {
-      title: '行数',
+      title: t('datasource.rowCount'),
       dataIndex: 'rowCount',
       key: 'rowCount',
     },
     {
-      title: '主键',
+      title: t('datasource.primaryKey'),
       dataIndex: 'primaryKey',
       key: 'primaryKey',
       render: (pk: string) => <Tag>{pk}</Tag>,
     },
     {
-      title: '扫描时间',
+      title: t('datasource.scannedAt'),
       dataIndex: 'scannedAt',
       key: 'scannedAt',
     },
     {
-      title: '数据浏览',
+      title: t('datasource.dataBrowse'),
       key: 'browse',
-      render: (_: unknown, record: SourceTable) => <Button type="link" onClick={() => handleBrowseTable(record.tableName)}>浏览内容</Button>,
+      render: (_: unknown, record: SourceTable) => <Button type="link" onClick={() => handleBrowseTable(record.tableName)}>{t('datasource.browseButton')}</Button>,
     },
   ];
 
@@ -276,17 +278,17 @@ const DataSourceDetail: React.FC = () => {
 
   const apiColumns = [
     {
-      title: '操作码',
+      title: t('datasource.operationCode'),
       dataIndex: 'operationCode',
       key: 'operationCode',
     },
     {
-      title: '名称',
+      title: t('datasource.name'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '方法',
+      title: t('datasource.method'),
       dataIndex: 'method',
       key: 'method',
       render: (method: string) => (
@@ -296,12 +298,12 @@ const DataSourceDetail: React.FC = () => {
       ),
     },
     {
-      title: '路径',
+      title: t('datasource.path'),
       dataIndex: 'path',
       key: 'path',
     },
     {
-      title: '语义动作',
+      title: t('datasource.semanticAction'),
       dataIndex: 'semanticAction',
       key: 'semanticAction',
       render: (action: string) => action || '-',
@@ -311,25 +313,25 @@ const DataSourceDetail: React.FC = () => {
   const operationBindingColumns = [
     ...apiColumns,
     {
-      title: '绑定对象',
+      title: t('datasource.boundObject'),
       dataIndex: 'objectCode',
       key: 'objectCode',
       render: (objectCode: string) => objectCode || '-',
     },
     {
-      title: '绑定状态',
+      title: t('datasource.bindingStatus'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => <Tag color={bindingColor(status)}>{label(READINESS_STATUS, status)}</Tag>,
     },
     {
-      title: '自动化',
+      title: t('datasource.automation'),
       dataIndex: 'automationReady',
       key: 'automationReady',
-      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? '就绪' : '待补齐'}</Tag>,
+      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? t('datasource.automationReady') : t('datasource.automationPending')}</Tag>,
     },
     {
-      title: '缺口',
+      title: t('datasource.gaps'),
       dataIndex: 'gaps',
       key: 'gaps',
       render: (gaps: string[]) => gaps.length ? joinSentences(gaps) : '-',
@@ -338,28 +340,28 @@ const DataSourceDetail: React.FC = () => {
 
   const readinessColumns = [
     {
-      title: '检查项',
+      title: t('datasource.checkItem'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '状态',
+      title: t('datasource.status'),
       dataIndex: 'passed',
       key: 'passed',
-      render: (passed: boolean) => <Tag color={passed ? 'green' : 'orange'}>{passed ? '通过' : '待处理'}</Tag>,
+      render: (passed: boolean) => <Tag color={passed ? 'green' : 'orange'}>{passed ? t('datasource.passed') : t('datasource.pending')}</Tag>,
     },
     {
-      title: '证据',
+      title: t('datasource.evidence'),
       dataIndex: 'evidence',
       key: 'evidence',
     },
     {
-      title: '建议动作',
+      title: t('datasource.remediation'),
       dataIndex: 'remediation',
       key: 'remediation',
     },
     {
-      title: '权重',
+      title: t('datasource.weight'),
       dataIndex: 'weight',
       key: 'weight',
       width: 80,
@@ -386,36 +388,36 @@ const DataSourceDetail: React.FC = () => {
 
   const driftTableColumns = [
     {
-      title: '表名',
+      title: t('datasource.tableName'),
       dataIndex: 'tableName',
       key: 'tableName',
     },
     {
-      title: '行数',
+      title: t('datasource.rowCount'),
       key: 'rowCount',
       render: (_: unknown, record: SchemaDriftTableChange) => (
         record.rowCountChanged ? `${record.oldRowCount} -> ${record.newRowCount}` : record.newRowCount
       ),
     },
     {
-      title: '主键',
+      title: t('datasource.primaryKey'),
       key: 'primaryKey',
       render: (_: unknown, record: SchemaDriftTableChange) => (
         record.primaryKeyChanged ? `${record.oldPrimaryKey || '-'} -> ${record.newPrimaryKey || '-'}` : (record.newPrimaryKey || '-')
       ),
     },
     {
-      title: '新增字段',
+      title: t('datasource.addedColumns'),
       key: 'addedColumns',
       render: (_: unknown, record: SchemaDriftTableChange) => record.addedColumns.map(item => <Tag color="green" key={item.columnName}>{item.columnName}</Tag>),
     },
     {
-      title: '删除字段',
+      title: t('datasource.removedColumns'),
       key: 'removedColumns',
       render: (_: unknown, record: SchemaDriftTableChange) => record.removedColumns.map(item => <Tag color="red" key={item.columnName}>{item.columnName}</Tag>),
     },
     {
-      title: '变更字段',
+      title: t('datasource.changedColumns'),
       key: 'changedColumns',
       render: (_: unknown, record: SchemaDriftTableChange) => record.changedColumns.map(item => <Tag color="orange" key={item.columnName}>{item.columnName}</Tag>),
     },
@@ -423,7 +425,7 @@ const DataSourceDetail: React.FC = () => {
 
   const coverageColumns = [
     {
-      title: '业务对象',
+      title: t('datasource.businessObjects'),
       key: 'object',
       render: (_: unknown, record: SemanticCoverageObject) => (
         <Space direction="vertical" size={0}>
@@ -433,23 +435,23 @@ const DataSourceDetail: React.FC = () => {
       ),
     },
     {
-      title: '来源表',
+      title: t('datasource.sourceTable'),
       dataIndex: 'sourceTable',
       key: 'sourceTable',
       render: (table: string) => <Tag>{table}</Tag>,
     },
     {
-      title: '本体版本',
+      title: t('datasource.ontologyVersion'),
       key: 'ontology',
       render: (_: unknown, record: SemanticCoverageObject) => `${record.ontologyName} ${record.ontologyVersion}`,
     },
     {
-      title: '映射',
+      title: t('datasource.mappings'),
       key: 'mappings',
-      render: (_: unknown, record: SemanticCoverageObject) => `${record.confirmedMappings} 已确认 / ${record.pendingMappings} 待审`,
+      render: (_: unknown, record: SemanticCoverageObject) => t('datasource.mappingCounts', { confirmed: record.confirmedMappings, pending: record.pendingMappings }),
     },
     {
-      title: '规则',
+      title: t('datasource.rules'),
       dataIndex: 'ruleCount',
       key: 'ruleCount',
     },
@@ -459,16 +461,16 @@ const DataSourceDetail: React.FC = () => {
       key: 'operationCount',
     },
     {
-      title: '状态',
+      title: t('datasource.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => <Tag color={coverageColor(status)}>{label(READINESS_STATUS, status)}</Tag>,
     },
     {
-      title: '自动化',
+      title: t('datasource.automation'),
       dataIndex: 'automationReady',
       key: 'automationReady',
-      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? '就绪' : '待补齐'}</Tag>,
+      render: (ready: boolean) => <Tag color={ready ? 'green' : 'orange'}>{ready ? t('datasource.automationReady') : t('datasource.automationPending')}</Tag>,
     },
   ];
 
@@ -480,47 +482,47 @@ const DataSourceDetail: React.FC = () => {
 
   const ruleColumns = [
     {
-      title: '规则编码',
+      title: t('datasource.ruleCode'),
       dataIndex: 'code',
       key: 'code',
       width: 220,
       render: (code: string) => <Typography.Text code>{code}</Typography.Text>,
     },
     {
-      title: '名称',
+      title: t('datasource.name'),
       dataIndex: 'name',
       key: 'name',
       width: 220,
     },
     {
-      title: '对象',
+      title: t('datasource.object'),
       dataIndex: 'scope_object_code',
       key: 'scope_object_code',
       width: 130,
       render: (objectCode: string) => <Tag>{objectCode}</Tag>,
     },
     {
-      title: '类型',
+      title: t('datasource.type'),
       dataIndex: 'rule_type',
       key: 'rule_type',
       width: 120,
     },
     {
-      title: '严重程度',
+      title: t('datasource.severity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 120,
       render: (severity: string) => <Tag color={ruleSeverityColor(severity)}>{label(RULE_SEVERITY, severity)}</Tag>,
     },
     {
-      title: '状态',
+      title: t('datasource.status'),
       dataIndex: 'status',
       key: 'status',
       width: 110,
       render: (status: string) => <Tag color={status === 'published' ? 'green' : 'orange'}>{label(ONTOLOGY_STATUS, status)}</Tag>,
     },
     {
-      title: '规则表达式',
+      title: t('datasource.ruleExpression'),
       dataIndex: 'expression',
       key: 'expression',
       render: (expression: string) => (
@@ -530,7 +532,7 @@ const DataSourceDetail: React.FC = () => {
       ),
     },
     {
-      title: '业务说明',
+      title: t('datasource.businessNote'),
       dataIndex: 'natural_language',
       key: 'natural_language',
       ellipsis: true,
@@ -551,25 +553,25 @@ const DataSourceDetail: React.FC = () => {
               />
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t('datasource.status')}>
                 <Tag color={coverageColor(semanticCoverage.status)}>{label(READINESS_STATUS, semanticCoverage.status)}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="业务对象">{semanticCoverage.summary.businessObjects}</Descriptions.Item>
-              <Descriptions.Item label="闭环对象">{semanticCoverage.summary.fullyCoveredObjects}</Descriptions.Item>
-              <Descriptions.Item label="受阻对象">{semanticCoverage.summary.blockedObjects}</Descriptions.Item>
-              <Descriptions.Item label="属性">{semanticCoverage.summary.attributes}</Descriptions.Item>
-              <Descriptions.Item label="确认映射">{semanticCoverage.summary.confirmedMappings}</Descriptions.Item>
-              <Descriptions.Item label="待审映射">{semanticCoverage.summary.pendingMappings}</Descriptions.Item>
-              <Descriptions.Item label="规则">{semanticCoverage.summary.rules}</Descriptions.Item>
-              <Descriptions.Item label="语义 API">{semanticCoverage.summary.semanticOperations}</Descriptions.Item>
-              <Descriptions.Item label="可执行操作">{semanticCoverage.summary.executableOperations}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.businessObjects')}>{semanticCoverage.summary.businessObjects}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.fullyCoveredObjects')}>{semanticCoverage.summary.fullyCoveredObjects}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.blockedObjects')}>{semanticCoverage.summary.blockedObjects}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.attributes')}>{semanticCoverage.summary.attributes}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.coverageConfirmed')}>{semanticCoverage.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.coveragePending')}>{semanticCoverage.summary.pendingMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.rules')}>{semanticCoverage.summary.rules}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.semanticApis')}>{semanticCoverage.summary.semanticOperations}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.executableOperations')}>{semanticCoverage.summary.executableOperations}</Descriptions.Item>
             </Descriptions>
           </Space>
           {semanticCoverage.nextActions.length > 0 && (
             <Alert
               style={{ marginTop: 16 }}
               type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
-              message="治理建议"
+              message={t('datasource.governanceAdvice')}
               description={joinSentences(semanticCoverage.nextActions)}
             />
           )}
@@ -581,7 +583,7 @@ const DataSourceDetail: React.FC = () => {
           expandable={{
             expandedRowRender: (record) => (
               <Space direction="vertical" style={{ width: '100%' }}>
-                {record.gaps.length > 0 && <Alert type="warning" message="缺口" description={joinSentences(record.gaps)} />}
+                {record.gaps.length > 0 && <Alert type="warning" message={t('datasource.gaps')} description={joinSentences(record.gaps)} />}
                 <Table
                   size="small"
                   columns={apiColumns}
@@ -631,25 +633,25 @@ const DataSourceDetail: React.FC = () => {
     return (
       <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Typography.Text strong>结构漂移影响分析</Typography.Text>
+          <Typography.Text strong>{t('datasource.driftTitle')}</Typography.Text>
           <Descriptions column={4}>
-            <Descriptions.Item label="状态">
+            <Descriptions.Item label={t('datasource.status')}>
               <Tag color={driftStatusColor(schemaDrift.status)}>{label(DRIFT_STATUS, schemaDrift.status)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="新增表">{summary.addedTables}</Descriptions.Item>
-            <Descriptions.Item label="删除表">{summary.removedTables}</Descriptions.Item>
-            <Descriptions.Item label="变更表">{summary.changedTables}</Descriptions.Item>
-            <Descriptions.Item label="新增字段">{summary.addedColumns}</Descriptions.Item>
-            <Descriptions.Item label="删除字段">{summary.removedColumns}</Descriptions.Item>
-            <Descriptions.Item label="变更字段">{summary.changedColumns}</Descriptions.Item>
-            <Descriptions.Item label="影响对象">{summary.impactedObjects}</Descriptions.Item>
-            <Descriptions.Item label="影响映射">{summary.impactedMappings}</Descriptions.Item>
-            <Descriptions.Item label="影响规则">{summary.impactedRules}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.addedTables')}>{summary.addedTables}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.removedTables')}>{summary.removedTables}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.changedTables')}>{summary.changedTables}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.addedColumns')}>{summary.addedColumns}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.removedColumns')}>{summary.removedColumns}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.changedColumns')}>{summary.changedColumns}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.impactedObjects')}>{summary.impactedObjects}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.impactedMappings')}>{summary.impactedMappings}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.impactedRules')}>{summary.impactedRules}</Descriptions.Item>
           </Descriptions>
           {schemaDrift.nextActions.length > 0 && (
             <Alert
               type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
-              message="建议动作"
+              message={t('datasource.suggestedActions')}
               description={joinSentences(schemaDrift.nextActions)}
             />
           )}
@@ -673,15 +675,15 @@ const DataSourceDetail: React.FC = () => {
     <div>
       <Space style={{ marginBottom: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/datasource')}>
-          返回
+          {t('datasource.back')}
         </Button>
-        <Title level={3} style={{ margin: 0 }}>数据源详情</Title>
+        <Title level={3} style={{ margin: 0 }}>{t('datasource.detailTitle')}</Title>
         {id && (
           <Button
             icon={<DownloadOutlined />}
             onClick={() => window.open(dataSourceApi.kernelPackageUrl(parseInt(id)), '_blank')}
           >
-            下载语义内核包
+            {t('datasource.downloadKernel')}
           </Button>
         )}
         {id && (
@@ -690,7 +692,7 @@ const DataSourceDetail: React.FC = () => {
             loading={blueprintDraftLoading}
             onClick={handleGenerateBlueprintDraft}
           >
-            生成蓝图草案
+            {t('datasource.blueprintButton')}
           </Button>
         )}
         {id && (
@@ -699,7 +701,7 @@ const DataSourceDetail: React.FC = () => {
             loading={gatewayTesting}
             onClick={handleTestApiGateway}
           >
-            测试业务网关
+            {t('datasource.gatewayButton')}
           </Button>
         )}
       </Space>
@@ -708,21 +710,21 @@ const DataSourceDetail: React.FC = () => {
         <Card style={{ marginBottom: 16 }}>
           <Descriptions column={2}>
             <Descriptions.Item label="ID">{dataSource.id}</Descriptions.Item>
-            <Descriptions.Item label="名称">{dataSource.name}</Descriptions.Item>
-            <Descriptions.Item label="类型">
+            <Descriptions.Item label={t('datasource.name')}>{dataSource.name}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.type')}>
               <Tag color="blue">{dataSource.sourceType}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="领域">{dataSource.domain || '-'}</Descriptions.Item>
-            <Descriptions.Item label="系统分类">
+            <Descriptions.Item label={t('datasource.domain')}>{dataSource.domain || '-'}</Descriptions.Item>
+            <Descriptions.Item label={t('datasource.systemCategory')}>
               <Tag>{dataSource.systemCategory}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="连接地址">
+            <Descriptions.Item label={t('datasource.connectionUri')}>
               <code>{dataSource.connectionUri}</code>
             </Descriptions.Item>
-            <Descriptions.Item label="业务 API 基址">
+            <Descriptions.Item label={t('datasource.apiBaseUrlLabel')}>
               {dataSource.apiBaseUrl ? <code>{dataSource.apiBaseUrl}</code> : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="业务 API 请求头">
+            <Descriptions.Item label={t('datasource.apiHeadersLabel')}>
               {dataSource.apiHeadersConfigured ? dataSource.apiHeaderNames.join(', ') : '-'}
             </Descriptions.Item>
           </Descriptions>
@@ -730,7 +732,7 @@ const DataSourceDetail: React.FC = () => {
       )}
 
       {readiness && (
-        <Card style={{ marginBottom: 16 }} title="接入准备度">
+        <Card style={{ marginBottom: 16 }} title={t('datasource.readinessTitle')}>
           <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 220 }}>
               <Progress
@@ -740,23 +742,23 @@ const DataSourceDetail: React.FC = () => {
               />
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t('datasource.status')}>
                 <Tag color={readinessColor(readiness.status)}>{label(READINESS_STATUS, readiness.status)}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="表">{readiness.summary.tables}</Descriptions.Item>
-              <Descriptions.Item label="字段">{readiness.summary.columns}</Descriptions.Item>
-              <Descriptions.Item label="外键">{readiness.summary.foreignKeys}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.tables')}>{readiness.summary.tables}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.columns')}>{readiness.summary.columns}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.foreignKeys')}>{readiness.summary.foreignKeys}</Descriptions.Item>
               <Descriptions.Item label="API">{readiness.summary.apis}</Descriptions.Item>
-              <Descriptions.Item label="本体">{readiness.summary.ontologies}</Descriptions.Item>
-              <Descriptions.Item label="已确认映射">{readiness.summary.confirmedMappings}</Descriptions.Item>
-              <Descriptions.Item label="待审核映射">{readiness.summary.pendingMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.ontologies')}>{readiness.summary.ontologies}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.confirmedMappings')}>{readiness.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('datasource.pendingMappings')}>{readiness.summary.pendingMappings}</Descriptions.Item>
             </Descriptions>
           </Space>
           {readiness.nextActions.length > 0 && (
             <Alert
               style={{ marginTop: 16 }}
               type={readiness.status === 'blocked' ? 'error' : 'warning'}
-              message="下一步动作"
+              message={t('datasource.nextActions')}
               description={joinSentences(readiness.nextActions)}
             />
           )}
@@ -765,7 +767,7 @@ const DataSourceDetail: React.FC = () => {
 
       <Card>
         <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={`已扫描表 (${tables.length})`} key="tables">
+          <TabPane tab={t('datasource.scannedTablesTab', { count: tables.length })} key="tables">
             <div style={{ marginBottom: 16 }}>
               <Space>
                 <Button
@@ -774,14 +776,14 @@ const DataSourceDetail: React.FC = () => {
                   loading={scanLoading}
                   onClick={handleScan}
                 >
-                  重新扫描
+                  {t('datasource.rescanButton')}
                 </Button>
                 <Button
                   icon={<BranchesOutlined />}
                   loading={driftLoading}
                   onClick={handleAnalyzeDrift}
                 >
-                  分析结构漂移
+                  {t('datasource.driftButton')}
                 </Button>
               </Space>
             </div>
@@ -792,37 +794,37 @@ const DataSourceDetail: React.FC = () => {
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab={`已登记API (${apis.length})`} key="apis">
+          <TabPane tab={t('datasource.registeredApisTab', { count: apis.length })} key="apis">
             <div style={{ marginBottom: 16 }}>
               <Button icon={<PlusOutlined />}>
-                新增API
+                {t('datasource.addApiButton')}
               </Button>
               <Button
                 icon={<ImportOutlined />}
                 style={{ marginLeft: 8 }}
                 onClick={() => setOpenApiModalVisible(true)}
               >
-                导入 OpenAPI
+                {t('datasource.importOpenApiButton')}
               </Button>
             </div>
             {operationBindings && (
               <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
                 <Descriptions column={4}>
-                  <Descriptions.Item label="状态">
+                  <Descriptions.Item label={t('datasource.status')}>
                     <Tag color={bindingColor(operationBindings.status)}>{label(READINESS_STATUS, operationBindings.status)}</Tag>
                   </Descriptions.Item>
                   <Descriptions.Item label="API">{operationBindings.summary.operations}</Descriptions.Item>
-                  <Descriptions.Item label="已绑定">{operationBindings.summary.boundOperations}</Descriptions.Item>
-                  <Descriptions.Item label="自动化就绪">{operationBindings.summary.readyOperations}</Descriptions.Item>
-                  <Descriptions.Item label="未绑定">{operationBindings.summary.unboundOperations}</Descriptions.Item>
-                  <Descriptions.Item label="格式错误">{operationBindings.summary.invalidActions}</Descriptions.Item>
-                  <Descriptions.Item label="阻断">{operationBindings.summary.blockedOperations}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.boundOperations')}>{operationBindings.summary.boundOperations}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.readyOperations')}>{operationBindings.summary.readyOperations}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.unboundOperations')}>{operationBindings.summary.unboundOperations}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.invalidActions')}>{operationBindings.summary.invalidActions}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.blockedOperations')}>{operationBindings.summary.blockedOperations}</Descriptions.Item>
                 </Descriptions>
                 {operationBindings.nextActions.length > 0 && (
                   <Alert
                     style={{ marginTop: 16 }}
                     type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
-                    message="绑定建议"
+                    message={t('datasource.bindingAdvice')}
                     description={joinSentences(operationBindings.nextActions)}
                   />
                 )}
@@ -834,22 +836,22 @@ const DataSourceDetail: React.FC = () => {
               rowKey="operationCode"
             />
           </TabPane>
-          <TabPane tab="语义覆盖" key="coverage">
+          <TabPane tab={t('datasource.coverageTab')} key="coverage">
             {renderSemanticCoverage()}
           </TabPane>
-          <TabPane tab={`业务规则 (${businessRules.length})`} key="rules">
+          <TabPane tab={t('datasource.rulesTab', { count: businessRules.length })} key="rules">
             <Alert
               style={{ marginBottom: 16 }}
               type="info"
-              message="当前数据源关联本体中已定义的规则"
-              description="这些规则会被本体语义内核用于合规研判、操作预检、决策一致性评估和自动化拦截。"
+              message={t('datasource.rulesInfoTitle')}
+              description={t('datasource.rulesInfoBody')}
             />
-            <Card size="small" title="通过 Word 自定义规则" style={{ marginBottom: 16 }}>
+            <Card size="small" title={t('datasource.wordRulesTitle')} style={{ marginBottom: 16 }}>
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Alert
                   type="success"
-                  message="支持上传 Word 规则定义表"
-                  description="建议表头：规则编码、规则名称、适用对象、规则类型、规则表达式、严重程度、自然语言说明。导入会写入当前数据源关联的本体草案。"
+                  message={t('datasource.wordRulesInfoTitle')}
+                  description={t('datasource.wordRulesInfoBody')}
                 />
                 <Upload.Dragger
                   accept=".docx"
@@ -862,18 +864,18 @@ const DataSourceDetail: React.FC = () => {
                   disabled={ruleImporting}
                 >
                   <p className="ant-upload-drag-icon"><UploadOutlined /></p>
-                  <p className="ant-upload-text">点击或拖拽 Word 规则文档到这里导入</p>
-                  <p className="ant-upload-hint">支持表格和“规则编码：...”分段文本。已发布本体仍需先派生草案版本。</p>
+                  <p className="ant-upload-text">{t('datasource.uploadText')}</p>
+                  <p className="ant-upload-hint">{t('datasource.uploadHint')}</p>
                 </Upload.Dragger>
-                {ruleImporting && <Spin tip="正在解析并导入规则..." />}
+                {ruleImporting && <Spin tip={t('datasource.importingRules')} />}
                 {ruleImportResult && (
                   <Alert
                     type={ruleImportResult.errorCount > 0 ? 'warning' : 'success'}
-                    message={`识别 ${ruleImportResult.rules.length} 条规则，成功导入 ${ruleImportResult.importedCount} 条`}
+                    message={t('datasource.ruleImportRecognized', { recognized: ruleImportResult.rules.length, imported: ruleImportResult.importedCount })}
                     description={joinSentences([
                       ...ruleImportResult.warnings,
                       ...ruleImportResult.errors.map(item => `${item.code}: ${item.error}`),
-                    ]) || `来源文件：${ruleImportResult.file.name}`}
+                    ]) || t('datasource.sourceFile', { file: ruleImportResult.file.name })}
                   />
                 )}
               </Space>
@@ -885,37 +887,37 @@ const DataSourceDetail: React.FC = () => {
               expandable={{
                 expandedRowRender: (record) => (
                   <Descriptions column={1} size="small">
-                    <Descriptions.Item label="所属本体ID">{record.ontologyId}</Descriptions.Item>
-                    <Descriptions.Item label="规则表达式"><code>{record.expression}</code></Descriptions.Item>
-                    <Descriptions.Item label="自然语言说明">{record.natural_language}</Descriptions.Item>
+                    <Descriptions.Item label={t('datasource.ontologyId')}>{record.ontologyId}</Descriptions.Item>
+                    <Descriptions.Item label={t('datasource.ruleExpression')}><code>{record.expression}</code></Descriptions.Item>
+                    <Descriptions.Item label={t('datasource.naturalLanguageNote')}>{record.natural_language}</Descriptions.Item>
                   </Descriptions>
                 ),
               }}
             />
           </TabPane>
-          <TabPane tab="本体推理链" key="reasoning-chain">
+          <TabPane tab={t('datasource.reasoningTitle')} key="reasoning-chain">
             {!reasoningChain?.initialized ? (
-              <Alert type="warning" message="数据源尚未初始化为本体知识库" description="请返回数据源列表执行初始化。" />
+              <Alert type="warning" message={t('datasource.notInitialized')} description={t('datasource.notInitializedHint')} />
             ) : (
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <Descriptions column={4}>
-                  <Descriptions.Item label="本体">{reasoningChain.ontologyName}</Descriptions.Item>
-                  <Descriptions.Item label="版本">{reasoningChain.version}</Descriptions.Item>
-                  <Descriptions.Item label="对象">{reasoningChain.objects.length}</Descriptions.Item>
-                  <Descriptions.Item label="关系">{reasoningChain.relations.length}</Descriptions.Item>
-                  <Descriptions.Item label="规则">{reasoningChain.rules.length}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.ontology')}>{reasoningChain.ontologyName}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.version')}>{reasoningChain.version}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.objects')}>{reasoningChain.objects.length}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.relations')}>{reasoningChain.relations.length}</Descriptions.Item>
+                  <Descriptions.Item label={t('datasource.rules')}>{reasoningChain.rules.length}</Descriptions.Item>
                 </Descriptions>
                 <Tabs
                   items={[
-                    { key: 'steps', label: '推理步骤', children: <Steps direction="vertical" items={reasoningChain.steps.map(step => ({ title: step.label, description: step.type }))} /> },
-                    { key: 'relations', label: '本体关系', children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: '源对象', dataIndex: 'sourceObject' }, { title: '关系', dataIndex: 'name' }, { title: '目标对象', dataIndex: 'targetObject' }, { title: '类型', dataIndex: 'relationType' }]} /> },
-                    { key: 'chain-rules', label: '推理规则', children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: '规则', dataIndex: 'name' }, { title: '对象', dataIndex: 'scopeObjectCode' }, { title: '表达式', dataIndex: 'expression' }, { title: '严重程度', dataIndex: 'severity', render: (v: string) => label(RULE_SEVERITY, v) }]} /> },
+                    { key: 'steps', label: t('datasource.reasoningSteps'), children: <Steps direction="vertical" items={reasoningChain.steps.map(step => ({ title: step.label, description: step.type }))} /> },
+                    { key: 'relations', label: t('datasource.ontologyRelations'), children: <Table size="small" pagination={false} rowKey="code" dataSource={reasoningChain.relations} columns={[{ title: t('datasource.sourceObject'), dataIndex: 'sourceObject' }, { title: t('datasource.relation'), dataIndex: 'name' }, { title: t('datasource.targetObject'), dataIndex: 'targetObject' }, { title: t('datasource.type'), dataIndex: 'relationType' }]} /> },
+                    { key: 'chain-rules', label: t('datasource.reasoningRules'), children: <Table size="small" rowKey="code" dataSource={reasoningChain.rules} columns={[{ title: t('datasource.rules'), dataIndex: 'name' }, { title: t('datasource.object'), dataIndex: 'scopeObjectCode' }, { title: t('datasource.expression'), dataIndex: 'expression' }, { title: t('datasource.severity'), dataIndex: 'severity', render: (v: string) => label(RULE_SEVERITY, v) }]} /> },
                   ]}
                 />
               </Space>
             )}
           </TabPane>
-          <TabPane tab="接入检查" key="readiness">
+          <TabPane tab={t('datasource.readinessTab')} key="readiness">
             <Table
               columns={readinessColumns}
               dataSource={readiness?.checks || []}
@@ -927,7 +929,7 @@ const DataSourceDetail: React.FC = () => {
       </Card>
 
       <Modal
-        title={tableBrowser ? `数据浏览：${tableBrowser.tableName}` : '数据浏览'}
+        title={tableBrowser ? t('datasource.dataBrowseWithTable', { table: tableBrowser.tableName }) : t('datasource.dataBrowse')}
         open={Boolean(tableBrowser) || tableBrowserLoading}
         onCancel={() => setTableBrowser(null)}
         footer={null}
@@ -935,7 +937,7 @@ const DataSourceDetail: React.FC = () => {
       >
         <Spin spinning={tableBrowserLoading}>
           {tableBrowser && <>
-            <Alert style={{ marginBottom: 12 }} type="info" message={`共 ${tableBrowser.page.total} 行，当前显示 ${tableBrowser.page.offset + 1}-${tableBrowser.page.offset + tableBrowser.rows.length}`} />
+            <Alert style={{ marginBottom: 12 }} type="info" message={t('datasource.browseRange', { total: tableBrowser.page.total, from: tableBrowser.page.offset + 1, to: tableBrowser.page.offset + tableBrowser.rows.length })} />
             <Table
               size="small"
               scroll={{ x: 'max-content' }}
@@ -945,15 +947,15 @@ const DataSourceDetail: React.FC = () => {
               columns={tableBrowser.columns.map(column => ({ title: column, dataIndex: column, key: column, render: (value: unknown) => typeof value === 'object' ? JSON.stringify(value) : String(value ?? '') }))}
             />
             <Space style={{ marginTop: 12 }}>
-              <Button disabled={tableBrowser.page.offset === 0} onClick={() => handleBrowseTable(tableBrowser.tableName, Math.max(0, tableBrowser.page.offset - tableBrowser.page.limit))}>上一页</Button>
-              <Button disabled={!tableBrowser.page.hasMore} onClick={() => handleBrowseTable(tableBrowser.tableName, tableBrowser.page.offset + tableBrowser.page.limit)}>下一页</Button>
+              <Button disabled={tableBrowser.page.offset === 0} onClick={() => handleBrowseTable(tableBrowser.tableName, Math.max(0, tableBrowser.page.offset - tableBrowser.page.limit))}>{t('datasource.previousPage')}</Button>
+              <Button disabled={!tableBrowser.page.hasMore} onClick={() => handleBrowseTable(tableBrowser.tableName, tableBrowser.page.offset + tableBrowser.page.limit)}>{t('datasource.nextPage')}</Button>
             </Space>
           </>}
         </Spin>
       </Modal>
 
       <Modal
-        title="导入 OpenAPI"
+        title={t('datasource.importOpenApiButton')}
         open={openApiModalVisible}
         onCancel={() => {
           setOpenApiModalVisible(false);
@@ -965,7 +967,7 @@ const DataSourceDetail: React.FC = () => {
       >
         <Form form={openApiForm} layout="vertical" onFinish={handleImportOpenApi}>
           <Form.Item name="specUrl" label="OpenAPI URL">
-            <Input placeholder="例如：https://legacy.example/openapi.json" />
+            <Input placeholder={t('datasource.openApiUrlPlaceholder')} />
           </Form.Item>
           <Form.Item
             name="specJson"
@@ -974,21 +976,21 @@ const DataSourceDetail: React.FC = () => {
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (getFieldValue('specUrl')?.trim() || value?.trim()) return Promise.resolve();
-                  return Promise.reject(new Error('请填写 OpenAPI URL 或粘贴 OpenAPI JSON 文档'));
+                  return Promise.reject(new Error(t('datasource.openApiSourceRequired')));
                 },
               }),
             ]}
           >
             <Input.TextArea
               rows={12}
-              placeholder='{"openapi":"3.0.0","paths":{"/contracts/{id}/submit":{"post":{"operationId":"submit_contract","summary":"提交合同审批"}}}}'
+              placeholder={t('datasource.openApiSpecExample')}
             />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="行业蓝图草案"
+        title={t('datasource.blueprintDraftTitle')}
         open={blueprintDraftVisible}
         onCancel={() => setBlueprintDraftVisible(false)}
         footer={null}

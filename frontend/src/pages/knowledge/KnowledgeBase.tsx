@@ -1,6 +1,7 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { label, MAPPING_STATUS } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import {
   Alert, Button, Card, Col, Empty, Form, Input, Modal, Row, Select, Space,
   Spin, Table, Tag, Typography, Upload, message,
@@ -35,6 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const KnowledgeBasePage: React.FC = () => {
+  const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   // The ontology is in the URL: "the documents of this system" is a place somebody can send.
   // Without it a bare `/admin/knowledge` opens whichever ontology the page picks by itself,
@@ -62,7 +64,7 @@ const KnowledgeBasePage: React.FC = () => {
           setSelected(richest.id);
         }
       } catch (error) {
-        message.error(requestErrorMessage(error, '加载本体列表失败'));
+        message.error(requestErrorMessage(error, t('knowledge.loadOntologiesFailed')));
       }
     })();
     // Once, on arrival: `selected` is the URL's value at that moment, and re-running this
@@ -80,11 +82,11 @@ const KnowledgeBasePage: React.FC = () => {
       setDocuments(docs);
       setEntries(entryList.items);
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载知识库失败'));
+      message.error(requestErrorMessage(error, t('knowledge.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (selected != null) void load(selected);
@@ -94,18 +96,18 @@ const KnowledgeBasePage: React.FC = () => {
     if (selected == null) return;
     const values = await uploadForm.validateFields();
     if (!pendingFile) {
-      message.error('请选择文件');
+      message.error(t('knowledge.noFileSelected'));
       return;
     }
     setLoading(true);
     try {
       const result = await knowledgeApi.upload(selected, pendingFile, values);
       Modal.success({
-        title: `已切分 ${result.chunkCount} 个条目`,
+        title: t('knowledge.splitDone', { count: result.chunkCount }),
         content: (
           <div>
             <Paragraph style={{ marginBottom: 8 }}>
-              引用定位：{result.citations.slice(0, 8).join('、')}
+              {t('knowledge.citationsLabel')}{result.citations.slice(0, 8).join(t('knowledge.citationSeparator'))}
               {result.citations.length > 8 ? ' …' : ''}
             </Paragraph>
             <Alert type="info" showIcon message={result.note} />
@@ -114,7 +116,7 @@ const KnowledgeBasePage: React.FC = () => {
                 type="warning"
                 showIcon
                 style={{ marginTop: 8 }}
-                message="切分提示"
+                message={t('knowledge.splitWarnings')}
                 description={joinSentences(result.warnings)}
               />
             )}
@@ -127,7 +129,7 @@ const KnowledgeBasePage: React.FC = () => {
       await load(selected);
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || '上传失败');
+      message.error(detail || t('knowledge.uploadFailed'));
     } finally {
       setLoading(false);
     }
@@ -139,12 +141,12 @@ const KnowledgeBasePage: React.FC = () => {
     setLoading(true);
     try {
       await knowledgeApi.review(reviewing.id, { status, ...values });
-      message.success(status === 'confirmed' ? '条目已确认，可作为判定依据' : '条目已更新');
+      message.success(status === 'confirmed' ? t('knowledge.entryConfirmed') : t('knowledge.entryUpdated'));
       setReviewing(null);
       await load(selected);
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || '操作失败');
+      message.error(detail || t('knowledge.actionFailed'));
     } finally {
       setLoading(false);
     }
@@ -157,19 +159,19 @@ const KnowledgeBasePage: React.FC = () => {
     <div>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <Title level={4} style={{ marginBottom: 4 }}>文档知识库</Title>
+          <Title level={4} style={{ marginBottom: 4 }}>{t('knowledge.title')}</Title>
           <Text type="secondary">
-            制度与合同条款，锚定到业务对象或规则后可作为判定依据被引用
+            {t('knowledge.subtitle')}
           </Text>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => selected != null && void load(selected)}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => selected != null && void load(selected)}>{t('knowledge.refresh')}</Button>
           <Button type="primary" onClick={() => setUploadOpen(true)} disabled={selected == null}>
-            上传文档
+            {t('knowledge.uploadButton')}
           </Button>
           <Select
             style={{ width: 240 }}
-            placeholder="选择本体"
+            placeholder={t('knowledge.ontologyPlaceholder')}
             value={selected ?? undefined}
             onChange={setSelected}
             options={ontologies.map(item => ({
@@ -184,17 +186,17 @@ const KnowledgeBasePage: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="条目须经确认才会被检索"
-        description="切分结果默认为待审核状态。确认时必须指定它解释的业务对象或它作为依据的规则——未锚定的文本无法回答「这段话凭什么支持这个结论」，因此不能作为判定依据。"
+        message={t('knowledge.confirmedOnly')}
+        description={t('knowledge.confirmedOnlyDetail')}
       />
 
       {loading && !documents.length && <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={9}>
-          <Card size="small" title={`文档（${documents.length}）`}>
+          <Card size="small" title={t('knowledge.documentsCard', { count: documents.length })}>
             {documents.length === 0 ? (
-              <Empty description="尚未上传文档" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('knowledge.noDocuments')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
               <Table
                 size="small"
@@ -202,15 +204,15 @@ const KnowledgeBasePage: React.FC = () => {
                 rowKey="id"
                 dataSource={documents}
                 columns={[
-                  { title: '标题', dataIndex: 'title', ellipsis: true },
+                  { title: t('knowledge.colTitle'), dataIndex: 'title', ellipsis: true },
                   {
-                    title: '条目',
+                    title: t('knowledge.colCounts'),
                     key: 'counts',
                     width: 130,
                     render: (_: unknown, row: KnowledgeDocument) => (
                       <Space size={4}>
-                        <Tag color="green">{row.confirmedCount} 已确认</Tag>
-                        {row.pendingCount > 0 && <Tag color="orange">{row.pendingCount} 待审</Tag>}
+                        <Tag color="green">{t('knowledge.confirmedTag', { count: row.confirmedCount })}</Tag>
+                        {row.pendingCount > 0 && <Tag color="orange">{t('knowledge.pendingTag', { count: row.pendingCount })}</Tag>}
                       </Space>
                     ),
                   },
@@ -225,14 +227,14 @@ const KnowledgeBasePage: React.FC = () => {
             size="small"
             title={
               <Space>
-                <span>知识条目</span>
-                <Tag color="green">{confirmedCount} 已确认</Tag>
-                {pendingCount > 0 && <Tag color="orange">{pendingCount} 待审核</Tag>}
+                <span>{t('knowledge.entriesTitle')}</span>
+                <Tag color="green">{t('knowledge.confirmedTag', { count: confirmedCount })}</Tag>
+                {pendingCount > 0 && <Tag color="orange">{t('knowledge.pendingReviewTag', { count: pendingCount })}</Tag>}
               </Space>
             }
           >
             {entries.length === 0 ? (
-              <Empty description="尚无条目" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('knowledge.noEntries')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
               <Table
                 size="small"
@@ -240,22 +242,22 @@ const KnowledgeBasePage: React.FC = () => {
                 dataSource={entries}
                 pagination={{ pageSize: 8, size: 'small' }}
                 columns={[
-                  { title: '引用', dataIndex: 'citation', width: 96 },
-                  { title: '内容', dataIndex: 'content', ellipsis: true },
+                  { title: t('knowledge.colCitation'), dataIndex: 'citation', width: 96 },
+                  { title: t('knowledge.colContent'), dataIndex: 'content', ellipsis: true },
                   {
-                    title: '锚定',
+                    title: t('knowledge.colAnchor'),
                     key: 'anchor',
                     width: 190,
                     render: (_: unknown, row: KnowledgeEntry) => (
                       <Space size={4} wrap>
                         {row.objectCode && <Tag>{row.objectCode}</Tag>}
                         {row.ruleCode && <Tag color="blue"><code>{row.ruleCode}</code></Tag>}
-                        {!row.objectCode && !row.ruleCode && <Text type="secondary">未锚定</Text>}
+                        {!row.objectCode && !row.ruleCode && <Text type="secondary">{t('knowledge.unanchored')}</Text>}
                       </Space>
                     ),
                   },
                   {
-                    title: '状态',
+                    title: t('knowledge.colStatus'),
                     dataIndex: 'status',
                     width: 88,
                     render: (status: string) => <Tag color={STATUS_COLOR[status] || 'default'}>{label(MAPPING_STATUS, status)}</Tag>,
@@ -276,7 +278,7 @@ const KnowledgeBasePage: React.FC = () => {
                           });
                         }}
                       >
-                        审核
+                        {t('knowledge.review')}
                       </Button>
                     ),
                   },
@@ -288,15 +290,15 @@ const KnowledgeBasePage: React.FC = () => {
       </Row>
 
       <Modal
-        title="上传制度或合同文档"
+        title={t('knowledge.uploadTitle')}
         open={uploadOpen}
         onCancel={() => setUploadOpen(false)}
         onOk={handleUpload}
         confirmLoading={loading}
-        okText="上传并切分"
+        okText={t('knowledge.uploadAndSplit')}
       >
         <Form form={uploadForm} layout="vertical">
-          <Form.Item label="文件" required extra="支持 .docx 与 UTF-8 文本；按条款编号切分，保留可引用定位">
+          <Form.Item label={t('knowledge.fileLabel')} required extra={t('knowledge.fileHint')}>
             <Upload.Dragger
               beforeUpload={file => {
                 setPendingFile(file as unknown as File);
@@ -306,30 +308,30 @@ const KnowledgeBasePage: React.FC = () => {
               onRemove={() => setPendingFile(null)}
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">点击或拖拽文件到此处</p>
+              <p className="ant-upload-text">{t('knowledge.draggerText')}</p>
             </Upload.Dragger>
           </Form.Item>
-          <Form.Item name="title" label="文档标题" extra="留空则使用文件名；将作为引用出处显示">
-            <Input placeholder="售后政策" />
+          <Form.Item name="title" label={t('knowledge.documentTitleLabel')} extra={t('knowledge.documentTitleHint')}>
+            <Input placeholder={t('knowledge.documentTitlePlaceholder')} />
           </Form.Item>
-          <Form.Item name="objectCode" label="默认锚定业务对象（可选）" extra="可在逐条审核时修正">
+          <Form.Item name="objectCode" label={t('knowledge.defaultObjectLabel')} extra={t('knowledge.defaultObjectHint')}>
             <Input placeholder="sales_order" />
           </Form.Item>
-          <Form.Item name="ruleCode" label="默认锚定规则（可选）">
+          <Form.Item name="ruleCode" label={t('knowledge.defaultRuleLabel')}>
             <Input placeholder="refund_window_check" />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={`审核条目 ${reviewing?.citation || ''}`}
+        title={t('knowledge.reviewTitle', { citation: reviewing?.citation || '' })}
         open={Boolean(reviewing)}
         onCancel={() => setReviewing(null)}
         footer={[
-          <Button key="reject" danger onClick={() => void handleReview('rejected')}>驳回</Button>,
-          <Button key="cancel" onClick={() => setReviewing(null)}>取消</Button>,
+          <Button key="reject" danger onClick={() => void handleReview('rejected')}>{t('knowledge.reject')}</Button>,
+          <Button key="cancel" onClick={() => setReviewing(null)}>{t('knowledge.cancel')}</Button>,
           <Button key="confirm" type="primary" loading={loading} onClick={() => void handleReview('confirmed')}>
-            确认为判定依据
+            {t('knowledge.confirmAsEvidence')}
           </Button>,
         ]}
       >
@@ -341,20 +343,20 @@ const KnowledgeBasePage: React.FC = () => {
             <Form form={reviewForm} layout="vertical">
               <Form.Item
                 name="objectCode"
-                label="锚定业务对象"
-                extra="该条款解释哪个业务对象"
+                label={t('knowledge.anchorObjectLabel')}
+                extra={t('knowledge.anchorObjectHint')}
                 rules={[
                   ({ getFieldValue }) => ({
                     validator: () =>
                       getFieldValue('objectCode') || getFieldValue('ruleCode')
                         ? Promise.resolve()
-                        : Promise.reject(new Error('业务对象与规则至少填写一项')),
+                        : Promise.reject(new Error(t('knowledge.anchorRequired'))),
                   }),
                 ]}
               >
                 <Input placeholder="sales_order" />
               </Form.Item>
-              <Form.Item name="ruleCode" label="锚定规则" extra="该条款是哪条规则的文字依据">
+              <Form.Item name="ruleCode" label={t('knowledge.anchorRuleLabel')} extra={t('knowledge.anchorRuleHint')}>
                 <Input placeholder="refund_window_check" />
               </Form.Item>
             </Form>

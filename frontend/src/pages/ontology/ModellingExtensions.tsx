@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Form, Input, Modal, Select, Space, Table, T
 import { PlusOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
 import { EVENT_CATEGORY, label } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import type { BusinessObject, EventTypeDeclaration } from '../../types';
 
 const { Text, Paragraph } = Typography;
@@ -28,6 +29,7 @@ interface Props {
  * and belongs beside the instance.
  */
 const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly }) => {
+  const t = useT();
   const [objectCode, setObjectCode] = useState<string | undefined>(objects[0]?.code);
   const [eventTypes, setEventTypes] = useState<EventTypeDeclaration[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,11 +45,11 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
       setEventTypes(await ontologyApi.eventTypes(ontologyId));
     } catch (caught) {
       setEventTypes([]);
-      setError(requestErrorMessage(caught, '读取事件类型失败'));
+      setError(requestErrorMessage(caught, t('ontology.eventTypesLoadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [ontologyId]);
+  }, [ontologyId, t]);
 
   useEffect(() => {
     void load();
@@ -80,12 +82,12 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
           .filter(Boolean),
         description: values.description?.trim() || '',
       });
-      message.success('事件类型已声明');
+      message.success(t('ontology.eventTypeDeclared'));
       setOpen(false);
       form.resetFields();
       await load();
     } catch (caught) {
-      message.error(requestErrorMessage(caught, '声明事件类型失败'));
+      message.error(requestErrorMessage(caught, t('ontology.declareFailed')));
     } finally {
       setSaving(false);
     }
@@ -96,17 +98,15 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
   return (
     <Card
       size="small"
-      title="事件类型"
+      title={t('ontology.eventTypes')}
       extra={
         <Button type="primary" icon={<PlusOutlined />} disabled={readOnly || !objectCode} onClick={() => setOpen(true)}>
-          声明事件类型
+          {t('ontology.declareEventType')}
         </Button>
       }
     >
       <Paragraph type="secondary" style={{ fontSize: 12 }}>
-        事件必须声明类型后才能记录：不存在「先记下来，以后再分类」——
-        «驳回»、«拒绝» 与 «rejected» 一旦各记各的，历史就不再可检索。
-        记录某个实例的事件在「对象浏览」的实例解释里做。
+        {t('ontology.eventTypesIntro')}
       </Paragraph>
 
       {readOnly && (
@@ -114,22 +114,22 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message="本体已发布或正在审核，不能修改事件定义"
-          description="这是刻意设计：已发布的模型不应在无人察觉时改变含义。要改请先派生新版本。"
+          message={t('ontology.readOnlyTitle')}
+          description={t('ontology.readOnlyDetail')}
         />
       )}
-      {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message="读取事件类型失败" description={error} />}
+      {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t('ontology.eventTypesLoadFailed')} description={error} />}
 
       <Space style={{ marginBottom: 12 }}>
         <Select
           style={{ width: 240 }}
-          placeholder="选择业务对象"
+          placeholder={t('ontology.selectObject')}
           value={objectCode}
           onChange={setObjectCode}
           options={objects.map((item) => ({ value: item.code, label: `${item.name}（${item.code}）` }))}
         />
         <Text type="secondary" style={{ fontSize: 12 }}>
-          共声明 {eventTypes.length} 种，其中本对象 {objectEventTypes.length} 种
+          {t('ontology.declaredCount', { total: eventTypes.length, here: objectEventTypes.length })}
         </Text>
       </Space>
 
@@ -141,7 +141,7 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
         pagination={false}
         columns={[
           {
-            title: '事件',
+            title: t('ontology.event'),
             key: 'event',
             render: (_: unknown, row) => (
               <Space direction="vertical" size={0}>
@@ -152,16 +152,16 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
               </Space>
             ),
           },
-          { title: '业务对象', dataIndex: 'objectCode', key: 'objectCode', width: 140 },
+          { title: t('ontology.objects'), dataIndex: 'objectCode', key: 'objectCode', width: 140 },
           {
-            title: '类别',
+            title: t('ontology.category'),
             dataIndex: 'category',
             key: 'category',
             width: 110,
             render: (category: string) => <Tag>{label(EVENT_CATEGORY, category)}</Tag>,
           },
           {
-            title: '载荷字段',
+            title: t('ontology.payloadFields'),
             dataIndex: 'payloadFields',
             key: 'payloadFields',
             render: (fields: string[]) =>
@@ -172,16 +172,16 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
                   ))}
                 </Space>
               ) : (
-                <Text type="secondary">未声明预期字段</Text>
+                <Text type="secondary">{t('ontology.noExpectedFields')}</Text>
               ),
           },
-          { title: '说明', dataIndex: 'description', key: 'description', ellipsis: true },
+          { title: t('ontology.note'), dataIndex: 'description', key: 'description', ellipsis: true },
         ]}
-        locale={{ emptyText: <Empty description="该对象尚未声明任何事件类型，因此无法记录事件" /> }}
+        locale={{ emptyText: <Empty description={t('ontology.noEventTypes')} /> }}
       />
 
       <Modal
-        title={`为 ${objectCode ?? ''} 声明事件类型`}
+        title={t('ontology.declareFor', { code: objectCode ?? '' })}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
@@ -191,30 +191,30 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
         <Form form={form} layout="vertical" onFinish={handleDeclare} initialValues={{ category: 'interaction' }}>
           <Form.Item
             name="code"
-            label="事件编码"
+            label={t('ontology.eventCode')}
             rules={[
-              { required: true, message: '请填写事件编码' },
-              { pattern: /^[A-Za-z_][A-Za-z0-9_]*$/, message: '需为合法标识符：字母或下划线开头，只含字母、数字、下划线' },
+              { required: true, message: t('ontology.eventCodeRequired') },
+              { pattern: /^[A-Za-z_][A-Za-z0-9_]*$/, message: t('ontology.identifierRule') },
             ]}
-            extra="会进入规则表达式与查询条件，因此限制为标识符。已存在的编码会被更新而非重复创建。"
+            extra={t('ontology.identifierHint')}
           >
             <Input placeholder="signed" autoFocus />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请填写名称' }]}>
-            <Input placeholder="合同签订" />
+          <Form.Item name="name" label={t('ontology.name')} rules={[{ required: true, message: t('ontology.nameRequired') }]}>
+            <Input placeholder={t('ontology.eventNamePlaceholder')} />
           </Form.Item>
-          <Form.Item name="category" label="类别" rules={[{ required: true }]}>
+          <Form.Item name="category" label={t('ontology.category')} rules={[{ required: true }]}>
             <Select options={Object.entries(EVENT_CATEGORY).map(([value, text]) => ({ value, label: text }))} />
           </Form.Item>
           <Form.Item
             name="payloadFields"
-            label="载荷字段"
-            extra="可选，逗号分隔。它是对生产方的期望而非校验：载荷缺少这些字段时平台会在事件上标注，而不是拒绝写入。"
+            label={t('ontology.payloadFields')}
+            extra={t('ontology.payloadHint')}
           >
             <Input placeholder="party, signedAt" />
           </Form.Item>
-          <Form.Item name="description" label="说明">
-            <Input.TextArea rows={2} placeholder="这个事件代表业务上发生了什么" />
+          <Form.Item name="description" label={t('ontology.note')}>
+            <Input.TextArea rows={2} placeholder={t('ontology.eventDescriptionPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

@@ -1,4 +1,5 @@
 import { label, ONTOLOGY_STATUS, RULE_SEVERITY, RULE_STATUS, RULE_TYPE } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert, Card, Table, Typography, Tag, Empty, Select, Space, message, Switch, Button,
@@ -30,6 +31,7 @@ const statusColor: Record<string, string> = {
 };
 
 const RuleList: React.FC = () => {
+  const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [rules, setRules] = useState<BusinessRule[]>([]);
   // Kept apart from an empty list: both leave `rules` empty.
@@ -38,7 +40,7 @@ const RuleList: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('新建规则');
+  const [modalTitle, setModalTitle] = useState(t('rules.newRule'));
   const [editingRule, setEditingRule] = useState<BusinessRule | null>(null);
   const [form] = Form.useForm();
 
@@ -59,9 +61,9 @@ const RuleList: React.FC = () => {
       // clicked, so the check that reports empty columns had nothing to look at.
       setSelectedOntology((current) => current ?? items[0]?.id ?? null);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取本体列表失败'));
+      message.error(requestErrorMessage(error, t('rules.ontologyLoadFailed')));
     }
-  }, []);
+  }, [t]);
 
   const fetchRules = useCallback(async (ontologyId: number) => {
     setLoading(true);
@@ -74,11 +76,11 @@ const RuleList: React.FC = () => {
       // has no rules" -- on the page where a reviewer checks that the controls they believe
       // are running actually exist.
       setRules([]);
-      setLoadError(requestErrorMessage(error, '获取业务规则失败'));
+      setLoadError(requestErrorMessage(error, t('rules.rulesLoadFailed')));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchOntologies(); }, [fetchOntologies]);
 
@@ -90,7 +92,7 @@ const RuleList: React.FC = () => {
 
   const handleCreate = () => {
     setEditingRule(null);
-    setModalTitle('新建规则');
+    setModalTitle(t('rules.newRule'));
     form.resetFields();
     form.setFieldsValue({ severity: 'warning', ruleType: 'validation', status: 'published' });
     setModalVisible(true);
@@ -98,7 +100,7 @@ const RuleList: React.FC = () => {
 
   const handleEdit = (rule: BusinessRule) => {
     setEditingRule(rule);
-    setModalTitle('编辑规则');
+    setModalTitle(t('rules.editRule'));
     form.setFieldsValue(rule);
     setModalVisible(true);
   };
@@ -112,10 +114,10 @@ const RuleList: React.FC = () => {
     if (!selectedOntology) return;
     try {
       await ontologyApi.deleteRule(selectedOntology, rule.id);
-      message.success(`规则 ${rule.code} 已删除`);
+      message.success(t('rules.deleted', { code: rule.code }));
       fetchRules(selectedOntology);
     } catch (error) {
-      message.error(requestErrorMessage(error, '删除规则失败'));
+      message.error(requestErrorMessage(error, t('rules.deleteFailed')));
     }
   };
 
@@ -124,38 +126,38 @@ const RuleList: React.FC = () => {
     const newStatus = rule.status === 'published' ? 'disabled' : 'published';
     try {
       await ontologyApi.toggleRuleStatus(selectedOntology, rule.id, newStatus);
-      message.success(`规则已${newStatus === 'published' ? '启用' : '停用'}`);
+      message.success(newStatus === 'published' ? t('rules.enabled') : t('rules.disabled'));
       fetchRules(selectedOntology);
     } catch (error) {
-      message.error(requestErrorMessage(error, '切换规则状态失败'));
+      message.error(requestErrorMessage(error, t('rules.toggleFailed')));
     }
   };
 
   const handleFormSubmit = async () => {
     if (!selectedOntology) {
-      message.warning('请先选择本体');
+      message.warning(t('rules.selectOntologyFirst'));
       return;
     }
     try {
       const values = await form.validateFields();
       if (editingRule) {
         await ontologyApi.updateRule(selectedOntology, editingRule.id, values);
-        message.success('规则已更新');
+        message.success(t('rules.updated'));
       } else {
         await ontologyApi.createRule(selectedOntology, values);
-        message.success('规则已创建');
+        message.success(t('rules.created'));
       }
       setModalVisible(false);
       fetchRules(selectedOntology);
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(editingRule ? '更新规则失败' : '创建规则失败');
+      message.error(editingRule ? t('rules.updateFailed') : t('rules.createFailed'));
     }
   };
 
   const handleImportRulesFromWord = async (file: File) => {
     if (!selectedOntology) {
-      message.warning('请先选择本体');
+      message.warning(t('rules.selectOntologyFirst'));
       return false;
     }
     setRuleImporting(true);
@@ -163,13 +165,17 @@ const RuleList: React.FC = () => {
       const result = await ontologyApi.importRulesFromWord(selectedOntology, file, true);
       setImportResult(result);
       if (result.errorCount > 0) {
-        message.warning(`识别 ${result.rules.length} 条规则，成功导入 ${result.importedCount} 条，失败 ${result.errorCount} 条`);
+        message.warning(t('rules.importPartial', {
+          total: result.rules.length,
+          imported: result.importedCount,
+          failed: result.errorCount,
+        }));
       } else {
-        message.success(`已从 Word 导入 ${result.importedCount} 条自定义规则`);
+        message.success(t('rules.importedFromWord', { count: result.importedCount }));
       }
       fetchRules(selectedOntology);
     } catch (error) {
-      message.error(requestErrorMessage(error, '规则 Word 导入失败，请确认文件格式和规则字段'));
+      message.error(requestErrorMessage(error, t('rules.importFailed')));
     } finally {
       setRuleImporting(false);
     }
@@ -178,33 +184,33 @@ const RuleList: React.FC = () => {
 
   const columns = [
     {
-      title: '编码',
+      title: t('rules.code'),
       dataIndex: 'code',
       key: 'code',
       width: 140,
     },
     {
-      title: '名称',
+      title: t('rules.name'),
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
       width: 160,
     },
     {
-      title: '类型',
+      title: t('rules.type'),
       dataIndex: 'ruleType',
       key: 'ruleType',
       width: 100,
       render: (type: string) => <Tag>{label(RULE_TYPE, type)}</Tag>,
     },
     {
-      title: '适用对象',
+      title: t('rules.scope'),
       dataIndex: 'scopeObjectCode',
       key: 'scopeObjectCode',
       width: 110,
     },
     {
-      title: '表达式',
+      title: t('rules.expression'),
       dataIndex: 'expression',
       key: 'expression',
       ellipsis: true,
@@ -215,7 +221,7 @@ const RuleList: React.FC = () => {
       ),
     },
     {
-      title: '严重程度',
+      title: t('rules.severity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
@@ -224,7 +230,7 @@ const RuleList: React.FC = () => {
       ),
     },
     {
-      title: '状态',
+      title: t('rules.status'),
       dataIndex: 'status',
       key: 'status',
       width: 90,
@@ -233,24 +239,24 @@ const RuleList: React.FC = () => {
       ),
     },
     {
-      title: '业务说明',
+      title: t('rules.note'),
       dataIndex: 'naturalLanguage',
       key: 'naturalLanguage',
       ellipsis: true,
     },
     {
-      title: '操作',
+      title: t('rules.actions'),
       key: 'action',
       width: 200,
       render: (_: unknown, record: BusinessRule) => (
         <Space>
-          <Tooltip title="查看详情">
+          <Tooltip title={t('rules.viewDetail')}>
             <Button type="link" icon={<EyeOutlined />} size="small" onClick={() => handleDetail(record)} />
           </Tooltip>
-          <Tooltip title="编辑">
+          <Tooltip title={t('rules.edit')}>
             <Button type="link" icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} />
           </Tooltip>
-          <Tooltip title={record.status === 'published' ? '停用' : '启用'}>
+          <Tooltip title={record.status === 'published' ? t('rules.disable') : t('rules.enable')}>
             <Switch
               checked={record.status === 'published'}
               size="small"
@@ -258,12 +264,12 @@ const RuleList: React.FC = () => {
             />
           </Tooltip>
           <Popconfirm
-            title="确定删除这条规则吗？"
+            title={t('rules.deleteConfirm')}
             onConfirm={() => handleDelete(record)}
-            okText="删除"
-            cancelText="取消"
+            okText={t('rules.delete')}
+            cancelText={t('rules.cancel')}
           >
-            <Tooltip title="删除">
+            <Tooltip title={t('rules.delete')}>
               <Button type="link" icon={<DeleteOutlined />} size="small" danger />
             </Tooltip>
           </Popconfirm>
@@ -275,11 +281,11 @@ const RuleList: React.FC = () => {
   return (
     <div>
       <Row justify="space-between" align="middle">
-        <Col><Title level={3}>规则管理</Title></Col>
+        <Col><Title level={3}>{t('rules.title')}</Title></Col>
         <Col>
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => selectedOntology && fetchRules(selectedOntology)}>
-              刷新
+              {t('rules.refresh')}
             </Button>
           </Space>
         </Col>
@@ -287,27 +293,27 @@ const RuleList: React.FC = () => {
 
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>
-          <span>选择本体：</span>
+          <span>{t('rules.chooseOntology')}</span>
           <Select
             style={{ width: 300 }}
-            placeholder="请选择本体"
+            placeholder={t('rules.selectOntologyPlaceholder')}
             onChange={(value) => setSelectedOntology(value)}
             allowClear
             value={selectedOntology}
           >
             {ontologies.map(ontology => (
               <Option key={ontology.id} value={ontology.id}>
-                {ontology.name} v{ontology.version}（{label(ONTOLOGY_STATUS, ontology.status)}）
+                {t('rules.ontologyOption', { name: ontology.name, version: ontology.version, status: label(ONTOLOGY_STATUS, ontology.status) })}
               </Option>
             ))}
           </Select>
           {selectedOntology && (
             <>
               <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-                新建规则
+                {t('rules.newRule')}
               </Button>
               <Button icon={<UploadOutlined />} onClick={() => setImportModalVisible(true)}>
-                Word 导入规则
+                {t('rules.importWord')}
               </Button>
             </>
           )}
@@ -319,9 +325,9 @@ const RuleList: React.FC = () => {
           <Alert
             type="error"
             showIcon
-            message="获取业务规则失败"
+            message={t('rules.rulesLoadFailed')}
             description={loadError}
-            action={<Button onClick={() => selectedOntology && fetchRules(selectedOntology)}>重试</Button>}
+            action={<Button onClick={() => selectedOntology && fetchRules(selectedOntology)}>{t('rules.retry')}</Button>}
           />
         ) : rules.length === 0 && !loading ? (
           // Three different situations, and "请选择本体" told the reader to pick something
@@ -330,10 +336,10 @@ const RuleList: React.FC = () => {
           <Empty
             description={
               ontologies.length === 0
-                ? '还没有本体，规则依附于本体。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成本体草案'
+                ? t('rules.emptyNoOntologies')
                 : selectedOntology
-                  ? '该本体暂无规则，点击上方按钮创建或导入'
-                  : '请选择本体查看业务规则'
+                  ? t('rules.emptyNoRules')
+                  : t('rules.emptySelectOntology')
             }
           />
         ) : (
@@ -342,7 +348,7 @@ const RuleList: React.FC = () => {
             dataSource={rules}
             rowKey="id"
             loading={loading}
-            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 条规则` }}
+            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => t('rules.totalRules', { total }) }}
             scroll={{ x: 1100 }}
             size="middle"
           />
@@ -360,44 +366,44 @@ const RuleList: React.FC = () => {
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="code" label="规则编码" rules={[{ required: true, message: '请输入规则编码' }]}>
+              <Form.Item name="code" label={t('rules.formCode')} rules={[{ required: true, message: t('rules.codeRequired') }]}>
                 <Input placeholder="e.g. contract_amount_check" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="name" label="规则名称">
-                <Input placeholder="规则名称" />
+              <Form.Item name="name" label={t('rules.formName')}>
+                <Input placeholder={t('rules.formName')} />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="ruleType" label="规则类型" rules={[{ required: true }]}>
+              <Form.Item name="ruleType" label={t('rules.formType')} rules={[{ required: true }]}>
                 <Select
                   options={Object.entries(RULE_TYPE).map(([value, text]) => ({ value, label: text }))}
                 />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="scopeObjectCode" label="适用对象" rules={[{ required: true, message: '请输入业务对象编码' }]}>
+              <Form.Item name="scopeObjectCode" label={t('rules.scope')} rules={[{ required: true, message: t('rules.scopeRequired') }]}>
                 <Input placeholder="e.g. contract" />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="severity" label="严重程度" rules={[{ required: true }]}>
+              <Form.Item name="severity" label={t('rules.severity')} rules={[{ required: true }]}>
                 <Select>
                   {Object.entries(RULE_SEVERITY).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="expression" label="规则表达式" rules={[{ required: true, message: '请输入规则表达式' }]}>
+          <Form.Item name="expression" label={t('rules.formExpression')} rules={[{ required: true, message: t('rules.expressionRequired') }]}>
             <TextArea rows={3} placeholder="e.g. amount > 0 and status != 'invalid'" />
           </Form.Item>
-          <Form.Item name="naturalLanguage" label="自然语言说明">
-            <TextArea rows={2} placeholder="业务描述" />
+          <Form.Item name="naturalLanguage" label={t('rules.formNaturalLanguage')}>
+            <TextArea rows={2} placeholder={t('rules.naturalLanguagePlaceholder')} />
           </Form.Item>
-          <Form.Item name="status" label="状态">
+          <Form.Item name="status" label={t('rules.status')}>
             <Select>
               {Object.entries(RULE_STATUS).map(([value, text]) => <Option key={value} value={value}>{text}</Option>)}
             </Select>
@@ -406,7 +412,7 @@ const RuleList: React.FC = () => {
       </Modal>
 
       <Modal
-        title="Word 导入规则"
+        title={t('rules.importWord')}
         open={importModalVisible}
         onCancel={() => { setImportModalVisible(false); setImportResult(null); }}
         footer={null}
@@ -421,22 +427,22 @@ const RuleList: React.FC = () => {
           disabled={ruleImporting}
         >
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">点击或拖拽 Word 文件到此处</p>
+          <p className="ant-upload-text">{t('rules.uploadText')}</p>
           <p className="ant-upload-hint">
-            支持 .docx 和 .doc 格式。
-            {ruleImporting && <><br /><ReloadOutlined spin /> 正在导入...</>}
+            {t('rules.uploadHint')}
+            {ruleImporting && <><br /><ReloadOutlined spin /> {t('rules.importing')}</>}
           </p>
         </Dragger>
         {importResult && (
-          <Card size="small" style={{ marginTop: 16 }} title={`导入结果 (${importResult.file.name})`}>
-            <p>识别规则: {importResult.rules.length} 条</p>
-            <p>成功导入: {importResult.importedCount} 条</p>
+          <Card size="small" style={{ marginTop: 16 }} title={t('rules.importResultTitle', { file: importResult.file.name })}>
+            <p>{t('rules.importRecognized', { count: importResult.rules.length })}</p>
+            <p>{t('rules.importSucceeded', { count: importResult.importedCount })}</p>
             {importResult.errorCount > 0 && (
-              <p style={{ color: 'red' }}>失败: {importResult.errorCount} 条</p>
+              <p style={{ color: 'red' }}>{t('rules.importErrorCount', { count: importResult.errorCount })}</p>
             )}
             {importResult.warnings.length > 0 && (
               <div>
-                <Text type="warning">警告:</Text>
+                <Text type="warning">{t('rules.warnings')}</Text>
                 {importResult.warnings.map((w, i) => (
                   <p key={i} style={{ fontSize: 12, color: '#faad14' }}>{w}</p>
                 ))}
@@ -444,7 +450,7 @@ const RuleList: React.FC = () => {
             )}
             {importResult.errors.length > 0 && (
               <div>
-                <Text type="danger">错误:</Text>
+                <Text type="danger">{t('rules.errors')}</Text>
                 {importResult.errors.map((e, i) => (
                   <p key={i} style={{ fontSize: 12, color: 'red' }}>{e.code}: {e.error}</p>
                 ))}
@@ -455,30 +461,30 @@ const RuleList: React.FC = () => {
       </Modal>
 
       <Modal
-        title="规则详情"
+        title={t('rules.detailTitle')}
         open={detailVisible}
         onCancel={() => setDetailVisible(false)}
-        footer={<Button onClick={() => setDetailVisible(false)}>关闭</Button>}
+        footer={<Button onClick={() => setDetailVisible(false)}>{t('rules.close')}</Button>}
         width={600}
       >
         {detailRule && (
           <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="编码">{detailRule.code}</Descriptions.Item>
-            <Descriptions.Item label="名称">{detailRule.name}</Descriptions.Item>
-            <Descriptions.Item label="类型">
+            <Descriptions.Item label={t('rules.code')}>{detailRule.code}</Descriptions.Item>
+            <Descriptions.Item label={t('rules.name')}>{detailRule.name}</Descriptions.Item>
+            <Descriptions.Item label={t('rules.type')}>
               <Tag>{label(RULE_TYPE, detailRule.ruleType)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="适用对象">{detailRule.scopeObjectCode}</Descriptions.Item>
-            <Descriptions.Item label="严重程度">
+            <Descriptions.Item label={t('rules.scope')}>{detailRule.scopeObjectCode}</Descriptions.Item>
+            <Descriptions.Item label={t('rules.severity')}>
               <Tag color={severityColor[detailRule.severity]}>{label(RULE_SEVERITY, detailRule.severity)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="状态">
+            <Descriptions.Item label={t('rules.status')}>
               <Tag color={statusColor[detailRule.status]}>{label(RULE_STATUS, detailRule.status)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="表达式" span={2}>
+            <Descriptions.Item label={t('rules.expression')} span={2}>
               <code style={{ background: '#f5f5f5', padding: '4px 8px', borderRadius: 4 }}>{detailRule.expression}</code>
             </Descriptions.Item>
-            <Descriptions.Item label="业务说明" span={2}>
+            <Descriptions.Item label={t('rules.note')} span={2}>
               {detailRule.naturalLanguage || '-'}
             </Descriptions.Item>
           </Descriptions>

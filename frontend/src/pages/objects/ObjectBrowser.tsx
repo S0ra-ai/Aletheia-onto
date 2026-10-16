@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Card, Empty, Select, Space, Table, Tag, Typography } from 'antd';
 import { useSearchParams } from 'react-router-dom';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
+import { useT } from '../../i18n/locale';
 import type { BusinessAttribute, BusinessObject, Ontology } from '../../types';
 import InstanceDrawer from './InstanceDrawer';
 
@@ -32,6 +33,7 @@ const ObjectBrowser: React.FC = () => {
    * appear only after a click and the render check reads the DOM rather than clicking.
    */
   const [params, setParams] = useSearchParams();
+  const t = useT();
   const requestedOntology = Number(params.get('ontology'));
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [ontologyId, setOntologyId] = useState<number | undefined>(
@@ -79,9 +81,9 @@ const ObjectBrowser: React.FC = () => {
       setOntologies(list);
       setOntologyId((current) => current ?? list[0]?.id);
     } catch (error) {
-      setListError(requestErrorMessage(error, '获取本体列表失败'));
+      setListError(requestErrorMessage(error, t('objects.loadOntologiesFailed')));
     }
-  }, []);
+  }, [t]);
 
   const loadObjects = useCallback(async (id: number) => {
     try {
@@ -92,9 +94,9 @@ const ObjectBrowser: React.FC = () => {
         detail.objects?.some((item) => item.code === current) ? current : detail.objects?.[0]?.code,
       );
     } catch (error) {
-      setListError(requestErrorMessage(error, '读取本体详情失败'));
+      setListError(requestErrorMessage(error, t('objects.loadOntologyDetailFailed')));
     }
-  }, []);
+  }, [t]);
 
   const loadInstances = useCallback(
     async (code: string, id: number, nextOffset: number) => {
@@ -111,17 +113,17 @@ const ObjectBrowser: React.FC = () => {
       } catch (error) {
         setRows([]);
         setPagination(null);
-        setListError(requestErrorMessage(error, '读取业务对象实例失败'));
+        setListError(requestErrorMessage(error, t('objects.loadInstancesFailed')));
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [t],
   );
 
   useEffect(() => {
     void loadOntologies();
-  }, [loadOntologies]);
+  }, [loadOntologies, t]);
 
   useEffect(() => {
     if (ontologyId) void loadObjects(ontologyId);
@@ -163,7 +165,7 @@ const ObjectBrowser: React.FC = () => {
     return undefined;
   };
   const columns = [
-    { title: '实例', dataIndex: 'instanceId', key: 'instanceId', width: 100, fixed: 'left' as const },
+    { title: t('objects.instanceColumn'), dataIndex: 'instanceId', key: 'instanceId', width: 100, fixed: 'left' as const },
     ...attributes.map((attribute) => ({
       title: attribute.name || attribute.code,
       key: attribute.code,
@@ -176,7 +178,7 @@ const ObjectBrowser: React.FC = () => {
       },
     })),
     {
-      title: '操作',
+      title: t('objects.actionsColumn'),
       key: 'actions',
       width: 110,
       fixed: 'right' as const,
@@ -184,24 +186,23 @@ const ObjectBrowser: React.FC = () => {
         // A row that does nothing when clicked is a dead end: the reader can see the values
         // and cannot ask where any of them came from, which is the question this platform
         // exists to answer.
-        <Typography.Link onClick={() => showInstance(row.instanceId)}>解释</Typography.Link>
+        <Typography.Link onClick={() => showInstance(row.instanceId)}>{t('objects.explainAction')}</Typography.Link>
       ),
     },
   ];
 
   return (
     <div>
-      <Title level={3}>业务对象浏览</Title>
+      <Title level={3}>{t('objects.title')}</Title>
       <Paragraph type="secondary">
-        按本体中声明的业务对象查看实例。数据经实例解析器读取，并按你的角色做行级过滤，
-        与直接浏览来源表不是同一件事。
+        {t('objects.subtitle')}
       </Paragraph>
 
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <Select
             style={{ width: 260 }}
-            placeholder="选择本体"
+            placeholder={t('objects.selectOntology')}
             value={ontologyId}
             onChange={(value) => {
               setOntologyId(value);
@@ -211,18 +212,20 @@ const ObjectBrowser: React.FC = () => {
           />
           <Select
             style={{ width: 220 }}
-            placeholder="选择业务对象"
+            placeholder={t('objects.selectObject')}
             value={objectCode}
             onChange={(value) => {
               setObjectCode(value);
               setOffset(0);
             }}
-            options={objects.map((item) => ({ value: item.code, label: `${item.name}（${item.code}）` }))}
+            options={objects.map((item) => ({ value: item.code, label: t('objects.nameWithCode', { name: item.name, code: item.code }) }))}
           />
           {sourceType && <Tag color="blue">{sourceType}</Tag>}
           {resolver && typeof resolver.tables !== 'undefined' ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              来源：{String((resolver.tables as string[])?.join('、') || resolver.primaryKey || '')}
+              {t('objects.sourceLine', {
+                tables: String((resolver.tables as string[])?.join(t('objects.listSeparator')) || resolver.primaryKey || ''),
+              })}
             </Text>
           ) : null}
         </Space>
@@ -233,8 +236,8 @@ const ObjectBrowser: React.FC = () => {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="结果已按你的角色做行级过滤"
-          description="没有看到某条实例，可能是它不在你的可见范围内，而不是它不存在。"
+          message={t('objects.rowFilterApplied')}
+          description={t('objects.rowFilterAppliedDescription')}
         />
       )}
 
@@ -243,31 +246,30 @@ const ObjectBrowser: React.FC = () => {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message="行级过滤表达式无法求值，因此没有返回任何实例"
+          message={t('objects.rowFilterError')}
           description={
             <>
               {rowFilterError}
               <br />
-              这不是「没有数据」：平台为避免越权披露，在过滤条件无法判断时按不可见处理。
-              请修正该角色在本对象上的过滤表达式后重试。
+              {t('objects.rowFilterErrorDescription')}
             </>
           }
         />
       )}
 
       {listError && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="读取失败" description={listError} />
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('objects.loadFailed')} description={listError} />
       )}
 
       <Card>
         {ontologies.length === 0 ? (
           // "请选择本体与业务对象" is unanswerable when there are none, and this is the page a
           // reader reaches straight from the navigation.
-          <Empty description="还没有可浏览的本体。请先到「数据接入」登记并扫描业务库，再回「本体建模」生成本体草案" />
+          <Empty description={t('objects.emptyNoOntologies')} />
         ) : !ontologyId || !objectCode ? (
-          <Empty description="请选择本体与业务对象" />
+          <Empty description={t('objects.emptySelectOntologyAndObject')} />
         ) : !rowFilterError && rows.length === 0 && !loading ? (
-          <Empty description={rowFilterApplied ? '按当前角色的可见范围内没有实例' : '该对象没有实例'} />
+          <Empty description={rowFilterApplied ? t('objects.emptyNoVisibleInstances') : t('objects.emptyNoInstances')} />
         ) : (
           <Table
             size="small"

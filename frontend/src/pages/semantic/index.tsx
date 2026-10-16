@@ -4,6 +4,7 @@ import { Card, Form, Input, Button, Typography, Alert, Descriptions, Tag, Divide
 import { SearchOutlined, BugOutlined, RocketOutlined, AuditOutlined, MessageOutlined } from '@ant-design/icons';
 import { automationApi, requestErrorMessage, semanticApi } from '../../api';
 import { CONSISTENCY_STATUS, DECISION_STATUS, EXECUTION_STATUS, NEXT_ACTION, label } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import type { InstanceExplainAttribute, InstanceExplainResult, InstanceAssessResult, OperationPreflightResult, OperationExecuteResult, DecisionConsistencyResult, NaturalLanguageQueryResult } from '../../types';
 import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
@@ -12,6 +13,7 @@ const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
 const SemanticService: React.FC = () => {
+  const t = useT();
   const [tab, setTab] = useTabParam('natural');
   const [explainResult, setExplainResult] = useState<InstanceExplainResult | null>(null);
   const [assessResult, setAssessResult] = useState<InstanceAssessResult | null>(null);
@@ -60,7 +62,7 @@ const SemanticService: React.FC = () => {
       });
       setNaturalLanguageResult(result);
     } catch (error) {
-      message.error(requestErrorMessage(error, '自然语言语义问答失败'));
+      message.error(requestErrorMessage(error, t('semantic.queryFailed')));
     } finally {
       setLoading(false);
     }
@@ -72,7 +74,7 @@ const SemanticService: React.FC = () => {
       const result = await semanticApi.explain(values.objectCode, values.instanceId, values.ontologyId);
       setExplainResult(result);
     } catch (error) {
-      message.error(requestErrorMessage(error, '语义解释失败'));
+      message.error(requestErrorMessage(error, t('semantic.explainFailed')));
     } finally {
       setLoading(false);
     }
@@ -84,7 +86,7 @@ const SemanticService: React.FC = () => {
       const result = await semanticApi.assess(values.objectCode, values.instanceId, values.ontologyId);
       setAssessResult(result);
     } catch (error) {
-      message.error(requestErrorMessage(error, '语义研判失败'));
+      message.error(requestErrorMessage(error, t('semantic.assessFailed')));
     } finally {
       setLoading(false);
     }
@@ -103,7 +105,7 @@ const SemanticService: React.FC = () => {
       });
       setConsistencyResult(result);
     } catch (error) {
-      message.error(requestErrorMessage(error, '决策一致性评估失败'));
+      message.error(requestErrorMessage(error, t('semantic.consistencyFailed')));
     } finally {
       setLoading(false);
     }
@@ -158,7 +160,7 @@ const SemanticService: React.FC = () => {
       });
       setPreflightResult(result);
     } catch (error) {
-      message.error(requestErrorMessage(error, '操作预检失败'));
+      message.error(requestErrorMessage(error, t('semantic.preflightFailed')));
     } finally {
       setLoading(false);
     }
@@ -178,30 +180,30 @@ const SemanticService: React.FC = () => {
 
   const consistencyColumns = [
     {
-      title: '实例ID',
+      title: t('semantic.instanceId'),
       dataIndex: 'instanceId',
       key: 'instanceId',
     },
     {
-      title: '决策',
+      title: t('semantic.decision'),
       dataIndex: 'decision',
       key: 'decision',
       render: (decision: string) => <Tag color={decisionColor(decision)}>{decision}</Tag>,
     },
     {
-      title: '失败规则数',
+      title: t('semantic.failedRuleCount'),
       dataIndex: 'failedRuleCount',
       key: 'failedRuleCount',
       width: 110,
     },
     {
-      title: '失败规则',
+      title: t('semantic.failedRules'),
       dataIndex: 'failedRules',
       key: 'failedRules',
       render: (rules: string[]) => rules.length ? rules.map(rule => <Tag color="red" key={rule}>{rule}</Tag>) : '-',
     },
     {
-      title: '决策ID',
+      title: t('semantic.decisionId'),
       dataIndex: 'decisionId',
       key: 'decisionId',
     },
@@ -223,7 +225,7 @@ const SemanticService: React.FC = () => {
       });
       setExecuteResult(result);
     } catch (error) {
-      message.error(error instanceof SyntaxError ? '请求载荷不是合法 JSON' : '操作执行失败');
+      message.error(error instanceof SyntaxError ? t('semantic.invalidPayload') : t('semantic.executeFailed'));
     } finally {
       setLoading(false);
     }
@@ -231,13 +233,13 @@ const SemanticService: React.FC = () => {
 
   return (
     <div>
-      <Title level={3}>语义服务</Title>
+      <Title level={3}>{t('semantic.title')}</Title>
       <Paragraph type="secondary">
-        提供实例解释、风险研判和操作预检能力
+        {t('semantic.subtitle')}
       </Paragraph>
 
       <Tabs activeKey={tab} onChange={setTab}>
-        <TabPane tab="自然语言交互" key="natural">
+        <TabPane tab={t('semantic.tab.natural')} key="natural">
           <Card>
             <Form
               layout="vertical"
@@ -247,32 +249,32 @@ const SemanticService: React.FC = () => {
     // value that meant nothing while looking like an answer they could just submit.
     initialValues={{ question: '', objectCode: '' }}
             >
-              <Form.Item name="question" label="业务问题" rules={[{ required: true }]}>
-                <Input.TextArea rows={3} placeholder="例如：合同 1 是否合规？HT-2026-003 能提交审批吗？合同整体决策是否一致？" />
+              <Form.Item name="question" label={t('semantic.question')} rules={[{ required: true }]}>
+                <Input.TextArea rows={3} placeholder={t('semantic.questionPlaceholder')} />
               </Form.Item>
               <Space wrap align="start">
-                <Form.Item name="ontologyId" label="本体ID">
-                  <Input placeholder="可选" type="number" style={{ width: 140 }} />
+                <Form.Item name="ontologyId" label={t('semantic.ontologyId')}>
+                  <Input placeholder={t('semantic.optional')} type="number" style={{ width: 140 }} />
                 </Form.Item>
-                <Form.Item name="dataSourceId" label="数据源ID">
-                  <Input placeholder="可选" type="number" style={{ width: 140 }} />
+                <Form.Item name="dataSourceId" label={t('semantic.dataSourceId')}>
+                  <Input placeholder={t('semantic.optional')} type="number" style={{ width: 140 }} />
                 </Form.Item>
-                <Form.Item name="objectCode" label="业务对象编码">
-                  <Input placeholder="留空则自动识别" style={{ width: 180 }} />
+                <Form.Item name="objectCode" label={t('semantic.objectCode')}>
+                  <Input placeholder={t('semantic.objectCodePlaceholder')} style={{ width: 180 }} />
                 </Form.Item>
-                <Form.Item name="instanceId" label="实例ID">
-                  <Input placeholder="可选" style={{ width: 140 }} />
+                <Form.Item name="instanceId" label={t('semantic.instanceId')}>
+                  <Input placeholder={t('semantic.optional')} style={{ width: 140 }} />
                 </Form.Item>
               </Space>
               <Form.Item>
                 <Button type="primary" icon={<MessageOutlined />} htmlType="submit" loading={loading}>
-                  询问本体系统
+                  {t('semantic.askButton')}
                 </Button>
               </Form.Item>
             </Form>
 
             {naturalLanguageResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="本体系统回答">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.answerTitle')}>
                 <Alert
                   message={naturalLanguageResult.answer}
                   type={
@@ -285,25 +287,25 @@ const SemanticService: React.FC = () => {
                 />
                 <Divider />
                 <Descriptions column={3}>
-                  <Descriptions.Item label="识别意图">{naturalLanguageResult.intent}</Descriptions.Item>
-                  <Descriptions.Item label="置信度">{Math.round(naturalLanguageResult.confidence * 100)}%</Descriptions.Item>
-                  <Descriptions.Item label="本体ID">{naturalLanguageResult.resolved.ontologyId}</Descriptions.Item>
-                  <Descriptions.Item label="数据源ID">{naturalLanguageResult.resolved.dataSourceId || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="业务对象">{naturalLanguageResult.resolved.objectCode}</Descriptions.Item>
-                  <Descriptions.Item label="实例ID">{naturalLanguageResult.resolved.instanceId || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="操作码">{naturalLanguageResult.resolved.operationCode || '-'}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.intent')}>{naturalLanguageResult.intent}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.confidence')}>{Math.round(naturalLanguageResult.confidence * 100)}%</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.ontologyId')}>{naturalLanguageResult.resolved.ontologyId}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.dataSourceId')}>{naturalLanguageResult.resolved.dataSourceId || '-'}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.businessObject')}>{naturalLanguageResult.resolved.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.instanceId')}>{naturalLanguageResult.resolved.instanceId || '-'}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.operationCode')}>{naturalLanguageResult.resolved.operationCode || '-'}</Descriptions.Item>
                 </Descriptions>
                 {naturalLanguageResult.nextActions.length > 0 && (
                   <>
                     <Divider />
-                    <Title level={5}>建议动作</Title>
+                    <Title level={5}>{t('semantic.nextActions')}</Title>
                     {naturalLanguageResult.nextActions.map(action => (
                       <Tag color="blue" key={action}>{action}</Tag>
                     ))}
                   </>
                 )}
                 <Divider />
-                <Title level={5}>语义证据</Title>
+                <Title level={5}>{t('semantic.evidence')}</Title>
                 <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8, maxHeight: 360, overflow: 'auto' }}>
                   {JSON.stringify(naturalLanguageResult.evidence, null, 2)}
                 </pre>
@@ -312,33 +314,33 @@ const SemanticService: React.FC = () => {
           </Card>
         </TabPane>
 
-        <TabPane tab="实例解释" key="explain">
+        <TabPane tab={t('semantic.tab.explain')} key="explain">
           <Card>
             <Form form={explainForm} layout="inline" onFinish={handleExplain}>
-              <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="留空则自动识别" />
+              <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.objectCodePlaceholder')} />
               </Form.Item>
-              <Form.Item name="instanceId" label="实例ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" />
+              <Form.Item name="instanceId" label={t('semantic.instanceId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} />
               </Form.Item>
-              <Form.Item name="ontologyId" label="本体ID">
-                <Input placeholder="可选，默认为1" type="number" />
+              <Form.Item name="ontologyId" label={t('semantic.ontologyId')}>
+                <Input placeholder={t('semantic.ontologyIdOptionalPlaceholder')} type="number" />
               </Form.Item>
               <Form.Item>
                 <Button type="primary" icon={<SearchOutlined />} htmlType="submit" loading={loading}>
-                  解释
+                  {t('semantic.explainButton')}
                 </Button>
               </Form.Item>
             </Form>
 
             {explainResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="解释结果">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.explainResultTitle')}>
                 <Descriptions column={2}>
-                  <Descriptions.Item label="业务对象">{explainResult.objectCode}</Descriptions.Item>
-                  <Descriptions.Item label="实例ID">{explainResult.instanceId}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.businessObject')}>{explainResult.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.instanceId')}>{explainResult.instanceId}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <Title level={5}>属性</Title>
+                <Title level={5}>{t('semantic.attributes')}</Title>
                 {/* This printed the attributes through `JSON.stringify` in a `<pre>`, because
                     the response type declared them as an untyped blob. A type that says
                     "some object" produces a renderer that treats it as one -- and the
@@ -351,15 +353,15 @@ const SemanticService: React.FC = () => {
                   pagination={false}
                   dataSource={explainResult.attributes}
                   columns={[
-                    { title: '属性', dataIndex: 'attributeName', key: 'attributeName' },
+                    { title: t('semantic.attributeColumn'), dataIndex: 'attributeName', key: 'attributeName' },
                     {
-                      title: '编码',
+                      title: t('semantic.codeColumn'),
                       dataIndex: 'attributeCode',
                       key: 'attributeCode',
                       render: (code: string) => <Typography.Text code>{code}</Typography.Text>,
                     },
                     {
-                      title: '来源',
+                      title: t('semantic.sourceColumn'),
                       key: 'source',
                       render: (_: unknown, row: InstanceExplainAttribute) =>
                         // A derived attribute has no column behind it, and saying so is the
@@ -375,52 +377,52 @@ const SemanticService: React.FC = () => {
                         ),
                     },
                     {
-                      title: '值',
+                      title: t('semantic.valueColumn'),
                       key: 'value',
                       render: (_: unknown, row: InstanceExplainAttribute) => (
                         <Space size={4}>
-                          <Typography.Text>{row.value === null || row.value === undefined ? '空值' : String(row.value)}</Typography.Text>
+                          <Typography.Text>{row.value === null || row.value === undefined ? t('semantic.emptyValue') : String(row.value)}</Typography.Text>
                           {row.unitName && <Tag>{row.unitName}</Tag>}
                         </Space>
                       ),
                     },
                   ]}
                 />
-                <Title level={5} style={{ marginTop: 16 }}>解释</Title>
+                <Title level={5} style={{ marginTop: 16 }}>{t('semantic.explanation')}</Title>
                 <Alert message={explainResult.explanation} type="info" />
                 <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
-                  在「对象浏览」中点击任一实例的「解释」，可以看到同一份解释加上事件历史与取值沿革。
+                  {t('semantic.objectsHint')}
                 </Typography.Paragraph>
               </Card>
             )}
           </Card>
         </TabPane>
 
-        <TabPane tab="风险研判" key="assess">
+        <TabPane tab={t('semantic.tab.assess')} key="assess">
           <Card>
             <Form form={assessForm} layout="inline" onFinish={handleAssess}>
-              <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="留空则自动识别" />
+              <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.objectCodePlaceholder')} />
               </Form.Item>
-              <Form.Item name="instanceId" label="实例ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" />
+              <Form.Item name="instanceId" label={t('semantic.instanceId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} />
               </Form.Item>
-              <Form.Item name="ontologyId" label="本体ID">
-                <Input placeholder="可选，默认为1" type="number" />
+              <Form.Item name="ontologyId" label={t('semantic.ontologyId')}>
+                <Input placeholder={t('semantic.ontologyIdOptionalPlaceholder')} type="number" />
               </Form.Item>
               <Form.Item>
                 <Button type="primary" icon={<BugOutlined />} htmlType="submit" loading={loading}>
-                  研判
+                  {t('semantic.assessButton')}
                 </Button>
               </Form.Item>
             </Form>
 
             {assessResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="研判结果">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.assessResultTitle')}>
                 <Descriptions column={2}>
-                  <Descriptions.Item label="业务对象">{assessResult.objectCode}</Descriptions.Item>
-                  <Descriptions.Item label="实例ID">{assessResult.instanceId}</Descriptions.Item>
-                  <Descriptions.Item label="决策">
+                  <Descriptions.Item label={t('semantic.businessObject')}>{assessResult.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.instanceId')}>{assessResult.instanceId}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.decision')}>
                     <Tag color={
                       assessResult.decision === 'approved' ? 'green' :
                       assessResult.decision === 'review' ? 'orange' : 'red'
@@ -430,66 +432,66 @@ const SemanticService: React.FC = () => {
                   </Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <Title level={5}>命中的规则</Title>
+                <Title level={5}>{t('semantic.rulesHit')}</Title>
                 <ul>
                   {assessResult.rulesHit.map((rule, index) => (
                     <li key={index}>
-                      <Tag color={rule.passed ? 'green' : 'red'}>{rule.passed ? '通过' : '未通过'}</Tag>
-                      <strong>{rule.ruleName}</strong>：{rule.message}
+                      <Tag color={rule.passed ? 'green' : 'red'}>{rule.passed ? t('semantic.rulePassed') : t('semantic.ruleFailed')}</Tag>
+                      <strong>{rule.ruleName}</strong>{t('semantic.ruleSeparator')}{rule.message}
                     </li>
                   ))}
                 </ul>
                 <Divider />
-                <Title level={5}>解释</Title>
+                <Title level={5}>{t('semantic.explanation')}</Title>
                 <Alert message={assessResult.explanation} type={assessResult.decision === 'approved' ? 'success' : assessResult.decision === 'review' ? 'warning' : 'error'} />
               </Card>
             )}
           </Card>
         </TabPane>
 
-        <TabPane tab="决策一致性" key="consistency">
+        <TabPane tab={t('semantic.tab.consistency')} key="consistency">
           <Card>
             <Form form={consistencyForm} layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
-              <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-                <Input placeholder="留空则自动识别" />
+              <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.objectCodePlaceholder')} />
               </Form.Item>
-              <Form.Item name="ontologyId" label="本体ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" type="number" />
+              <Form.Item name="ontologyId" label={t('semantic.ontologyId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} type="number" />
               </Form.Item>
-              <Form.Item name="limit" label="抽样上限">
-                <Input placeholder="默认 50，最大 200" type="number" />
+              <Form.Item name="limit" label={t('semantic.sampleLimit')}>
+                <Input placeholder={t('semantic.sampleLimitPlaceholder')} type="number" />
               </Form.Item>
-              <Form.Item name="instanceIds" label="指定实例ID">
-                <Input.TextArea rows={3} placeholder="可选。多个实例可用逗号、空格或换行分隔，例如：1,2,3" />
+              <Form.Item name="instanceIds" label={t('semantic.instanceIds')}>
+                <Input.TextArea rows={3} placeholder={t('semantic.instanceIdsPlaceholder')} />
               </Form.Item>
               <Form.Item>
                 <Button type="primary" icon={<AuditOutlined />} htmlType="submit" loading={loading}>
-                  批量评估
+                  {t('semantic.batchAssessButton')}
                 </Button>
               </Form.Item>
             </Form>
 
             {consistencyResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="一致性评估结果">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.consistencyResultTitle')}>
                 <Descriptions column={4}>
-                  <Descriptions.Item label="业务对象">{consistencyResult.objectCode}</Descriptions.Item>
-                  <Descriptions.Item label="样本数">{consistencyResult.sampleSize}</Descriptions.Item>
-                  <Descriptions.Item label="已评估">{consistencyResult.assessed}</Descriptions.Item>
-                  <Descriptions.Item label="状态">
+                  <Descriptions.Item label={t('semantic.businessObject')}>{consistencyResult.objectCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.sampleSize')}>{consistencyResult.sampleSize}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.assessed')}>{consistencyResult.assessed}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.status')}>
                     <Tag color={consistencyColor(consistencyResult.status)}>
                       {label(CONSISTENCY_STATUS, consistencyResult.status)}
                     </Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="通过">{consistencyResult.summary.approved}</Descriptions.Item>
-                  <Descriptions.Item label="复核">{consistencyResult.summary.review}</Descriptions.Item>
-                  <Descriptions.Item label="阻断">{consistencyResult.summary.blocked}</Descriptions.Item>
-                  <Descriptions.Item label="错误">{consistencyResult.summary.errors}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.summaryApproved')}>{consistencyResult.summary.approved}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.summaryReview')}>{consistencyResult.summary.review}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.summaryBlocked')}>{consistencyResult.summary.blocked}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.summaryErrors')}>{consistencyResult.summary.errors}</Descriptions.Item>
                 </Descriptions>
                 {consistencyResult.nextActions.length > 0 && (
                   <>
                     <Divider />
                     <Alert
-                      message="治理建议"
+                      message={t('semantic.governanceAdvice')}
                       description={joinSentences(consistencyResult.nextActions)}
                       type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
                     />
@@ -498,7 +500,7 @@ const SemanticService: React.FC = () => {
                 {consistencyResult.ruleFailures.length > 0 && (
                   <>
                     <Divider />
-                    <Title level={5}>规则失败分布</Title>
+                    <Title level={5}>{t('semantic.ruleFailureDistribution')}</Title>
                     {consistencyResult.ruleFailures.map(item => (
                       <Tag color="red" key={item.ruleCode}>{item.ruleCode}: {item.failures}</Tag>
                     ))}
@@ -515,8 +517,8 @@ const SemanticService: React.FC = () => {
                   <>
                     <Divider />
                     <Alert
-                      message="评估错误"
-                      description={consistencyResult.errors.map(item => `${item.instanceId}: ${item.error}`).join('；')}
+                      message={t('semantic.assessmentErrors')}
+                      description={consistencyResult.errors.map(item => `${item.instanceId}: ${item.error}`).join(t('semantic.listSeparator'))}
                       type="error"
                     />
                   </>
@@ -526,49 +528,49 @@ const SemanticService: React.FC = () => {
           </Card>
         </TabPane>
 
-        <TabPane tab="操作预检" key="preflight">
+        <TabPane tab={t('semantic.tab.preflight')} key="preflight">
           <Card>
             <Form form={operationForm} layout="vertical" onFinish={handlePreflight} initialValues={{ dryRun: true }}>
-              <Form.Item name="operationCode" label="操作码" rules={[{ required: true }]}>
-                <Input placeholder="例如：submit_contract" />
+              <Form.Item name="operationCode" label={t('semantic.operationCode')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.operationCodePlaceholder')} />
               </Form.Item>
-              <Form.Item name="ontologyId" label="本体ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" type="number" />
+              <Form.Item name="ontologyId" label={t('semantic.ontologyId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} type="number" />
               </Form.Item>
-              <Form.Item name="dataSourceId" label="数据源ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" type="number" />
+              <Form.Item name="dataSourceId" label={t('semantic.dataSourceId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} type="number" />
               </Form.Item>
-              <Form.Item name="instanceId" label="实例ID" rules={[{ required: true }]}>
-                <Input placeholder="例如：1" />
+              <Form.Item name="instanceId" label={t('semantic.instanceId')} rules={[{ required: true }]}>
+                <Input placeholder={t('semantic.idPlaceholder')} />
               </Form.Item>
-              <Form.Item name="objectCode" label="业务对象编码">
-                <Input placeholder="可选，例如：contract" />
+              <Form.Item name="objectCode" label={t('semantic.objectCode')}>
+                <Input placeholder={t('semantic.objectCodeOptionalPlaceholder')} />
               </Form.Item>
-              <Form.Item name="actor" label="操作者">
-                <Input placeholder="例如：业务控制台" />
+              <Form.Item name="actor" label={t('semantic.actor')}>
+                <Input placeholder={t('semantic.actorPlaceholder')} />
               </Form.Item>
-              <Form.Item name="payloadJson" label="执行载荷 JSON">
-                <Input.TextArea rows={4} placeholder='例如：{"comment":"自动提交"}' />
+              <Form.Item name="payloadJson" label={t('semantic.payloadJson')}>
+                <Input.TextArea rows={4} placeholder={t('semantic.payloadPlaceholder')} />
               </Form.Item>
-              <Form.Item name="dryRun" label="仅生成执行计划" valuePropName="checked">
+              <Form.Item name="dryRun" label={t('semantic.dryRun')} valuePropName="checked">
                 <Switch />
               </Form.Item>
               <Form.Item>
                 <Button type="primary" icon={<RocketOutlined />} htmlType="submit" loading={loading} style={{ marginRight: 8 }}>
-                  预检
+                  {t('semantic.preflightButton')}
                 </Button>
                 <Button icon={<RocketOutlined />} onClick={handleExecute} loading={loading}>
-                  执行
+                  {t('semantic.executeButton')}
                 </Button>
               </Form.Item>
             </Form>
 
             {preflightResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="预检结果">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.preflightResultTitle')}>
                 <Descriptions column={2}>
-                  <Descriptions.Item label="操作码">{preflightResult.operationCode}</Descriptions.Item>
-                  <Descriptions.Item label="实例ID">{preflightResult.instanceId}</Descriptions.Item>
-                  <Descriptions.Item label="决策">
+                  <Descriptions.Item label={t('semantic.operationCode')}>{preflightResult.operationCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.instanceId')}>{preflightResult.instanceId}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.decision')}>
                     <Tag color={
                       preflightResult.decision === 'approved' ? 'green' :
                       preflightResult.decision === 'review' ? 'orange' : 'red'
@@ -578,22 +580,22 @@ const SemanticService: React.FC = () => {
                   </Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <Title level={5}>命中的规则</Title>
+                <Title level={5}>{t('semantic.rulesHit')}</Title>
                 <ul>
                   {preflightResult.rulesHit.map((rule, index) => (
                     <li key={index}>
-                      <Tag color={rule.passed ? 'green' : 'red'}>{rule.passed ? '通过' : '未通过'}</Tag>
-                      <strong>{rule.ruleName}</strong>：{rule.message}
+                      <Tag color={rule.passed ? 'green' : 'red'}>{rule.passed ? t('semantic.rulePassed') : t('semantic.ruleFailed')}</Tag>
+                      <strong>{rule.ruleName}</strong>{t('semantic.ruleSeparator')}{rule.message}
                     </li>
                   ))}
                 </ul>
                 <Divider />
-                <Title level={5}>建议</Title>
+                <Title level={5}>{t('semantic.recommendation')}</Title>
                 <Alert
                   message={
                     preflightResult.recommendation ||
                     label(NEXT_ACTION, preflightResult.nextAction) ||
-                    '无'
+                    t('semantic.none')
                   }
                   type="info"
                 />
@@ -601,23 +603,23 @@ const SemanticService: React.FC = () => {
             )}
 
             {executeResult && (
-              <Card style={{ marginTop: 16 }} type="inner" title="执行结果">
+              <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.executeResultTitle')}>
                 <Descriptions column={2}>
-                  <Descriptions.Item label="操作码">{executeResult.operationCode}</Descriptions.Item>
-                  <Descriptions.Item label="实例ID">{executeResult.instanceId}</Descriptions.Item>
-                  <Descriptions.Item label="状态">
+                  <Descriptions.Item label={t('semantic.operationCode')}>{executeResult.operationCode}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.instanceId')}>{executeResult.instanceId}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.status')}>
                     <Tag color={executeResult.executed ? 'green' : executeResult.status === 'blocked_by_semantic_kernel' ? 'red' : 'blue'}>
                       {label(EXECUTION_STATUS, executeResult.status)}
                     </Tag>
                   </Descriptions.Item>
-                  <Descriptions.Item label="决策">{label(DECISION_STATUS, executeResult.decision)}</Descriptions.Item>
+                  <Descriptions.Item label={t('semantic.decision')}>{label(DECISION_STATUS, executeResult.decision)}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
                 <Alert message={executeResult.message} type={executeResult.status === 'blocked_by_semantic_kernel' ? 'error' : 'success'} />
                 {executeResult.execution && (
                   <>
                     <Divider />
-                    <Title level={5}>执行计划</Title>
+                    <Title level={5}>{t('semantic.executionPlan')}</Title>
                     <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 8 }}>
                       {JSON.stringify(executeResult.execution, null, 2)}
                     </pre>

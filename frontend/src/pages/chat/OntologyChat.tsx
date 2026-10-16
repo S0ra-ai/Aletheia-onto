@@ -3,6 +3,7 @@ import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typograph
 import { SendOutlined, UserOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { agentApi, conversationApi, knowledgeBaseApi, requestErrorMessage } from '../../api';
 import MarkdownMessage from '../../components/MarkdownMessage';
+import { useT } from '../../i18n/locale';
 import type { AgentRole, AgentChatResult, KnowledgeBase } from '../../types';
 
 const { Paragraph, Text, Title } = Typography;
@@ -37,23 +38,27 @@ const roleAvatar = (roles: AgentRole[], roleId?: string): string => {
   return role?.avatar || 'AI';
 };
 
+// `t` is passed in rather than imported: these helpers build a sentence for a screen, and a
+// module-level function cannot call `useT` itself -- a hook only runs inside a component.
+type Translate = ReturnType<typeof useT>;
+
 // Prompts are built from the objects actually present in the knowledge base, so
 // they reference the user's own business vocabulary.
-const buildQuickPrompts = (knowledgeBase?: KnowledgeBase): string[] => {
+const buildQuickPrompts = (t: Translate, knowledgeBase?: KnowledgeBase): string[] => {
   const objects = knowledgeBase?.objects || [];
   if (objects.length === 0) {
-    return ['查看所有已接入的数据源', '当前知识库有哪些业务对象？'];
+    return [t('chat.promptAllSources'), t('chat.promptObjects')];
   }
   const primary = objects[0];
   const primaryLabel = primary.name || primary.code;
   const prompts = [
-    `${primaryLabel}整体是否合规？`,
-    `查看${primaryLabel}的业务规则`,
-    `${primaryLabel}决策是否一致？`,
+    t('chat.promptCompliance', { name: primaryLabel }),
+    t('chat.promptRules', { name: primaryLabel }),
+    t('chat.promptConsistency', { name: primaryLabel }),
   ];
   if (objects[1]) {
     const secondary = objects[1];
-    prompts.push(`${secondary.name || secondary.code}有哪些关联关系？`);
+    prompts.push(t('chat.promptRelations', { name: secondary.name || secondary.code }));
   }
   return prompts;
 };
@@ -71,14 +76,12 @@ const preferredObjectCode = (knowledgeBase?: KnowledgeBase) => knowledgeBase?.ob
  * One function for both call sites: the two copies had already drifted (one carried the
  * role's description, the other did not).
  */
-const welcomeMessage = (roleName: string, roleDescription: string, hasTarget: boolean) =>
-  `你好，我是${roleName}。${roleDescription}${
-    hasTarget
-      ? '\n\n数据源与业务对象已选定，直接提问即可。'
-      : '\n\n请先选择已初始化的数据源和业务对象，然后向我提问。'
-  }`;
+const welcomeMessage = (t: Translate, roleName: string, roleDescription: string, hasTarget: boolean) =>
+  t('chat.welcomeIntro', { roleName, roleDescription }) +
+  (hasTarget ? t('chat.welcomeReady') : t('chat.welcomeSelectFirst'));
 
 const OntologyChat: React.FC = () => {
+  const t = useT();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -114,13 +117,13 @@ const OntologyChat: React.FC = () => {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: welcomeMessage(selectedRole.name, selectedRole.description, Boolean(objectCode)),
+        content: welcomeMessage(t, selectedRole.name, selectedRole.description, Boolean(objectCode)),
         roleId: selectedRole.id,
       }]);
     }
     // `objectCode` is read here, so it is listed: while the conversation is empty the
     // greeting should follow the selection instead of describing the state it loaded with.
-  }, [selectedRole, objectCode, messages.length]);
+  }, [selectedRole, objectCode, messages.length, t]);
 
   const selectedKnowledgeBase = knowledgeBases.find(item => item.dataSourceId === dataSourceId);
 
@@ -134,14 +137,14 @@ const OntologyChat: React.FC = () => {
       await conversationApi.submitFeedback(item.messageId, { rating });
       setMessages(prev => prev.map(m => (m.id === item.id ? { ...m, feedbackGiven: rating } : m)));
       message.success(
-        rating === 'incorrect' ? '已记录：该结论被标记为错误，将进入复核队列' : '感谢反馈',
+        rating === 'incorrect' ? t('chat.feedbackRecordedIncorrect') : t('chat.feedbackThanks'),
       );
     } catch (error) {
-      message.error(requestErrorMessage(error, '提交反馈失败'));
+      message.error(requestErrorMessage(error, t('chat.feedbackFailed')));
     }
   };
 
-  const quickPrompts = buildQuickPrompts(selectedKnowledgeBase);
+  const quickPrompts = buildQuickPrompts(t, selectedKnowledgeBase);
 
   // Message ids come from a counter rather than `Date.now()`. The id is both the React key
   // and the key the feedback update matches on, so two messages created within one
@@ -189,13 +192,13 @@ const OntologyChat: React.FC = () => {
         },
       ]);
     } catch (error) {
-      message.error(requestErrorMessage(error, '对话失败，请检查模型配置或数据源本体是否已生成'));
+      message.error(requestErrorMessage(error, t('chat.requestFailed')));
       setMessages(prev => [
         ...prev,
         {
           id: localMessageId('a'),
           role: 'assistant',
-          content: '我暂时无法完成这次语义研判。请确认已接入数据源并生成本体，或在模型配置中测试 OpenRouter 连接。',
+          content: t('chat.assistantUnavailable'),
           roleId: selectedRoleId,
         },
       ]);
@@ -220,10 +223,10 @@ const OntologyChat: React.FC = () => {
         <div>
           <Title level={3} style={{ marginBottom: 4 }}>
             <ThunderboltOutlined style={{ marginRight: 8, color: roleColor(selectedRoleId) }} />
-            智能体对话
+            {t('chat.title')}
           </Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            选择角色和数据源，像与业务专家对话一样提问；回答基于真实数据和已确认的业务规则。
+            {t('chat.subtitle')}
           </Paragraph>
         </div>
         <Space wrap>
@@ -235,7 +238,7 @@ const OntologyChat: React.FC = () => {
           />
           <Select
             allowClear
-            placeholder="数据源"
+            placeholder={t('chat.dataSourcePlaceholder')}
             value={dataSourceId}
             onChange={(value) => {
               setDataSourceId(value);
@@ -247,7 +250,7 @@ const OntologyChat: React.FC = () => {
           <Select
             value={objectCode}
             onChange={setObjectCode}
-            placeholder="业务对象"
+            placeholder={t('chat.objectPlaceholder')}
             style={{ width: 190 }}
             options={(selectedKnowledgeBase?.objects || []).map(item => ({ value: item.code, label: `${item.name} (${item.code})` }))}
           />
@@ -255,17 +258,17 @@ const OntologyChat: React.FC = () => {
             setMessages([{
               id: 'welcome',
               role: 'assistant',
-              content: welcomeMessage(selectedRole?.name || '业务顾问', selectedRole?.description || '', Boolean(objectCode)),
+              content: welcomeMessage(t, selectedRole?.name || t('chat.advisorFallback'), selectedRole?.description || '', Boolean(objectCode)),
               roleId: selectedRoleId,
             }]);
           }}>
-            清空
+            {t('chat.clearButton')}
           </Button>
         </Space>
       </div>
 
       {knowledgeBases.length === 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon message="暂无可问答的数据源" description="请先在数据源管理中完成连接测试和知识库初始化。" />
+        <Alert style={{ marginBottom: 12 }} type="warning" showIcon message={t('chat.noKnowledgeTitle')} description={t('chat.noKnowledgeHint')} />
       )}
 
       <Card
@@ -296,7 +299,7 @@ const OntologyChat: React.FC = () => {
                   <div>
                     {!isUser && item.roleId && (
                       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                        {roles.find(r => r.id === item.roleId)?.name || '智能体'}
+                        {roles.find(r => r.id === item.roleId)?.name || t('chat.agentFallback')}
                       </Text>
                     )}
                     <div
@@ -315,18 +318,18 @@ const OntologyChat: React.FC = () => {
                       <div style={{ marginTop: 6 }}>
                         {item.feedbackGiven ? (
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            已反馈：{item.feedbackGiven === 'helpful' ? '有帮助' : item.feedbackGiven === 'unhelpful' ? '没有帮助' : '结论错误'}
+                            {t('chat.feedbackGiven')}{item.feedbackGiven === 'helpful' ? t('chat.feedbackHelpful') : item.feedbackGiven === 'unhelpful' ? t('chat.feedbackUnhelpfulRecorded') : t('chat.feedbackIncorrect')}
                           </Text>
                         ) : (
                           <Space size={4}>
                             <Button size="small" type="text" onClick={() => void handleFeedback(item, 'helpful')}>
-                              有帮助
+                              {t('chat.feedbackHelpful')}
                             </Button>
                             <Button size="small" type="text" onClick={() => void handleFeedback(item, 'unhelpful')}>
-                              没帮助
+                              {t('chat.feedbackUnhelpful')}
                             </Button>
                             <Button size="small" type="text" danger onClick={() => void handleFeedback(item, 'incorrect')}>
-                              结论错误
+                              {t('chat.feedbackIncorrect')}
                             </Button>
                           </Space>
                         )}
@@ -336,11 +339,11 @@ const OntologyChat: React.FC = () => {
                       <div style={{ marginTop: 8 }}>
                         <Space wrap size={[6, 6]}>
                           <Tag color="blue">{item.result.intent}</Tag>
-                          {item.result.resolved.dataSourceId && <Tag>数据源 #{item.result.resolved.dataSourceId}</Tag>}
+                          {item.result.resolved.dataSourceId && <Tag>{t('chat.dataSourceTag', { id: item.result.resolved.dataSourceId })}</Tag>}
                           {item.result.resolved.objectCode && <Tag>{item.result.resolved.objectCode}</Tag>}
-                          {item.result.model?.usedForUnderstanding && <Tag color="green">模型理解</Tag>}
+                          {item.result.model?.usedForUnderstanding && <Tag color="green">{t('chat.modelUnderstanding')}</Tag>}
                           {item.result.toolCalls && item.result.toolCalls.length > 0 && (
-                            <Tag color="orange">工具调用 x{item.result.toolCalls.length}</Tag>
+                            <Tag color="orange">{t('chat.toolCalls', { count: item.result.toolCalls.length })}</Tag>
                           )}
                         </Space>
                       </div>
@@ -356,7 +359,7 @@ const OntologyChat: React.FC = () => {
                 icon={<span style={{ fontSize: 12, fontWeight: 600 }}>{roleAvatar(roles, selectedRoleId)}</span>}
                 style={{ background: roleColor(selectedRoleId) }}
               />
-              <Alert message={<Spin size="small" />} description="正在分析问题、调用本体内核并整理回答..." type="info" />
+              <Alert message={<Spin size="small" />} description={t('chat.analysing')} type="info" />
             </div>
           )}
         </div>
@@ -380,13 +383,13 @@ const OntologyChat: React.FC = () => {
               }
             }}
             autoSize={{ minRows: 2, maxRows: 5 }}
-            placeholder={`向${selectedRole?.name || '智能体'}提问...`}
+            placeholder={t('chat.askPlaceholder', { role: selectedRole?.name || t('chat.agentFallback') })}
             disabled={loading || !dataSourceId || !objectCode}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-            <Text type="secondary">Enter 发送，Shift + Enter 换行</Text>
+            <Text type="secondary">{t('chat.enterHint')}</Text>
             <Button type="primary" icon={<SendOutlined />} onClick={() => ask()} loading={loading}>
-              发送
+              {t('chat.sendButton')}
             </Button>
           </div>
         </div>

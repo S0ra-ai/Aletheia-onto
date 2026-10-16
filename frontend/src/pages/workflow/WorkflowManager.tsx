@@ -3,8 +3,10 @@ import { Empty, Card, Table, Button, Modal, Form, Input, Select, Space, Tag, mes
 import { PlusOutlined, DeleteOutlined, RightOutlined, HistoryOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, workflowApi } from '../../api';
 import type { WorkflowDefinition, WorkflowHistoryItem } from '../../types';
+import { useT } from '../../i18n/locale';
 
 const WorkflowManager: React.FC = () => {
+  const t = useT();
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [ontologies, setOntologies] = useState<Array<{ id: number; name: string; domain: string }>>([]);
   const [loading, setLoading] = useState(false);
@@ -31,7 +33,7 @@ const WorkflowManager: React.FC = () => {
       const items = await workflowApi.list();
       setWorkflows(items);
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载工作流失败'));
+      message.error(requestErrorMessage(error, t('workflow.loadFailed')));
     }
     setLoading(false);
   };
@@ -43,7 +45,7 @@ const WorkflowManager: React.FC = () => {
     } catch (error) {
       // Ignoring this left the object selector empty with nothing said, so "why can I not
       // pick an ontology" had no answer on screen.
-      message.error(requestErrorMessage(error, '加载本体列表失败'));
+      message.error(requestErrorMessage(error, t('workflow.loadOntologiesFailed')));
     }
   };
 
@@ -57,22 +59,22 @@ const WorkflowManager: React.FC = () => {
         name: values.name,
         description: values.description || '',
       });
-      message.success('工作流创建成功');
+      message.success(t('workflow.createSuccess'));
       setCreateOpen(false);
       form.resetFields();
       loadWorkflows();
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || '创建失败');
+      message.error(e?.response?.data?.detail || t('workflow.createFailed'));
     }
   };
 
   const handleDelete = async (id: number) => {
     try {
       await workflowApi.delete(id);
-      message.success('已删除');
+      message.success(t('workflow.deleteSuccess'));
       loadWorkflows();
     } catch (error) {
-      message.error(requestErrorMessage(error, '删除失败'));
+      message.error(requestErrorMessage(error, t('workflow.deleteFailed')));
     }
   };
 
@@ -82,7 +84,7 @@ const WorkflowManager: React.FC = () => {
       setSelectedWorkflow(detail);
       setDetailOpen(true);
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载详情失败'));
+      message.error(requestErrorMessage(error, t('workflow.loadDetailFailed')));
     }
   };
 
@@ -102,7 +104,7 @@ const WorkflowManager: React.FC = () => {
       // An empty action list means "this workflow allows nothing from here", which is a
       // statement about the configuration. A failed read is not that statement.
       setTransitionActions([]);
-      message.error(requestErrorMessage(error, '读取可执行动作失败'));
+      message.error(requestErrorMessage(error, t('workflow.loadActionsFailed')));
     }
   };
 
@@ -113,10 +115,10 @@ const WorkflowManager: React.FC = () => {
         actionCode,
         actor: 'ui_user',
       });
-      message.success('状态转移成功');
+      message.success(t('workflow.transitionSuccess'));
       setTransitionModalOpen(false);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || '转移失败');
+      message.error(e?.response?.data?.detail || t('workflow.transitionFailed'));
     }
   };
 
@@ -143,7 +145,7 @@ const WorkflowManager: React.FC = () => {
       setHistoryItems([]);
       setHistoryQueried(true);
       setHistoryOpen(true);
-      message.error(requestErrorMessage(error, '读取流转历史失败'));
+      message.error(requestErrorMessage(error, t('workflow.loadHistoryFailed')));
     } finally {
       setHistoryLoading(false);
     }
@@ -159,19 +161,19 @@ const WorkflowManager: React.FC = () => {
 
   const columns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '业务对象', dataIndex: 'objectCode', key: 'objectCode', render: (v: string) => <Tag>{v}</Tag> },
-    { title: '本体', dataIndex: 'ontologyId', key: 'ontologyId' },
-    { title: '初始状态', dataIndex: 'initialState', key: 'initialState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
-    { title: '状态', dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'active' ? 'green' : 'default'}>{v}</Tag> },
+    { title: t('workflow.name'), dataIndex: 'name', key: 'name' },
+    { title: t('workflow.object'), dataIndex: 'objectCode', key: 'objectCode', render: (v: string) => <Tag>{v}</Tag> },
+    { title: t('workflow.ontology'), dataIndex: 'ontologyId', key: 'ontologyId' },
+    { title: t('workflow.initialState'), dataIndex: 'initialState', key: 'initialState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
+    { title: t('workflow.status'), dataIndex: 'status', key: 'status', render: (v: string) => <Tag color={v === 'active' ? 'green' : 'default'}>{v}</Tag> },
     {
-      title: '操作', key: 'action', width: 280,
+      title: t('shell.common.actions'), key: 'action', width: 280,
       render: (_: any, record: WorkflowDefinition) => (
         <Space>
-          <Button size="small" onClick={() => showDetail(record)}>详情</Button>
-          <Button size="small" icon={<RightOutlined />} onClick={() => showTransitionModal(record)}>转移</Button>
-          <Button size="small" icon={<HistoryOutlined />} onClick={() => { setHistoryWorkflow(record); setHistoryInstanceId(transitionInstanceId); void showHistory(record, transitionInstanceId); }}>历史</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
+          <Button size="small" onClick={() => showDetail(record)}>{t('workflow.details')}</Button>
+          <Button size="small" icon={<RightOutlined />} onClick={() => showTransitionModal(record)}>{t('workflow.transition')}</Button>
+          <Button size="small" icon={<HistoryOutlined />} onClick={() => { setHistoryWorkflow(record); setHistoryInstanceId(transitionInstanceId); void showHistory(record, transitionInstanceId); }}>{t('workflow.history')}</Button>
+          <Popconfirm title={t('workflow.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -181,7 +183,7 @@ const WorkflowManager: React.FC = () => {
 
   return (
     <div>
-      <Card title="工作流管理" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建工作流</Button>}>
+      <Card title={t('workflow.title')} extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>{t('workflow.createButton')}</Button>}>
         <Table
           dataSource={workflows}
           columns={columns}
@@ -192,38 +194,38 @@ const WorkflowManager: React.FC = () => {
             // A bare "暂无数据" leaves the reader to guess whether the feature is missing,
             // the fetch failed, or there is simply nothing yet.
             emptyText: (
-              <Empty description="还没有工作流。工作流为一个业务对象定义状态与流转条件，流转时的守卫表达式会在规则沙箱中求值。" />
+              <Empty description={t('workflow.empty')} />
             ),
           }}
         />
       </Card>
 
-      <Modal title="新建工作流" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => form.submit()} width={500}>
+      <Modal title={t('workflow.createButton')} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => form.submit()} width={500}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Form.Item name="ontologyId" label="本体" rules={[{ required: true }]}>
-            <Select placeholder="选择本体">
+          <Form.Item name="ontologyId" label={t('workflow.ontology')} rules={[{ required: true }]}>
+            <Select placeholder={t('workflow.selectOntology')}>
               {ontologies.map(o => <Select.Option key={o.id} value={o.id}>{o.name} ({o.domain})</Select.Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="objectCode" label="业务对象编码" rules={[{ required: true }]}>
-            <Input placeholder="如 contract, equipment" />
+          <Form.Item name="objectCode" label={t('workflow.objectCodeLabel')} rules={[{ required: true }]}>
+            <Input placeholder={t('workflow.objectCodePlaceholder')} />
           </Form.Item>
-          <Form.Item name="name" label="工作流名称" rules={[{ required: true }]}>
-            <Input placeholder="合同审批流程" />
+          <Form.Item name="name" label={t('workflow.nameLabel')} rules={[{ required: true }]}>
+            <Input placeholder={t('workflow.namePlaceholder')} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea placeholder="可选" />
+          <Form.Item name="description" label={t('workflow.description')}>
+            <Input.TextArea placeholder={t('workflow.optional')} />
           </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="工作流详情" open={detailOpen} onCancel={() => setDetailOpen(false)} footer={null} width={800}>
+      <Modal title={t('workflow.detailTitle')} open={detailOpen} onCancel={() => setDetailOpen(false)} footer={null} width={800}>
         {selectedWorkflow && (
           <div>
             <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="名称">{selectedWorkflow.name}</Descriptions.Item>
-              <Descriptions.Item label="业务对象"><Tag>{selectedWorkflow.objectCode}</Tag></Descriptions.Item>
-              <Descriptions.Item label="初始状态"><Tag color={stateColor(selectedWorkflow.initialState)}>{selectedWorkflow.initialState}</Tag></Descriptions.Item>
+              <Descriptions.Item label={t('workflow.name')}>{selectedWorkflow.name}</Descriptions.Item>
+              <Descriptions.Item label={t('workflow.object')}><Tag>{selectedWorkflow.objectCode}</Tag></Descriptions.Item>
+              <Descriptions.Item label={t('workflow.initialState')}><Tag color={stateColor(selectedWorkflow.initialState)}>{selectedWorkflow.initialState}</Tag></Descriptions.Item>
               {/* No status row. `workflow_definition.status` is `active` and nothing ever
                   changes it -- deleting a workflow removes the row -- so the row showed one
                   value under a heading that promises a lifecycle. A field that cannot vary is
@@ -231,29 +233,29 @@ const WorkflowManager: React.FC = () => {
 
             </Descriptions>
 
-            <Card title="状态节点" size="small" style={{ marginTop: 16 }}>
+            <Card title={t('workflow.states')} size="small" style={{ marginTop: 16 }}>
               <Space wrap>
                 {(selectedWorkflow.states || []).map(s => (
                   <Tag key={s.code} color={s.color} style={{ fontSize: 13, padding: '4px 12px' }}>
-                    {s.name} ({s.code}){s.isTerminal ? ' [终态]' : ''}
+                    {s.name} ({s.code}){s.isTerminal ? t('workflow.terminal') : ''}
                   </Tag>
                 ))}
               </Space>
             </Card>
 
-            <Card title="转移规则" size="small" style={{ marginTop: 16 }}>
+            <Card title={t('workflow.transitions')} size="small" style={{ marginTop: 16 }}>
               <Table
                 dataSource={selectedWorkflow.transitions || []}
                 rowKey="id"
                 size="small"
                 pagination={false}
                 columns={[
-                  { title: '动作', dataIndex: 'actionCode', render: (v: string) => <Tag>{v}</Tag> },
-                  { title: '名称', dataIndex: 'name' },
-                  { title: '来源', dataIndex: 'fromState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
+                  { title: t('workflow.action'), dataIndex: 'actionCode', render: (v: string) => <Tag>{v}</Tag> },
+                  { title: t('workflow.name'), dataIndex: 'name' },
+                  { title: t('workflow.from'), dataIndex: 'fromState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
                   { title: '→', width: 40, render: () => <RightOutlined /> },
-                  { title: '目标', dataIndex: 'toState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
-                  { title: '需审核', dataIndex: 'requiresReview', render: (v: number) => v ? <Tag color="orange">是</Tag> : '-' },
+                  { title: t('workflow.to'), dataIndex: 'toState', render: (v: string) => <Tag color={stateColor(v)}>{v}</Tag> },
+                  { title: t('workflow.requiresReview'), dataIndex: 'requiresReview', render: (v: number) => v ? <Tag color="orange">{t('workflow.yes')}</Tag> : '-' },
                 ]}
               />
             </Card>
@@ -261,10 +263,10 @@ const WorkflowManager: React.FC = () => {
         )}
       </Modal>
 
-      <Modal title="实例状态转移" open={transitionModalOpen} onCancel={() => setTransitionModalOpen(false)} footer={null} width={500}>
+      <Modal title={t('workflow.transitionTitle')} open={transitionModalOpen} onCancel={() => setTransitionModalOpen(false)} footer={null} width={500}>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Input placeholder="输入实例 ID" value={transitionInstanceId} onChange={e => setTransitionInstanceId(e.target.value)} onPressEnter={loadActions} />
-          <Button onClick={loadActions}>查询可用动作</Button>
+          <Input placeholder={t('workflow.instanceIdPlaceholder')} value={transitionInstanceId} onChange={e => setTransitionInstanceId(e.target.value)} onPressEnter={loadActions} />
+          <Button onClick={loadActions}>{t('workflow.loadActionButton')}</Button>
           {transitionActions.length > 0 ? (
             <Space wrap>
               {transitionActions.map(a => (
@@ -274,14 +276,14 @@ const WorkflowManager: React.FC = () => {
               ))}
             </Space>
           ) : transitionInstanceId ? (
-            <div style={{ color: '#999' }}>该实例暂无可用动作</div>
+            <div style={{ color: '#999' }}>{t('workflow.noActions')}</div>
           ) : null}
         </Space>
       </Modal>
 
-      <Modal title="工作流历史" open={historyOpen} onCancel={() => setHistoryOpen(false)} footer={null} width={600}>
+      <Modal title={t('workflow.historyTitle')} open={historyOpen} onCancel={() => setHistoryOpen(false)} footer={null} width={600}>
         <Input
-          placeholder="输入实例 ID"
+          placeholder={t('workflow.instanceIdPlaceholder')}
           value={historyInstanceId}
           onChange={e => setHistoryInstanceId(e.target.value)}
           onPressEnter={() => historyWorkflow && void showHistory(historyWorkflow, historyInstanceId)}
@@ -292,11 +294,11 @@ const WorkflowManager: React.FC = () => {
           loading={historyLoading}
           style={{ marginBottom: 16 }}
         >
-          查询历史
+          {t('workflow.queryHistory')}
         </Button>
         {!historyQueried ? (
           <div style={{ color: '#999', textAlign: 'center', padding: 24 }}>
-            输入要查看的实例 ID。流转历史属于某个实例，不是一个工作流的属性。
+            {t('workflow.historyPrompt')}
           </div>
         ) : historyItems.length > 0 ? (
           <Timeline items={historyItems.map(h => ({
@@ -304,7 +306,7 @@ const WorkflowManager: React.FC = () => {
             children: (
               <div>
                 <div style={{ fontWeight: 500 }}>
-                  {h.fromState || '初始'} → {h.toState}
+                  {h.fromState || t('workflow.initial')} → {h.toState}
                   <Tag style={{ marginLeft: 8 }}>{h.actionCode}</Tag>
                 </div>
                 <div style={{ color: '#666', fontSize: 12 }}>
@@ -315,7 +317,7 @@ const WorkflowManager: React.FC = () => {
             ),
           }))} />
         ) : (
-          <div style={{ color: '#999', textAlign: 'center', padding: 24 }}>暂无历史记录</div>
+          <div style={{ color: '#999', textAlign: 'center', padding: 24 }}>{t('workflow.noHistory')}</div>
         )}
       </Modal>
     </div>

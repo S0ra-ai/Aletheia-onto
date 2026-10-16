@@ -3,6 +3,7 @@ import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input,
 import { PlusOutlined, ScanOutlined, ApiOutlined, LinkOutlined, BulbOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { CONNECTION_STATUS, READINESS_STATUS, label } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import { aiApi, dataSourceApi, industryBlueprintApi, onboardingApi, requestErrorMessage } from '../../api';
 import { initializeReport, scanReport } from '../../i18n/text';
 import MarkdownMessage from '../../components/MarkdownMessage';
@@ -11,18 +12,19 @@ import type { DataSource, DataSourceCreate, IndustryBlueprint, OnboardingResult,
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const ONBOARDING_STEP_LABELS: Record<string, string> = {
-  register_data_source: '登记数据源',
-  test_connection: '测试数据库连接',
-  test_api_gateway: '测试业务 API',
-  scan_metadata: '扫描表结构',
-  import_openapi: '导入业务 API 定义',
-  generate_ontology: '生成知识模型草案',
-  seed_permissions: '初始化默认权限',
-  assess_readiness: '检查接入准备度',
+const ONBOARDING_STEP_KEYS: Record<string, string> = {
+  register_data_source: 'datasource.stepRegisterDataSource',
+  test_connection: 'datasource.stepTestConnection',
+  test_api_gateway: 'datasource.stepTestApiGateway',
+  scan_metadata: 'datasource.stepScanMetadata',
+  import_openapi: 'datasource.stepImportOpenApi',
+  generate_ontology: 'datasource.stepGenerateOntology',
+  seed_permissions: 'datasource.stepSeedPermissions',
+  assess_readiness: 'datasource.stepAssessReadiness',
 };
 
 const DataSourceList: React.FC = () => {
+  const t = useT();
   const navigate = useNavigate();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ const DataSourceList: React.FC = () => {
       const data = await dataSourceApi.list();
       setDataSources(data);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取数据源列表失败'));
+      message.error(requestErrorMessage(error, t('datasource.loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -54,13 +56,13 @@ const DataSourceList: React.FC = () => {
   useEffect(() => {
     fetchDataSources();
     industryBlueprintApi.list().then(setBlueprints).catch(() => undefined);
-  }, []);
+  }, [t]);
 
   const parseApiHeaders = (value?: string): Record<string, string> => {
     if (!value?.trim()) return {};
     const parsed = JSON.parse(value);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('业务 API 请求头必须是 JSON 对象');
+      throw new Error(t('datasource.apiHeadersInvalid'));
     }
     return Object.fromEntries(
       Object.entries(parsed)
@@ -73,7 +75,7 @@ const DataSourceList: React.FC = () => {
     if (!value?.trim()) return undefined;
     const parsed = JSON.parse(value);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('OpenAPI JSON 必须是对象');
+      throw new Error(t('datasource.openApiJsonNotObject'));
     }
     return parsed as Record<string, unknown>;
   };
@@ -84,12 +86,12 @@ const DataSourceList: React.FC = () => {
         apiHeadersJson?: string;
       };
       await dataSourceApi.create({ ...payload, apiHeaders: parseApiHeaders(apiHeadersJson) });
-      message.success('数据源创建成功');
+      message.success(t('datasource.createSuccess'));
       setModalVisible(false);
       form.resetFields();
       fetchDataSources();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '创建失败');
+      message.error(error instanceof Error ? error.message : t('datasource.createFailed'));
     }
   };
 
@@ -100,13 +102,13 @@ const DataSourceList: React.FC = () => {
       const result = await dataSourceApi.testConnection(values);
       setConnectionResult(result);
       if (result.reachable) {
-        message.success('连接测试成功');
+        message.success(t('datasource.connectionOk'));
       } else {
         message.warning(result.message);
       }
     } catch (error) {
       if (!(error instanceof Error)) {
-        message.error('连接测试失败');
+        message.error(t('datasource.connectionTestFailed'));
       }
     } finally {
       setTestingConnection(false);
@@ -117,12 +119,12 @@ const DataSourceList: React.FC = () => {
     try {
       const result = await dataSourceApi.testRegisteredConnection(record.id);
       if (result.reachable) {
-        message.success(`${record.name} 连接正常`);
+        message.success(t('datasource.registeredConnectionOk', { name: record.name }));
       } else {
         message.warning(result.message);
       }
     } catch (error) {
-      message.error(requestErrorMessage(error, '连接测试失败'));
+      message.error(requestErrorMessage(error, t('datasource.connectionTestFailed')));
     }
   };
 
@@ -135,7 +137,7 @@ const DataSourceList: React.FC = () => {
       else message.success(report.text);
       fetchDataSources();
     } catch (error) {
-      message.error(requestErrorMessage(error, '扫描失败'));
+      message.error(requestErrorMessage(error, t('datasource.scanFailed')));
     }
   };
 
@@ -150,7 +152,7 @@ const DataSourceList: React.FC = () => {
       await fetchDataSources();
       navigate(`/datasource/${record.id}`);
     } catch (error) {
-      message.error(requestErrorMessage(error, '初始化失败，请先确认数据库连接可用'));
+      message.error(requestErrorMessage(error, t('datasource.initializeFailed')));
     } finally {
       setInitializingId(null);
     }
@@ -165,12 +167,12 @@ const DataSourceList: React.FC = () => {
       const result = await aiApi.getOntologyReasoningChain(record.id);
       setReasoningResult(result);
       if (result.usedRemoteModel) {
-        message.success('大模型已生成本体推理链');
+        message.success(t('datasource.reasoningRemoteToast'));
       } else {
-        message.warning(result.remoteError ? `已回退到本地推理：${result.remoteError}` : '已使用本地启发式推理');
+        message.warning(result.remoteError ? t('datasource.reasoningFallback', { reason: result.remoteError }) : t('datasource.reasoningLocalToast'));
       }
     } catch (error) {
-      message.error(requestErrorMessage(error, '生成本体推理链失败，请先扫描数据源'));
+      message.error(requestErrorMessage(error, t('datasource.reasoningGenerateFailed')));
     } finally {
       setReasoningLoading(false);
     }
@@ -189,13 +191,13 @@ const DataSourceList: React.FC = () => {
       });
       setOnboardingResult(result);
       if (result.status === 'blocked') {
-        message.warning('一键接入未完成，请查看步骤详情');
+        message.warning(t('datasource.onboardingBlocked'));
       } else {
-        message.success('一键接入流水线完成');
+        message.success(t('datasource.onboardingDone'));
         fetchDataSources();
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '一键接入失败');
+      message.error(error instanceof Error ? error.message : t('datasource.onboardingFailed'));
     } finally {
       setOnboardingLoading(false);
     }
@@ -209,30 +211,30 @@ const DataSourceList: React.FC = () => {
       width: 80,
     },
     {
-      title: '名称',
+      title: t('datasource.name'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '类型',
+      title: t('datasource.type'),
       dataIndex: 'sourceType',
       key: 'sourceType',
       render: (type: string) => <Tag color="blue">{type}</Tag>,
     },
     {
-      title: '领域',
+      title: t('datasource.domain'),
       dataIndex: 'domain',
       key: 'domain',
       render: (domain: string) => domain || '-',
     },
     {
-      title: '系统分类',
+      title: t('datasource.systemCategory'),
       dataIndex: 'systemCategory',
       key: 'systemCategory',
       render: (category: string) => <Tag>{category}</Tag>,
     },
     {
-      title: '操作',
+      title: t('datasource.actions'),
       key: 'action',
       render: (_: unknown, record: DataSource) => (
         <Space>
@@ -242,35 +244,35 @@ const DataSourceList: React.FC = () => {
             loading={initializingId === record.id}
             onClick={() => handleInitialize(record)}
           >
-            初始化知识库
+            {t('datasource.initializeButton')}
           </Button>
           <Button
             type="link"
             icon={<ScanOutlined />}
             onClick={() => handleScan(record.id)}
           >
-            扫描
+            {t('datasource.scanButton')}
           </Button>
           <Button
             type="link"
             icon={<LinkOutlined />}
             onClick={() => handleRegisteredConnectionTest(record)}
           >
-            测试
+            {t('datasource.testButton')}
           </Button>
           <Button
             type="link"
             icon={<ApiOutlined />}
             onClick={() => navigate(`/datasource/${record.id}`)}
           >
-            详情
+            {t('datasource.detailButton')}
           </Button>
           <Button
             type="link"
             icon={<BulbOutlined />}
             onClick={() => handleReasoningChain(record)}
           >
-            AI推理链
+            {t('datasource.reasoningButton')}
           </Button>
         </Space>
       ),
@@ -280,13 +282,13 @@ const DataSourceList: React.FC = () => {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3}>数据源管理</Title>
+        <Title level={3}>{t('datasource.title')}</Title>
         <Button
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => setModalVisible(true)}
         >
-          新增数据源
+          {t('datasource.addButton')}
         </Button>
       </div>
 
@@ -300,23 +302,22 @@ const DataSourceList: React.FC = () => {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
               <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
-                <Text strong>还没有接入任何业务系统</Text>
+                <Text strong>{t('datasource.emptyTitle')}</Text>
                 <Text type="secondary">
-                  平台的全部能力都从一次元数据扫描开始：读取表结构、字段类型与外键，
-                  据此生成业务对象与属性的草案，再由你审核映射。
+                  {t('datasource.emptyBody')}
                 </Text>
                 <Text type="secondary">
-                  <Text strong>只读元数据</Text>，不会修改你的业务数据库。
-                  想先看看它长什么样，工作台的「先体验演示」会用内置样例跑通一遍完整闭环。
+                  <Text strong>{t('datasource.emptyReadonly')}</Text>
+                  {t('datasource.emptyReadonlyNote')} {t('datasource.emptyDemo')}
                 </Text>
               </Space>
             }
           >
             <Space>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-                接入一个业务系统
+                {t('datasource.connectButton')}
               </Button>
-              <Button onClick={() => navigate('/workbench')}>回到工作台看演示</Button>
+              <Button onClick={() => navigate('/workbench')}>{t('datasource.backToWorkbench')}</Button>
             </Space>
           </Empty>
         ) : (
@@ -330,7 +331,7 @@ const DataSourceList: React.FC = () => {
       </Card>
 
       <Modal
-        title="接入一个业务系统"
+        title={t('datasource.connectButton')}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -343,8 +344,8 @@ const DataSourceList: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          message="先填写最少信息即可开始"
-          description="系统只读取元数据来建立业务模型，不会修改你的业务数据库。API 和行业蓝图属于可选的高级配置。"
+          message={t('datasource.introTitle')}
+          description={t('datasource.introBody')}
           style={{ marginBottom: 16 }}
         />
         <Form
@@ -354,14 +355,14 @@ const DataSourceList: React.FC = () => {
         >
           <Form.Item
             name="name"
-            label="名称"
-            rules={[{ required: true, message: '请输入数据源名称' }]}
+            label={t('datasource.name')}
+            rules={[{ required: true, message: t('datasource.nameRequired') }]}
           >
-            <Input placeholder="例如：合同管理系统" />
+            <Input placeholder={t('datasource.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="sourceType"
-            label="类型"
+            label={t('datasource.type')}
             initialValue="sqlite"
           >
             <Select>
@@ -372,10 +373,10 @@ const DataSourceList: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="connectionUri"
-            label="连接地址（必填）"
-            rules={[{ required: true, message: '请输入连接地址' }]}
+            label={t('datasource.connectionUriLabel')}
+            rules={[{ required: true, message: t('datasource.connectionUriRequired') }]}
           >
-            <Input placeholder="例如：/path/to/database.sqlite3 或 postgresql://..." />
+            <Input placeholder={t('datasource.connectionUriPlaceholder')} />
           </Form.Item>
           <Form.Item>
             <Button
@@ -383,7 +384,7 @@ const DataSourceList: React.FC = () => {
               loading={testingConnection}
               onClick={handleTestConnection}
             >
-              测试连接
+              {t('datasource.testConnectionButton')}
             </Button>
           </Form.Item>
           {connectionResult && (
@@ -397,41 +398,41 @@ const DataSourceList: React.FC = () => {
           )}
           <Form.Item
             name="domain"
-            label="业务领域"
+            label={t('datasource.businessDomain')}
           >
-            <Input placeholder="例如：合同管理（可留空，后续补充）" />
+            <Input placeholder={t('datasource.businessDomainPlaceholder')} />
           </Form.Item>
           <Form.Item
             name="systemCategory"
-            label="系统里有哪些数据"
+            label={t('datasource.systemCategoryLabel')}
             initialValue="database"
           >
             <Select>
-              <Option value="database">数据库</Option>
+              <Option value="database">{t('datasource.systemCategoryDatabase')}</Option>
               <Option value="api">API</Option>
-              <Option value="database+api">数据库+API</Option>
+              <Option value="database+api">{t('datasource.systemCategoryDatabaseApi')}</Option>
             </Select>
           </Form.Item>
           <Collapse
             ghost
             items={[{
               key: 'advanced',
-              label: '高级配置（API、行业蓝图）',
+              label: t('datasource.advancedLabel'),
               children: <>
-                <Form.Item name="apiBaseUrl" label="业务 API 基址">
-                  <Input placeholder="例如：https://legacy.example/api" />
+                <Form.Item name="apiBaseUrl" label={t('datasource.apiBaseUrlLabel')}>
+                  <Input placeholder={t('datasource.apiBaseUrlPlaceholder')} />
                 </Form.Item>
-                <Form.Item name="apiHeadersJson" label="业务 API 请求头">
-                  <Input.TextArea rows={3} placeholder={'例如：{"Authorization":"Bearer token","X-Tenant":"demo"}'} />
+                <Form.Item name="apiHeadersJson" label={t('datasource.apiHeadersLabel')}>
+                  <Input.TextArea rows={3} placeholder={t('datasource.apiHeadersPlaceholder')} />
                 </Form.Item>
-                <Form.Item name="openApiUrl" label="OpenAPI 地址">
-                  <Input placeholder="例如：https://legacy.example/openapi.json" />
+                <Form.Item name="openApiUrl" label={t('datasource.openApiUrlLabel')}>
+                  <Input placeholder={t('datasource.openApiUrlPlaceholder')} />
                 </Form.Item>
                 <Form.Item name="openApiSpecJson" label="OpenAPI JSON">
-                  <Input.TextArea rows={3} placeholder='已有 OpenAPI 文件时粘贴；与地址二选一即可' />
+                  <Input.TextArea rows={3} placeholder={t('datasource.openApiSpecHint')} />
                 </Form.Item>
-                <Form.Item name="blueprintId" label="行业蓝图">
-                  <Select placeholder="自动推断或手动选择" allowClear>
+                <Form.Item name="blueprintId" label={t('datasource.blueprintLabel')}>
+                  <Select placeholder={t('datasource.blueprintPlaceholder')} allowClear>
                     {blueprints.map(blueprint => (
                       <Option key={blueprint.id} value={blueprint.id}>
                         {blueprint.name} ({blueprint.domain})
@@ -449,31 +450,31 @@ const DataSourceList: React.FC = () => {
               loading={onboardingLoading}
               onClick={handleOnboarding}
             >
-              一键接入并生成本体
+              {t('datasource.onboardingButton')}
             </Button>
           </Form.Item>
           {onboardingResult && (
-            <Card size="small" title={`接入结果：${label(READINESS_STATUS, onboardingResult.status)}`} style={{ marginBottom: 16 }}>
+            <Card size="small" title={t('datasource.onboardingResultTitle', { status: label(READINESS_STATUS, onboardingResult.status) })} style={{ marginBottom: 16 }}>
               <Steps
                 direction="vertical"
                 size="small"
                 items={onboardingResult.steps.map(step => ({
-                  title: ONBOARDING_STEP_LABELS[step.code] || step.code,
+                  title: ONBOARDING_STEP_KEYS[step.code] ? t(ONBOARDING_STEP_KEYS[step.code] as never) : step.code,
                   description: step.message,
                   status: step.status === 'completed' ? 'finish' : step.status === 'failed' ? 'error' : 'wait',
                 }))}
               />
               <Space wrap style={{ marginTop: 16 }}>
                 <Button onClick={() => navigate(`/datasource/${onboardingResult.dataSource.id}`)}>
-                  查看接入详情
+                  {t('datasource.viewOnboardingDetail')}
                 </Button>
                 {onboardingResult.ontology?.ontology?.id && (
                   <Button onClick={() => navigate(`/ontology/${onboardingResult.ontology?.ontology.id}`)}>
-                    查看知识模型
+                    {t('datasource.viewOntology')}
                   </Button>
                 )}
                 <Button type="primary" onClick={() => navigate('/chat')}>
-                  去业务研判
+                  {t('datasource.goToChat')}
                 </Button>
               </Space>
             </Card>
@@ -482,38 +483,38 @@ const DataSourceList: React.FC = () => {
       </Modal>
 
       <Modal
-        title={reasoningSource ? `${reasoningSource.name}：本体推理链` : '本体推理链'}
+        title={reasoningSource ? t('datasource.reasoningTitleWithName', { name: reasoningSource.name }) : t('datasource.reasoningTitle')}
         open={reasoningVisible}
         onCancel={() => setReasoningVisible(false)}
         footer={[
-          <Button key="close" onClick={() => setReasoningVisible(false)}>关闭</Button>,
-          <Button key="manual" onClick={() => navigate('/ontology')}>自行构建</Button>,
-          <Button key="auto" type="primary" onClick={() => setModalVisible(true)}>一键接入构建</Button>,
+          <Button key="close" onClick={() => setReasoningVisible(false)}>{t('datasource.close')}</Button>,
+          <Button key="manual" onClick={() => navigate('/ontology')}>{t('datasource.buildManually')}</Button>,
+          <Button key="auto" type="primary" onClick={() => setModalVisible(true)}>{t('datasource.buildWithOnboarding')}</Button>,
         ]}
         width={920}
       >
-        {reasoningLoading && <Alert type="info" showIcon message="正在让模型读取表结构并构建推理链..." />}
+        {reasoningLoading && <Alert type="info" showIcon message={t('datasource.reasoningLoading')} />}
         {reasoningResult && (
           <div>
             <Alert
               type={reasoningResult.usedRemoteModel ? 'success' : 'warning'}
               showIcon
-              message={reasoningResult.usedRemoteModel ? '已使用 OpenRouter 大模型推理' : '使用本地启发式推理'}
-              description={reasoningResult.remoteError || `模型：${reasoningResult.model}`}
+              message={reasoningResult.usedRemoteModel ? t('datasource.reasoningRemoteDone') : t('datasource.reasoningLocalDone')}
+              description={reasoningResult.remoteError || t('datasource.modelLabel', { model: reasoningResult.model })}
               style={{ marginBottom: 16 }}
             />
             {/* Model output is Markdown; rendering it raw showed literal "##"
                 and "**" to the user. */}
             <MarkdownMessage content={reasoningResult.chain.summary} variant="document" />
             <Divider />
-            <Title level={5}>推理步骤</Title>
+            <Title level={5}>{t('datasource.reasoningSteps')}</Title>
             <Steps
               direction="vertical"
               size="small"
               items={reasoningResult.chain.reasoningSteps.map(step => ({ title: step }))}
             />
             <Divider />
-            <Title level={5}>业务对象候选</Title>
+            <Title level={5}>{t('datasource.objectCandidates')}</Title>
             <List
               size="small"
               dataSource={reasoningResult.chain.proposedObjects.slice(0, 12)}
@@ -525,7 +526,7 @@ const DataSourceList: React.FC = () => {
               )}
             />
             <Divider />
-            <Title level={5}>关系与规则候选</Title>
+            <Title level={5}>{t('datasource.relationRuleCandidates')}</Title>
             <Space direction="vertical" style={{ width: '100%' }}>
               {reasoningResult.chain.proposedRelations.slice(0, 8).map((item, index) => (
                 <Tag key={`rel-${index}`} color="blue">
@@ -539,7 +540,7 @@ const DataSourceList: React.FC = () => {
               ))}
             </Space>
             <Divider />
-            <Title level={5}>构建路径</Title>
+            <Title level={5}>{t('datasource.buildPlan')}</Title>
             <List
               size="small"
               dataSource={reasoningResult.chain.buildPlan}

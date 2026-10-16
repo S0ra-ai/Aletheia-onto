@@ -17,6 +17,7 @@ import {
   message,
 } from 'antd';
 import { tenancyApi, requestErrorMessage } from '../../api';
+import { useT } from '../../i18n/locale';
 import type {
   QuotaResource,
   QuotaState,
@@ -41,6 +42,7 @@ const { Title, Paragraph, Text } = Typography;
  * absent rather than a large number.
  */
 const TenancyManager: React.FC = () => {
+  const t = useT();
   const [tenants, setTenants] = useState<TenantList | null>(null);
   const [selected, setSelected] = useState<string | undefined>();
   const [statistics, setStatistics] = useState<TenantStatistics | null>(null);
@@ -64,9 +66,9 @@ const TenancyManager: React.FC = () => {
       );
     } catch (error) {
       setTenants(null);
-      setLoadError(requestErrorMessage(error, '获取租户列表失败'));
+      setLoadError(requestErrorMessage(error, t('tenancy.loadTenantsFailed')));
     }
-  }, []);
+  }, [t]);
 
   const loadDetail = useCallback(async (tenant: string) => {
     setLoading(true);
@@ -81,11 +83,11 @@ const TenancyManager: React.FC = () => {
     } catch (error) {
       setStatistics(null);
       setQuotas(null);
-      setLoadError(requestErrorMessage(error, '读取租户信息失败'));
+      setLoadError(requestErrorMessage(error, t('tenancy.loadDetailFailed')));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadTenants();
@@ -103,13 +105,13 @@ const TenancyManager: React.FC = () => {
     setBusy(true);
     try {
       const created = await tenancyApi.create(values.tenant.trim());
-      message.success(`租户 ${created.tenant} 已开通，schema：${created.schema}`);
+      message.success(t('tenancy.createSuccess', { tenant: created.tenant, schema: created.schema }));
       setCreateOpen(false);
       createForm.resetFields();
       await loadTenants();
       setSelected(created.tenant);
     } catch (error) {
-      message.error(requestErrorMessage(error, '开通租户失败'));
+      message.error(requestErrorMessage(error, t('tenancy.createFailed')));
     } finally {
       setBusy(false);
     }
@@ -120,12 +122,12 @@ const TenancyManager: React.FC = () => {
     setBusy(true);
     try {
       await tenancyApi.setQuota(selected, values.resource, values.limit, values.note || '');
-      message.success('配额已声明。配额存放在基础库，租户无法自行修改。');
+      message.success(t('tenancy.quotaSuccess'));
       setQuotaOpen(false);
       quotaForm.resetFields();
       await loadDetail(selected);
     } catch (error) {
-      message.error(requestErrorMessage(error, '声明配额失败'));
+      message.error(requestErrorMessage(error, t('tenancy.quotaFailed')));
     } finally {
       setBusy(false);
     }
@@ -137,35 +139,35 @@ const TenancyManager: React.FC = () => {
 
   return (
     <div>
-      <Title level={3}>租户管理</Title>
+      <Title level={3}>{t('tenancy.title')}</Title>
       <Paragraph type="secondary">
-        多租户为<Text strong>可选</Text>能力：单租户部署下这里为空是预期结果，不是故障。
-        每租户独立 schema，关键表另带 tenant_id 作为双保险；配额存放在基础库而非租户库——
-        存在租户库里的配额是租户可以自己改的配额。
+        {t('tenancy.introBefore')}
+        <Text strong>{t('tenancy.introOptional')}</Text>
+        {t('tenancy.introAfter')}
       </Paragraph>
 
-      {loadError && <Alert type="error" showIcon style={{ marginBottom: 16 }} message="读取失败" description={loadError} />}
+      {loadError && <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('tenancy.loadFailedTitle')} description={loadError} />}
 
       {tenants && (
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`隔离模型：${tenants.isolationModel}（平台库：${tenants.dbType}）`}
+          message={t('tenancy.isolationModel', { model: tenants.isolationModel, database: tenants.dbType })}
         />
       )}
 
       <Card
-        title="租户列表"
+        title={t('tenancy.tenantList')}
         style={{ marginBottom: 16 }}
         extra={
           <Button type="primary" onClick={() => setCreateOpen(true)}>
-            开通租户
+            {t('tenancy.createTenant')}
           </Button>
         }
       >
         {tenants && tenants.items.length === 0 ? (
-          <Empty description="当前部署未开通任何租户（单租户模式）" />
+          <Empty description={t('tenancy.emptyTenants')} />
         ) : (
           <Table
             size="small"
@@ -173,15 +175,15 @@ const TenancyManager: React.FC = () => {
             loading={!tenants && !loadError}
             dataSource={tenants?.items ?? []}
             columns={[
-              { title: '租户', dataIndex: 'tenant', key: 'tenant' },
+              { title: t('tenancy.column.tenant'), dataIndex: 'tenant', key: 'tenant' },
               { title: 'schema', dataIndex: 'schema', key: 'schema' },
               {
-                title: '操作',
+                title: t('shell.common.actions'),
                 key: 'actions',
                 width: 140,
                 render: (_: unknown, row: TenantSummary) => (
                   <Button type="link" onClick={() => setSelected(row.tenant)}>
-                    {row.tenant === selected ? '已选中' : '查看用量与配额'}
+                    {row.tenant === selected ? t('tenancy.selected') : t('tenancy.viewUsage')}
                   </Button>
                 ),
               },
@@ -193,11 +195,11 @@ const TenancyManager: React.FC = () => {
 
       {selected && (
         <>
-          <Card title={`资源用量：${selected}`} style={{ marginBottom: 16 }} loading={loading}>
+          <Card title={t('tenancy.usageTitle', { tenant: selected })} style={{ marginBottom: 16 }} loading={loading}>
             {statistics ? (
               <Descriptions size="small" column={2} bordered>
                 <Descriptions.Item label="schema">{statistics.schema}</Descriptions.Item>
-                <Descriptions.Item label="总行数">{statistics.totalRows}</Descriptions.Item>
+                <Descriptions.Item label={t('tenancy.totalRows')}>{statistics.totalRows}</Descriptions.Item>
                 {Object.entries(statistics.tables).map(([table, count]) => (
                   <Descriptions.Item key={table} label={table}>
                     {count}
@@ -205,22 +207,23 @@ const TenancyManager: React.FC = () => {
                 ))}
               </Descriptions>
             ) : (
-              <Empty description="暂无用量数据" />
+              <Empty description={t('tenancy.noUsage')} />
             )}
           </Card>
 
           <Card
-            title="配额"
+            title={t('tenancy.quotaTitle')}
             loading={loading}
             extra={
               <Button onClick={() => setQuotaOpen(true)} disabled={resources.length === 0}>
-                声明配额
+                {t('tenancy.declareQuota')}
               </Button>
             }
           >
             <Paragraph type="secondary" style={{ fontSize: 12 }}>
-              未声明配额的资源为<Text strong>不限量</Text>（而不是 0）——后者会让既有部署在这个特性上线的瞬间停止接受写入。
-              用量按真实行数统计，不维护计数器。
+              {t('tenancy.quotaIntroBefore')}
+              <Text strong>{t('tenancy.unlimited')}</Text>
+              {t('tenancy.quotaIntroAfter')}
             </Paragraph>
             <Table
               size="small"
@@ -229,7 +232,7 @@ const TenancyManager: React.FC = () => {
               pagination={false}
               columns={[
                 {
-                  title: '资源',
+                  title: t('tenancy.resource'),
                   dataIndex: 'resource',
                   key: 'resource',
                   render: (resource: string, row: QuotaState & { resource: string }) => (
@@ -241,18 +244,18 @@ const TenancyManager: React.FC = () => {
                     </Space>
                   ),
                 },
-                { title: '计数表', dataIndex: 'table', key: 'table', width: 160 },
-                { title: '当前', dataIndex: 'current', key: 'current', width: 90 },
+                { title: t('tenancy.countTable'), dataIndex: 'table', key: 'table', width: 160 },
+                { title: t('tenancy.current'), dataIndex: 'current', key: 'current', width: 90 },
                 {
-                  title: '上限',
+                  title: t('tenancy.limit'),
                   dataIndex: 'limit',
                   key: 'limit',
                   width: 110,
                   render: (limit: number | null) =>
-                    limit === null ? <Text type="secondary">不限量</Text> : limit,
+                    limit === null ? <Text type="secondary">{t('tenancy.unlimited')}</Text> : limit,
                 },
                 {
-                  title: '剩余',
+                  title: t('tenancy.remaining'),
                   dataIndex: 'remaining',
                   key: 'remaining',
                   width: 110,
@@ -260,7 +263,7 @@ const TenancyManager: React.FC = () => {
                     remaining === null ? (
                       <Text type="secondary">—</Text>
                     ) : row.exceeded ? (
-                      <Tag color="red">已超出</Tag>
+                      <Tag color="red">{t('tenancy.exceeded')}</Tag>
                     ) : (
                       remaining
                     ),
@@ -272,7 +275,7 @@ const TenancyManager: React.FC = () => {
       )}
 
       <Modal
-        title="开通租户"
+        title={t('tenancy.createTenant')}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => createForm.submit()}
@@ -283,15 +286,15 @@ const TenancyManager: React.FC = () => {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="开通是幂等的"
-          description="重复执行不会破坏已有数据，因此可以放心地把它写进部署流程。"
+          message={t('tenancy.idempotentTitle')}
+          description={t('tenancy.idempotentHint')}
         />
         <Form form={createForm} layout="vertical" onFinish={handleCreate}>
           <Form.Item
             name="tenant"
-            label="租户标识"
-            rules={[{ required: true, message: '请填写租户标识' }]}
-            extra="用作 schema 名，请使用字母、数字与下划线。"
+            label={t('tenancy.tenantIdLabel')}
+            rules={[{ required: true, message: t('tenancy.tenantIdRequired') }]}
+            extra={t('tenancy.tenantIdHint')}
           >
             <Input placeholder="acme" autoFocus />
           </Form.Item>
@@ -299,7 +302,7 @@ const TenancyManager: React.FC = () => {
       </Modal>
 
       <Modal
-        title={`为 ${selected} 声明配额`}
+        title={t('tenancy.quotaModalTitle', { tenant: selected ?? '' })}
         open={quotaOpen}
         onCancel={() => setQuotaOpen(false)}
         onOk={() => quotaForm.submit()}
@@ -307,24 +310,24 @@ const TenancyManager: React.FC = () => {
         destroyOnClose
       >
         <Form form={quotaForm} layout="vertical" onFinish={handleSetQuota}>
-          <Form.Item name="resource" label="资源" rules={[{ required: true, message: '请选择资源' }]}>
+          <Form.Item name="resource" label={t('tenancy.resource')} rules={[{ required: true, message: t('tenancy.resourceRequired') }]}>
             <Select
               options={resources.map((item) => ({
                 value: item.resource,
-                label: `${item.resource}（计数表 ${item.table}）`,
+                label: t('tenancy.resourceOption', { resource: item.resource, table: item.table }),
               }))}
             />
           </Form.Item>
           <Form.Item
             name="limit"
-            label="上限"
-            rules={[{ required: true, message: '请填写上限' }]}
-            extra="设置为 0 表示不允许创建该类数据；留空不适用于本表单——不限量是「不声明」的结果。"
+            label={t('tenancy.limit')}
+            rules={[{ required: true, message: t('tenancy.limitRequired') }]}
+            extra={t('tenancy.limitHint')}
           >
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="note" label="备注">
-            <Input.TextArea rows={2} placeholder="为什么是这个数字" />
+          <Form.Item name="note" label={t('tenancy.note')}>
+            <Input.TextArea rows={2} placeholder={t('tenancy.notePlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

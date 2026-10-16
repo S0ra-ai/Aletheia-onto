@@ -3,6 +3,7 @@ import { Alert, Button, Descriptions, Drawer, Empty, Form, Input, Modal, Select,
 import { PlusOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage, semanticApi } from '../../api';
 import { EVENT_CATEGORY, label } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import type {
   EventTypeDeclaration,
   InstanceAttributeVersion,
@@ -44,6 +45,7 @@ interface Props {
  * belongs on a screen that says what it is doing, not on one a user opens to look.
  */
 const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, onClose }) => {
+  const t = useT();
   const [explain, setExplain] = useState<InstanceExplainResult | null>(null);
   const [events, setEvents] = useState<InstanceEvent[] | null>(null);
   const [versions, setVersions] = useState<InstanceVersionsResult | null>(null);
@@ -62,9 +64,9 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       setEvents(result.items ?? []);
     } catch (error) {
       setEvents(null);
-      setEventsError(requestErrorMessage(error, '读取事件历史失败'));
+      setEventsError(requestErrorMessage(error, t('objects.loadEventsFailed')));
     }
-  }, [ontologyId, objectCode, instanceId]);
+  }, [ontologyId, objectCode, instanceId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,16 +84,16 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
     semanticApi
       .explain(objectCode, instanceId, ontologyId)
       .then((result) => !cancelled && setExplain(result))
-      .catch((error) => !cancelled && setExplainError(requestErrorMessage(error, '读取实例解释失败')))
+      .catch((error) => !cancelled && setExplainError(requestErrorMessage(error, t('objects.loadExplainFailed'))))
       .finally(() => !cancelled && setLoading(false));
     semanticApi
       .instanceEvents(ontologyId, objectCode, instanceId)
       .then((result) => !cancelled && setEvents(result.items ?? []))
-      .catch((error) => !cancelled && setEventsError(requestErrorMessage(error, '读取事件历史失败')));
+      .catch((error) => !cancelled && setEventsError(requestErrorMessage(error, t('objects.loadEventsFailed'))));
     semanticApi
       .instanceVersions(ontologyId, objectCode, instanceId)
       .then((result) => !cancelled && setVersions(result))
-      .catch((error) => !cancelled && setVersionsError(requestErrorMessage(error, '读取取值沿革失败')));
+      .catch((error) => !cancelled && setVersionsError(requestErrorMessage(error, t('objects.loadVersionsFailed'))));
     // Declared event codes, so recording offers only what the server will accept: an
     // undeclared code is refused, and a free-text box would turn that refusal into a
     // mysterious failure at submit time.
@@ -103,7 +105,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
     return () => {
       cancelled = true;
     };
-  }, [ontologyId, objectCode, instanceId]);
+  }, [ontologyId, objectCode, instanceId, t]);
 
   const handleRecord = async (values: { eventCode: string; occurredAt?: string; payload?: string }) => {
     setRecording(true);
@@ -113,7 +115,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         try {
           payload = JSON.parse(values.payload);
         } catch {
-          message.error('载荷必须是合法 JSON');
+          message.error(t('objects.payloadInvalidJson'));
           return;
         }
       }
@@ -122,12 +124,12 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         payload,
         occurredAt: values.occurredAt?.trim() || '',
       });
-      message.success('事件已记录');
+      message.success(t('objects.eventRecorded'));
       setRecordOpen(false);
       recordForm.resetFields();
       await loadEvents();
     } catch (error) {
-      message.error(requestErrorMessage(error, '记录事件失败'));
+      message.error(requestErrorMessage(error, t('objects.recordEventFailed')));
     } finally {
       setRecording(false);
     }
@@ -135,14 +137,14 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
 
   const attributeColumns = [
     {
-      title: '属性',
+      title: t('objects.attributeColumn'),
       key: 'attribute',
       render: (_: unknown, row: InstanceExplainAttribute) => (
         <Space direction="vertical" size={0}>
           <Space size={4}>
             <Text strong>{row.attributeName || row.attributeCode}</Text>
-            {row.derived && <Tag color="purple">计算</Tag>}
-            {row.fromHistory && <Tag color="blue">历史</Tag>}
+            {row.derived && <Tag color="purple">{t('objects.tagDerived')}</Tag>}
+            {row.fromHistory && <Tag color="blue">{t('objects.tagFromHistory')}</Tag>}
           </Space>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {row.attributeCode}
@@ -151,7 +153,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       ),
     },
     {
-      title: '来源',
+      title: t('objects.sourceColumn'),
       key: 'source',
       width: 230,
       // A derived attribute has no column, and saying so is the explanation: the value was
@@ -161,7 +163,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         row.derived ? (
           <Space direction="vertical" size={0}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              由表达式计算
+              {t('objects.derivedFromExpression')}
             </Text>
             <Text code style={{ fontSize: 12 }}>
               {row.derivedExpression}
@@ -174,16 +176,16 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         ),
     },
     {
-      title: '值',
+      title: t('objects.valueColumn'),
       key: 'value',
       render: (_: unknown, row: InstanceExplainAttribute) => {
         if (row.error) {
           // A derived attribute that could not be computed makes rules referencing it fail
           // closed. Showing an empty cell here would hide that behind a blank.
-          return <Text type="danger">无法计算：{row.error}</Text>;
+          return <Text type="danger">{t('objects.computeFailed', { error: row.error })}</Text>;
         }
         if (row.value === null || row.value === undefined || row.value === '') {
-          return <Text type="secondary">空值</Text>;
+          return <Text type="secondary">{t('objects.emptyValue')}</Text>;
         }
         return (
           <Space size={4}>
@@ -194,7 +196,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       },
     },
     {
-      title: '单位',
+      title: t('objects.unitColumn'),
       key: 'unit',
       width: 90,
       // A magnitude without its unit is not a value: 1200000 万元 and 1200000 元 differ by a
@@ -206,9 +208,9 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
   ];
 
   const eventColumns = [
-    { title: '时间（UTC）', dataIndex: 'occurredAt', key: 'occurredAt', width: 180 },
+    { title: t('objects.occurredAtColumn'), dataIndex: 'occurredAt', key: 'occurredAt', width: 180 },
     {
-      title: '事件',
+      title: t('objects.eventColumn'),
       key: 'event',
       render: (_: unknown, row: InstanceEvent) => (
         <Space direction="vertical" size={0}>
@@ -220,15 +222,15 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       ),
     },
     {
-      title: '类别',
+      title: t('objects.categoryColumn'),
       dataIndex: 'categoryLabel',
       key: 'categoryLabel',
       width: 110,
       render: (label: string) => (label ? <Tag>{label}</Tag> : <Text type="secondary">—</Text>),
     },
-    { title: '操作者', dataIndex: 'actor', key: 'actor', width: 140 },
+    { title: t('objects.actorColumn'), dataIndex: 'actor', key: 'actor', width: 140 },
     {
-      title: '载荷',
+      title: t('objects.payloadColumn'),
       dataIndex: 'payload',
       key: 'payload',
       render: (payload: Record<string, unknown>, row: InstanceEvent) =>
@@ -249,25 +251,25 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
 
   const versionColumns = [
     {
-      title: '属性',
+      title: t('objects.attributeColumn'),
       dataIndex: 'attributeCode',
       key: 'attributeCode',
       width: 200,
       render: (code: string) => <Text code>{code}</Text>,
     },
-    { title: '取值', dataIndex: 'value', key: 'value' },
+    { title: t('objects.versionValueColumn'), dataIndex: 'value', key: 'value' },
     {
-      title: '生效区间',
+      title: t('objects.validityColumn'),
       key: 'validity',
       width: 320,
       render: (_: unknown, row: InstanceAttributeVersion) => (
         <Text>
-          {row.validFrom} → {row.validTo ?? <Text type="secondary">至今</Text>}
+          {row.validFrom} → {row.validTo ?? <Text type="secondary">{t('objects.toPresent')}</Text>}
         </Text>
       ),
     },
-    { title: '记录时间（UTC）', dataIndex: 'recordedAt', key: 'recordedAt', width: 180 },
-    { title: '记录人', dataIndex: 'actor', key: 'actor', width: 120 },
+    { title: t('objects.recordedAtColumn'), dataIndex: 'recordedAt', key: 'recordedAt', width: 180 },
+    { title: t('objects.recordedByColumn'), dataIndex: 'actor', key: 'actor', width: 120 },
   ];
 
   return (
@@ -278,29 +280,29 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       title={explain ? `${explain.object.name || objectCode} · ${instanceId}` : `${objectCode} · ${instanceId}`}
     >
       {explainError && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="读取实例解释失败" description={explainError} />
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('objects.loadExplainFailed')} description={explainError} />
       )}
 
       {explain && (
         <>
           <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }}>
-            <Descriptions.Item label="本体">
+            <Descriptions.Item label={t('objects.ontologyLabel')}>
               {explain.ontology.name} v{explain.ontology.version}
             </Descriptions.Item>
-            <Descriptions.Item label="业务对象">
-              {explain.object.name}（{explain.objectCode}）
+            <Descriptions.Item label={t('objects.objectLabel')}>
+              {t('objects.nameWithCode', { name: explain.object.name, code: explain.objectCode })}
             </Descriptions.Item>
-            <Descriptions.Item label="来源表">{explain.source.table}</Descriptions.Item>
-            <Descriptions.Item label="主键">{explain.source.primaryKey}</Descriptions.Item>
+            <Descriptions.Item label={t('objects.sourceTableLabel')}>{explain.source.table}</Descriptions.Item>
+            <Descriptions.Item label={t('objects.primaryKeyLabel')}>{explain.source.primaryKey}</Descriptions.Item>
             {explain.ancestors.length > 0 && (
-              <Descriptions.Item label="类型层级" span={2}>
+              <Descriptions.Item label={t('objects.typeHierarchyLabel')} span={2}>
                 <Space wrap>
                   {explain.ancestors.map((ancestor) => (
                     <Tag key={ancestor}>{ancestor}</Tag>
                   ))}
                 </Space>
                 <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                  这些类型的规则同样适用于本实例
+                  {t('objects.ancestorNote')}
                 </Text>
               </Descriptions.Item>
             )}
@@ -308,9 +310,9 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
 
           <Alert type="info" showIcon style={{ marginBottom: 16 }} message={explain.explanation} />
 
-          <Text strong>属性与来源</Text>
+          <Text strong>{t('objects.attributesHeading')}</Text>
           <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-            每个值都列出它读自哪一列。列与属性对不上时，问题出在映射上而不是数据上。
+            {t('objects.attributesHint')}
           </Paragraph>
           <Table
             size="small"
@@ -324,10 +326,11 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
 
           {explain.aggregates.length > 0 && (
             <>
-              <Text strong>聚合值</Text>
+              <Text strong>{t('objects.aggregatesHeading')}</Text>
               <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-                规则可以直接按名称引用这些值。它们不属于本行的任何属性，而是对其他行的一次查询，
-                所以单独列出——<Text strong>判定引用了某个聚合值，这里就必须看得到它</Text>。
+                {t('objects.aggregatesHint')}
+                <Text strong>{t('objects.aggregatesHintEmphasis')}</Text>
+                {t('objects.aggregatesHintEnd')}
               </Paragraph>
               <Table<InstanceExplainAggregate>
                 size="small"
@@ -337,30 +340,30 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
                 style={{ marginBottom: 24 }}
                 columns={[
                   {
-                    title: '名称',
+                    title: t('objects.nameColumn'),
                     dataIndex: 'name',
                     key: 'name',
                     width: 180,
                     render: (name: string) => <Text code>{name}</Text>,
                   },
-                  { title: '定义', dataIndex: 'definition', key: 'definition', ellipsis: true },
+                  { title: t('objects.definitionColumn'), dataIndex: 'definition', key: 'definition', ellipsis: true },
                   {
-                    title: '值',
+                    title: t('objects.valueColumn'),
                     key: 'value',
                     width: 160,
                     render: (_: unknown, row: InstanceExplainAggregate) =>
                       row.error ? (
-                        <Text type="danger">无法计算：{row.error}</Text>
+                        <Text type="danger">{t('objects.computeFailed', { error: row.error })}</Text>
                       ) : (
                         <Space size={4}>
-                          <Text>{row.value === null || row.value === undefined ? '空值' : String(row.value)}</Text>
+                          <Text>{row.value === null || row.value === undefined ? t('objects.emptyValue') : String(row.value)}</Text>
                           {/* A truncated aggregate is a partial answer; a verdict resting on
                               it was reached on partial data, and the reader has to know. */}
-                          {row.truncated && <Tag color="orange">已达取数上限</Tag>}
+                          {row.truncated && <Tag color="orange">{t('objects.truncatedTag')}</Tag>}
                         </Space>
                       ),
                   },
-                  { title: '行数', dataIndex: 'rowCount', key: 'rowCount', width: 90 },
+                  { title: t('objects.rowCountColumn'), dataIndex: 'rowCount', key: 'rowCount', width: 90 },
                 ]}
               />
             </>
@@ -369,26 +372,26 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       )}
 
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text strong>事件历史</Text>
+        <Text strong>{t('objects.eventsHeading')}</Text>
         <Button
           size="small"
           icon={<PlusOutlined />}
           disabled={eventTypes.length === 0}
           onClick={() => setRecordOpen(true)}
         >
-          记录事件
+          {t('objects.recordEventButton')}
         </Button>
       </Space>
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-        解释里只带最近 20 条：解释是交互阅读的，而完整历史在这里。
-        {eventTypes.length === 0 && ' 该对象尚未声明事件类型，因此无法记录事件——请先到本体详情的「建模扩展」中声明。'}
+        {t('objects.eventsHint')}
+        {eventTypes.length === 0 && t('objects.eventsNoTypesHint')}
       </Paragraph>
       {eventsError ? (
-        <Alert type="error" showIcon style={{ marginBottom: 24 }} message="读取事件历史失败" description={eventsError} />
+        <Alert type="error" showIcon style={{ marginBottom: 24 }} message={t('objects.loadEventsFailed')} description={eventsError} />
       ) : events && events.length === 0 ? (
         <Empty
           style={{ marginBottom: 24 }}
-          description="该实例没有已记录事件（事件类型需先声明，否则历史无法按类型检索）"
+          description={t('objects.emptyNoEvents')}
         />
       ) : (
         <Table
@@ -402,15 +405,16 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         />
       )}
 
-      <Text strong>取值沿革</Text>
+      <Text strong>{t('objects.versionsHeading')}</Text>
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-        判定可以按过去某一时刻产出，所以「上个月的金额是多少」是复核旧结论时绕不开的问题。
-        <Text strong>没记录过取值的属性不会出现在这里</Text>——这不是数据缺失，是沿革从未被记录。
+        {t('objects.versionsHint')}
+        <Text strong>{t('objects.versionsHintEmphasis')}</Text>
+        {t('objects.versionsHintTail')}
       </Paragraph>
       {versionsError ? (
-        <Alert type="error" showIcon message="读取取值沿革失败" description={versionsError} />
+        <Alert type="error" showIcon message={t('objects.loadVersionsFailed')} description={versionsError} />
       ) : versions && versions.versions.length === 0 ? (
-        <Empty description="该实例没有任何已记录的取值版本" />
+        <Empty description={t('objects.emptyNoVersions')} />
       ) : (
         <Table
           size="small"
@@ -423,7 +427,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       )}
 
       <Modal
-        title={`记录事件：${objectCode} / ${instanceId}`}
+        title={t('objects.recordEventTitle', { object: objectCode, instance: instanceId })}
         open={recordOpen}
         onCancel={() => setRecordOpen(false)}
         onOk={() => recordForm.submit()}
@@ -434,32 +438,32 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="记录事件不会触发任何动作"
-          description="它只把「发生了什么」写进历史，因此它是可复核的凭据，而不是一条自动化指令。"
+          message={t('objects.recordEventNote')}
+          description={t('objects.recordEventNoteDescription')}
         />
         <Form form={recordForm} layout="vertical" onFinish={handleRecord}>
-          <Form.Item name="eventCode" label="事件" rules={[{ required: true, message: '请选择事件' }]}>
+          <Form.Item name="eventCode" label={t('objects.eventColumn')} rules={[{ required: true, message: t('objects.selectEventRequired') }]}>
             <Select
-              placeholder="选择已声明的事件类型"
+              placeholder={t('objects.selectEventType')}
               options={eventTypes.map((item) => ({
                 value: item.code,
-                label: `${item.name}（${label(EVENT_CATEGORY, item.category)}）`,
+                label: t('objects.eventTypeOption', { name: item.name, category: label(EVENT_CATEGORY, item.category) }),
               }))}
             />
           </Form.Item>
           <Form.Item
             name="occurredAt"
-            label="发生时间"
-            extra="留空表示「现在」。历史是补记的常见情形，因此这里可以填过去的时间。"
+            label={t('objects.occurredAtLabel')}
+            extra={t('objects.occurredAtHint')}
           >
             <Input placeholder="2026-01-05 10:00:00" />
           </Form.Item>
           <Form.Item
             name="payload"
-            label="载荷"
-            extra="可选，JSON 对象。与已声明的载荷字段不一致时平台会在事件上标注，而不是拒绝写入。"
+            label={t('objects.payloadColumn')}
+            extra={t('objects.payloadHint')}
           >
-            <Input.TextArea rows={3} placeholder='{"party": "甲方"}' />
+            <Input.TextArea rows={3} placeholder={t('objects.payloadPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

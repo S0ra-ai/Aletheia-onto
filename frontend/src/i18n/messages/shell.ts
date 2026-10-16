@@ -67,10 +67,9 @@ export const shell = {
   },
   'notFound.back': { zh: '返回工作台', en: 'Back to the workbench' },
 
-  'error.title': { zh: '页面加载失败', en: 'This page failed to load' },
-  'error.unknown': { zh: '发生未知错误，请刷新页面重试', en: 'Something went wrong. Reload the page to try again.' },
-  'error.reload': { zh: '刷新页面', en: 'Reload' },
-  'error.retry': { zh: '刷新重试', en: 'Reload and retry' },
+  // The error boundary's copy lives in `errors.ts` with the component it belongs to. These four
+  // were scaffolded here first and became byte-identical duplicates -- a second place for the
+  // same sentence to drift, which is the shape this whole file exists to avoid.
 
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.confirm': { zh: '确认', en: 'Confirm' },

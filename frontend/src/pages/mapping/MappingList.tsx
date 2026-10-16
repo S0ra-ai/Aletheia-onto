@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS, MAPPING_STATUS } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import { Alert, Button, Card, Table, Typography, Tag, Empty, Select, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { ontologyApi, requestErrorMessage } from '../../api';
@@ -9,6 +10,7 @@ const { Title } = Typography;
 const { Option } = Select;
 
 const MappingList: React.FC = () => {
+  const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [mappings, setMappings] = useState<SemanticMapping[]>([]);
   const [selectedOntology, setSelectedOntology] = useState<number | null>(null);
@@ -27,7 +29,7 @@ const MappingList: React.FC = () => {
       // check that reports empty columns had nothing to look at.
       setSelectedOntology((current) => current ?? items[0]?.id ?? null);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取本体列表失败'));
+      message.error(requestErrorMessage(error, t('mapping.loadOntologiesFailed')));
     }
   };
 
@@ -42,7 +44,7 @@ const MappingList: React.FC = () => {
       // On the mapping review queue -- the governance surface -- reporting a fetch failure
       // as "nothing to review" is a false statement about what has been reviewed.
       setMappings([]);
-      setLoadError(requestErrorMessage(error, '获取语义映射失败'));
+      setLoadError(requestErrorMessage(error, t('mapping.loadMappingsFailed')));
     } finally {
       setLoading(false);
     }
@@ -50,57 +52,57 @@ const MappingList: React.FC = () => {
 
   useEffect(() => {
     fetchOntologies();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (selectedOntology) {
       fetchMappings(selectedOntology);
     }
-  }, [selectedOntology]);
+  }, [selectedOntology, t]);
 
   const handleBulkReview = async (status: string) => {
     if (!selectedOntology) return;
     try {
       await ontologyApi.reviewMappings(selectedOntology, { status, reviewer: '前端用户', note: '工作台批量审核' });
-      message.success(status === 'confirmed' ? '已批量确认' : '已批量拒绝');
+      message.success(status === 'confirmed' ? t('mapping.bulkConfirmDone') : t('mapping.bulkRejectDone'));
       fetchMappings(selectedOntology);
     } catch (error) {
-      message.error(requestErrorMessage(error, '审核失败'));
+      message.error(requestErrorMessage(error, t('mapping.reviewFailed')));
     }
   };
 
   const columns = [
     {
-      title: '映射类型',
+      title: t('mapping.colMappingType'),
       dataIndex: 'mappingType',
       key: 'mappingType',
       render: (type: string) => <Tag>{type}</Tag>,
     },
     {
-      title: '来源表',
+      title: t('mapping.colSourceTable'),
       dataIndex: 'sourceTable',
       key: 'sourceTable',
     },
     {
-      title: '来源字段',
+      title: t('mapping.colSourceColumn'),
       dataIndex: 'sourceColumn',
       key: 'sourceColumn',
       render: (column: string) => column || '-',
     },
     {
-      title: '目标对象',
+      title: t('mapping.colTargetObject'),
       dataIndex: 'targetObjectCode',
       key: 'targetObjectCode',
       render: (code: string) => <Tag color="blue">{code}</Tag>,
     },
     {
-      title: '目标属性',
+      title: t('mapping.colTargetAttribute'),
       dataIndex: 'targetAttributeCode',
       key: 'targetAttributeCode',
       render: (code: string) => code || '-',
     },
     {
-      title: '置信度',
+      title: t('mapping.colConfidence'),
       dataIndex: 'confidence',
       key: 'confidence',
       render: (confidence: number) => (
@@ -110,7 +112,7 @@ const MappingList: React.FC = () => {
       ),
     },
     {
-      title: '状态',
+      title: t('mapping.colStatus'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
@@ -120,7 +122,7 @@ const MappingList: React.FC = () => {
       ),
     },
     {
-      title: '审核人',
+      title: t('mapping.colReviewer'),
       dataIndex: 'reviewer',
       key: 'reviewer',
       render: (reviewer: string) => reviewer || '-',
@@ -129,29 +131,33 @@ const MappingList: React.FC = () => {
 
   return (
     <div>
-      <Title level={3}>语义映射</Title>
+      <Title level={3}>{t('mapping.title')}</Title>
 
       <Card style={{ marginBottom: 16 }}>
         <Space>
-          <span>选择本体：</span>
+          <span>{t('mapping.ontologyLabel')}</span>
           <Select
             style={{ width: 300 }}
-            placeholder="请选择本体"
+            placeholder={t('mapping.ontologyPlaceholder')}
             value={selectedOntology ?? undefined}
             onChange={setSelectedOntology}
             allowClear
           >
             {ontologies.map(ontology => (
               <Option key={ontology.id} value={ontology.id}>
-                {ontology.name} v{ontology.version}（{label(ONTOLOGY_STATUS, ontology.status)}）
+                {t('mapping.ontologyOption', {
+                  name: ontology.name,
+                  version: ontology.version,
+                  status: label(ONTOLOGY_STATUS, ontology.status),
+                })}
               </Option>
             ))}
           </Select>
           <Button icon={<CheckOutlined />} disabled={!selectedOntology} onClick={() => handleBulkReview('confirmed')}>
-            批量确认
+            {t('mapping.bulkConfirm')}
           </Button>
           <Button icon={<CloseOutlined />} disabled={!selectedOntology} onClick={() => handleBulkReview('rejected')}>
-            批量拒绝
+            {t('mapping.bulkReject')}
           </Button>
         </Space>
       </Card>
@@ -161,14 +167,14 @@ const MappingList: React.FC = () => {
           <Alert
             type="error"
             showIcon
-            message="获取语义映射失败"
+            message={t('mapping.loadMappingsFailed')}
             description={loadError}
-            action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>重试</Button>}
+            action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>{t('mapping.retry')}</Button>}
           />
         ) : !selectedOntology ? (
-          <Empty description="没有可审核的本体" />
+          <Empty description={t('mapping.noOntologies')} />
         ) : mappings.length === 0 && !loading ? (
-          <Empty description="该本体没有语义映射" />
+          <Empty description={t('mapping.noMappings')} />
         ) : (
           <Table
             columns={columns}

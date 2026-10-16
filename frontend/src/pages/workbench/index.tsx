@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Empty, List, Progress, Row, Space, Spin, Stat
 import { DatabaseOutlined, MessageOutlined, ReloadOutlined, RightOutlined, RocketOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { requestErrorMessage, workbenchApi } from '../../api';
+import { useT } from '../../i18n/locale';
 import type { Workbench, WorkbenchActionItem } from '../../types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -16,10 +17,12 @@ const { Title, Text, Paragraph } = Typography;
  * decoration.
  */
 
-const SEVERITY_META: Record<WorkbenchActionItem['severity'], { color: string; label: string }> = {
-  blocker: { color: 'red', label: '阻断' },
-  warning: { color: 'orange', label: '待处理' },
-  info: { color: 'blue', label: '提示' },
+// Keys, not labels: a label written here would be fixed at import, in whichever language
+// the bundle happened to start in.
+const SEVERITY_META: Record<WorkbenchActionItem['severity'], { color: string; labelKey: string }> = {
+  blocker: { color: 'red', labelKey: 'workbench.severity.blocker' },
+  warning: { color: 'orange', labelKey: 'workbench.severity.warning' },
+  info: { color: 'blue', labelKey: 'workbench.severity.info' },
 };
 
 const DECISION_COLOR: Record<string, string> = {
@@ -30,6 +33,7 @@ const DECISION_COLOR: Record<string, string> = {
 
 const WorkbenchPage: React.FC = () => {
   const navigate = useNavigate();
+  const t = useT();
   const [data, setData] = useState<Workbench | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,13 +41,13 @@ const WorkbenchPage: React.FC = () => {
     setLoading(true);
     try {
       setData(await workbenchApi.get());
-      if (notify) message.success('工作台已刷新');
+      if (notify) message.success(t('workbench.refreshed'));
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载工作台失败'));
+      message.error(requestErrorMessage(error, t('workbench.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -52,13 +56,13 @@ const WorkbenchPage: React.FC = () => {
   if (loading && !data) {
     return (
       <div style={{ textAlign: 'center', padding: '80px 0' }}>
-        <Spin size="large" tip="正在汇总平台状态..." />
+        <Spin size="large" tip={t('workbench.loading')} />
       </div>
     );
   }
 
   if (!data) {
-    return <Alert type="error" showIcon message="无法加载工作台" description="请确认后端服务可用。" />;
+    return <Alert type="error" showIcon message={t('workbench.loadFailedTitle')} description={t('workbench.loadFailedHint')} />;
   }
 
   const { dataSources, ontologies, governance, rules, decisions, knowledge, actionItems, summary } = data;
@@ -71,40 +75,40 @@ const WorkbenchPage: React.FC = () => {
     <div>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
-          <Title level={4} style={{ marginBottom: 4 }}>工作台</Title>
-          <Text type="secondary">平台当前状态与待处理事项</Text>
+          <Title level={4} style={{ marginBottom: 4 }}>{t('workbench.title')}</Title>
+          <Text type="secondary">{t('workbench.subtitle')}</Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => void load(true)} loading={loading}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(true)} loading={loading}>{t('shell.common.refresh')}</Button>
       </Space>
 
       <Card
-        title="开始一个任务"
+        title={t('workbench.startTaskTitle')}
         style={{ marginBottom: 16 }}
-        extra={<Text type="secondary">按任务进入，复杂配置会在需要时展开</Text>}
+        extra={<Text type="secondary">{t('workbench.startTaskHint')}</Text>}
       >
         <Row gutter={[12, 12]}>
           <Col xs={24} md={8}>
             <Button block size="large" icon={<RocketOutlined />} onClick={() => navigate('/demo')}>
-              先体验演示
+              {t('workbench.demoButton')}
             </Button>
             <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
-              自动准备样例数据，快速看到一次完整研判
+              {t('workbench.demoHint')}
             </Text>
           </Col>
           <Col xs={24} md={8}>
             <Button block size="large" icon={<DatabaseOutlined />} onClick={() => navigate('/datasource')}>
-              接入自己的系统
+              {t('workbench.datasourceButton')}
             </Button>
             <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
-              从连接数据源开始，系统会提示下一步
+              {t('workbench.datasourceHint')}
             </Text>
           </Col>
           <Col xs={24} md={8}>
             <Button block size="large" icon={<MessageOutlined />} onClick={() => navigate('/chat')}>
-              查看业务研判
+              {t('workbench.chatButton')}
             </Button>
             <Text type="secondary" style={{ display: 'block', marginTop: 6, fontSize: 12 }}>
-              对已初始化的业务对象提问并查看证据
+              {t('workbench.chatHint')}
             </Text>
           </Col>
         </Row>
@@ -114,17 +118,17 @@ const WorkbenchPage: React.FC = () => {
         <Alert
           type="success"
           showIcon
-          message="没有待处理事项"
-          description="数据源已扫描、映射已审核、对象已配置规则。"
+          message={t('workbench.noActionItems')}
+          description={t('workbench.noActionItemsHint')}
           style={{ marginBottom: 16 }}
         />
       ) : (
         <Card
           title={
             <Space>
-              <span>待处理事项</span>
-              {summary.blockers > 0 && <Tag color="red">{summary.blockers} 项阻断</Tag>}
-              {summary.warnings > 0 && <Tag color="orange">{summary.warnings} 项待处理</Tag>}
+              <span>{t('workbench.actionItemsTitle')}</span>
+              {summary.blockers > 0 && <Tag color="red">{t('workbench.blockersTag', { count: summary.blockers })}</Tag>}
+              {summary.warnings > 0 && <Tag color="orange">{t('workbench.warningsTag', { count: summary.warnings })}</Tag>}
             </Space>
           }
           style={{ marginBottom: 16 }}
@@ -135,12 +139,12 @@ const WorkbenchPage: React.FC = () => {
               <List.Item
                 actions={[
                   <Button key="go" type="link" onClick={() => navigate(item.route)}>
-                    去处理 <RightOutlined />
+                    {t('workbench.openItem')} <RightOutlined />
                   </Button>,
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<Tag color={SEVERITY_META[item.severity].color}>{SEVERITY_META[item.severity].label}</Tag>}
+                  avatar={<Tag color={SEVERITY_META[item.severity].color}>{t(SEVERITY_META[item.severity].labelKey as never)}</Tag>}
                   title={item.title}
                   description={item.detail}
                 />
@@ -153,42 +157,42 @@ const WorkbenchPage: React.FC = () => {
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="数据源" value={dataSources.total} suffix="个" />
+            <Statistic title={t('workbench.dataSources')} value={dataSources.total} suffix={t('workbench.countSuffix')} />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {dataSources.tables} 张表 · {dataSources.unscanned ? `${dataSources.unscanned} 个未扫描` : '全部已扫描'}
-              {dataSources.withBusinessApi ? ` · ${dataSources.withBusinessApi} 个含业务 API` : ''}
+              {t('workbench.tables', { count: dataSources.tables })} · {dataSources.unscanned ? t('workbench.unscanned', { count: dataSources.unscanned }) : t('workbench.allScanned')}
+              {dataSources.withBusinessApi ? ` · ${t('workbench.withBusinessApi', { count: dataSources.withBusinessApi })}` : ''}
             </Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
-            <Statistic title="业务对象" value={ontologies.objects} suffix="个" />
+            <Statistic title={t('workbench.businessObjects')} value={ontologies.objects} suffix={t('workbench.countSuffix')} />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {ontologies.relations} 条关系 · {ontologies.published} 个已发布本体 · {ontologies.draft} 个草案
+              {t('workbench.relations', { count: ontologies.relations })} · {t('workbench.publishedOntologies', { count: ontologies.published })} · {t('workbench.draftOntologies', { count: ontologies.draft })}
             </Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic
-              title="业务规则"
+              title={t('workbench.businessRules')}
               value={rules.total}
               valueStyle={rules.total === 0 ? { color: '#cf1322' } : undefined}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              阻断级 {rules.blocking} · 提示级 {rules.warning + rules.info}
+              {t('workbench.blockingRules', { count: rules.blocking })} · {t('workbench.advisoryRules', { count: rules.warning + rules.info })}
             </Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic
-              title="决策留痕"
+              title={t('workbench.decisionLog')}
               value={decisions.total}
               valueStyle={decisions.blocked ? { color: '#cf1322' } : undefined}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              阻断 {decisions.blocked} · 复核 {decisions.review} · 通过 {decisions.approved}
+              {t('workbench.decisionsBlocked', { count: decisions.blocked })} · {t('workbench.decisionsReview', { count: decisions.review })} · {t('workbench.decisionsApproved', { count: decisions.approved })}
             </Text>
           </Card>
         </Col>
@@ -196,9 +200,9 @@ const WorkbenchPage: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={10}>
-          <Card title="治理进度" size="small" style={{ marginBottom: 16 }}>
+          <Card title={t('workbench.governanceProgress')} size="small" style={{ marginBottom: 16 }}>
             <Paragraph style={{ marginBottom: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>语义映射审核（发布门禁依据此项）</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>{t('workbench.mappingGate')}</Text>
             </Paragraph>
             <Progress
               percent={mappingProgress}
@@ -206,20 +210,20 @@ const WorkbenchPage: React.FC = () => {
               format={() => `${governance.confirmedMappings}/${totalMappings}`}
             />
             <Space direction="vertical" size={4} style={{ marginTop: 12, width: '100%' }}>
-              <Text style={{ fontSize: 13 }}>待审映射：{governance.pendingMappings}</Text>
-              <Text style={{ fontSize: 13 }}>审计条目：{governance.auditEntries}</Text>
+              <Text style={{ fontSize: 13 }}>{t('workbench.pendingMappings', { count: governance.pendingMappings })}</Text>
+              <Text style={{ fontSize: 13 }}>{t('workbench.auditEntries', { count: governance.auditEntries })}</Text>
               <Text style={{ fontSize: 13 }}>
-                值域映射：{knowledge.confirmedValueMappings} 已确认
-                {knowledge.pendingValueMappings ? ` · ${knowledge.pendingValueMappings} 待确认` : ''}
+                {t('workbench.valueMappings', { count: knowledge.confirmedValueMappings })}
+                {knowledge.pendingValueMappings ? ` · ${t('workbench.valueMappingsPending', { count: knowledge.pendingValueMappings })}` : ''}
               </Text>
             </Space>
           </Card>
         </Col>
 
         <Col xs={24} lg={14}>
-          <Card title="最近决策" size="small" extra={<Button type="link" onClick={() => navigate('/governance')}>全部</Button>}>
+          <Card title={t('workbench.recentDecisions')} size="small" extra={<Button type="link" onClick={() => navigate('/governance')}>{t('workbench.viewAll')}</Button>}>
             {decisions.recent.length === 0 ? (
-              <Empty description="尚无决策记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('workbench.noDecisions')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
               <Table
                 size="small"
@@ -228,15 +232,15 @@ const WorkbenchPage: React.FC = () => {
                 dataSource={decisions.recent}
                 columns={[
                   {
-                    title: '状态',
+                    title: t('workbench.column.status'),
                     dataIndex: 'status',
                     width: 88,
                     render: (status: string) => <Tag color={DECISION_COLOR[status] || 'default'}>{status}</Tag>,
                   },
-                  { title: '对象', dataIndex: 'objectCode', width: 140, ellipsis: true },
-                  { title: '实例', dataIndex: 'instanceId', width: 120, ellipsis: true },
-                  { title: '类型', dataIndex: 'decisionType', ellipsis: true },
-                  { title: '时间（UTC）', dataIndex: 'createdAt', width: 160, ellipsis: true },
+                  { title: t('workbench.column.object'), dataIndex: 'objectCode', width: 140, ellipsis: true },
+                  { title: t('workbench.column.instance'), dataIndex: 'instanceId', width: 120, ellipsis: true },
+                  { title: t('workbench.column.type'), dataIndex: 'decisionType', ellipsis: true },
+                  { title: t('workbench.column.createdAt'), dataIndex: 'createdAt', width: 160, ellipsis: true },
                 ]}
               />
             )}
@@ -245,7 +249,7 @@ const WorkbenchPage: React.FC = () => {
       </Row>
 
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
-        统计生成于 {data.generatedAt}
+        {t('workbench.generatedAt', { time: data.generatedAt })}
       </Text>
     </div>
   );

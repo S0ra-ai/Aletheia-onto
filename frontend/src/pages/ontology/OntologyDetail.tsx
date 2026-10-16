@@ -1,6 +1,7 @@
 import { joinSentences } from '../../i18n/text';
 import React, { useCallback, useEffect, useState } from 'react';
 import { label, GATE_SEVERITY, ONTOLOGY_STATUS, READINESS_STATUS } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Tabs, Descriptions, Empty, Spin, Progress, Popconfirm, message } from 'antd';
 import { ArrowLeftOutlined, CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -16,6 +17,7 @@ const OntologyDetailPage: React.FC = () => {
   const [tab, setTab] = useTabParam('objects');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const t = useT();
   const [ontology, setOntology] = useState<OntologyDetail | null>(null);
   const [releaseReadiness, setReleaseReadiness] = useState<ReleaseReadinessResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,11 +43,11 @@ const OntologyDetailPage: React.FC = () => {
     } catch (error) {
       // Was `console.error` only, so a failed read was indistinguishable from an empty one
       // to anyone not holding the developer console.
-      setLoadError(requestErrorMessage(error, '读取本体失败'));
+      setLoadError(requestErrorMessage(error, t('ontology.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     fetchOntology();
@@ -64,12 +66,12 @@ const OntologyDetailPage: React.FC = () => {
     setPublishing(true);
     try {
       const result = await ontologyApi.publish(parseInt(id));
-      message.success(`本体已发布：${result.name} v${result.version}`);
+      message.success(t('ontology.published', { name: result.name, version: result.version }));
       await fetchOntology();
     } catch (error) {
       // The server's refusal names the blockers, and that message is the useful one -- the
       // gate list on this tab shows the same thing in detail.
-      message.error(requestErrorMessage(error, '发布失败'));
+      message.error(requestErrorMessage(error, t('ontology.publishFailed')));
     } finally {
       setPublishing(false);
     }
@@ -84,74 +86,74 @@ const OntologyDetailPage: React.FC = () => {
       <Alert
         type="error"
         showIcon
-        message="读取本体失败"
+        message={t('ontology.loadFailed')}
         description={loadError}
-        action={<Button onClick={fetchOntology}>重试</Button>}
+        action={<Button onClick={fetchOntology}>{t('ontology.retry')}</Button>}
       />
     );
   }
 
   if (!ontology) {
-    return <Empty description="未找到本体数据" />;
+    return <Empty description={t('ontology.notFound')} />;
   }
 
   const objectColumns = [
-    { title: '编码', dataIndex: 'code', key: 'code' },
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '来源表', dataIndex: 'sourceTable', key: 'sourceTable' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
+    { title: t('ontology.code'), dataIndex: 'code', key: 'code' },
+    { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
+    { title: t('ontology.sourceTable'), dataIndex: 'sourceTable', key: 'sourceTable' },
+    { title: t('ontology.description'), dataIndex: 'description', key: 'description' },
   ];
 
   const attributeColumns = [
-    { title: '编码', dataIndex: 'code', key: 'code' },
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '数据类型', dataIndex: 'dataType', key: 'dataType', render: (type: string) => <Tag>{type}</Tag> },
-    { title: '来源字段', dataIndex: 'sourceColumn', key: 'sourceColumn' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
+    { title: t('ontology.code'), dataIndex: 'code', key: 'code' },
+    { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
+    { title: t('ontology.dataType'), dataIndex: 'dataType', key: 'dataType', render: (type: string) => <Tag>{type}</Tag> },
+    { title: t('ontology.sourceColumn'), dataIndex: 'sourceColumn', key: 'sourceColumn' },
+    { title: t('ontology.description'), dataIndex: 'description', key: 'description' },
   ];
 
   const relationColumns = [
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '类型', dataIndex: 'type', key: 'type', render: (type: string) => <Tag color="blue">{type}</Tag> },
-    { title: '外键', dataIndex: 'sourceForeignKey', key: 'sourceForeignKey' },
+    { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
+    { title: t('ontology.type'), dataIndex: 'type', key: 'type', render: (type: string) => <Tag color="blue">{type}</Tag> },
+    { title: t('ontology.foreignKey'), dataIndex: 'sourceForeignKey', key: 'sourceForeignKey' },
   ];
 
   const mappingColumns = [
-    { title: '类型', dataIndex: 'mappingType', key: 'mappingType', render: (type: string) => <Tag>{type}</Tag> },
-    { title: '来源表', dataIndex: 'sourceTable', key: 'sourceTable' },
-    { title: '来源字段', dataIndex: 'sourceColumn', key: 'sourceColumn', render: (col: string) => col || '-' },
-    { title: '目标对象', dataIndex: 'targetObjectCode', key: 'targetObjectCode' },
-    { title: '目标属性', dataIndex: 'targetAttributeCode', key: 'targetAttributeCode', render: (attr: string) => attr || '-' },
-    { title: '置信度', dataIndex: 'confidence', key: 'confidence', render: (conf: number) => `${(conf * 100).toFixed(0)}%` },
-    { title: '状态', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'confirmed' ? 'green' : 'orange'}>{label(ONTOLOGY_STATUS, status)}</Tag> },
+    { title: t('ontology.type'), dataIndex: 'mappingType', key: 'mappingType', render: (type: string) => <Tag>{type}</Tag> },
+    { title: t('ontology.sourceTable'), dataIndex: 'sourceTable', key: 'sourceTable' },
+    { title: t('ontology.sourceColumn'), dataIndex: 'sourceColumn', key: 'sourceColumn', render: (col: string) => col || '-' },
+    { title: t('ontology.targetObject'), dataIndex: 'targetObjectCode', key: 'targetObjectCode' },
+    { title: t('ontology.targetAttribute'), dataIndex: 'targetAttributeCode', key: 'targetAttributeCode', render: (attr: string) => attr || '-' },
+    { title: t('ontology.confidence'), dataIndex: 'confidence', key: 'confidence', render: (conf: number) => `${(conf * 100).toFixed(0)}%` },
+    { title: t('ontology.status'), dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'confirmed' ? 'green' : 'orange'}>{label(ONTOLOGY_STATUS, status)}</Tag> },
   ];
 
   const ruleColumns = [
-    { title: '编码', dataIndex: 'code', key: 'code' },
-    { title: '名称', dataIndex: 'name', key: 'name' },
-    { title: '严重程度', dataIndex: 'severity', key: 'severity', render: (sev: string) => <Tag color={sev === 'error' ? 'red' : sev === 'warning' ? 'orange' : 'blue'}>{sev}</Tag> },
-    { title: '启用', dataIndex: 'enabled', key: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? '是' : '否'}</Tag> },
-    { title: '表达式', dataIndex: 'expression', key: 'expression', render: (expr: string) => <code>{expr}</code> },
+    { title: t('ontology.code'), dataIndex: 'code', key: 'code' },
+    { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
+    { title: t('ontology.severity'), dataIndex: 'severity', key: 'severity', render: (sev: string) => <Tag color={sev === 'error' ? 'red' : sev === 'warning' ? 'orange' : 'blue'}>{sev}</Tag> },
+    { title: t('ontology.enabled'), dataIndex: 'enabled', key: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? t('ontology.yes') : t('ontology.no')}</Tag> },
+    { title: t('ontology.expression'), dataIndex: 'expression', key: 'expression', render: (expr: string) => <code>{expr}</code> },
   ];
 
   const releaseGateColumns = [
-    { title: '门禁', dataIndex: 'name', key: 'name' },
+    { title: t('ontology.gate'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('ontology.status'),
       dataIndex: 'passed',
       key: 'passed',
-      render: (passed: boolean) => <Tag color={passed ? 'green' : 'red'}>{passed ? '通过' : '未通过'}</Tag>,
+      render: (passed: boolean) => <Tag color={passed ? 'green' : 'red'}>{passed ? t('ontology.passed') : t('ontology.notPassed')}</Tag>,
     },
     {
-      title: '级别',
+      title: t('ontology.gateLevel'),
       dataIndex: 'severity',
       key: 'severity',
       render: (severity: string) => (
         <Tag color={severity === 'blocker' ? 'red' : 'orange'}>{label(GATE_SEVERITY, severity)}</Tag>
       ),
     },
-    { title: '证据', dataIndex: 'evidence', key: 'evidence' },
-    { title: '修复动作', dataIndex: 'remediation', key: 'remediation' },
+    { title: t('ontology.evidence'), dataIndex: 'evidence', key: 'evidence' },
+    { title: t('ontology.remediation'), dataIndex: 'remediation', key: 'remediation' },
   ];
 
   const releaseColor = (status?: string) => {
@@ -172,9 +174,9 @@ const OntologyDetailPage: React.FC = () => {
     <div>
       <Space style={{ marginBottom: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/ontology')}>
-          返回
+          {t('ontology.back')}
         </Button>
-        <Title level={3} style={{ margin: 0 }}>本体详情</Title>
+        <Title level={3} style={{ margin: 0 }}>{t('ontology.detailTitle')}</Title>
         {/* Four formats, because the endpoint takes four. It offered two, so the pair the
             endpoint's own docstring calls the one another tool can *interpret* rather than
             merely read -- OWL/RDFS and SHACL -- was reachable only by composing the URL by
@@ -210,11 +212,11 @@ const OntologyDetailPage: React.FC = () => {
       <Card style={{ marginBottom: 16 }}>
         <Descriptions column={2}>
           <Descriptions.Item label="ID">{ontology.ontology.id}</Descriptions.Item>
-          <Descriptions.Item label="名称">{ontology.ontology.name}</Descriptions.Item>
-          <Descriptions.Item label="版本">
+          <Descriptions.Item label={t('ontology.name')}>{ontology.ontology.name}</Descriptions.Item>
+          <Descriptions.Item label={t('ontology.version')}>
             <Tag>v{ontology.ontology.version}</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="状态">
+          <Descriptions.Item label={t('ontology.status')}>
             {/* This asked `status === 'active'`, a value `VALID_ONTOLOGY_STATUSES` does not
                 contain, so the tag was orange for every status including a published one --
                 and it printed the raw enum, which the list page beside it already
@@ -225,13 +227,13 @@ const OntologyDetailPage: React.FC = () => {
               `ontology` table does not have -- an ontology reaches its data sources through
               its objects, which may be several. The row was therefore blank on every
               deployment, permanently. Replaced with two fields that exist in the payload. */}
-          <Descriptions.Item label="业务领域">{ontology.ontology.domain || '未标注'}</Descriptions.Item>
-          <Descriptions.Item label="创建时间">{ontology.ontology.createdAt}</Descriptions.Item>
+          <Descriptions.Item label={t('ontology.domain')}>{ontology.ontology.domain || t('ontology.domainUnset')}</Descriptions.Item>
+          <Descriptions.Item label={t('ontology.createdAt')}>{ontology.ontology.createdAt}</Descriptions.Item>
         </Descriptions>
       </Card>
 
       {releaseReadiness && (
-        <Card style={{ marginBottom: 16 }} title="发布就绪度">
+        <Card style={{ marginBottom: 16 }} title={t('ontology.releaseReadiness')}>
           <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 220 }}>
               <Progress
@@ -241,26 +243,26 @@ const OntologyDetailPage: React.FC = () => {
               />
             </div>
             <Descriptions column={4} style={{ flex: 1 }}>
-              <Descriptions.Item label="状态">
+              <Descriptions.Item label={t('ontology.status')}>
                 <Tag color={releaseColor(releaseReadiness.status)}>
                   {label(READINESS_STATUS, releaseReadiness.status)}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="业务对象">{releaseReadiness.summary.objects}</Descriptions.Item>
-              <Descriptions.Item label="数据源">{releaseReadiness.summary.dataSources}</Descriptions.Item>
-              <Descriptions.Item label="门禁">{releaseReadiness.summary.passedGates}/{releaseReadiness.summary.totalGates}</Descriptions.Item>
-              <Descriptions.Item label="阻断">{releaseReadiness.summary.blockers}</Descriptions.Item>
-              <Descriptions.Item label="预警">{releaseReadiness.summary.warnings}</Descriptions.Item>
-              <Descriptions.Item label="确认映射">{releaseReadiness.summary.confirmedMappings}</Descriptions.Item>
-              <Descriptions.Item label="待审映射">{releaseReadiness.summary.pendingMappings}</Descriptions.Item>
-              <Descriptions.Item label="发布规则">{releaseReadiness.summary.publishedRules}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.objects')}>{releaseReadiness.summary.objects}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.dataSources')}>{releaseReadiness.summary.dataSources}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.gate')}>{releaseReadiness.summary.passedGates}/{releaseReadiness.summary.totalGates}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.blockers')}>{releaseReadiness.summary.blockers}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.warnings')}>{releaseReadiness.summary.warnings}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.confirmedMappings')}>{releaseReadiness.summary.confirmedMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.pendingMappings')}>{releaseReadiness.summary.pendingMappings}</Descriptions.Item>
+              <Descriptions.Item label={t('ontology.publishedRules')}>{releaseReadiness.summary.publishedRules}</Descriptions.Item>
             </Descriptions>
           </Space>
           {releaseReadiness.nextActions.length > 0 && (
             <Alert
               style={{ marginTop: 16 }}
               type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
-              message="下一步动作"
+              message={t('ontology.nextActions')}
               description={joinSentences(releaseReadiness.nextActions)}
             />
           )}
@@ -269,42 +271,42 @@ const OntologyDetailPage: React.FC = () => {
 
       <Card>
         <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={`业务对象 (${ontology.objects.length})`} key="objects">
+          <TabPane tab={t('ontology.objectsTab', { count: ontology.objects.length })} key="objects">
             <Table
               columns={objectColumns}
               dataSource={ontology.objects}
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab={`业务属性 (${ontology.attributes.length})`} key="attributes">
+          <TabPane tab={t('ontology.attributesTab', { count: ontology.attributes.length })} key="attributes">
             <Table
               columns={attributeColumns}
               dataSource={ontology.attributes}
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab={`业务关系 (${ontology.relations.length})`} key="relations">
+          <TabPane tab={t('ontology.relationsTab', { count: ontology.relations.length })} key="relations">
             <Table
               columns={relationColumns}
               dataSource={ontology.relations}
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab={`语义映射 (${ontology.mappings.length})`} key="mappings">
+          <TabPane tab={t('ontology.mappingsTab', { count: ontology.mappings.length })} key="mappings">
             <Table
               columns={mappingColumns}
               dataSource={ontology.mappings}
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab={`业务规则 (${ontology.rules.length})`} key="rules">
+          <TabPane tab={t('ontology.rulesTab', { count: ontology.rules.length })} key="rules">
             <Table
               columns={ruleColumns}
               dataSource={ontology.rules}
               rowKey="id"
             />
           </TabPane>
-          <TabPane tab="发布门禁" key="release">
+          <TabPane tab={t('ontology.releaseGatesTab')} key="release">
             {/*
               The gate's verdict had no door: this tab listed what blocks a release, the card
               above listed what is ready, and there was no way to publish from the application
@@ -314,10 +316,10 @@ const OntologyDetailPage: React.FC = () => {
             <Space style={{ marginBottom: 12 }} direction="vertical" size={8}>
               <Space>
                 <Popconfirm
-                  title="发布本体"
-                  description="发布后该版本不可修改，只能派生新版本。确认发布？"
-                  okText="发布"
-                  cancelText="取消"
+                  title={t('ontology.publish')}
+                  description={t('ontology.publishConfirm')}
+                  okText={t('ontology.publishOk')}
+                  cancelText={t('shell.common.cancel')}
                   onConfirm={() => void handlePublish()}
                   disabled={!canPublish}
                 >
@@ -327,19 +329,19 @@ const OntologyDetailPage: React.FC = () => {
                     loading={publishing}
                     disabled={!canPublish}
                   >
-                    {ontology.ontology.status === 'published' ? '已发布' : '发布本体'}
+                    {ontology.ontology.status === 'published' ? t('ontology.isPublished') : t('ontology.publish')}
                   </Button>
                 </Popconfirm>
                 {blockers.length > 0 && (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    还有 {blockers.length} 项阻断项，先按上面的「下一步动作」处理；
-                    需要强行发布时用命令行 <Typography.Text code>aletheia publish --force</Typography.Text>，
-                    它会把这处覆盖写进审计。
+                    {t('ontology.blockerHintPrefix', { count: blockers.length })}
+                    <Typography.Text code>aletheia publish --force</Typography.Text>
+                    {t('ontology.blockerHintSuffix')}
                   </Typography.Text>
                 )}
               </Space>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                发布后该版本不可修改：改动要派生新版本，判定仍能追溯到发布时的模型。
+                {t('ontology.publishNote')}
               </Typography.Text>
             </Space>
             <Table
@@ -349,7 +351,7 @@ const OntologyDetailPage: React.FC = () => {
               pagination={false}
             />
           </TabPane>
-          <TabPane tab="建模扩展" key="extensions">
+          <TabPane tab={t('ontology.extensionsTab')} key="extensions">
             <ModellingExtensions
               ontologyId={ontology.ontology.id}
               objects={ontology.objects ?? []}

@@ -7,6 +7,7 @@ import {
   ApiOutlined, CheckCircleOutlined, CloseCircleOutlined, SaveOutlined, UndoOutlined,
 } from '@ant-design/icons';
 import { modelApi, requestErrorMessage } from '../../api';
+import { useT } from '../../i18n/locale';
 import type { ModelConfig, ModelConfigUpdate } from '../../types';
 
 const { Title, Paragraph, Text } = Typography;
@@ -22,7 +23,7 @@ const { Title, Paragraph, Text } = Typography;
  */
 
 interface Preset {
-  label: string;
+  labelKey: string;
   provider: string;
   baseUrl: string;
   model: string;
@@ -35,7 +36,7 @@ interface Preset {
 /** Starting points for the shapes we have actually had to support. */
 const PRESETS: Record<string, Preset> = {
   openrouter: {
-    label: 'OpenRouter',
+    labelKey: 'model.preset.openrouter',
     provider: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini',
@@ -44,7 +45,7 @@ const PRESETS: Record<string, Preset> = {
     note: '支持 service_tier 与 session_id 等扩展字段。',
   },
   openai: {
-    label: 'OpenAI 官方',
+    labelKey: 'model.preset.openai',
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
@@ -53,7 +54,7 @@ const PRESETS: Record<string, Preset> = {
     note: '官方接口不接受 OpenRouter 扩展字段，已默认关闭。',
   },
   relay: {
-    label: '中转站 / 自定义订阅',
+    labelKey: 'model.preset.relay',
     provider: 'custom',
     baseUrl: 'https://your-relay.example.com/v1',
     model: 'gpt-4o-mini',
@@ -62,7 +63,7 @@ const PRESETS: Record<string, Preset> = {
     note: '多数中转站兼容 OpenAI 协议；若返回 400，先关闭扩展字段。',
   },
   azure: {
-    label: 'Azure OpenAI',
+    labelKey: 'model.preset.azure',
     provider: 'azure',
     baseUrl: 'https://<资源名>.openai.azure.com/openai/deployments/<部署名>/chat/completions?api-version=2024-02-01',
     model: '<部署名>',
@@ -71,7 +72,7 @@ const PRESETS: Record<string, Preset> = {
     note: 'Azure 使用 api-key 请求头，且 Base URL 需含完整路径与 api-version。',
   },
   vllm: {
-    label: '自建 vLLM / Ollama',
+    labelKey: 'model.preset.vllm',
     provider: 'local',
     baseUrl: 'http://127.0.0.1:8000/v1',
     model: 'qwen2.5-7b-instruct',
@@ -80,7 +81,7 @@ const PRESETS: Record<string, Preset> = {
     note: '本地服务通常无需密钥，且对未知字段严格返回 400。',
   },
   dashscope: {
-    label: '阿里云百炼 / 通义',
+    labelKey: 'model.preset.dashscope',
     provider: 'dashscope',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-max',
@@ -89,7 +90,7 @@ const PRESETS: Record<string, Preset> = {
     note: '使用 OpenAI 兼容模式端点。',
   },
   deepseek: {
-    label: 'DeepSeek 官方 API',
+    labelKey: 'model.preset.deepseek',
     provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
@@ -99,14 +100,15 @@ const PRESETS: Record<string, Preset> = {
   },
 };
 
-const AUTH_STYLE_LABELS: Record<string, string> = {
-  bearer: 'Bearer Token（多数服务）',
-  'api-key': 'api-key 请求头（Azure）',
-  custom: '自定义请求头',
-  none: '不发送密钥（本地服务）',
+const AUTH_STYLE_KEYS: Record<string, string> = {
+  bearer: 'model.authStyle.bearer',
+  'api-key': 'model.authStyle.apiKey',
+  custom: 'model.authStyle.custom',
+  none: 'model.authStyle.none',
 };
 
 const ModelConfigPage: React.FC = () => {
+  const t = useT();
   const [config, setConfig] = useState<ModelConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -137,11 +139,11 @@ const ModelConfigPage: React.FC = () => {
           : '',
       });
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取配置失败'));
+      message.error(requestErrorMessage(error, t('model.loadFailed')));
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, [form, t]);
 
   useEffect(() => {
     void fetchConfig();
@@ -159,7 +161,7 @@ const ModelConfigPage: React.FC = () => {
       sendProviderExtras: preset.sendProviderExtras,
     });
     setAuthStyle(preset.authStyle);
-    message.info(`已套用「${preset.label}」预设，请补齐密钥后保存`);
+    message.info(t('model.presetApplied', { name: t(preset.labelKey as never) }));
   };
 
   const handleSave = async (values: Record<string, unknown>) => {
@@ -174,12 +176,12 @@ const ModelConfigPage: React.FC = () => {
       try {
         const parsed = JSON.parse(raw);
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          message.error('附加请求头必须是 JSON 对象');
+          message.error(t('model.extraHeadersNotObject'));
           return;
         }
         payload.extraHeaders = parsed as Record<string, string>;
       } catch (error) {
-        message.error(requestErrorMessage(error, '附加请求头不是合法 JSON'));
+        message.error(requestErrorMessage(error, t('model.extraHeadersInvalidJson')));
         return;
       }
     } else {
@@ -189,12 +191,12 @@ const ModelConfigPage: React.FC = () => {
     setLoading(true);
     try {
       await modelApi.updateConfig(payload);
-      message.success('配置保存成功');
+      message.success(t('model.saved'));
       setTestResult(null);
       await fetchConfig();
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || '保存失败');
+      message.error(detail || t('model.saveFailed'));
     } finally {
       setLoading(false);
     }
@@ -204,11 +206,11 @@ const ModelConfigPage: React.FC = () => {
     setLoading(true);
     try {
       await modelApi.resetConfig();
-      message.success('配置已重置');
+      message.success(t('model.resetDone'));
       setTestResult(null);
       await fetchConfig();
     } catch (error) {
-      message.error(requestErrorMessage(error, '重置失败'));
+      message.error(requestErrorMessage(error, t('model.resetFailed')));
     } finally {
       setLoading(false);
     }
@@ -220,10 +222,10 @@ const ModelConfigPage: React.FC = () => {
     try {
       const result = await modelApi.testConfig();
       setTestResult(result);
-      if (result.success) message.success('连接测试成功');
+      if (result.success) message.success(t('model.testSucceeded'));
       else message.error(result.message);
     } catch (error) {
-      message.error(requestErrorMessage(error, '测试失败'));
+      message.error(requestErrorMessage(error, t('model.testFailed')));
     } finally {
       setTestLoading(false);
     }
@@ -235,68 +237,67 @@ const ModelConfigPage: React.FC = () => {
 
   return (
     <div>
-      <Title level={3}>模型配置</Title>
+      <Title level={3}>{t('model.title')}</Title>
       <Paragraph type="secondary">
-        平台使用 OpenAI 兼容的 chat/completions 协议，因此任何实现该协议的服务都可接入：
-        官方 API、中转站与自定义订阅、自建 vLLM / Ollama、Azure OpenAI、国内厂商兼容端点。
+        {t('model.intro')}
         <br />
         <Text type="secondary" style={{ fontSize: 12 }}>
-          未配置密钥时，问答与建模会回退到本地启发式，功能不中断。DeepSeek 官方 API 可通过下方预设直接接入。
+          {t('model.introHint')}
         </Text>
       </Paragraph>
 
       <Card style={{ marginBottom: 16 }}>
         <Descriptions column={2} size="small">
-          <Descriptions.Item label="配置状态">
+          <Descriptions.Item label={t('model.configStatus')}>
             <Tag color={config?.configured ? 'green' : 'red'} icon={config?.configured ? <CheckCircleOutlined /> : <CloseCircleOutlined />}>
-              {config?.configured ? '已配置' : '未配置'}
+              {config?.configured ? t('model.configured') : t('model.notConfigured')}
             </Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="当前模型">{config?.model || '-'}</Descriptions.Item>
+          <Descriptions.Item label={t('model.currentModel')}>{config?.model || '-'}</Descriptions.Item>
           <Descriptions.Item label="API Key">
-            {config?.hasApiKey ? <Tag color="green">{config.apiKey}</Tag> : <Tag color="red">未设置</Tag>}
+            {config?.hasApiKey ? <Tag color="green">{config.apiKey}</Tag> : <Tag color="red">{t('model.notSet')}</Tag>}
           </Descriptions.Item>
-          <Descriptions.Item label="鉴权方式">
-            <Tag>{AUTH_STYLE_LABELS[config?.authStyle || 'bearer'] || config?.authStyle}</Tag>
+          <Descriptions.Item label={t('model.authStyleLabel')}>
+            <Tag>{AUTH_STYLE_KEYS[config?.authStyle || 'bearer'] ? t(AUTH_STYLE_KEYS[config?.authStyle || 'bearer'] as never) : config?.authStyle}</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="实际调用地址" span={2}>
+          <Descriptions.Item label={t('model.resolvedEndpoint')} span={2}>
             <Text code copyable style={{ fontSize: 12 }}>{config?.resolvedEndpoint || '-'}</Text>
           </Descriptions.Item>
         </Descriptions>
       </Card>
 
       <Card
-        title="接入配置"
+        title={t('model.connectionCard')}
         extra={
           <Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>快速预设</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{t('model.presets')}</Text>
             <Select
               style={{ width: 200 }}
-              placeholder="选择服务商"
+              placeholder={t('model.providerPlaceholder')}
               onChange={applyPreset}
-              options={Object.entries(PRESETS).map(([key, preset]) => ({ value: key, label: preset.label }))}
+              options={Object.entries(PRESETS).map(([key, preset]) => ({ value: key, label: t(preset.labelKey as never) }))}
             />
           </Space>
         }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="provider" label="服务商标识" hidden>
+          <Form.Item name="provider" label={t('model.providerLabel')} hidden>
             <Input />
           </Form.Item>
           <Form.Item
             name="baseUrl"
             label="API Base URL"
-            rules={[{ required: true, message: '请输入 API 地址' }]}
-            extra="通常以 /v1 结尾。若你的网关直接提供完整的 /chat/completions 地址（如 Azure），可整段填入，平台不会重复拼接。"
+            rules={[{ required: true, message: t('model.baseUrlRequired') }]}
+            extra={t('model.baseUrlHint')}
           >
             <Input placeholder="https://your-relay.example.com/v1" />
           </Form.Item>
 
           <Form.Item
             name="model"
-            label="模型名称"
-            rules={[{ required: true, message: '请输入模型名称' }]}
-            extra="填写你的服务商所使用的模型标识；Azure 填部署名。"
+            label={t('model.modelNameLabel')}
+            rules={[{ required: true, message: t('model.modelNameRequired') }]}
+            extra={t('model.modelNameHint')}
           >
             <Input placeholder="gpt-4o-mini / qwen-max / deepseek-flash" />
           </Form.Item>
@@ -304,23 +305,23 @@ const ModelConfigPage: React.FC = () => {
           <Form.Item
             name="apiKey"
             label="API Key"
-            extra={config?.hasApiKey ? '留空则保持现有 Key 不变' : '本地服务若无需鉴权，可将鉴权方式设为「不发送密钥」'}
+            extra={config?.hasApiKey ? t('model.apiKeyKeepHint') : t('model.apiKeyLocalHint')}
           >
             <Input.Password placeholder="sk-..." autoComplete="new-password" />
           </Form.Item>
 
-          <Divider titlePlacement="start" plain>兼容性设置</Divider>
+          <Divider titlePlacement="start" plain>{t('model.compatibility')}</Divider>
 
           <Form.Item
             name="authStyle"
-            label="鉴权方式"
-            extra="不同服务商传递密钥的方式不同，选错会得到 401。"
+            label={t('model.authStyleLabel')}
+            extra={t('model.authStyleHint')}
           >
             <Select
               onChange={setAuthStyle}
               options={(config?.authStyleOptions || ['bearer', 'api-key', 'custom', 'none']).map(value => ({
                 value,
-                label: AUTH_STYLE_LABELS[value] || value,
+                label: AUTH_STYLE_KEYS[value] ? t(AUTH_STYLE_KEYS[value] as never) : value,
               }))}
             />
           </Form.Item>
@@ -328,9 +329,9 @@ const ModelConfigPage: React.FC = () => {
           {authStyle === 'custom' && (
             <Form.Item
               name="authHeader"
-              label="自定义鉴权请求头名称"
-              rules={[{ required: true, message: '请填写请求头名称' }]}
-              extra="密钥将以该请求头原样发送，例如 X-Api-Token。"
+              label={t('model.authHeaderLabel')}
+              rules={[{ required: true, message: t('model.authHeaderRequired') }]}
+              extra={t('model.authHeaderHint')}
             >
               <Input placeholder="X-Api-Token" />
             </Form.Item>
@@ -339,50 +340,50 @@ const ModelConfigPage: React.FC = () => {
           <Form.Item
             name="sendProviderExtras"
             label={
-              <Tooltip title="service_tier 与 session_id 是 OpenRouter 扩展字段。严格的 OpenAI 兼容服务（vLLM、LM Studio、部分中转站）会因未知字段直接返回 400。">
-                <span>发送 OpenRouter 扩展字段</span>
+              <Tooltip title={t('model.extrasTooltip')}>
+                <span>{t('model.extrasLabel')}</span>
               </Tooltip>
             }
             valuePropName="checked"
-            extra="接入非 OpenRouter 服务且遇到 400 错误时，请关闭此项。"
+            extra={t('model.extrasHint')}
           >
             <Switch />
           </Form.Item>
 
           <Form.Item
             name="extraHeadersText"
-            label="附加请求头（可选，JSON）"
-            extra='部分网关需要额外标识，例如 {"X-Tenant-Id": "acme"}。此处的键会覆盖上面自动生成的同名请求头。'
+            label={t('model.extraHeadersLabel')}
+            extra={t('model.extraHeadersHint')}
           >
             <Input.TextArea rows={3} placeholder='{"X-Tenant-Id": "acme"}' />
           </Form.Item>
 
-          <Divider titlePlacement="start" plain>其他</Divider>
+          <Divider titlePlacement="start" plain>{t('model.other')}</Divider>
 
           <Space size={16} style={{ display: 'flex', flexWrap: 'wrap' }}>
-            <Form.Item name="serviceTier" label="服务层级" style={{ minWidth: 160 }} extra="仅 OpenRouter">
+            <Form.Item name="serviceTier" label={t('model.serviceTierLabel')} style={{ minWidth: 160 }} extra={t('model.serviceTierHint')}>
               <Input placeholder="auto" />
             </Form.Item>
-            <Form.Item name="timeoutSeconds" label="超时（秒）" style={{ minWidth: 160 }}>
+            <Form.Item name="timeoutSeconds" label={t('model.timeoutLabel')} style={{ minWidth: 160 }}>
               <InputNumber min={5} max={600} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item name="appTitle" label="应用标题" style={{ minWidth: 220 }} extra="作为 X-Title 发送">
+            <Form.Item name="appTitle" label={t('model.appTitleLabel')} style={{ minWidth: 220 }} extra={t('model.appTitleHint')}>
               <Input placeholder="Aletheia" />
             </Form.Item>
-            <Form.Item name="httpReferer" label="HTTP Referer" style={{ minWidth: 220 }} extra="可选，用于服务商归因">
+            <Form.Item name="httpReferer" label="HTTP Referer" style={{ minWidth: 220 }} extra={t('model.httpRefererHint')}>
               <Input placeholder="https://example.com" />
             </Form.Item>
           </Space>
 
           <Space>
             <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={loading}>
-              保存配置
+              {t('model.saveButton')}
             </Button>
             <Button icon={<ApiOutlined />} onClick={handleTest} loading={testLoading}>
-              测试连接
+              {t('model.testButton')}
             </Button>
             <Button icon={<UndoOutlined />} onClick={handleReset} danger>
-              重置为默认
+              {t('model.resetButton')}
             </Button>
           </Space>
         </Form>
@@ -392,16 +393,15 @@ const ModelConfigPage: React.FC = () => {
             style={{ marginTop: 16 }}
             type={testResult.success ? 'success' : 'error'}
             showIcon
-            message={testResult.success ? '连接成功' : '连接失败'}
+            message={testResult.success ? t('model.connected') : t('model.connectionFailed')}
             description={
               <>
                 <div>{testResult.message}</div>
-                {testResult.model && <div>返回模型：{testResult.model}</div>}
+                {testResult.model && <div>{t('model.returnedModel', { model: testResult.model })}</div>}
                 {!testResult.success && (
                   <div style={{ marginTop: 8 }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      401 通常是鉴权方式不匹配；400 常见于未知字段，可尝试关闭「发送 OpenRouter 扩展字段」；
-                      404 多为 Base URL 路径不正确。
+                      {t('model.testHint')}
                     </Text>
                   </div>
                 )}

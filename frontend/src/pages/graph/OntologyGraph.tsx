@@ -1,4 +1,5 @@
 import { label, ONTOLOGY_STATUS, RELATION_KIND } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { graphApi, ontologyApi, requestErrorMessage } from '../../api';
@@ -111,6 +112,7 @@ function nodeFill(node: OntologyGraphNode): string {
 }
 
 const OntologyGraphPage: React.FC = () => {
+  const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [graph, setGraph] = useState<OntologyGraph | null>(null);
@@ -134,22 +136,22 @@ const OntologyGraphPage: React.FC = () => {
           setSelected(richest.id);
         }
       } catch (error) {
-        message.error(requestErrorMessage(error, '加载本体列表失败'));
+        message.error(requestErrorMessage(error, t('graph.loadOntologiesFailed')));
       }
     })();
-  }, []);
+  }, [t]);
 
   const loadGraph = useCallback(async (ontologyId: number) => {
     setLoading(true);
     try {
       setGraph(await graphApi.getOntologyGraph(ontologyId));
     } catch (error) {
-      message.error(requestErrorMessage(error, '加载知识图谱失败'));
+      message.error(requestErrorMessage(error, t('graph.loadGraphFailed')));
       setGraph(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (selected != null) void loadGraph(selected);
@@ -170,20 +172,20 @@ const OntologyGraphPage: React.FC = () => {
     <div>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <Title level={4} style={{ marginBottom: 4 }}>知识图谱预览</Title>
-          <Text type="secondary">业务对象与关系的图结构，用于发现建模缺口</Text>
+          <Title level={4} style={{ marginBottom: 4 }}>{t('graph.title')}</Title>
+          <Text type="secondary">{t('graph.subtitle')}</Text>
         </div>
         <Space>
-          <Text type="secondary">只看有问题的对象</Text>
+          <Text type="secondary">{t('graph.issuesOnly')}</Text>
           <Switch checked={showIssuesOnly} onChange={setShowIssuesOnly} />
           <Select
             style={{ width: 260 }}
-            placeholder="选择本体"
+            placeholder={t('graph.selectOntology')}
             value={selected ?? undefined}
             onChange={setSelected}
             options={ontologies.map(item => ({
               value: item.id,
-              label: `${item.name} v${item.version}${item.status === 'published' ? '（已发布）' : ''}`,
+              label: `${item.name} v${item.version}${item.status === 'published' ? t('graph.publishedSuffix') : ''}`,
             }))}
           />
         </Space>
@@ -195,7 +197,7 @@ const OntologyGraphPage: React.FC = () => {
         <Empty
           description={
             <span>
-              该本体尚无业务对象。请先接入数据源并生成本体草案。
+              {t('graph.empty')}
             </span>
           }
         />
@@ -210,7 +212,7 @@ const OntologyGraphPage: React.FC = () => {
                 viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
                 style={{ width: '100%', height: 'auto', background: '#fafcff', borderRadius: 6 }}
                 role="img"
-                aria-label={`${graph.ontology.name} 的业务对象关系图，共 ${graph.stats.nodeCount} 个对象、${graph.stats.edgeCount} 条关系`}
+                aria-label={t('graph.ariaLabel', { name: graph.ontology.name, objects: graph.stats.nodeCount, relations: graph.stats.edgeCount })}
               >
                 <defs>
                   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -302,21 +304,21 @@ const OntologyGraphPage: React.FC = () => {
               </svg>
 
               <Space wrap size={[16, 4]} style={{ padding: '8px 4px 2px' }}>
-                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#1677ff' }} /><Text style={{ fontSize: 12 }}>正常</Text></Space>
-                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#faad14' }} /><Text style={{ fontSize: 12 }}>无规则（不产出判定）</Text></Space>
-                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#ff4d4f' }} /><Text style={{ fontSize: 12 }}>未绑定来源表</Text></Space>
-                <Text type="secondary" style={{ fontSize: 12 }}>圆圈大小表示关联数量 · 悬停显示外键</Text>
+                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#1677ff' }} /><Text style={{ fontSize: 12 }}>{t('graph.legendNormal')}</Text></Space>
+                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#faad14' }} /><Text style={{ fontSize: 12 }}>{t('graph.legendNoRules')}</Text></Space>
+                <Space size={4}><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: '#ff4d4f' }} /><Text style={{ fontSize: 12 }}>{t('graph.legendUnbound')}</Text></Space>
+                <Text type="secondary" style={{ fontSize: 12 }}>{t('graph.legendHint')}</Text>
               </Space>
             </Card>
           </Col>
 
           <Col xs={24} lg={7}>
-            <Card size="small" title="图结构" style={{ marginBottom: 16 }}>
+            <Card size="small" title={t('graph.structureTitle')} style={{ marginBottom: 16 }}>
               <Descriptions column={1} size="small">
-                <Descriptions.Item label="业务对象">{graph.stats.nodeCount}</Descriptions.Item>
-                <Descriptions.Item label="关系">{graph.stats.edgeCount}</Descriptions.Item>
-                <Descriptions.Item label="领域">{graph.ontology.domain || '—'}</Descriptions.Item>
-                <Descriptions.Item label="版本">
+                <Descriptions.Item label={t('graph.statObjects')}>{graph.stats.nodeCount}</Descriptions.Item>
+                <Descriptions.Item label={t('graph.statRelations')}>{graph.stats.edgeCount}</Descriptions.Item>
+                <Descriptions.Item label={t('graph.statDomain')}>{graph.ontology.domain || '—'}</Descriptions.Item>
+                <Descriptions.Item label={t('graph.statVersion')}>
                   {graph.ontology.version}
                   <Tag color={graph.ontology.status === 'published' ? 'green' : 'blue'} style={{ marginLeft: 8 }}>
                     {label(ONTOLOGY_STATUS, graph.ontology.status)}
@@ -328,22 +330,22 @@ const OntologyGraphPage: React.FC = () => {
             {hoveredNode ? (
               <Card size="small" title={hoveredNode.name || hoveredNode.code}>
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="编码"><Text code>{hoveredNode.code}</Text></Descriptions.Item>
-                  <Descriptions.Item label="来源表">{hoveredNode.sourceTable || '未绑定'}</Descriptions.Item>
-                  <Descriptions.Item label="属性">{hoveredNode.attributeCount}</Descriptions.Item>
-                  <Descriptions.Item label="规则">{hoveredNode.ruleCount}</Descriptions.Item>
-                  <Descriptions.Item label="关联">{hoveredNode.degree}</Descriptions.Item>
+                  <Descriptions.Item label={t('graph.nodeCode')}><Text code>{hoveredNode.code}</Text></Descriptions.Item>
+                  <Descriptions.Item label={t('graph.nodeSourceTable')}>{hoveredNode.sourceTable || t('graph.nodeUnbound')}</Descriptions.Item>
+                  <Descriptions.Item label={t('graph.nodeAttributes')}>{hoveredNode.attributeCount}</Descriptions.Item>
+                  <Descriptions.Item label={t('graph.nodeRules')}>{hoveredNode.ruleCount}</Descriptions.Item>
+                  <Descriptions.Item label={t('graph.nodeDegree')}>{hoveredNode.degree}</Descriptions.Item>
                 </Descriptions>
               </Card>
             ) : (
-              <Card size="small" title="建模缺口">
+              <Card size="small" title={t('graph.gapsTitle')}>
                 {graph.stats.isolatedObjects.length === 0 && graph.stats.objectsWithoutRules.length === 0 ? (
-                  <Text type="secondary" style={{ fontSize: 13 }}>未发现孤立对象或缺失规则。</Text>
+                  <Text type="secondary" style={{ fontSize: 13 }}>{t('graph.noGaps')}</Text>
                 ) : (
                   <Space direction="vertical" size={8} style={{ width: '100%' }}>
                     {graph.stats.isolatedObjects.length > 0 && (
                       <div>
-                        <Text strong style={{ fontSize: 13 }}>孤立对象（无任何关联）</Text>
+                        <Text strong style={{ fontSize: 13 }}>{t('graph.isolatedTitle')}</Text>
                         <div style={{ marginTop: 4 }}>
                           {graph.stats.isolatedObjects.map(code => <Tag key={code}>{code}</Tag>)}
                         </div>
@@ -351,7 +353,7 @@ const OntologyGraphPage: React.FC = () => {
                     )}
                     {graph.stats.objectsWithoutRules.length > 0 && (
                       <div>
-                        <Text strong style={{ fontSize: 13 }}>无规则对象（不产出判定）</Text>
+                        <Text strong style={{ fontSize: 13 }}>{t('graph.noRulesTitle')}</Text>
                         <div style={{ marginTop: 4 }}>
                           {graph.stats.objectsWithoutRules.slice(0, 12).map(code => <Tag color="orange" key={code}>{code}</Tag>)}
                         </div>
@@ -366,7 +368,7 @@ const OntologyGraphPage: React.FC = () => {
               type="info"
               showIcon
               style={{ marginTop: 16 }}
-              message="关系表达力限制"
+              message={t('graph.limitationTitle')}
               description={graph.notes.limitation}
             />
           </Col>

@@ -1,6 +1,7 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Alert, Button, Result } from 'antd';
 import { ReloadOutlined, SafetyOutlined } from '@ant-design/icons';
+import { useT } from '../i18n/locale';
 
 interface Props {
   children: ReactNode;
@@ -14,6 +15,62 @@ interface State {
   hasError: boolean;
   error: Error | null;
 }
+
+interface ErrorFallbackProps {
+  fullPage?: boolean;
+  error: Error | null;
+}
+
+/**
+ * The fallback text lives in a function component: a class component cannot call `useT()`,
+ * and this text has to follow the language switch like every other screen's does.
+ */
+const ErrorFallback: React.FC<ErrorFallbackProps> = ({ fullPage, error }) => {
+  const t = useT();
+
+  if (fullPage) {
+    return (
+      <Result
+        status="error"
+        title={t('errors.title')}
+        subTitle={error?.message || t('errors.unknown')}
+        extra={[
+          <Button
+            type="primary"
+            key="reload"
+            icon={<ReloadOutlined />}
+            onClick={() => window.location.reload()}
+          >
+            {t('errors.reload')}
+          </Button>,
+        ]}
+      />
+    );
+  }
+
+  return (
+    <Alert
+      type="error"
+      showIcon
+      icon={<SafetyOutlined />}
+      message={t('errors.title')}
+      description={
+        <div>
+          <p style={{ marginBottom: 8 }}>{error?.message || t('errors.unknownShort')}</p>
+          <Button
+            type="link"
+            icon={<ReloadOutlined />}
+            onClick={() => window.location.reload()}
+            style={{ padding: 0 }}
+          >
+            {t('errors.retry')}
+          </Button>
+        </div>
+      }
+      style={{ margin: 16 }}
+    />
+  );
+};
 
 class ErrorBoundary extends Component<Props, State> {
   public state: State = {
@@ -36,48 +93,7 @@ class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      if (this.props.fullPage) {
-        return (
-          <Result
-            status="error"
-            title="页面加载失败"
-            subTitle={this.state.error?.message || '发生未知错误，请刷新页面重试'}
-            extra={[
-              <Button
-                type="primary"
-                key="reload"
-                icon={<ReloadOutlined />}
-                onClick={() => window.location.reload()}
-              >
-                刷新页面
-              </Button>,
-            ]}
-          />
-        );
-      }
-
-      return (
-        <Alert
-          type="error"
-          showIcon
-          icon={<SafetyOutlined />}
-          message="页面加载失败"
-          description={
-            <div>
-              <p style={{ marginBottom: 8 }}>{this.state.error?.message || '发生未知错误'}</p>
-              <Button
-                type="link"
-                icon={<ReloadOutlined />}
-                onClick={() => window.location.reload()}
-                style={{ padding: 0 }}
-              >
-                刷新重试
-              </Button>
-            </div>
-          }
-          style={{ margin: 16 }}
-        />
-      );
+      return <ErrorFallback fullPage={this.props.fullPage} error={this.state.error} />;
     }
 
     return this.props.children;

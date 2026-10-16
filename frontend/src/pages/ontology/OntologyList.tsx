@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { label, ONTOLOGY_STATUS } from '../../i18n/labels';
+import { useT } from '../../i18n/locale';
 import { Alert, Card, Table, Button, Space, Typography, Tag, Modal, Form, Input, Select, message, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +12,7 @@ const { Option } = Select;
 
 const OntologyList: React.FC = () => {
   const navigate = useNavigate();
+  const t = useT();
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [blueprints, setBlueprints] = useState<IndustryBlueprint[]>([]);
@@ -29,7 +31,7 @@ const OntologyList: React.FC = () => {
       const allOntologies = await ontologyApi.list();
       setOntologies(allOntologies as Ontology[]);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取本体列表失败'));
+      message.error(requestErrorMessage(error, t('ontology.listLoadFailed')));
     } finally {
       setLoading(false);
     }
@@ -37,7 +39,7 @@ const OntologyList: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [t]);
 
   const handleCreateDraft = async (values: OntologyDraftCreate) => {
     try {
@@ -46,15 +48,15 @@ const OntologyList: React.FC = () => {
       // hand-written rules and workflows were being deleted: the operation is destructive by
       // design, and a user who asked for a rebuild still deserves to know what it took.
       if (draft?.discardedSummary) {
-        message.warning(`草案已重新生成；原有 ${draft.discardedSummary} 已随之清除`, 6);
+        message.warning(t('ontology.draftRebuilt', { summary: draft.discardedSummary }), 6);
       } else {
-        message.success('本体草案生成成功');
+        message.success(t('ontology.draftCreated'));
       }
       setModalVisible(false);
       form.resetFields();
       fetchData();
     } catch (error) {
-      message.error(requestErrorMessage(error, '生成失败'));
+      message.error(requestErrorMessage(error, t('ontology.createFailed')));
     }
   };
 
@@ -62,12 +64,12 @@ const OntologyList: React.FC = () => {
     try {
       const payload = JSON.parse(values.blueprintJson) as IndustryBlueprint;
       await industryBlueprintApi.upsert(payload);
-      message.success('行业蓝图已导入');
+      message.success(t('ontology.blueprintImported'));
       setBlueprintModalVisible(false);
       blueprintForm.resetFields();
       fetchData();
     } catch (error) {
-      message.error(error instanceof SyntaxError ? '蓝图 JSON 格式不正确' : '蓝图导入失败');
+      message.error(error instanceof SyntaxError ? t('ontology.blueprintJsonInvalid') : t('ontology.blueprintImportFailed'));
     }
   };
 
@@ -79,18 +81,18 @@ const OntologyList: React.FC = () => {
       width: 80,
     },
     {
-      title: '名称',
+      title: t('ontology.name'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '版本',
+      title: t('ontology.version'),
       dataIndex: 'version',
       key: 'version',
       render: (version: string) => <Tag>v{version}</Tag>,
     },
     {
-      title: '状态',
+      title: t('ontology.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
@@ -100,13 +102,13 @@ const OntologyList: React.FC = () => {
       ),
     },
     {
-      title: '业务领域',
+      title: t('ontology.domain'),
       dataIndex: 'domain',
       key: 'domain',
       render: (domain: string) => domain || '-',
     },
     {
-      title: '操作',
+      title: t('shell.common.actions'),
       key: 'action',
       render: (_: unknown, record: Ontology) => (
         <Space>
@@ -115,14 +117,14 @@ const OntologyList: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => navigate(`/ontology/${record.id}`)}
           >
-            查看
+            {t('ontology.view')}
           </Button>
           <Button
             type="link"
             icon={<EditOutlined />}
             onClick={() => navigate(`/ontology/${record.id}/edit`)}
           >
-            编辑
+            {t('ontology.edit')}
           </Button>
         </Space>
       ),
@@ -132,20 +134,20 @@ const OntologyList: React.FC = () => {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3}>本体建模</Title>
+        <Title level={3}>{t('ontology.title')}</Title>
         <Space>
           <Button
             icon={<ImportOutlined />}
             onClick={() => setBlueprintModalVisible(true)}
           >
-            导入行业蓝图
+            {t('ontology.importBlueprint')}
           </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setModalVisible(true)}
           >
-            生成本体草案
+            {t('ontology.createDraft')}
           </Button>
         </Space>
       </div>
@@ -155,19 +157,19 @@ const OntologyList: React.FC = () => {
           <Empty
             description={
               dataSources.length === 0
-                ? '本体由扫描到的表结构生成，因此需要先接入一个数据源。请到「数据接入」登记业务库，扫描后再回来生成草案'
-                : '暂无本体数据'
+                ? t('ontology.emptyNoSource')
+                : t('ontology.emptyData')
             }
           >
             {/* The button generates from a data source. Offering it with none registered
                 leads straight to an empty dropdown and a disabled confirm. */}
             {dataSources.length === 0 ? (
               <Button type="primary" onClick={() => navigate('/datasource')}>
-                去接入数据源
+                {t('ontology.goToDataSource')}
               </Button>
             ) : (
               <Button type="primary" onClick={() => setModalVisible(true)}>
-                生成第一个本体
+                {t('ontology.createFirst')}
               </Button>
             )}
           </Empty>
@@ -182,7 +184,7 @@ const OntologyList: React.FC = () => {
       </Card>
 
       <Modal
-        title="生成本体草案"
+        title={t('ontology.createDraft')}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -199,15 +201,15 @@ const OntologyList: React.FC = () => {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="重新生成会清空原有草案"
-            description="草案由当前扫描结果重建。若该数据源已有草案，挂在它上面的规则、映射、关系、工作流与知识文档会随之清除——生成后会告诉你清除了什么。"
+            message={t('ontology.rebuildWarning')}
+            description={t('ontology.rebuildDetail')}
           />
           <Form.Item
             name="dataSourceId"
-            label="选择数据源"
-            rules={[{ required: true, message: '请选择数据源' }]}
+            label={t('ontology.selectDataSource')}
+            rules={[{ required: true, message: t('ontology.dataSourceRequired') }]}
           >
-            <Select placeholder="请选择要生成本体的数据源">
+            <Select placeholder={t('ontology.dataSourcePlaceholder')}>
               {dataSources.map(source => (
                 <Option key={source.id} value={source.id}>
                   {source.name} ({source.sourceType})
@@ -217,9 +219,9 @@ const OntologyList: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="blueprintId"
-            label="行业蓝图"
+            label={t('ontology.blueprint')}
           >
-            <Select placeholder="自动推断行业蓝图" allowClear>
+            <Select placeholder={t('ontology.blueprintPlaceholder')} allowClear>
               {blueprints.map(blueprint => (
                 <Option key={blueprint.id} value={blueprint.id}>
                   {blueprint.name} ({blueprint.domain})
@@ -229,21 +231,21 @@ const OntologyList: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="name"
-            label="本体名称"
+            label={t('ontology.ontologyName')}
           >
-            <Input placeholder="留空将自动生成" />
+            <Input placeholder={t('ontology.namePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="domain"
-            label="业务领域"
+            label={t('ontology.domain')}
           >
-            <Input placeholder="例如：合同管理" />
+            <Input placeholder={t('ontology.domainPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="导入行业蓝图"
+        title={t('ontology.importBlueprint')}
         open={blueprintModalVisible}
         onCancel={() => {
           setBlueprintModalVisible(false);
@@ -255,12 +257,12 @@ const OntologyList: React.FC = () => {
         <Form form={blueprintForm} layout="vertical" onFinish={handleImportBlueprint}>
           <Form.Item
             name="blueprintJson"
-            label="蓝图 JSON"
-            rules={[{ required: true, message: '请粘贴行业蓝图 JSON' }]}
+            label={t('ontology.blueprintJson')}
+            rules={[{ required: true, message: t('ontology.blueprintJsonRequired') }]}
           >
             <Input.TextArea
               rows={14}
-              placeholder='{"id":"retail-order","name":"零售订单蓝图","domain":"零售订单","objectHints":{"order":"订单"},"attributeHints":{"order_no":"订单号"},"rules":[],"tableKeywords":["order"],"capabilityTags":["order-governance"]}'
+              placeholder={t('ontology.blueprintJsonPlaceholder')}
             />
           </Form.Item>
         </Form>

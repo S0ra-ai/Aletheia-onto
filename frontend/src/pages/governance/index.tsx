@@ -4,12 +4,14 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { governanceApi, requestErrorMessage } from '../../api';
 import type { AuditLogItem, ModelInvocationItem, DecisionRecordItem } from '../../types';
 import { useTabParam } from '../../hooks/useTabParam';
+import { useT } from '../../i18n/locale';
 import AuditReportPanel from './AuditReportPanel';
 
 const { Title } = Typography;
 const { TabPane } = Tabs;
 
 const Governance: React.FC = () => {
+  const t = useT();
   const [tab, setTab] = useTabParam('audit');
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [modelInvocations, setModelInvocations] = useState<ModelInvocationItem[]>([]);
@@ -28,7 +30,7 @@ const Governance: React.FC = () => {
       setModelInvocations(invocations);
       setDecisions(decisionItems);
     } catch (error) {
-      message.error(requestErrorMessage(error, '获取审计数据失败'));
+      message.error(requestErrorMessage(error, t('governance.loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -36,22 +38,22 @@ const Governance: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [t]);
 
   const auditColumns = [
     {
-      title: '操作者',
+      title: t('governance.column.actor'),
       dataIndex: 'actor',
       key: 'actor',
     },
     {
-      title: '操作',
+      title: t('governance.column.action'),
       dataIndex: 'action',
       key: 'action',
       render: (action: string) => <Tag color="blue">{action}</Tag>,
     },
     {
-      title: '目标类型',
+      title: t('governance.column.targetType'),
       // `/governance/audit-log` returns `dict(row)` -- snake_case keys only. Three of
       // these columns asked for camelCase, so 目标类型/目标ID/时间 rendered empty for
       // every row while their siblings worked. Only a browser shows this.
@@ -59,18 +61,18 @@ const Governance: React.FC = () => {
       key: 'target_type',
     },
     {
-      title: '目标ID',
+      title: t('governance.column.targetId'),
       dataIndex: 'target_id',
       key: 'target_id',
     },
     {
-      title: '详情',
+      title: t('governance.column.detail'),
       dataIndex: 'detail',
       key: 'detail',
       ellipsis: true,
     },
     {
-      title: '时间（UTC）',
+      title: t('governance.column.time'),
       dataIndex: 'created_at',
       key: 'created_at',
     },
@@ -78,37 +80,37 @@ const Governance: React.FC = () => {
 
   const invocationColumns = [
     {
-      title: '提供商',
+      title: t('governance.column.provider'),
       dataIndex: 'provider',
       key: 'provider',
     },
     {
-      title: '模型',
+      title: t('governance.column.model'),
       dataIndex: 'model',
       key: 'model',
     },
     {
-      title: '用途',
+      title: t('governance.column.purpose'),
       dataIndex: 'purpose',
       key: 'purpose',
     },
     {
-      title: '提示词Token',
+      title: t('governance.column.promptTokens'),
       dataIndex: 'prompt_tokens',
       key: 'prompt_tokens',
     },
     {
-      title: '完成Token',
+      title: t('governance.column.completionTokens'),
       dataIndex: 'completion_tokens',
       key: 'completion_tokens',
     },
     {
-      title: '总Token',
+      title: t('governance.column.totalTokens'),
       dataIndex: 'total_tokens',
       key: 'total_tokens',
     },
     {
-      title: '状态',
+      title: t('governance.column.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
@@ -116,7 +118,7 @@ const Governance: React.FC = () => {
       ),
     },
     {
-      title: '时间（UTC）',
+      title: t('governance.column.time'),
       dataIndex: 'created_at',
       key: 'created_at',
     },
@@ -124,18 +126,18 @@ const Governance: React.FC = () => {
 
   const decisionColumns = [
     {
-      title: '决策编号',
+      title: t('governance.column.decisionId'),
       dataIndex: 'decisionId',
       key: 'decisionId',
     },
     {
-      title: '类型',
+      title: t('governance.column.type'),
       dataIndex: 'decisionType',
       key: 'decisionType',
       render: (type: string) => <Tag color="blue">{type}</Tag>,
     },
     {
-      title: '状态',
+      title: t('governance.column.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
@@ -145,31 +147,31 @@ const Governance: React.FC = () => {
       ),
     },
     {
-      title: '业务对象',
+      title: t('governance.column.object'),
       dataIndex: 'objectCode',
       key: 'objectCode',
       render: (value: string) => value || '-',
     },
     {
-      title: '实例ID',
+      title: t('governance.column.instanceId'),
       dataIndex: 'instanceId',
       key: 'instanceId',
       render: (value: string) => value || '-',
     },
     {
-      title: '操作码',
+      title: t('governance.column.operationCode'),
       dataIndex: 'operationCode',
       key: 'operationCode',
       render: (value: string) => value || '-',
     },
     {
-      title: '建议',
+      title: t('governance.column.recommendation'),
       dataIndex: 'recommendation',
       key: 'recommendation',
       ellipsis: true,
     },
     {
-      title: '时间（UTC）',
+      title: t('governance.column.time'),
       dataIndex: 'createdAt',
       key: 'createdAt',
     },
@@ -178,15 +180,15 @@ const Governance: React.FC = () => {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3}>治理审计</Title>
+        <Title level={3}>{t('governance.title')}</Title>
         <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
-          刷新
+          {t('governance.refresh')}
         </Button>
       </div>
 
       <Card>
         <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={`决策记录 (${decisions.length})`} key="decisions">
+          <TabPane tab={t('governance.tabDecisions', { count: decisions.length })} key="decisions">
             <Table
               columns={decisionColumns}
               dataSource={decisions}
@@ -194,7 +196,7 @@ const Governance: React.FC = () => {
               loading={loading}
             />
           </TabPane>
-          <TabPane tab={`审计日志 (${auditLogs.length})`} key="audit">
+          <TabPane tab={t('governance.tabAudit', { count: auditLogs.length })} key="audit">
             <Table
               columns={auditColumns}
               dataSource={auditLogs}
@@ -202,7 +204,7 @@ const Governance: React.FC = () => {
               loading={loading}
             />
           </TabPane>
-          <TabPane tab={`模型调用记录 (${modelInvocations.length})`} key="invocations">
+          <TabPane tab={t('governance.tabInvocations', { count: modelInvocations.length })} key="invocations">
             <Table
               columns={invocationColumns}
               dataSource={modelInvocations}
@@ -210,7 +212,7 @@ const Governance: React.FC = () => {
               loading={loading}
             />
           </TabPane>
-          <TabPane tab="审计报表" key="report">
+          <TabPane tab={t('governance.tabReport')} key="report">
             <AuditReportPanel />
           </TabPane>
         </Tabs>
