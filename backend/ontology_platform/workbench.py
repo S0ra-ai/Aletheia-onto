@@ -384,7 +384,9 @@ def _action_items(
                 "title": f"{feedback['escalated']} 个会话已转人工",
                 "detail": "这些会话等待人工接手处理。",
                 "count": feedback["escalated"],
-                "route": "/conversations",
+                # A route the console actually serves. `/conversations` is this API's own
+                # namespace, not a page -- the button navigated there and landed on 页面不存在.
+                "route": "/chat",
             }
         )
     elif feedback.get("openItems"):

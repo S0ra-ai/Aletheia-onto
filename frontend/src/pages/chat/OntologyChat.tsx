@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert, Avatar, Button, Card, Input, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import { SendOutlined, UserOutlined, ClearOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { agentApi, conversationApi, knowledgeBaseApi, requestErrorMessage } from '../../api';
@@ -84,7 +85,15 @@ const OntologyChat: React.FC = () => {
   const t = useT();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [question, setQuestion] = useState('');
-  const [sessionId, setSessionId] = useState('');
+  /**
+   * The conversation is a place: `/chat?session=<id>` opens it, and the id is written back
+   * when it is created. Two affordances already linked to a conversation -- the feedback
+   * console's 查看 and the workbench's 「N 个会话已转人工」 -- and both pointed at
+   * `/conversations`, a path this application does not serve, so the only way into an
+   * escalated conversation ended on 页面不存在.
+   */
+  const [params, setParams] = useSearchParams();
+  const [sessionId, setSessionId] = useState(() => params.get('session') ?? '');
   const [loading, setLoading] = useState(false);
   const [roles, setRoles] = useState<AgentRole[]>([]);
   // Empty until roles load: the available roles depend on which domains have
@@ -97,6 +106,36 @@ const OntologyChat: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedRole = roles.find(r => r.id === selectedRoleId) || roles[0];
+
+  // Arriving with an id opens that conversation: its turns are the page's content, and an
+  // empty chat with the right id is not the conversation the link named.
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    conversationApi
+      .get(sessionId)
+      .then(conversation => {
+        if (cancelled) return;
+        const turns = (conversation.messages ?? [])
+          .filter(message => message.role !== 'system')
+          .map<ChatMessage>(message => ({
+            id: `stored-${message.id}`,
+            role: message.role === 'user' ? 'user' : 'assistant',
+            content: message.content,
+            roleId: conversation.roleId,
+            messageId: message.id,
+            feedbackGiven: message.feedback?.[0]?.rating,
+          }));
+        if (turns.length) setMessages(turns);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Once, for the id the page arrived with: a reply's own id is written back below, and
+    // re-loading on that would replace the transcript the reader just made.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     agentApi.roles().then(items => {
@@ -178,6 +217,14 @@ const OntologyChat: React.FC = () => {
       });
       if (result.sessionId && result.sessionId !== sessionId) {
         setSessionId(result.sessionId);
+        setParams(
+          previous => {
+            const next = new URLSearchParams(previous);
+            next.set('session', String(result.sessionId));
+            return next;
+          },
+          { replace: true },
+        );
       }
 
       setMessages(prev => [

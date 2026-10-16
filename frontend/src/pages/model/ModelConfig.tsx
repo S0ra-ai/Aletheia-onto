@@ -195,8 +195,7 @@ const ModelConfigPage: React.FC = () => {
       setTestResult(null);
       await fetchConfig();
     } catch (error) {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || t('model.saveFailed'));
+      message.error(requestErrorMessage(error, t('model.saveFailed')));
     } finally {
       setLoading(false);
     }

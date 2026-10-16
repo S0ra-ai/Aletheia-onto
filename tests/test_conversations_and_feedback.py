@@ -446,3 +446,36 @@ class TestToolCallMarkers:
             assert len(spans) == len(calls)
             if calls:
                 assert text not in _strip_tool_calls(text)
+
+
+def test_every_workbench_action_route_is_a_page_the_console_serves(platform) -> None:
+    """The 去处理 buttons navigate to these strings, so each has to be a route that exists.
+
+    `escalated_conversations` pointed at `/conversations` -- the *API's* namespace, not a page.
+    The only way into an escalated conversation therefore ended on 页面不存在, and nothing
+    noticed: the backend's own test asserted the item's presence, and the frontend cannot check
+    a string it receives at runtime.
+
+    Read from `App.tsx`, which is where the routes actually are, rather than from a list kept
+    beside it -- a second copy of the route table is how the sweep came to hold a path the
+    application does not serve.
+    """
+    import re
+
+    db = platform["platform_db"]
+    ensure_conversation(db, "sess-1")
+    escalate_conversation(db, "sess-1", assignee="alice")
+    routes = {item["route"] for item in build_workbench(db)["actionItems"]}
+    assert routes, "这个平台状态下应当至少有一条待处理事项"
+
+    app_source = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    # The console's routes are children of the `/admin` basename, and the workbench writes them
+    # the way `navigate()` takes them -- relative to that basename. Compared on that basis, not
+    # on the literal prefix: the two are the same path spelled for different layers.
+    served = {
+        "/" + path.strip("/")
+        for path in re.findall(r'<Route\s+path="([^"]+)"', app_source)
+        if path.strip("/") not in ("*", "")
+    }
+    unknown = sorted(route for route in routes if route not in served)
+    assert not unknown, f"工作台的事项指向控制台没有的页面：{unknown}（前端实际服务：{sorted(served)}）"

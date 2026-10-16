@@ -64,7 +64,7 @@ const WorkflowManager: React.FC = () => {
       form.resetFields();
       loadWorkflows();
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || t('workflow.createFailed'));
+      message.error(requestErrorMessage(e, t('workflow.createFailed')));
     }
   };
 
@@ -118,7 +118,7 @@ const WorkflowManager: React.FC = () => {
       message.success(t('workflow.transitionSuccess'));
       setTransitionModalOpen(false);
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || t('workflow.transitionFailed'));
+      message.error(requestErrorMessage(e, t('workflow.transitionFailed')));
     }
   };
 

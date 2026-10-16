@@ -471,6 +471,22 @@
   `/admin/backup -> 401 application/json`。
 ### Fixed
 
+- **通往「转人工会话」的两个入口，都指向一个不存在的路由**（`FeedbackConsole.tsx`、`OntologyChat.tsx`、
+  `workbench.py`、`tests/test_conversations_and_feedback.py`）。
+  反馈控制台的「查看」跳 `/conversations?session=…`，工作台那件「N 个会话已转人工」的事项由后端给出
+  `"route": "/conversations"`——而 `/conversations` 是**接口的命名空间，不是页面**：
+  两处点击都落在「页面不存在」，于是唯一通往已转人工会话的路是一条死路。
+  现在会话有地址：`/chat?session=<id>` 打开那段对话（进来就加载已存的往来），
+  回复产生新会话时地址栏同步更新；两处入口都指向它。
+  守护测试按 `App.tsx` 断言**工作台事项给出的每条路由都是控制台真的服务的页面**——
+  此前那条测试只断言事项存在、前端也无法检查运行期收到的字符串。
+- **六处 catch 把服务端写好的原因丢掉了**（知识库、模型配置、工作流、权限四处页面）。
+  拦截器早已把失败原因包成 `ApiError(detail)` 并丢掉原始 response，这六处却仍读
+  `error.response.data.detail`——永远是 undefined，于是用户看到的是
+  「上传失败／保存失败／创建失败」这类兜底话术，而服务端写的是
+  「仅支持 .docx 或 UTF-8 文本文件。」「流转守卫未通过，动作 'X' 被阻止：…」。
+  改用同文件其它 catch 已在用的 `requestErrorMessage()`。**一条把「为什么失败」扔掉的错误提示，
+  只是把失败说了一遍。**
 - **删工作流这件事，用过的都删不掉，删掉了也没记录**（`workflow_permission.py`、`tests/test_metadata_flow.py`）。
   `instance_workflow` 没有 `on delete cascade`（状态与流转有），所以**只要有任何实例进入过这个工作流**，
   删除就会撞外键、以 `FOREIGN KEY constraint failed` 收场——正巧是那些真正在用的工作流删不掉；

@@ -70,7 +70,7 @@ const PermissionManager: React.FC = () => {
       roleForm.resetFields();
       loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || t('permission.createFailed'));
+      message.error(requestErrorMessage(e, t('permission.createFailed')));
     }
   };
 
@@ -90,7 +90,7 @@ const PermissionManager: React.FC = () => {
       policyForm.resetFields();
       loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.detail || t('permission.saveFailed'));
+      message.error(requestErrorMessage(e, t('permission.saveFailed')));
     }
   };
 

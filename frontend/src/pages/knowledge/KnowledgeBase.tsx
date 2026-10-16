@@ -129,8 +129,7 @@ const KnowledgeBasePage: React.FC = () => {
       uploadForm.resetFields();
       await load(selected);
     } catch (error) {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || t('knowledge.uploadFailed'));
+      message.error(requestErrorMessage(error, t('knowledge.uploadFailed')));
     } finally {
       setLoading(false);
     }
@@ -146,8 +145,7 @@ const KnowledgeBasePage: React.FC = () => {
       setReviewing(null);
       await load(selected);
     } catch (error) {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      message.error(detail || t('knowledge.actionFailed'));
+      message.error(requestErrorMessage(error, t('knowledge.actionFailed')));
     } finally {
       setLoading(false);
     }

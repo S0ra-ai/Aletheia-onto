@@ -168,7 +168,7 @@ const FeedbackConsolePage: React.FC = () => {
                 key: 'go',
                 width: 80,
                 render: (_: unknown, row: Conversation) => (
-                  <Button type="link" size="small" onClick={() => navigate(`/conversations?session=${row.sessionId}`)}>
+                  <Button type="link" size="small" onClick={() => navigate(`/chat?session=${encodeURIComponent(row.sessionId)}`)}>
                     {t('feedback.view')}
                   </Button>
                 ),
