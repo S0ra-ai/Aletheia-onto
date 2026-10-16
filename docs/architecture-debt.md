@@ -181,10 +181,19 @@ SQLite 的 `text`）只会在对应后端上暴露。
 > 相应地，`test_api_versioning.py` 的断言从「比对声明列表」改为**发真实请求**：
 > 受保护端点在裸路径与 `/v1` 上都必须返回 401。列表比对曾在 `/v1` 实际不可达时通过。
 
-🔶 **部分完成：拆 `APIRouter`。**
-工作流／权限／工具三组（23 个端点）已移入 `routers/workflow_permission_routes.py`，
-`api.py` 从 2548 行降至 2201 行，模块中段的 import 块已消除，
-`ruff` 的 `E402` 例外随之删除。
+✅ **已完成：拆 `APIRouter`。**
+`api.py` 从 2548 行降到 878 行，端点数从 113 降到 **31**，其余按关注点进了
+`routers/`：auth、data source、knowledge、metamodel、model governance、
+semantic（含 agent 与 automation）、tenancy、workflow／permission。
+模块中段的 import 块已消除，`ruff` 的 `E402` 例外随之删除。
+
+留下的是**应用自己的边缘**而不是某个领域：`/`、`/admin/*`、`/health`、`/files`、`/metrics`、
+备份与演示引导。把「单页应用从哪儿发出」挪进另一个文件，只会让读者多翻一个文件。
+
+拆分过程中有两次「不变量因为结构调整而失效」，两次都不是不变量被破坏：
+`tests/test_retrieval_permission_filtering.py` 只读 `api.py`，路由一搬就报「未找到端点」；
+它自己的 docstring 早就记着同一个教训（上一版按 `@app.` 文本切片）。
+现在它扫**整个 HTTP 层**，端点搬到哪里都不影响。
 
 共享运行时（`AUTH_ENABLED`、开发身份、`current_principal`）下沉到
 `http_runtime.py`。这是必须的：router 若从 `api.py` 取这些符号就会成环，

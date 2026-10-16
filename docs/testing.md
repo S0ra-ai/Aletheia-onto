@@ -260,7 +260,7 @@ which holds the two languages to the same placeholders and the same keys.
 
 ## Scale
 
-89 backend modules, roughly 38,100 lines, 156 API endpoints, 45 platform tables, React +
+90 backend modules, roughly 38,000 lines, 156 API endpoints, 45 platform tables, React +
 antd frontend.
 
 CI also has a `scaffold` job that walks the path a *new* deployment takes --

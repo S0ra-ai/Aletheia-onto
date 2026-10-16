@@ -18,8 +18,6 @@ from .access_policy import (
     is_public,
     required_capability,
 )
-from .agent import agent_chat, get_agent_roles
-from .agent_roles import delete_agent_role, upsert_agent_role
 from .auth import (
     AuthenticationError,
     AuthorizationError,
@@ -29,7 +27,6 @@ from .auth import (
     purge_expired_sessions,
     resolve_principal,
 )
-from .automation import execute_operation, preflight_operation
 from .backup import backup_archive_path, create_backup, list_backups, restore_backup
 from .bootstrap import prepare_database
 from .contract_documents import parse_rule_docx_bytes
@@ -54,16 +51,12 @@ from .http_runtime import AUTH_ENABLED, DEV_ADMIN_PRINCIPAL, bearer_token, curre
 from .industry_blueprints import list_industry_blueprints, upsert_industry_blueprint
 from .logging_config import setup_logging
 from .metrics import expose_metrics, init_metrics
-from .natural_language import query_natural_language
-from .object_service import ObjectAccessError, get_object_instance, list_object_instances
 from .ontology import (
     count_ontologies,
-    explain_instance,
     export_ontology_asset,
     generate_ontology_draft,
     has_draft_for_source,
     list_ontologies,
-    resolve_ontology_for_object,
     summarize_ontology,
 )
 from .pagination import page_block, resolve_page
@@ -76,6 +69,7 @@ from .routers import (
     knowledge_router,
     metamodel_router,
     model_governance_router,
+    semantic_router,
     tenancy_router,
     workflow_permission_router,
 )
@@ -84,15 +78,10 @@ from .sample_data import (
     DEFAULT_SAMPLE_DB,
 )
 from .semantic_kernel import (
-    assess_decision_consistency,
-    assess_instance,
     available_rule_names,
     validate_rule_expression,
 )
 from .standard_vocabulary import STANDARD_EXPORT_FORMATS, export_standard_asset
-from .temporal import (
-    TemporalError,
-)
 from .vocabulary import default_object_code_for_ontology
 from .workbench import build_workbench
 from .workflow_permission import (
@@ -326,48 +315,9 @@ class IndustryBlueprintUpsert(BaseModel):
     capabilityTags: list[str] = Field(default_factory=list)
 
 
-class OperationPreflightCreate(BaseModel):
-    ontologyId: int
-    dataSourceId: int
-    instanceId: str
-    objectCode: Optional[str] = None
-
-
-class DecisionConsistencyCreate(BaseModel):
-    ontologyId: int
-    instanceIds: list[str] = Field(default_factory=list)
-    limit: int = 50
-
-
 class RuleExpressionValidateCreate(BaseModel):
     expression: str
     scopeObjectCode: Optional[str] = None
-
-
-class NaturalLanguageQueryCreate(BaseModel):
-    question: str
-    ontologyId: Optional[int] = None
-    dataSourceId: Optional[int] = None
-    objectCode: Optional[str] = None
-    instanceId: Optional[str] = None
-    history: list[dict[str, str]] = Field(default_factory=list)
-    useModel: bool = True
-
-
-class OperationExecuteCreate(OperationPreflightCreate):
-    payload: dict[str, object] = Field(default_factory=dict)
-    dryRun: bool = True
-    timeoutSeconds: float = 10
-
-
-class AgentChatCreate(BaseModel):
-    message: str
-    # Unset means "let the platform pick a role from the onboarded domains".
-    roleId: Optional[str] = None
-    dataSourceId: Optional[int] = None
-    objectCode: Optional[str] = None
-    history: list[dict[str, str]] = Field(default_factory=list)
-    sessionId: Optional[str] = None
 
 
 class MappingReviewCreate(BaseModel):
@@ -822,257 +772,6 @@ def toggle_ontology_rule_status(ontology_id: int, rule_id: int, status: str = "p
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@core_router.get("/semantic/objects/{object_code}/instances/{instance_id}/explain")
-def explain_object_instance(
-    object_code: str, instance_id: str, ontologyId: Optional[int] = None, asOf: str = ""
-) -> dict[str, object]:
-    """Explain an instance, optionally as of a past instant.
-
-    `asOf` exists because a verdict can be produced for a past moment: explaining only the
-    present would leave the reader of an old verdict unable to check it, which is the one
-    question an explanation exists to answer.
-    """
-    try:
-        resolved = (
-            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
-        )
-        return explain_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.get("/semantic/objects/{object_code}/instances")
-def list_semantic_object_instances(
-    object_code: str,
-    ontologyId: Optional[int] = None,
-    limit: Optional[int] = None,
-    offset: int = 0,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    """Browse a business object through its configured instance resolver."""
-    try:
-        resolved = (
-            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
-        )
-        return list_object_instances(
-            DEFAULT_PLATFORM_DB,
-            resolved,
-            object_code,
-            role_code=principal.role_code,
-            limit=limit,
-            offset=offset,
-        )
-    except ObjectAccessError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.get("/semantic/objects/{object_code}/instances/{instance_id}")
-def get_semantic_object_instance(
-    object_code: str,
-    instance_id: str,
-    ontologyId: Optional[int] = None,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    """Fetch one business-object instance through the same permission boundary."""
-    try:
-        resolved = (
-            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
-        )
-        return get_object_instance(
-            DEFAULT_PLATFORM_DB,
-            resolved,
-            object_code,
-            instance_id,
-            role_code=principal.role_code,
-        )
-    except ObjectAccessError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.post("/semantic/objects/{object_code}/instances/{instance_id}/assess")
-def assess_object_instance(
-    object_code: str,
-    instance_id: str,
-    ontologyId: Optional[int] = None,
-    asOf: str = "",
-) -> dict[str, object]:
-    """Assess one instance, optionally as of a past moment.
-
-    `asOf` is what a compliance audit actually asks: was the January approval correct given
-    what was known in January. Assessing against today's values answers a different
-    question, so the moment is echoed in the response and stored with the decision.
-    """
-    try:
-        resolved = (
-            ontologyId if ontologyId is not None else resolve_ontology_for_object(DEFAULT_PLATFORM_DB, object_code)
-        )
-        # Every assessment of an instance records a decision, which is what the
-        # `decision_records` quota counts.
-        enforce_quota("decision_records")
-        return assess_instance(DEFAULT_PLATFORM_DB, resolved, object_code, instance_id, as_of=asOf or None)
-    except TemporalError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.post("/semantic/objects/{object_code}/consistency")
-def assess_object_decision_consistency(object_code: str, payload: DecisionConsistencyCreate) -> dict[str, object]:
-    try:
-        return assess_decision_consistency(
-            DEFAULT_PLATFORM_DB,
-            payload.ontologyId,
-            object_code,
-            payload.instanceIds,
-            payload.limit,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.post("/semantic/natural-language/query")
-def ask_semantic_kernel(
-    payload: NaturalLanguageQueryCreate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    """Answer a question, filtering citations by what the caller may read.
-
-    The role comes from the authenticated identity, never from the request body: a caller
-    who could name their own role would grant themselves any document.
-    """
-    try:
-        return query_natural_language(
-            DEFAULT_PLATFORM_DB,
-            payload.question,
-            payload.ontologyId,
-            payload.dataSourceId,
-            payload.objectCode,
-            payload.instanceId,
-            payload.history,
-            payload.useModel,
-            role_code=principal.role_code,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.get("/agent/roles")
-def list_agent_roles() -> dict[str, object]:
-    return {"roles": get_agent_roles(DEFAULT_PLATFORM_DB)}
-
-
-class AgentRoleUpsert(BaseModel):
-    code: str
-    name: str
-    description: str = ""
-    domain: str = ""
-    systemPrompt: str = ""
-    dataSourceId: Optional[int] = None
-
-
-@core_router.post("/agent/roles")
-def create_or_update_agent_role(
-    payload: AgentRoleUpsert,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    """Persist a custom agent role for domains needing bespoke wording."""
-    try:
-        return upsert_agent_role(
-            DEFAULT_PLATFORM_DB,
-            payload.code,
-            payload.name,
-            payload.description,
-            payload.domain,
-            payload.systemPrompt,
-            payload.dataSourceId,
-            actor=principal.actor,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.delete("/agent/roles/{code}")
-def remove_agent_role(code: str, principal: Principal = Depends(current_principal)) -> dict[str, object]:
-    return delete_agent_role(DEFAULT_PLATFORM_DB, code, actor=principal.actor)
-
-
-@core_router.post("/agent/chat")
-def chat_with_agent(
-    payload: AgentChatCreate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        # The first turn of a session creates the conversation; later turns do not.
-        with connect(DEFAULT_PLATFORM_DB) as conn:
-            session_exists = (
-                conn.execute("select 1 from conversation where session_id = ?", (payload.sessionId,)).fetchone()
-                is not None
-                if payload.sessionId
-                else False
-            )
-        enforce_quota("conversations", requested=0 if session_exists else 1)
-        return agent_chat(
-            DEFAULT_PLATFORM_DB,
-            payload.message,
-            payload.roleId,
-            payload.dataSourceId,
-            payload.objectCode,
-            # None lets the stored history load; an explicit list still wins, so a
-            # caller managing its own context is unaffected.
-            payload.history or None,
-            payload.sessionId,
-            actor=principal.actor,
-            # Citations are filtered by what this caller may read. Taken from the
-            # authenticated identity, never from the payload's `roleId` -- that names an
-            # agent persona, which is not an authorisation.
-            role_code=principal.role_code,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-@core_router.post("/automation/operations/{operation_code}/preflight")
-def preflight_business_operation(operation_code: str, payload: OperationPreflightCreate) -> dict[str, object]:
-    try:
-        return preflight_operation(
-            DEFAULT_PLATFORM_DB,
-            payload.ontologyId,
-            payload.dataSourceId,
-            operation_code,
-            payload.instanceId,
-            payload.objectCode,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
-@core_router.post("/automation/operations/{operation_code}/execute")
-def execute_business_operation(
-    operation_code: str,
-    payload: OperationExecuteCreate,
-    principal: Principal = Depends(current_principal),
-) -> dict[str, object]:
-    try:
-        return execute_operation(
-            DEFAULT_PLATFORM_DB,
-            payload.ontologyId,
-            payload.dataSourceId,
-            operation_code,
-            payload.instanceId,
-            payload.objectCode,
-            payload.payload,
-            principal.actor,
-            payload.dryRun,
-            payload.timeoutSeconds,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-
 @core_router.get("/workbench")
 def workbench(decisionLimit: int = 8) -> dict[str, object]:
     """Aggregated platform state for the workbench screen.
@@ -1116,6 +815,7 @@ def metrics_endpoint() -> Response:
 ROUTERS: tuple[APIRouter, ...] = (
     core_router,
     auth_router,
+    semantic_router,
     data_source_router,
     knowledge_router,
     metamodel_router,

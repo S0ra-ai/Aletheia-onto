@@ -98,8 +98,13 @@ By design, not bugs. These are the next phase's work.
 - `platform_db` signatures are **all widened to `PlatformDb`** (context, path or string).
   The former `Path | str` annotation rejected contexts in type checkers even though
   runtime accepted it ([ADR-0010](adr/0010-platform-context-replaces-global-singleton.md)).
-- The HTTP layer has 156 endpoints and **APIRouter extraction has started**
-  (`routers/`); `api.py` still owns most of them.
+- The HTTP layer has 156 endpoints, of which **31 are still declared in `api.py`** -- the app
+  shell (`/`, `/admin/*`, `/health`, `/files`, `/metrics`), backups, and the demo bootstrap.
+  Everything else is in `routers/`, grouped by concern: auth, data sources, knowledge,
+  metamodel, model governance, semantic/agent/automation, tenancy, workflow/permission. The
+  remainder is not a queue to be emptied: the shell and the backup endpoints are the app's own
+  edges rather than a domain, and moving them would give a reader one more file to open to find
+  where the SPA is served from.
 - **`frontend/src/types/index.ts` hand-mirrors backend models**, and the convention is not
   uniform: `decisions._decision_row` deliberately emits both spellings, while
   `/governance/audit-log` and `/governance/model-invocations` return `dict(row)` — snake_key

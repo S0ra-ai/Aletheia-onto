@@ -201,14 +201,22 @@ def test_the_api_takes_the_role_from_the_authenticated_identity() -> None:
     按 AST 取函数体，而不是按装饰器文本切片。原实现以 `api.index("@app.", ...)` 定位
     下一个端点，因此把路由改挂到 `APIRouter` 上就让它抛异常——一条安全不变量不应该
     因为一次纯结构调整而失效，何况「找不到分隔符」与「检查通过」在当时几乎无从区分。
+
+    **同一个教训又发生了一次**：这些路由后来从 `api.py` 移进了 `routers/semantic_routes.py`，
+    而这个测试只读 `api.py`，于是它开始报「未找到端点」——再次因为结构调整而不是因为
+    不变量被破坏而失败。所以现在扫的是**整个 HTTP 层**：`api.py` 与 `routers/` 下的每个模块。
+    端点搬到哪里都不影响这条断言，只影响它能不能被找到。
     """
     import ast
 
-    source = (ROOT / "backend" / "ontology_platform" / "api.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    functions = {
-        node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
+    layer = ROOT / "backend" / "ontology_platform"
+    sources = [layer / "api.py", *sorted((layer / "routers").glob("*.py"))]
+    functions = {}
+    for path in sources:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                functions[node.name] = node
 
     # 问答与智能体端点不得从请求体取权限角色。
     # （`payload.roleCode` 在创建用户端点里是正当的：那是管理员为**他人**指定角色，
@@ -224,8 +232,13 @@ def test_the_agent_path_passes_the_permission_role_not_the_persona() -> None:
     """`roleId` 是智能体人格（业务视角措辞），不是授权。混用会让选个人格即提权。"""
     agent = (ROOT / "backend" / "ontology_platform" / "agent.py").read_text(encoding="utf-8")
     assert "role_code=role_code" in agent
-    api = (ROOT / "backend" / "ontology_platform" / "api.py").read_text(encoding="utf-8")
-    assert "role_code=principal.role_code" in api
+    # The whole HTTP layer, for the reason the test above records: where the route lives is an
+    # implementation detail, and an invariant that broke when it moved is a broken check.
+    layer = ROOT / "backend" / "ontology_platform"
+    http_layer = "\n".join(
+        path.read_text(encoding="utf-8") for path in [layer / "api.py", *sorted((layer / "routers").glob("*.py"))]
+    )
+    assert "role_code=principal.role_code" in http_layer
 
 
 def test_filtering_happens_between_anchoring_and_ranking() -> None:
