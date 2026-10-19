@@ -21,6 +21,7 @@ import OntologyDetail from '../pages/ontology/OntologyDetail';
 import KnowledgeBase from '../pages/knowledge/KnowledgeBase';
 import FeedbackConsole from '../pages/feedback/FeedbackConsole';
 import AuditReportPanel from '../pages/governance/AuditReportPanel';
+import DataSourceDetail from '../pages/datasource/DataSourceDetail';
 
 /**
  * The cells, rendered and read.
@@ -377,7 +378,15 @@ vi.mock('../api', async () => {
   // The real normalisers, on wire-shaped fixtures. Mocking the API as if the client received
   // the normalised shape would leave the translation itself untested -- rename a key inside
   // `normalizeTool` and every test here would still pass while the column went blank.
-  const { normalizeTool, normalizeToolExecution, normalizeWorkflow, normalizePolicy, normalizeRole } =
+  const {
+    normalizeTool,
+    normalizeToolExecution,
+    normalizeWorkflow,
+    normalizePolicy,
+    normalizeRole,
+    normalizeSourceTable,
+    normalizeSourceApi,
+  } =
     await vi.importActual<typeof import('../api/normalise')>('../api/normalise');
   const page = (items: unknown[]) => ({
     items,
@@ -392,7 +401,14 @@ vi.mock('../api', async () => {
       getMappings: vi.fn(async () => page(WIRE_MAPPINGS)),
       getRules: vi.fn(async () => page(WIRE_RULES)),
     },
-    dataSourceApi: { list: vi.fn(async () => WIRE_DATA_SOURCES) },
+    dataSourceApi: {
+      list: vi.fn(async () => WIRE_DATA_SOURCES),
+      getTables: vi.fn(async () => WIRE_SOURCE_TABLES.map(normalizeSourceTable)),
+      getApis: vi.fn(async () => ({ items: WIRE_SOURCE_APIS.apis.map(normalizeSourceApi) })),
+      getReadiness: vi.fn(async () => WIRE_READINESS),
+      getSemanticCoverage: vi.fn(async () => WIRE_COVERAGE),
+      getOperationBindings: vi.fn(async () => WIRE_BINDINGS),
+    },
     industryBlueprintApi: { list: vi.fn(async () => []) },
     permissionApi: {
       getRoles: vi.fn(async () => WIRE_ROLES.map(normalizeRole)),
@@ -1270,5 +1286,137 @@ describe('AuditReportPanel', () => {
     const [, , , , events] = await waitForTables(5);
     expect(events.rows.length).toBe(WIRE_AUDIT_REPORT.governance.events.length);
     expect(blankColumns(events)).toEqual([]);
+  });
+});
+
+// -- The data source detail: what was scanned, and what was registered ------------------------
+
+/**
+ * `/data-sources/{id}/tables` and `/apis` are `dict(row)`, and the client normalises both --
+ * `normalizeSourceTable` and `normalizeSourceApi`. The fixtures here are the wire spellings and
+ * the mock runs the real normalisers, so a rename inside either one fails this test rather than
+ * blanking a column in production.
+ *
+ * The other three calls on this page are only read by tabs the test does not open; they are
+ * answered with empty results so the page mounts, and deliberately not with plausible-looking
+ * data -- a fixture for a screen nobody asserts on is a fixture that will be wrong and never
+ * noticed.
+ */
+const WIRE_SOURCE_TABLES = [
+  {
+    id: 1,
+    table_name: 'contract',
+    row_count: 120,
+    primary_key: 'id',
+    scanned_at: '2026-01-02 09:00:00',
+  },
+  {
+    id: 2,
+    table_name: 'party',
+    row_count: 8,
+    primary_key: 'id',
+    scanned_at: '2026-01-02 09:00:00',
+  },
+];
+
+const WIRE_SOURCE_APIS = {
+  apis: [
+    {
+      id: 1,
+      operation_code: 'submit_contract',
+      name: '提交合同',
+      method: 'POST',
+      path: '/contracts/{id}/submit',
+      semantic_action: 'submit',
+    },
+  ],
+};
+
+const WIRE_READINESS = {
+  dataSourceId: 1,
+  name: '合同管理样例系统',
+  domain: '合同管理',
+  score: 80,
+  status: 'partial',
+  summary: {
+    tables: 2,
+    columns: 9,
+    foreignKeys: 1,
+    apis: 1,
+    ontologies: 1,
+    confirmedMappings: 1,
+    pendingMappings: 0,
+  },
+  checks: [],
+  nextActions: [],
+};
+
+const WIRE_COVERAGE = {
+  dataSourceId: 1,
+  name: '合同管理样例系统',
+  domain: '合同管理',
+  status: 'ready',
+  score: 90,
+  summary: {},
+  objects: [],
+  operations: [],
+  nextActions: [],
+};
+
+/**
+ * The tab labelled 「已注册 API」 renders **operation bindings**, not the API list: `apis` feeds
+ * the tab's count and this table reads `operationBindings.items`. The distinction is the point
+ * of the screen -- an operation can be imported and still not be bound to an object -- so the
+ * fixture is a bound one with a gap, because `gaps` renders `-` when empty and a column of
+ * dashes is exactly what this file treats as blank.
+ */
+const WIRE_BINDINGS = {
+  dataSourceId: 1,
+  status: 'partial',
+  summary: {
+    operations: 1,
+    boundOperations: 1,
+    readyOperations: 1,
+    unboundOperations: 0,
+    invalidActions: 0,
+    blockedOperations: 0,
+  },
+  // The item carries the API's own fields *and* its binding: `/operation-bindings` returns
+  // `operationCode, name, method, path, semanticAction` (charted in
+  // `test_frontend_type_agreement.py`) beside `objectCode`, `status`, `automationReady`, `gaps`.
+  // A fixture with only the binding half leaves four columns blank -- which is what this test
+  // said the first time, and the page was right.
+  items: [
+    {
+      operationCode: 'submit_contract',
+      name: '提交合同',
+      method: 'POST',
+      path: '/contracts/{id}/submit',
+      semanticAction: 'submit',
+      objectCode: 'contract',
+      status: 'ready',
+      automationReady: true,
+      gaps: ['该操作没有对应的业务规则'],
+    },
+  ],
+  nextActions: [],
+  nextActionCodes: [],
+};
+
+describe('DataSourceDetail', () => {
+  it('renders a value in every cell of the scanned-tables table', async () => {
+    renderRouted(<DataSourceDetail />, '/datasource/1', '/datasource/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_SOURCE_TABLES.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the operations table', async () => {
+    // One table, not two: the tab labelled 「已登记 API」 draws the operation list and its
+    // binding together -- nine columns, from one row shape. `apis` feeds the tab's count.
+    renderRouted(<DataSourceDetail />, '/datasource/1?tab=apis', '/datasource/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_BINDINGS.items.length);
+    expect(blankColumns(table)).toEqual([]);
   });
 });

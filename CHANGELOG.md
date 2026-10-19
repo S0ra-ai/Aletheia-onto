@@ -832,6 +832,18 @@
   植入 `target_type → targetType`，测试点名「目标类型」。
 
   组件测试现在覆盖 13 个页面 30 张表。
+
+- **数据源详情页的两张表，以及一个「表和它的名字对不上」的坑**
+  （`DataSourceDetail.tsx`、`TableColumns.test.tsx`）。已扫描表与操作绑定两张表。
+  「已登记 API」那个标签页里其实只有**一张**表：它把操作与它的绑定画在一起，九列一行；
+  `apis` 只用来给标签页计数。fixture 要先写对这一点，否则读到的永远是错的那张。
+
+  第一次写的时候绑定项只带了「绑定」那一半字段，四列（名称、方法、路径、语义动作）报空——
+  而**页面是对的**：`/operation-bindings` 的 items 本来就同时带 API 字段与绑定字段，
+  这一点在 `test_frontend_type_agreement.py` 的契约表里写着。**一个只写了一半的 fixture
+  会把正确的页面报成缺陷**，和当初那个「从记忆里写 snake_case」的错误是同一类，只是方向相反。
+
+  组件测试现在覆盖 14 个页面 32 张表。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

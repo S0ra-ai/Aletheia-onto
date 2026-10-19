@@ -394,6 +394,9 @@ def test_the_component_coverage_number_matches_the_component_tests() -> None:
         "twenty-nine": 29,
         "thirty": 30,
         "thirty-one": 31,
+        "thirty-two": 32,
+        "thirty-three": 33,
+        "thirty-four": 34,
     }
     asserted = words.get(claimed.group(1))
     assert asserted is not None, (
