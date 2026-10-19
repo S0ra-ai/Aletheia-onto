@@ -435,6 +435,16 @@ export interface EventTypeDeclaration {
 export interface BusinessAttribute {
   id: number;
   objectId: number;
+  /**
+   * The object this attribute belongs to, by code.
+   *
+   * `_business_attribute_row` has always sent it -- `objectCode` and `object_code` both -- and
+   * this declaration omitted it, so nothing could group or filter attributes by their object
+   * without going through `objectId`. The object browser needs exactly that: it renders the
+   * selected object's columns, and the selected object is identified by code. Found by `tsc`
+   * when the filter was written, which is the compiler doing what it is for.
+   */
+  objectCode: string;
   code: string;
   name: string;
   dataType: string;

@@ -924,6 +924,9 @@ const WIRE_ONTOLOGY_DETAIL = {
   attributes: [
     { id: 1, objectCode: 'contract', code: 'amount', name: '金额', dataType: 'number', sourceColumn: 'amount', required: true },
     { id: 2, objectCode: 'contract', code: 'credit_status', name: '信用状态', dataType: 'string', sourceColumn: 'credit_status', required: false },
+    // Belongs to another object on purpose: the browser must not draw a column for it. This is
+    // the fixture that would have caught the fourteen columns of dashes the limitation named.
+    { id: 3, objectCode: 'party', code: 'party_name', name: '签约方名称', dataType: 'string', sourceColumn: 'party_name', required: false },
   ],
   relations: [
     { id: 1, code: 'contract_party', name: '签约方', type: 'many_to_one', sourceForeignKey: 'party_id' },
@@ -1787,5 +1790,21 @@ describe('ObjectBrowser', () => {
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_INSTANCES.items.length);
     expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('draws a column only for the selected object’s attributes', async () => {
+    /** The grid used to render every attribute of the *ontology*, with one column per object.
+     *
+     * A row belongs to one table, so every column belonging to another was a dash in every row:
+     * fourteen of them on the demo schema, and a reader could not tell which columns were about
+     * the row in front of them. `docs/limitations.md` named the fix and this is the test for it --
+     * the fixture carries a `party` attribute and the browser is on `contract`.
+     */
+    renderPage(<ObjectBrowser />);
+    const table = await waitForRows();
+
+    expect(table.headers).toContain('金额');
+    expect(table.headers).toContain('信用状态');
+    expect(table.headers).not.toContain('签约方名称');
   });
 });

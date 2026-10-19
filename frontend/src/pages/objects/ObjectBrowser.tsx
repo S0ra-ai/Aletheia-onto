@@ -164,9 +164,18 @@ const ObjectBrowser: React.FC = () => {
     }
     return undefined;
   };
+  // **Only the selected object's attributes.** `/ontologies/{id}` returns every attribute of
+  // every object, and rendering all of them put a dash in every cell of every column belonging
+  // to another table: fourteen columns of dashes on the demo schema, with no way for a reader to
+  // tell which ones belonged to the row in front of them. `docs/limitations.md` named the fix --
+  // "rendering only the columns of the tables an instance actually came from" -- and this is it.
+  //
+  // The filter runs at render rather than in `loadObjects` because the object selector changes
+  // without refetching the ontology.
+  const visibleAttributes = attributes.filter((attribute) => !objectCode || attribute.objectCode === objectCode);
   const columns = [
     { title: t('objects.instanceColumn'), dataIndex: 'instanceId', key: 'instanceId', width: 100, fixed: 'left' as const },
-    ...attributes.map((attribute) => ({
+    ...visibleAttributes.map((attribute) => ({
       title: attribute.name || attribute.code,
       key: attribute.code,
       width: ATTRIBUTE_WIDTH,

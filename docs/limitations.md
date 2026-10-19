@@ -144,18 +144,15 @@ By design, not bugs. These are the next phase's work.
   edge rather than a domain, and keeping it here is a decision rather than a queue to be
   emptied: moving it would give a reader one more file to open to find where the SPA is served
   from. `tests/test_documented_claims.py` counts both numbers now, in both languages.
-- **The object browser shows every related table's columns in one grid.** A row from one table
-  has a dash in every column belonging to another, so the contract instance view has fourteen
-  columns that are dashes for every row. Nothing is misnamed -- the sweep's allowance lists each
-  of those columns with that reason, and a stale entry fails CI -- but a reader looking at that
-  screen cannot tell which columns belong to the row they are reading. Rendering only the columns
-  of the tables an instance actually came from would fix it, and that is a change to the screen
-  rather than to a field name.
+- **The object browser used to show every related table's columns in one grid, and that is
+  fixed**: it renders only the attributes of the selected object. A row belongs to one table, so
+  every column belonging to another was a dash in every row -- fourteen of them on the demo
+  schema -- and a reader could not tell which columns were about the row in front of them. The
+  fix is the one this page named: render the columns of the table the instance came from.
 
-  This is what ruled out a *fallback* column from being invisible: `render: (x) => x || '-'` used
-  to defeat both the component tests and the browser sweep, because a dash is text. Both treat
-  the placeholder set (`-`, `—`, `暂无`, `N/A`) as empty now, which is how these fourteen were
-  found at all.
+  What found it was the placeholder rule: `render: (x) => x || '-'` used to defeat both the
+  component tests and the browser sweep, because a dash is text. Both treat the placeholder set
+  (`-`, `—`, `暂无`, `N/A`) as empty now, which is how these fourteen were found at all.
 - **Response types are generated, and the screens read them where they can.** Seven row types
   (`Ontology`, `SemanticMapping`, `BusinessRule`, `PermissionRole`, `AuditLogItem`,
   `ModelInvocationItem`, `DecisionRecordItem`) are aliases of declarations in
