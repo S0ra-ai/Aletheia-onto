@@ -304,6 +304,32 @@ jobs:
           print('回溯判定标注了时刻:', payload['asOf'])
           "
 
+      - name: README 里的导出与 codegen 命令真的可执行
+        # Both quick starts show `aletheia export --format owl|shacl|jsonld` and `aletheia
+        # codegen`. The first half of that pair was written into the English page this cycle
+        # and had never been run by anything; a documented command that nobody executes is a
+        # claim, and this job exists so the documented path is walked rather than trusted.
+        #
+        # `codegen` on a *draft* is expected to refuse -- the quick start says it accepts only
+        # published ontologies -- so the assertion is that it says why, not that it succeeds.
+        run: |
+          for format in owl shacl jsonld; do
+            /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 export 1 --format "$format" > "/tmp/export.$format"
+            test -s "/tmp/export.$format" || { echo "export --format $format 没有任何输出"; exit 1; }
+            echo "export $format: $(wc -c < "/tmp/export.$format") bytes"
+          done
+          grep -q "owl:Class" /tmp/export.owl || { echo "OWL 导出里没有 owl:Class"; exit 1; }
+          grep -q "sh:NodeShape" /tmp/export.shacl || { echo "SHACL 导出里没有 sh:NodeShape"; exit 1; }
+
+          set +e
+          /tmp/clean/bin/aletheia --platform-db /tmp/platform.sqlite3 codegen 1 --output /tmp/types.ts > /tmp/codegen.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/codegen.log
+          test "$code" -ne 0 || { echo "codegen 对草稿本应拒绝，却成功了"; exit 1; }
+          grep -q "仅已发布本体" /tmp/codegen.log || { echo "codegen 的拒绝没有说明原因"; exit 1; }
+          echo "codegen 拒绝了草稿，并说明了原因"
+
       - name: 一致性契约随包发布且可从命令行运行
         # The contract has to be reachable by a third party. `tests/` is not in the wheel, so
         # a contract living only there is exactly as unavailable as prose in an ADR.

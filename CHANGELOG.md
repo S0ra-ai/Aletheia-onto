@@ -985,6 +985,16 @@
 
   这条限制在两种语言的限制页里都改写成了「已修复」，并保留了发现它的那条规则
   （`render: (x) => x || '-'` 曾经骗过两套检查，因为横杠也是文字）。
+
+- **README 里的导出与 codegen 命令，现在由 CI 真的执行**
+  （`.github/workflows/ci.yml`、`packaging` job）。
+  英文快速开始这一轮补上了 `aletheia export --format owl|shacl|jsonld` 与 `aletheia codegen`，
+  而它们此前**没有任何东西执行过**——一条没人跑过的文档命令，就是一个主张。
+
+  新步骤会在裸装环境里对三种格式各导一遍，断言非空、且分别含有 `owl:Class` 与 `sh:NodeShape`；
+  再断言 `codegen` 对**草稿**会拒绝（非零退出）**并且说明原因**——
+  文档写的是「只接受已发布本体」，所以这里要验的是那句话，不是命令能跑通。
+  本地先逐条验过：`owl`/`shacl` 各命中 4 处，`codegen` 退出码 1 且输出「仅已发布本体」。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
