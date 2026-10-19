@@ -159,7 +159,7 @@ SQLite 的 `text`）只会在对应后端上暴露。
 
 </details>
 
-## 6. 单体路由：`api.py` 133 个端点
+## 6. ~~单体路由：`api.py` 承载全部端点~~（已偿还：只剩 4 个外壳端点）
 
 > ✅ **`/v1` 前缀已加。** 每个端点同时以裸路径与 `/v1` 提供，
 > 两条路径共用同一套鉴权中间件与同一份权限策略——
@@ -182,7 +182,7 @@ SQLite 的 `text`）只会在对应后端上暴露。
 > 受保护端点在裸路径与 `/v1` 上都必须返回 401。列表比对曾在 `/v1` 实际不可达时通过。
 
 ✅ **已完成：拆 `APIRouter`。**
-`api.py` 从 2548 行降到 878 行，端点数从 113 降到 **31**，其余按关注点进了
+`api.py` 从 2548 行降到 878 行，端点数当时从 113 降到 **31**（现在是 4），其余按关注点进了
 `routers/`：auth、data source、knowledge、metamodel、model governance、
 semantic（含 agent 与 automation）、tenancy、workflow／permission。
 模块中段的 import 块已消除，`ruff` 的 `E402` 例外随之删除。
@@ -201,7 +201,16 @@ semantic（含 agent 与 automation）、tenancy、workflow／permission。
 `AUTH_ENABLED` 尤其不能每个 router 各拷一份：它在 import 期求值一次，
 拷贝会让某个 router 与中间件对「认证是否开启」产生分歧，而分歧的失败方向是免鉴权。
 
-🚧 仍有 113 个端点在 `api.py` 内，按关注点继续外移。
+**现在的数字。** `api.py` 里直接声明 **4** 个端点：`/`、`/admin`、`/admin/`、
+`/admin/{frontend_path:path}`——就是单页应用的外壳本身。其余 **156** 个都在 `routers/` 里。
+
+这一段此前写着「🚧 仍有 113 个端点在 `api.py` 内，按关注点继续外移」，而同一节的上文已经写着
+「降到 31」，标题还写着 133：**三个数字互不相同，而且都不是现在的数字。**
+
+**这一页没有测试。** `docs/limitations.md` 里关于 `api.py` 的同一句话漂过之后，
+是 `tests/test_documented_claims.py` 里的端点计数断言把它抓回来的；这份架构债清单没有对应的检查，
+所以它靠的是人工核对——也就是上面这一段。一份诚实记录欠账的文档，自身的数字照样会漂，
+而漂了的欠账清单会让人以为还有一场大重构没做。
 
 ## 7. ~~扩展点硬编码~~（已偿还，并已补上可执行契约）
 
