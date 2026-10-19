@@ -12,8 +12,9 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 Two-stage image, non-root, no bundled credentials and no seeded database. The reference
 compose file uses PostgreSQL as the platform store and does not publish the database port.
 
-部署完成后，平台后端会同时提供管理端：打开 `http://<host>:8000/admin/`，API 使用
-同源的 `/api` 前缀。这样不需要额外启动前端容器；开发环境仍可单独运行 Vite 前端。
+Once it is up, the backend serves the admin console as well: open `http://<host>:8000/admin/`,
+and the API answers on the same origin under `/api`. No separate frontend container is needed;
+the Vite dev server remains available for development.
 
 ## Deployment preflight
 

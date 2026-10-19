@@ -280,3 +280,34 @@ def test_the_two_capability_matrices_name_the_same_modules() -> None:
         f"  只在英文里有：{only_english}\n"
         "每个模块都是一项能力，缺的那一边读到的就是更小的框架。"
     )
+
+
+def test_no_line_of_an_english_page_is_a_chinese_sentence() -> None:
+    """A page can be 95% English and still have a paragraph in the other language.
+
+    That is what `docs/deployment.md` had: two lines explaining that the backend serves the
+    admin console, written in Chinese inside the English page -- while the Chinese page did not
+    have the paragraph at all. The whole-page language check passed, because two lines out of a
+    hundred do not move a ratio; the reader who cannot read Chinese hits them anyway.
+
+    **Prose only**: code fences are excluded, and a line is only reported when its Chinese
+    characters outnumber its Latin ones -- so 「达梦」 in a table of database names, or a link
+    that names both READMEs, stays where it is. The reverse direction is not checked: technical
+    Chinese prose is dense with identifiers, and every attempt to flag Latin-heavy lines there
+    reported paths and commands instead of untranslated sentences.
+    """
+    problems: list[str] = []
+    for english, _chinese in _pairs():
+        fence = False
+        for number, line in enumerate(english.read_text(encoding="utf-8").splitlines(), 1):
+            if FENCE.match(line):
+                fence = not fence
+                continue
+            if fence:
+                continue
+            cjk = len(re.findall(r"[一-鿿]", line))
+            latin = len(re.findall(r"[A-Za-z]", line))
+            if cjk >= 4 and cjk > latin:
+                problems.append(f"{english.name}:{number}: {line.strip()[:80]}")
+
+    assert not problems, "英文页里出现了整行的中文句子。英文读者会直接撞上它：\n  " + "\n  ".join(problems)

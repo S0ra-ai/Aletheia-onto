@@ -12,6 +12,9 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 镜像两阶段构建、非 root 运行、不内置任何凭据或预置数据库。
 参考编排用 PostgreSQL 作平台库，数据库端口不映射到宿主。
 
+服务起来之后，后端同时提供管理端：打开 `http://<host>:8000/admin/`，API 走同源的 `/api` 前缀。
+这样不需要单独起前端容器；开发环境仍可单独运行 Vite 前端。
+
 ## 定时备份
 
 **`scripts/backup.sh` 只备份本地 SQLite 平台库。** 参考编排用的是 PostgreSQL，那种部署请用
