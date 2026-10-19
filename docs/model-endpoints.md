@@ -1,136 +1,147 @@
-# 接入自定义模型服务
+# Connecting a custom model service
 
-平台使用 **OpenAI 兼容的 `chat/completions` 协议**，因此任何实现该协议的服务都可接入：
-官方 API、中转站与自定义订阅、自建 vLLM / Ollama、Azure OpenAI、国内厂商的兼容端点。
+The platform speaks the **OpenAI-compatible `chat/completions` protocol**, so any service that
+implements it can be connected: the official APIs, a relay or a custom subscription, a
+self-hosted vLLM / Ollama, Azure OpenAI, or a vendor's compatibility endpoint.
 
-> 未配置 API Key 时，问答与建模会**回退本地启发式**，功能不中断——
-> 平台不会因为缺少模型而不可用。
+> With no API key configured, question answering and drafting **fall back to a local
+> heuristic** and stay usable — a missing model does not make the platform unavailable.
 
-## 为什么只配 Base URL 不够
+## Why a base URL on its own is not enough
 
-各服务商在两件事上并不一致，而这两件事都会让请求直接失败：
+Providers disagree on three things, and each one fails the request outright:
 
-| 差异 | 症状 |
+| Difference | Symptom |
 |---|---|
-| 密钥的传递方式 | `401`：Azure 用 `api-key` 请求头，不是 `Authorization: Bearer` |
-| 能否容忍额外字段 | `400`：`service_tier`／`session_id` 是 OpenRouter 扩展，严格的兼容实现（vLLM、LM Studio、部分中转站）遇到未知字段直接拒绝 |
-| Base URL 的路径形态 | `404`：有的网关给的已是完整 `/chat/completions`，Azure 还带 `?api-version=` |
+| How the key is carried | `401`: Azure wants an `api-key` header, not `Authorization: Bearer` |
+| Tolerance for extra fields | `400`: `service_tier` / `session_id` are OpenRouter extensions, and a strict implementation (vLLM, LM Studio, some relays) rejects unknown fields |
+| The shape of the base URL | `404`: some gateways already give you the full `/chat/completions`, and Azure adds `?api-version=` |
 
-因此除 Base URL 外还有三项兼容性设置。
+So there are three compatibility settings beside the base URL.
 
-## 快速预设
+## Presets
 
-模型配置页右上角可一键套用：
+The model settings page applies these in one click:
 
-| 预设 | Base URL | 鉴权方式 | 扩展字段 |
+| Preset | Base URL | Auth | Extra fields |
 |---|---|:--:|:--:|
-| OpenRouter | `https://openrouter.ai/api/v1` | bearer | 开 |
-| OpenAI 官方 | `https://api.openai.com/v1` | bearer | 关 |
-| 中转站／自定义订阅 | `https://<你的域名>/v1` | bearer | 关 |
-| Azure OpenAI | `https://<资源>.openai.azure.com/openai/deployments/<部署>/chat/completions?api-version=2024-02-01` | api-key | 关 |
-| 自建 vLLM / Ollama | `http://127.0.0.1:8000/v1` | none | 关 |
-| 阿里云百炼 / 通义 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | bearer | 关 |
-| DeepSeek 官方 API | `https://api.deepseek.com` | bearer | 关 |
+| OpenRouter | `https://openrouter.ai/api/v1` | bearer | on |
+| OpenAI | `https://api.openai.com/v1` | bearer | off |
+| Relay / custom subscription | `https://<your domain>/v1` | bearer | off |
+| Azure OpenAI | `https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-02-01` | api-key | off |
+| Self-hosted vLLM / Ollama | `http://127.0.0.1:8000/v1` | none | off |
+| Alibaba Cloud Model Studio / Qwen | `https://dashscope.aliyuncs.com/compatible-mode/v1` | bearer | off |
+| DeepSeek official API | `https://api.deepseek.com` | bearer | off |
 
-套用预设后需自行补齐密钥与模型名。
+A preset fills in the compatibility settings only; the key and the model name are still yours.
 
-## 配置项说明
+## The settings
 
-### 鉴权方式
+### Authentication style
 
-| 取值 | 发送形式 | 适用 |
+| Value | What is sent | For |
 |---|---|---|
-| `bearer` | `Authorization: Bearer <key>` | 绝大多数服务 |
+| `bearer` | `Authorization: Bearer <key>` | most services |
 | `api-key` | `api-key: <key>` | Azure OpenAI |
-| `custom` | `<自定义头>: <key>` | 需要特殊头名的网关 |
-| `none` | 不发送密钥 | 内网自建服务 |
+| `custom` | `<your header>: <key>` | gateways that need a special header name |
+| `none` | no key at all | a service on your own network |
 
-选 `custom` 时必须填写请求头名称，否则保存会被拒绝——
-静默丢弃密钥比报错更难排查。
+Choosing `custom` requires the header name, and saving is refused without it — a silently
+dropped key is harder to diagnose than an error.
 
-### 发送 OpenRouter 扩展字段
+### Send OpenRouter extension fields
 
-控制是否在请求体中带 `service_tier` 与 `session_id`。
-**接入非 OpenRouter 服务时建议关闭。**
+Controls whether `service_tier` and `session_id` go in the request body.
+**Turn this off for anything that is not OpenRouter.**
 
-### 附加请求头
+### Extra headers
 
-JSON 对象，例如 `{"X-Tenant-Id": "acme"}`。
-此处的键会**覆盖**自动生成的同名请求头，可作为最后的逃生舱。
+A JSON object, for example `{"X-Tenant-Id": "acme"}`. A key here **overrides** the generated
+header of the same name, which makes this the last-resort escape hatch.
 
-### Base URL 的路径处理
+### How the base URL's path is handled
 
-平台按以下规则决定实际调用地址：
+The platform decides the address it actually calls like this:
 
-- 通常在 Base URL 后追加 `/chat/completions`
-- 若 Base URL 中**已包含** `/chat/completions`，则原样使用，不重复拼接
-- 查询串（如 Azure 的 `?api-version=`）会被保留
+- normally it appends `/chat/completions` to the base URL
+- if the base URL **already contains** `/chat/completions`, it is used as given, not appended twice
+- the query string (Azure's `?api-version=`, say) is preserved
 
-配置页会显示**实际会被调用的完整地址**，保存前即可核对。
+The settings page shows **the full address that will be called**, so it can be checked before
+saving.
 
-## 环境变量
+## Environment variables
 
-不使用界面配置时，可通过环境变量提供（数据库中的配置优先级更高）：
+Where the interface is not used, the same settings can come from the environment (a value saved
+in the database takes precedence):
 
-| 变量 | 作用 |
+| Variable | Meaning |
 |---|---|
-| `OPENROUTER_API_KEY` | API 密钥 |
-| `OPENROUTER_BASE_URL` | Base URL |
-| `OPENROUTER_MODEL` | 模型名 |
-| `ONTOLOGY_MODEL_AUTH_STYLE` | 鉴权方式 |
-| `ONTOLOGY_MODEL_AUTH_HEADER` | 自定义鉴权头名称 |
-| `ONTOLOGY_MODEL_EXTRA_HEADERS` | 附加请求头（JSON 字符串） |
-| `ONTOLOGY_MODEL_SEND_EXTRAS` | 设为 `0` 关闭扩展字段 |
+| `OPENROUTER_API_KEY` | API key |
+| `OPENROUTER_BASE_URL` | base URL |
+| `OPENROUTER_MODEL` | model name |
+| `ONTOLOGY_MODEL_AUTH_STYLE` | authentication style |
+| `ONTOLOGY_MODEL_AUTH_HEADER` | custom authentication header name |
+| `ONTOLOGY_MODEL_EXTRA_HEADERS` | extra headers (a JSON string) |
+| `ONTOLOGY_MODEL_SEND_EXTRAS` | set to `0` to turn the extension fields off |
 
-如果未设置 `OPENROUTER_API_KEY`，也可以使用 DeepSeek 官方 API：设置
-`DEEPSEEK_API_KEY`，可选设置 `DEEPSEEK_MODEL`（默认 `deepseek-flash`）和
-`DEEPSEEK_BASE_URL`（默认 `https://api.deepseek.com`）。平台会自动使用 Bearer
-鉴权并关闭 OpenRouter 专属扩展字段；数据库中已保存的模型配置优先于环境变量。
+With no `OPENROUTER_API_KEY`, the DeepSeek official API can be used instead: set
+`DEEPSEEK_API_KEY`, and optionally `DEEPSEEK_MODEL` (default `deepseek-flash`) and
+`DEEPSEEK_BASE_URL` (default `https://api.deepseek.com`). The platform uses Bearer
+authentication and turns the OpenRouter-only fields off automatically; a model configuration
+saved in the database still takes precedence over the environment.
 
-## 模型返回内容怎么被处理
+## What happens to what the model returns
 
-建模助手（蓝图草案、语义建议、推理链）依赖模型返回 **JSON**，因此平台必须假设模型
-不是完全听话的。三条规则：
+The drafting assistants (blueprint drafts, semantic suggestions, reasoning chains) depend on the
+model returning **JSON**, so the platform has to assume the model is not perfectly obedient.
+Three rules:
 
-**字段类型在提示词里写明。** 早期版本的提示词只列出字段名、不写形状，于是模型只能猜——
-而 `objectHints` 一个真实模型是很自然地理解成「对象描述符数组」的（这是更丰富的形态，
-能带来源表、主键、关系），平台却按 `{表名: 中文名}` 读取，`dict(数组)` 直接抛错。
-现在提示词同时给出两种形态中**平台存储的**那一种。
+**Field types are written into the prompt.** An early prompt listed the field names without
+their shape, leaving the model to guess — and `objectHints` is very naturally read by a real
+model as an array of object descriptors (the richer form, carrying source table, primary key and
+relations), while the platform read it as `{table name: display name}` and `dict(array)` raised
+outright. The prompt now gives the shape **the platform stores**.
 
-同一处缺口在推理链接口上曾原样留着：提示词写「buildPlan 要给出两种路径」，
-模型据此每条路径给一个对象，而字段按字符串数组渲染——React 拒绝对象子节点，
-错误边界把整个页面换掉，**接口返回 200、日志记 success**。
-三个建模辅助接口现在都写明每个字段及其元素的形状。
+The same gap was still open on the reasoning-chain endpoint: the prompt asked for "buildPlan
+with both paths", the model therefore gave an object per path, and the field was rendered as an
+array of strings — React refuses an object as a child, the error boundary replaces the whole
+page, and **the endpoint returned 200 while the log recorded success**.
+All three drafting endpoints now state the shape of every field and of its elements.
 
-**读不出来的字段只损失那个字段。** 归一化按字段进行：某个字段形状不对就用草案自身的值，
-其余字段照常采用模型的结果。此前任一字段抛错都会被上层的 `except` 整体吞掉——
-模型 16KB 的可用产出被换成启发式草案，而调用方只看到 `usedRemoteModel: false`，
-**读起来像「根本没配模型」**。
+**A field that cannot be read costs only that field.** Normalisation is per field: one with the
+wrong shape keeps the draft's own value while the rest take the model's. Previously any field
+raising took the whole response down through an `except` above — a usable 16KB of model output
+was replaced by the heuristic draft, and the caller saw only `usedRemoteModel: false`, which
+**reads like "no model was configured at all"**.
 
-**读不出来的字段会被告知。** 响应中出现 `unreadableModelFields: ["objectHints"]`
-即表示该字段回退到了草案自身的值。不出现该键表示模型返回的每个字段都被采用。
-平台不会去猜模型想表达什么——hint 会成为受治理本体的业务词汇，
-**一个模型没写过的名称被编造出来后，与真实名称无法区分**。
+**A field that could not be read is reported.** `unreadableModelFields: ["objectHints"]` in the
+response means that field fell back to the draft's own value; the key's absence means every
+field the model returned was used. The platform does not guess at what the model meant — a hint
+becomes the governed ontology's business vocabulary, and **a name the model never wrote, once
+invented, is indistinguishable from a real one**.
 
-顺带说明：归一化同时接受数组形态的对象描述符，因为那是模型在没被告知形状时的自然读法，
-而它承载的信息比映射更丰富。只会做忠实投影（取 `code`/`name`），不会补齐或推断。
-同理，文本框里收到对象时，投影它自己的 `detail`／`path`／`text` 等字段——
-保留模型的原话，而不是丢弃整条或 `str()` 成 Python repr。
+One more thing: the normaliser also accepts array-shaped object descriptors, because that is the
+natural reading when the model was not told the shape and it carries more than the mapping does.
+It only projects faithfully (`code`/`name`); it never fills in or infers. Likewise, when a text
+field receives an object, it projects that object's own `detail` / `path` / `text` — keeping the
+model's words rather than discarding the entry or turning it into a Python `repr`.
 
-## 排错
+## Troubleshooting
 
-| 现象 | 优先检查 |
+| Symptom | Check first |
 |---|---|
-| `401` | 鉴权方式是否匹配；密钥是否已过期 |
-| `400` 且提示未知字段 | 关闭「发送 OpenRouter 扩展字段」 |
-| `404` | Base URL 路径；对照配置页显示的实际地址 |
-| 连接超时 | 自建服务的地址与端口；适当增大超时 |
-| 返回内容为空 | 模型名是否为该服务商的合法标识（Azure 应填部署名） |
+| `401` | whether the authentication style matches; whether the key has expired |
+| `400` naming an unknown field | turn off "send OpenRouter extension fields" |
+| `404` | the base URL's path; compare with the address the settings page shows |
+| Connection timeout | the address and port of a self-hosted service; raise the timeout |
+| Empty response | whether the model name is valid for that provider (Azure wants the deployment name) |
 
-配置页的「测试连接」会返回具体错误，并按状态码提示最可能的成因。
+The settings page's "test connection" returns the actual error and names the most likely cause
+for the status code.
 
-## 安全
+## Security
 
-- API Key 在接口响应中**只返回首尾字符**，不会回显完整值
-- 配置页留空密钥表示「保持现有密钥不变」，而非清空
-- 附加请求头中的值同样会进入请求，请勿在其中放入无关凭据
+- the API key is returned **as its first and last characters only**; the full value is never echoed
+- leaving the key blank on the settings page means "keep the current key", not "clear it"
+- values in the extra headers go into the request too — do not put unrelated credentials there

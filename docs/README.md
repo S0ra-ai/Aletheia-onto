@@ -18,6 +18,7 @@ Start with the [README](../README.md). This tree holds the depth the entry point
 | [Roles and capabilities](roles.md) | Six capabilities across six roles |
 | [Extension guide](extending.md) | Data sources, rule functions, retrieval backends, writeback |
 | [Model endpoints](model-endpoints.md) | Azure OpenAI, vLLM, gateways |
+| [Operations](operations.md) | Monitoring, logs, backup and restore, upgrading |
 | [Tests](testing.md) | Distribution, static checks, why assertions are shaped that way |
 | [Screenshots](screenshots.md) | 15 screens, each captioned with what it proves |
 | [ADRs](adr/) | Architecture decisions, including rejected alternatives |
@@ -61,7 +62,8 @@ is itself worth being able to see.
 | [私有化部署](deployment.zh-CN.md) | 镜像、编排、部署前自检 |
 | [角色与能力](roles.zh-CN.md) | 六个角色、六项能力，默认拒绝的策略表 |
 | [扩展指南](extending.md) | 数据源、规则函数、检索后端、写回执行器 |
-| [接入自定义模型服务](model-endpoints.md) | Azure OpenAI、vLLM、中转网关 |
+| [接入自定义模型服务](model-endpoints.zh-CN.md) | Azure OpenAI、vLLM、中转网关 |
+| [运维](operations.zh-CN.md) | 监控、日志、备份恢复、升级 |
 | [测试](testing.zh-CN.md) | 分布、静态检查，以及为什么这样断言 |
 | [界面与产出](screenshots.zh-CN.md) | 15 张截图，每张说明它证明了什么 |
 | [ADR](adr/) | 架构决策记录，含被否决方案 |

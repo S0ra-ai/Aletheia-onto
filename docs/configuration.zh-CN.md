@@ -27,7 +27,7 @@
 
 两种格式都带请求 id——文本是行内 `request_id=…`，JSON 是 `requestId` 字段，且**每条记录都带**，
 包括依赖库深处发出的那几条：id 在请求进入时绑定到上下文，而不是由各调用点自行传递。
-用它排查故障见[运维手册](operations.md)。
+用它排查故障见[运维手册](operations.zh-CN.md)。
 
 日志在**服务开始提供请求时**配置，而不是在模块被导入时：导入一个库不应安装进程级 handler
 或创建目录。
@@ -134,4 +134,4 @@ export AZURE_OPENAI_KEY='...'
 ## 相关
 
 - [自托管部署](deployment.zh-CN.md)——以及 `aletheia preflight`，它会拦住不安全的组合
-- [模型端点](model-endpoints.md)——Azure OpenAI、vLLM、各类网关（这一页目前只有英文版）
+- [模型端点](model-endpoints.zh-CN.md)——Azure OpenAI、vLLM、各类网关

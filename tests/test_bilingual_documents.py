@@ -124,6 +124,61 @@ def test_no_code_block_is_in_one_edition_only() -> None:
     assert not missing, "两个语言版本的命令不一致——有一边的读者读到的能力比另一边少：\n  " + "\n  ".join(missing)
 
 
+def test_each_edition_is_written_in_the_language_its_filename_claims() -> None:
+    """`model-endpoints.md` was Chinese, so the English README sent its reader to `# 接入自定义模型服务`.
+
+    That is the mirror of the drift this file was written for, and the harder one to notice: the
+    page *exists*, the link *resolves*, and `test_documentation_links.py` is satisfied. Only a
+    reader who does not read Chinese finds out, and they find out by landing on it.
+
+    Four pages were in that state -- `model-endpoints.md`, `operations.md`,
+    `production-checklist.md` and `architecture-debt.md` -- all written in Chinese under a
+    filename that says otherwise. Three now have a Chinese edition under `.zh-CN.md` and an
+    English one under `.md`.
+
+    **Only paired pages are checked.** `01-总体架构.md` and the other design documents are
+    Chinese-only on purpose and make no claim about a second edition; requiring them to be
+    English would be requiring a translation nobody asked for. `docs/README.md` holds both
+    languages in one file by design and is not paired either.
+
+    The threshold is wide because the question is only "which language is this page in": every
+    Chinese edition sits above 80% CJK and every English one below 30%, so anything in between
+    is a page that mixes them and deserves a person's attention rather than a guess.
+    """
+    problems: list[str] = []
+    for english, chinese in _pairs():
+        en_share, zh_share = _cjk_share(english), _cjk_share(chinese)
+        if en_share > 0.30:
+            problems.append(f"{english.name} 有 {en_share:.0%} 的汉字——英文文件名，中文内容")
+        if zh_share < 0.50:
+            problems.append(f"{chinese.name} 只有 {zh_share:.0%} 的汉字——中文文件名，却不是中文")
+
+    assert not problems, (
+        "成对文档里有一份不是它文件名所说的那种语言。读者不会先读文件名再判断——"
+        "他们会点进去，然后用自己不会读的语言读一整页：\n  " + "\n  ".join(problems)
+    )
+
+
+def _cjk_share(path: Path) -> float:
+    """The share of CJK characters among CJK characters plus Latin words, in prose only.
+
+    Code blocks are excluded: a page of Chinese prose is mostly `bash` and JSON, and counting
+    identifiers would pull every technical document toward the middle.
+    """
+    fence = False
+    prose: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if FENCE.match(line):
+            fence = not fence
+            continue
+        if not fence:
+            prose.append(line)
+    text = "\n".join(prose)
+    cjk = len(re.findall(r"[一-鿿]", text))
+    words = len(re.findall(r"\b[A-Za-z][A-Za-z'-]+\b", text))
+    return cjk / max(1, cjk + words)
+
+
 def test_every_page_is_reachable_from_somewhere() -> None:
     """A page nothing links to is a page nobody reads, and one was sitting in the repository.
 

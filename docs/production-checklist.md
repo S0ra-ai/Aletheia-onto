@@ -1,79 +1,84 @@
-# 生产环境部署检查清单
+# Production deployment checklist
 
-## 基础设施
+## Infrastructure
 
-- [ ] 使用 PostgreSQL 而非 SQLite
-- [ ] 按并发上限调整数据库 `max_connections` —— **平台不使用连接池**，
-      每个 `connect()` 新建连接，连接数随并发线性上升（见[已知限制](limitations.zh-CN.md)）
-- [ ] 启用数据库备份 (每日全量 + 每小时增量)
-- [ ] 配置防火墙规则 (仅开放 80/443 端口)
-- [ ] 启用 TLS/SSL (使用 Let's Encrypt 或商业证书)
+- [ ] Use PostgreSQL rather than SQLite
+- [ ] Size the database's `max_connections` to your concurrency ceiling — **the platform does
+      not pool**; every `connect()` opens a new connection, so the count rises linearly with
+      concurrency (see [current limitations](limitations.md))
+- [ ] Enable database backups (nightly full + hourly incremental)
+- [ ] Configure firewall rules (expose 80/443 only)
+- [ ] Enable TLS/SSL (Let's Encrypt or a commercial certificate)
 
-## 安全配置
+## Security
 
-- [ ] 修改默认管理员密码 (至少 16 位随机密码)
-- [ ] 禁用 ONTOLOGY_AUTH_DISABLED
-- [ ] 设置请求限流 `ONTOLOGY_RATE_LIMIT_PER_MINUTE`（默认关闭，
-      未设置则单个调用方无上限；登录接口默认另有更严的限额）
-- [ ] 配置正确的 CORS 域名 (不要使用 *)
-- [ ] 保护平台库文件权限 —— **数据源密码与模型 API key 以明文存放于此**，
-      该库就是凭据存储；模型 key 优先用环境变量注入
-- [ ] 配置 RBAC 权限策略
-- [ ] 启用审计日志（`ONTOLOGY_LOG_FILE`，或交给日志聚合；建议 `ONTOLOGY_LOG_FORMAT=json`）
-- [ ] 定期轮换密钥与应用密钥
+- [ ] Change the default administrator password (at least 16 random characters)
+- [ ] Disable `ONTOLOGY_AUTH_DISABLED`
+- [ ] Set request rate limits (`ONTOLOGY_RATE_LIMIT_PER_MINUTE`) — off by default, so an
+      unset value leaves a single caller unbounded; the login endpoint has a stricter limit of
+      its own
+- [ ] Configure the correct CORS origins (never `*`)
+- [ ] Protect the platform database's file permissions — **data source passwords and model API
+      keys are stored in it in plaintext**, so that database *is* the credential store; prefer
+      injecting the model key from the environment
+- [ ] Configure RBAC policies
+- [ ] Enable audit logging (`ONTOLOGY_LOG_FILE`, or ship to a log aggregator;
+      `ONTOLOGY_LOG_FORMAT=json` is recommended)
+- [ ] Rotate keys and application secrets on a schedule
 
-## 监控告警
+## Monitoring and alerting
 
-- [ ] 部署 Prometheus
-- [ ] 配置 Grafana 仪表板
-- [ ] 设置 Alertmanager 告警
-- [ ] 配置日志聚合 (ELK/Loki)
-- [ ] 设置关键指标告警:
-  - [ ] HTTP 错误率 > 5%
-  - [ ] P99 响应时间 > 1s
-  - [ ] 数据库连接数 > 80%
-  - [ ] 磁盘使用 > 85%
-  - [ ] 内存使用 > 90%
+- [ ] Deploy Prometheus
+- [ ] Configure a Grafana dashboard
+- [ ] Set up Alertmanager
+- [ ] Configure log aggregation (ELK/Loki)
+- [ ] Alert on the metrics that matter:
+  - [ ] HTTP error rate > 5%
+  - [ ] P99 response time > 1s
+  - [ ] database connections > 80%
+  - [ ] disk usage > 85%
+  - [ ] memory usage > 90%
 
-## 性能优化
+## Performance
 
-- [ ] 启用多工作进程 (workers=4)
-- [ ] 在反向代理或 CDN 层做响应缓存 —— **平台自身不提供响应缓存**，
-      也没有 Redis 集成；需要缓存请在网关层做，并注意业务对象接口带行级权限过滤，
-      按 URL 缓存会把一个角色的可见结果发给另一个角色
-- [ ] 优化数据库索引（对象来源表与本平台的映射表）
-- [ ] 配置 CDN (静态资源)
+- [ ] Run multiple workers (`workers=4`)
+- [ ] Cache responses at the reverse proxy or CDN — **the platform provides no response cache
+      of its own**, and no Redis integration; cache at the gateway if you need it, and note that
+      business-object endpoints filter rows by permission, so caching by URL would serve one
+      role's visible rows to another
+- [ ] Optimise database indexes (the objects' source tables and this platform's mapping tables)
+- [ ] Configure a CDN (for static assets)
 
-## 灾备方案
+## Disaster recovery
 
-- [ ] 配置每日自动备份
-- [ ] 测试恢复流程
-- [ ] 配置跨区域备份
-- [ ] 制定 RTO/RPO 目标
-- [ ] 定期进行灾备演练
+- [ ] Schedule automatic nightly backups
+- [ ] Test the restore procedure
+- [ ] Configure cross-region backups
+- [ ] Set RTO/RPO targets
+- [ ] Run disaster-recovery drills regularly
 
-## 运维文档
+## Operations documentation
 
-- [ ] 更新运维手册
-- [ ] 创建故障处理流程
-- [ ] 配置 On-Call 轮班
-- [ ] 建立变更管理流程
-- [ ] 准备回滚方案
+- [ ] Update the operations manual
+- [ ] Write incident procedures
+- [ ] Set up an on-call rota
+- [ ] Establish a change-management process
+- [ ] Prepare a rollback plan
 
-## 合规检查
+## Compliance
 
-- [ ] 数据加密 (传输中 + 静态)
-- [ ] 访问控制审计
-- [ ] 隐私政策更新
-- [ ] 数据保留策略
-- [ ] 合规报告生成
+- [ ] Data encryption (in transit and at rest)
+- [ ] Access-control audit
+- [ ] Privacy policy updated
+- [ ] Data retention policy
+- [ ] Compliance reporting
 
-## 上线前最终确认
+## Final sign-off before going live
 
-- [ ] 所有测试通过
-- [ ] 性能基准测试通过
-- [ ] 安全扫描通过
-- [ ] 备份恢复测试通过
-- [ ] 监控告警验证通过
-- [ ] 运维团队培训完成
-- [ ] 应急预案准备就绪
+- [ ] All tests pass
+- [ ] Performance benchmarks pass
+- [ ] Security scan passes
+- [ ] Backup-and-restore test passes
+- [ ] Monitoring and alerting verified
+- [ ] Operations team trained
+- [ ] Incident response plan in place

@@ -218,5 +218,5 @@ python scripts/capture_screenshots.py --token "$TOKEN" --user "$USER" --out docs
 内置 OpenRouter／OpenAI／中转站／Azure／自建 vLLM／阿里云百炼预设，
 并显示**实际会被调用的完整地址**。未配置密钥时回退本地启发式，功能不中断。
 
-完整配置项与排错见[接入自定义模型服务](model-endpoints.md)。
+完整配置项与排错见[接入自定义模型服务](model-endpoints.zh-CN.md)。
 

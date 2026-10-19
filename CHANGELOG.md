@@ -731,9 +731,18 @@
 
   顺带纠正一个判断错误：此前以为有四页只有英文版，逐个打开才发现
   `model-endpoints.md` 与 `operations.md` 的正文是中文——它们是**中文内容放在英文文件名下**，
-  和 `architecture-debt.md`、`production-checklist.md` 一样。所以英文读者从英文 README
-  点进去看到的是中文页。这个问题**没有在这一轮处理**：改文件名会让配对守卫要求补齐另一版，
-  而那是一个需要先想清楚的范围决定。
+  和 `architecture-debt.md`、`production-checklist.md` 一样。**这四页里有三页已经改成
+  `.zh-CN.md` 并补了英文版**（`model-endpoints`、`operations`、`production-checklist`）：
+  在那之前，英文读者从英文 README 点进去，读到的是 `# 接入自定义模型服务`。
+  `architecture-debt.md` 仍是中文单版——它没有出现在任何英文读者会走到的路径上，
+  而给它写英文版是另一件事。
+
+- **成对文档现在必须用文件名所说的语言写**（`test_bilingual_documents.py`）。
+  这是上一条的镜像缺陷，也是更难发现的那种：页面**存在**、链接**能解析**、
+  `test_documentation_links.py` **满意**。只有不读中文的读者才会发现，而发现的方式是当场撞上。
+  守卫只检查**成对的**页面——`01`–`04` 这些设计文档是**有意**只有中文的，它们没有声称有第二版，
+  要求它们有英文版等于要求一份没人要的翻译；`docs/README.md` 一份文件里装着两种语言，也不成对。
+  阈值给得很宽，因为问题只是「这一页是什么语言」：中文版都在 80% 以上、英文版都在 30% 以下。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

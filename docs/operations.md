@@ -1,151 +1,166 @@
-# 运维手册
+# Operations
 
-## 日常监控
+## Day-to-day monitoring
 
-### 健康检查
+### Health checks
 ```bash
-# 检查服务状态
+# service status
 curl http://localhost:8000/health
 
-# 检查指标
+# metrics
 curl http://localhost:8000/metrics
 ```
 
-### 日志查看
+### Reading the logs
 
-日志默认写 stderr，容器化部署交给运行时收集（`docker logs`／Kubernetes）。需要落盘时
-设置 `ONTOLOGY_LOG_FILE`，目录会自动创建，按 10 MiB 轮转、保留 5 份：
+Logs go to stderr by default, and a containerised deployment hands them to the runtime
+(`docker logs` / Kubernetes). To write them to disk, set `ONTOLOGY_LOG_FILE`: the directory is
+created, and the file rotates at 10 MiB keeping five copies.
 
 ```bash
 export ONTOLOGY_LOG_FILE=/var/log/aletheia/platform.log
 ```
 
-要交给日志聚合系统解析时启用 JSON（每行一个对象）：
+For a log aggregator to parse, turn on JSON (one object per line):
 
 ```bash
-export ONTOLOGY_LOG_FORMAT=json     # 默认 text，给人看
-export ONTOLOGY_LOG_LEVEL=INFO      # 默认 INFO
+export ONTOLOGY_LOG_FORMAT=json     # default text, for a person to read
+export ONTOLOGY_LOG_LEVEL=INFO      # default INFO
 ```
 
-两种格式都带 `request_id`：文本格式是行内的 `request_id=…`，JSON 格式是
-`requestId` 字段。**每一条日志（包括依赖库内部发出的告警）都带当前请求的 id**，
-因为 id 在请求进入时绑定到上下文，而不是由各调用点自行传递。
+Both formats carry `request_id`: inline as `request_id=…` in text, as the `requestId` field in
+JSON. **Every record — including warnings emitted from inside a dependency — carries the current
+request's id**, because the id is bound to the context when the request arrives rather than
+passed down by each call site.
 
-按请求追日志：
+Follow one request through the log:
 
 ```bash
 grep "request_id=a1b2c3…" /var/log/aletheia/platform.log
 ```
 
-id 的来源有两个：平台生成（full UUID4），或调用方通过 `X-Request-Id` 头传入——
-网关可以借此把自己的 id 与本服务的日志对上。响应里始终回带同一个 id。
+The id comes from one of two places: the platform (a full UUID4), or the caller through the
+`X-Request-Id` header — which lets a gateway line its own ids up with this service's logs. The
+response always echoes the same id back.
 
-**排查 500 时先从响应体拿 id。** 未处理异常的响应是
-`{"detail": …, "code": "internal_error", "requestId": "…"}`，异常本身只进日志、不进响应体
-（异常文本含文件路径、SQL 片段，偶尔还有数据行）。用户报障时把这个 id 贴过来即可定位。
+**When investigating a 500, take the id from the response body first.** The response to an
+unhandled exception is `{"detail": …, "code": "internal_error", "requestId": "…"}`; the exception
+itself goes to the log and not into the body (exception text contains file paths, SQL fragments,
+and occasionally data rows). A user reporting a failure can paste that id and it will locate the
+rest.
 
-> 请求日志只记录路径，**不记录查询串**：查询串常带 `?token=` 之类的凭据，而访问日志
-> 最常被送到第三方聚合平台。uvicorn 自带的访问日志会把整行请求（含查询串）打出来，
-> 因此启动时已将其级别压到 WARNING——只保留一份访问日志，且是不泄露参数的那一份。
+> The access log records the path and **not the query string**: a query string often carries a
+> credential like `?token=`, and an access log is the thing most often shipped to a third-party
+> aggregator. uvicorn's own access log prints the whole request line including the query string,
+> so its level is raised to WARNING at startup — one access log remains, and it is the one that
+> does not leak parameters.
 
-### 请求限流
+### Request rate limiting
 
-默认**不启用**，因为合适的额度取决于部署的流量，这个数字包本身无法知道。
-启用后按调用方地址计数，并**在认证之前生效**——未认证的洪泛正是要限制的对象：
+Off by default, because the right number depends on a deployment's traffic and the package
+cannot know it. When enabled it counts by caller address and **applies before authentication** —
+an unauthenticated flood is exactly what it is for:
 
 ```bash
-export ONTOLOGY_RATE_LIMIT_PER_MINUTE=600        # 0 或未设置 = 不限制
-export ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE=10    # 登录／SSO，默认 10，更严
+export ONTOLOGY_RATE_LIMIT_PER_MINUTE=600        # 0 or unset = no limit
+export ONTOLOGY_RATE_LIMIT_AUTH_PER_MINUTE=10    # login / SSO, default 10, stricter
 ```
 
-被拒的请求返回 `429` 且带标准 `Retry-After` 头；正常响应带 `X-RateLimit-Limit` 与
-`X-RateLimit-Remaining`。健康检查与 `/metrics` 等公开路径不计数，
-否则监控会消耗掉它自己所在地址的额度。
+A refused request returns `429` with a standard `Retry-After` header; a normal response carries
+`X-RateLimit-Limit` and `X-RateLimit-Remaining`. Public paths such as the health check and
+`/metrics` are not counted, or monitoring would consume the quota of the address it monitors.
 
-计数器按进程独立：多 worker 部署下实际额度是配置值乘以 worker 数。跨进程共享计数需要
-本包不依赖的存储，这一点写在[已知限制](limitations.zh-CN.md)里而不是被掩盖。
+Counters are per process: with several workers the effective limit is the configured value times
+the worker count. Sharing a counter across processes needs storage this package does not depend
+on, which is written down in [current limitations](limitations.md) rather than papered over.
 
-`aletheia preflight` 会对「可从网络访问但未设限流」给出 warning。
+`aletheia preflight` warns when the service is reachable from the network with no limit set.
 
-### 指标监控
-访问 Prometheus: http://localhost:9090
-- HTTP 请求速率
-- 错误率
-- 响应时间 P99
-- 活跃会话数
+### Metrics
+Prometheus at http://localhost:9090
+- HTTP request rate
+- error rate
+- response time P99
+- active sessions
 
-## 备份与恢复
+## Backup and restore
 
-### 创建备份
+### Create a backup
 
-内置 HTTP 备份只支持 SQLite 平台库，且 `/admin/backup/*` 要求管理员令牌：
+The built-in HTTP backup supports the SQLite platform database only, and `/admin/backup/*`
+requires an administrator token:
 ```bash
 curl -X POST http://localhost:8000/admin/backup/create \
   -H "Authorization: Bearer $ONTOLOGY_ADMIN_TOKEN"
 ```
 
-### 列出备份
+### List backups
 ```bash
 curl http://localhost:8000/admin/backup/list \
   -H "Authorization: Bearer $ONTOLOGY_ADMIN_TOKEN"
 ```
 
-### 恢复备份
+### Restore a backup
 ```bash
 curl -X POST http://localhost:8000/admin/backup/restore/{backup_name} \
   -H "Authorization: Bearer $ONTOLOGY_ADMIN_TOKEN"
 ```
 
-恢复会替换当前 SQLite 平台库，应在停止服务后执行。**恢复前平台会自动把当前库另存为
-一份 `before-restore-<UTC 时间戳>` 备份**，并在响应里用 `safetyCopy` 报出它的名字——
-备份列表里几十个名字相近的归档，选错一个是很平常的事，而换错的那一次必须能换回来。
-快照生成失败时**恢复会被拒绝**（fail-closed）：先弄丢现在这一份、再换上一份可能不对的，
-比不做这次恢复更糟。
+A restore replaces the current SQLite platform database and should be run with the service
+stopped. **Before restoring, the platform saves the current database as a
+`before-restore-<UTC timestamp>` backup** and reports its name in the response as `safetyCopy` —
+a backup list holds dozens of similarly named archives, picking the wrong one is ordinary, and
+the time you pick wrong has to be recoverable. If the snapshot cannot be written the **restore is
+refused** (fail-closed): losing what you have and then installing something possibly wrong is
+worse than not restoring.
 
-生产参考编排使用 PostgreSQL，
-数据库备份请使用 `pg_dump`／PITR；内置备份接口会显式拒绝服务端数据库，
-而不是生成不可恢复的物理快照。
+The production reference stack uses PostgreSQL; back that up with `pg_dump` / PITR. The built-in
+backup endpoint refuses a server database outright rather than producing an unrecoverable
+physical snapshot.
 
-## 故障排查
+## Troubleshooting
 
-### 服务无法启动
-1. `aletheia preflight` —— 部署前自检会指出具体是哪个配置项不通。
-   非本机监听时 `aletheia serve` 自己也会先跑一遍，不通过就拒绝启动。
-2. 检查端口占用: `lsof -i :8000`
-3. 检查平台库: `ls -la data/platform.sqlite3`
+### The service will not start
+1. `aletheia preflight` — the deployment check names the configuration item that is wrong.
+   `aletheia serve` runs it itself before binding a non-loopback address and refuses to start
+   when it fails.
+2. Check the port: `lsof -i :8000`
+3. Check the platform database: `ls -la data/platform.sqlite3`
 
-### 500 错误
-1. 从响应体取 `requestId`。
-2. `grep "request_id=<该值>" <日志文件>`，拿到完整堆栈与该请求的全部日志行。
-3. 若日志在 stderr，容器部署用 `docker logs <容器> 2>&1 | grep <该值>`。
+### A 500
+1. Take `requestId` from the response body.
+2. `grep "request_id=<that value>" <log file>` for the full stack and every log line of that
+   request.
+3. If the logs are on stderr, in a container use
+   `docker logs <container> 2>&1 | grep <that value>`.
 
-### 性能问题
-1. 查看 `/metrics`：请求速率、错误率、响应时间。
-2. 检查数据库连接数——平台不使用连接池，每个 `connect()` 新建连接，
-   连接数随并发线性上升。
-3. 检查内存使用: `top -p $(pgrep -f uvicorn)`
+### Performance
+1. Look at `/metrics`: request rate, error rate, response time.
+2. Check the database connection count — the platform does not pool; every `connect()` opens a
+   new connection, so the count rises linearly with concurrency.
+3. Check memory: `top -p $(pgrep -f uvicorn)`
 
-### 认证问题
-1. 重置管理员密码（`aletheia` 提供的管理员引导流程）。
-2. 清除过期会话——服务启动时会自动清理，日志中有清理条数。
-3. 认证走**不透明 Bearer 令牌**（库中只存摘要），不是 JWT；
-   JWT 只出现在 SSO 那条路径上（见[配置](configuration.zh-CN.md)）。
+### Authentication
+1. Reset the administrator password (the bootstrap flow `aletheia` provides).
+2. Expired sessions are cleared at startup; the log records how many.
+3. Authentication uses an **opaque bearer token** (only a digest is stored), not a JWT; a JWT
+   appears only on the SSO path (see [configuration](configuration.md)).
 
-## 升级步骤
+## Upgrading
 
-1. 备份数据库（`aletheia` 的备份接口或 `pg_dump`）。
-2. 停止服务。
-3. `pip install -U aletheia-onto`。
-4. 启动服务——**迁移在启动时自动应用**，没有单独的手工迁移步骤；
-   已应用的版本会记入日志，并记录在平台库的版本账本中。
-5. 验证健康：`curl http://localhost:8000/health`。
+1. Back up the database (the `aletheia` backup endpoint, or `pg_dump`).
+2. Stop the service.
+3. `pip install -U aletheia-onto`.
+4. Start the service — **migrations are applied at startup**, with no separate manual step; the
+   versions applied are logged and recorded in the platform database's version ledger.
+5. Verify: `curl http://localhost:8000/health`.
 
-## 安全清单
+## Security checklist
 
-- [ ] 修改默认管理员密码
-- [ ] 配置 HTTPS
-- [ ] 设置防火墙规则
-- [ ] 启用日志审计（`ONTOLOGY_LOG_FILE`，或交给日志聚合）
-- [ ] 设置请求限流（`ONTOLOGY_RATE_LIMIT_PER_MINUTE`）
-- [ ] 配置备份计划
-- [ ] 设置监控告警
+- [ ] Change the default administrator password
+- [ ] Configure HTTPS
+- [ ] Set firewall rules
+- [ ] Enable audit logging (`ONTOLOGY_LOG_FILE`, or ship to a log aggregator)
+- [ ] Set request rate limits (`ONTOLOGY_RATE_LIMIT_PER_MINUTE`)
+- [ ] Configure a backup schedule
+- [ ] Set up monitoring alerts

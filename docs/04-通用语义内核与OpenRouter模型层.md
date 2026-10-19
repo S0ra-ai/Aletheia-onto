@@ -2,7 +2,7 @@
 
 > **这是立项阶段的设计稿，写的是当时的意图，不是现在的实现状态。**
 > 判断「某项能力有没有」请看[能力矩阵](capabilities.md)与[当前限制](limitations.md)——
-> 那两份由测试守着，不会与代码脱节；设计稿会。模型接入的现状见[模型端点](model-endpoints.md)。
+> 那两份由测试守着，不会与代码脱节；设计稿会。模型接入的现状见[模型端点](model-endpoints.zh-CN.md)。
 >
 > 与今天的差距，举两处：本文写「当前支持 SQLite，并提供 PostgreSQL、MySQL 适配入口」，
 > 而三套平台库方言现在都是真的、CI 各起一个 service container 跑；

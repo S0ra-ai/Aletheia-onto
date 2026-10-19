@@ -25,7 +25,7 @@ crontab -e
 ```
 
 `PYTHON_BIN` 指定脚本用的解释器（默认 `python3`）：平台装在 virtualenv 里时把它指向那个解释器。
-环境变量见[配置](configuration.zh-CN.md)；恢复的步骤与「恢复前快照」见[运维](operations.md)。
+环境变量见[配置](configuration.zh-CN.md)；恢复的步骤与「恢复前快照」见[运维](operations.zh-CN.md)。
 
 ## 部署前自检
 
@@ -59,7 +59,7 @@ aletheia preflight --workers 4 --expect-origin https://ontology.example.com
 
 ## 上线之前
 
-[生产环境检查清单](production-checklist.md) 是要逐条走的那份清单——基础设施、密钥、
+[生产环境检查清单](production-checklist.zh-CN.md) 是要逐条走的那份清单——基础设施、密钥、
 以及那些值对评估环境安全、对生产环境不安全的设置。
 
 这份清单此前**从任何地方都到不了**：一个没人链接的页面就是一个没人读的页面，
