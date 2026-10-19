@@ -230,41 +230,17 @@ KNOWN_SPARSE = (
     ("/admin/feedback", "纠正"),  # seeded feedback carries a rating and no correction
     ("/admin/tenancy", "剩余"),  # limits are undeclared, so there is no remaining to report
     ("/admin/semantic?tab=consistency&object=contract&ontology=1&instance=1", "失败规则"),  # nothing failed
-    # -- Structural rather than sparse, and worth saying so --
+    # -- The object browser, after it stopped drawing other tables' columns --
     #
-    # The object browser renders one row per related source table and shows every table's
-    # columns, so a column belonging to one table is a dash in every row of another. Nothing is
-    # misnamed and there is no field to point at instead. What it does mean is that the screen is
-    # hard to read once an object has several related tables -- visible here as fourteen columns
-    # that are dashes for every row -- and that is a design observation this sweep cannot act on.
+    # This list used to carry thirteen columns for `/admin/objects` and twelve for the instance
+    # view, all of them the attributes of *other* objects rendered into a grid for one object's
+    # rows. The screen now draws only the selected object's attributes, so every one of those
+    # entries went stale -- and `check_smoke_allowance.py` refused them on the next run, exactly
+    # as it is designed to.
     #
-    # Listed one column at a time because that is the shape the allowance takes; the reason above
-    # covers all of them.
-    ("/admin/objects", "Contract Id"),
-    ("/admin/objects", "付款日期"),
-    ("/admin/objects", "付款计划编号"),
-    ("/admin/objects", "信用状态"),
-    ("/admin/objects", "创建时间"),
-    ("/admin/objects", "到期日期"),
-    ("/admin/objects", "发票编号"),
-    ("/admin/objects", "发票金额"),
-    ("/admin/objects", "客户名称"),
-    ("/admin/objects", "已付金额"),
-    ("/admin/objects", "开票日期"),
-    ("/admin/objects", "行业"),
-    ("/admin/objects", "计划金额"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "Contract Id"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "付款计划编号"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "信用状态"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "创建时间"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "到期日期"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "发票编号"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "发票金额"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "客户名称"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "已付金额"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "开票日期"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "行业"),
-    ("/admin/objects?ontology=1&object=contract&instance=1", "计划金额"),
+    # One remains, and it is genuinely sparse: a derived attribute with no declared unit renders
+    # an empty unit cell. It is data, not a broken lookup, and it is stated rather than inferred
+    # because the script cannot tell the two apart.
     ("/admin/objects?ontology=1&object=contract&instance=1", "单位"),
 )
 
