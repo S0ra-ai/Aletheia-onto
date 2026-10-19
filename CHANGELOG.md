@@ -951,6 +951,27 @@
   `export_format_unsupported`。植入验证：把那条模板从注册表删掉，测试立刻失败。
   **一条只存在于表里的注册，和一个能到达线上的注册，在覆盖率数字上长得一模一样**——
   这正是这一整轮反复出现的形状。
+
+- **归一化类型的键集现在由脚本生成，并由 `tsc` 在每次构建时比对**
+  （`scripts/generate_normalised_keys.py`、`types/normalised.ts`、`types/index.ts`、
+  `tests/test_normaliser_types.py`）。
+  成熟度页上那条缺口原本写着「不是所有响应类型都能生成」。完整生成类型不是答案：
+  `normalizeTool` 写的是 `id: item.id`，从这里推不出比 `unknown` 更好的东西，而声明里写的是 `number`；
+  照着手写声明生成，产物就只是声明的一份副本——**既不增加信息，又会掩盖变化**。
+
+  能生成的是真正机械的那一半：**每个归一化函数写出哪些键**。脚本从 `normalise.ts` 生成
+  `normalised.ts`，`types/index.ts` 里的一组 `Expect<...>` 断言让 **`tsc` 在每次
+  `npm run build` 时**把接口和它比对：
+
+  - 闭合的归一化函数：键集必须**相等**——包括可选字段，「从不写」不再能满足声明；
+  - 带 `...item` 的函数：写出的键必须是类型键的**子集**（展开带来的其余字段不追究）。
+
+  植入验证：给 `DataSource` 加一个 `reviewNote?: string`（归一化函数从不写它），
+  `tsc` 报 `TS2344: Type 'false' does not satisfy the constraint 'true'`——
+  而这条正是编译器原本看不见的那个洞。另一个方向：给函数加一个键但不重新生成，
+  `test_the_generated_key_lists_are_current` 立刻失败。
+
+  类型本身仍然是手写的。缺口那一行改了措辞，因为它现在准确了：**形状是被检查的，不是生成的**。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

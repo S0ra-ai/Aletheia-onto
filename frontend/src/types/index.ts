@@ -1,4 +1,5 @@
 import type * as Generated from './generated';
+import { NORMALISED_FIELDS, NORMALISED_OVERRIDES } from './normalised';
 
 // 数据源相关类型
 /** What a scan reports: one entry per table, not three totals. */
@@ -1610,3 +1611,45 @@ export interface AuditReport {
   coverage: { evaluations: number; withTrace: number; ratio: number | null };
   findings: AuditFinding[];
 }
+
+// -- The normalisers and these declarations, compared by the compiler -------------------------
+//
+// `normalised.ts` is generated from `api/normalise.ts` and lists the keys each normaliser
+// writes. These assertions make `tsc` compare those lists with the interfaces above, so the
+// hand-written split cannot drift from the code that produces the data:
+//
+//   * a **closed** normaliser writes exactly the keys its type declares -- including optional
+//     ones, which the compiler would otherwise accept as "never written";
+//   * a **spreading** normaliser (`...item`) may carry anything the endpoint sent, so what it
+//     writes must merely be a subset of the type's keys.
+//
+// Why this and not a generated type: `normalizeTool` writes `id: item.id`, from which nothing
+// better than `unknown` can be inferred while the declaration says `number`. Generating the type
+// would either lose that precision or read this file back in and emit a copy of it.
+// `tests/test_normaliser_types.py` performs the same comparison in Python; this one runs on
+// every `npm run build`, which is what a contributor actually runs.
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Expect<T extends true> = T;
+type Subset<A, B> = [A] extends [B] ? true : false;
+
+/**
+ * The assertions themselves, as one exported tuple.
+ *
+ * Exported because `noUnusedLocals` is on: a type alias nothing refers to is a compile error,
+ * and the whole value of these is that the *compiler* evaluates them. Being in the public type
+ * surface is a small price, and it means a reader can see what is checked from the editor.
+ */
+export type NormalisedTypeChecks = [
+  Expect<Equal<keyof DataSource, (typeof NORMALISED_FIELDS.DataSource)[number]>>,
+  Expect<Equal<keyof SourceApi, (typeof NORMALISED_FIELDS.SourceApi)[number]>>,
+  Expect<Equal<keyof PermissionPolicy, (typeof NORMALISED_FIELDS.PermissionPolicy)[number]>>,
+  Expect<Equal<keyof ToolDefinition, (typeof NORMALISED_FIELDS.ToolDefinition)[number]>>,
+  Expect<Equal<keyof SourceTable, (typeof NORMALISED_FIELDS.SourceTable)[number]>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.PermissionRole)[number], keyof PermissionRole>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.ToolExecutionLog)[number], keyof ToolExecutionLog>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.WorkflowDefinition)[number], keyof WorkflowDefinition>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.WorkflowInstance)[number], keyof WorkflowInstance>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.WorkflowState)[number], keyof WorkflowState>>,
+  Expect<Subset<(typeof NORMALISED_OVERRIDES.WorkflowTransition)[number], keyof WorkflowTransition>>,
+];

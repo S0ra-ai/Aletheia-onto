@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1890 tests**, all passing. A case that needs something this machine does not have skips
+**1892 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -77,7 +77,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_document_knowledge.py` | 27 | Document knowledge layer: citations anchored to the ontology |
 | `test_domain_neutrality.py` | 25 | Domain neutrality tests |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL export: the same ontology in vocabulary other tools can act on |
-| `test_normaliser_types.py` | 4 | Every normaliser writes exactly the fields its declared type lists — the one drift `tsc` cannot see |
+| `test_normaliser_types.py` | 6 | The keys each normaliser writes are generated from the code and compared with the declared types — in Python, and again by `tsc` on every build |
 | `test_platform_context.py` | 23 | Platform context: the object that replaced the module-level singleton |
 | `test_rate_limiter.py` | 24 | Fixed-window request rate limiting, and the middleware that applies it |
 | `test_relation_expressiveness.py` | 22 | Relation semantics: cardinality, strength and many-to-many |

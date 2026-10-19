@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NORMALISE = ROOT / "frontend" / "src" / "api" / "normalise.ts"
 INDEX_TYPES = ROOT / "frontend" / "src" / "types" / "index.ts"
 GENERATED_TYPES = ROOT / "frontend" / "src" / "types" / "generated.ts"
+NORMALISED_TS = ROOT / "frontend" / "src" / "types" / "normalised.ts"
 
 SIGNATURE = re.compile(r"export const (?P<name>normalize\w+) = \(item: any\): (?P<type>\w+) => \(\{")
 FIELD = re.compile(r"^\s{2}(?P<key>\w+):", re.MULTILINE)
@@ -139,3 +140,45 @@ def test_the_check_reads_both_sides() -> None:
     assert any(not spread for _n, _t, _k, spread in normalisers), "没有找到任何闭合的函数"
     assert all(keys for _n, _t, keys, _spread in normalisers), "有函数解析出 0 个字段"
     assert _fields("PermissionPolicy"), "从 types/index.ts 里读不出 PermissionPolicy 的字段"
+
+
+def test_the_generated_key_lists_are_current() -> None:
+    """`normalised.ts` is generated from `normalise.ts`; regenerate it rather than editing it.
+
+    Same contract as `generated.ts`: the committed file is a description of the code, so a
+    change to a normaliser shows up as a diff here rather than as a type that quietly disagrees
+    with the function that produces the data.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "generate_normalised_keys", ROOT / "scripts" / "generate_normalised_keys.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    wanted = module.generate()
+    current = NORMALISED_TS.read_text(encoding="utf-8")
+    assert current == wanted, (
+        "frontend/src/types/normalised.ts 与 normalise.ts 不一致。"
+        "运行 `python scripts/generate_normalised_keys.py` 重新生成——这一步不是可选的，"
+        "因为 index.ts 里的编译期断言读的正是这个文件。"
+    )
+
+
+def test_the_compile_time_assertions_are_still_wired() -> None:
+    """The generated file is useless if nothing compares it to the types.
+
+    `NormalisedTypeChecks` in `types/index.ts` is a tuple of `Expect<...>` assertions: the
+    compiler evaluates them, and a mismatch fails `npm run build`. This checks that the tuple
+    and the import are still there, because deleting them is a one-line change that leaves every
+    other test in this file passing -- the Python comparison above would still run, and the
+    build would stop checking anything.
+    """
+    index = INDEX_TYPES.read_text(encoding="utf-8")
+    assert "from './normalised'" in index, "types/index.ts 不再引用生成文件——它成了没人读的孤儿"
+    assert "NormalisedTypeChecks" in index, "编译期断言被删掉了；tsc 不再比较类型与归一化函数的键"
+    assert "NORMALISED_FIELDS" in index and "NORMALISED_OVERRIDES" in index, (
+        "断言没有引用生成的两张表——它们还在，但没有任何东西读"
+    )
