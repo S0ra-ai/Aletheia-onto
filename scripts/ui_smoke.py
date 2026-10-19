@@ -210,11 +210,14 @@ def seed_page(base_url: str, token: str, user: dict | None, directory: Path) -> 
 # that guesses would either miss real defects or fail on real data. Printed on every run, so
 # an allowance cannot quietly outlive the reason for it.
 KNOWN_SPARSE = (
-    # The seeded instance writes a description on the one policy it creates, so that column
-    # is populated now -- this entry was removed the first time the CI assertion below ran,
-    # which is what the assertion is for: an allowance outlives its reason and then suppresses
-    # the finding it was never meant to cover.
-    ("/admin/ontology/{id}?tab=attributes", "描述"),
+    # The ontology detail page's attributes table used to be listed here as
+    # `("/admin/ontology/{id}?tab=attributes", "描述")`, with the reason "the schema has no
+    # description column". The reason was right and the allowance was the wrong response: the
+    # column could never hold a value, so it was removed from the page rather than excused.
+    # A component test now reads that table, which is where the blank column was found.
+    #
+    # `check_smoke_allowance.py` refused the stale entry on the first run after the column went
+    # away -- which is the behaviour this whole list exists for.
     # -- Surfaced when a column of dashes started counting as empty --
     #
     # Before the placeholder rule, these were invisible: a cell drawn as `-` has text, so the
