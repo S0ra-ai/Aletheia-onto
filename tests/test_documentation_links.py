@@ -227,3 +227,32 @@ def test_the_docs_index_does_not_claim_shipped_features_are_missing() -> None:
                 f"docs/README.md 仍声称「{claim}」，但 {module.name} 已实现它。"
                 "声称某能力缺失会让读者绕开它，或据此否决整个项目。"
             )
+
+
+@pytest.mark.parametrize("document", DOCUMENTS, ids=lambda path: str(path.relative_to(ROOT)))
+def test_cross_document_anchors_resolve(document: Path) -> None:
+    """`[text](other.md#section)` was checked by nothing.
+
+    `test_internal_anchors_resolve` reads `](#...)` -- a link into the same page. A link into
+    *another* page's section was neither followed nor checked, and `docs/limitations.zh-CN.md`
+    carried one to `../README.zh-CN.md#本体与规则` for a heading that does not exist and never
+    did: a reader clicking it lands at the top of the README and has to guess where they were
+    going. The English page had no such link, so the divergence had also gone unnoticed.
+
+    Resolved against the target file's own headings, using the same slug approximation as the
+    same-document check -- loose enough not to fail on an unusual heading, tight enough to catch
+    a section that was renamed or never existed.
+    """
+    text = document.read_text(encoding="utf-8")
+    broken: list[str] = []
+
+    for match in re.finditer(r"\[([^\]]+)\]\(([^)#\s]+\.md)#([^)]+)\)", text):
+        target = (document.parent / match.group(2)).resolve()
+        if not target.exists():
+            broken.append(f"[{match.group(1)}]({match.group(2)}#{match.group(3)}) — 文件不存在")
+            continue
+        anchor = urllib.parse.unquote(match.group(3))
+        if anchor not in _anchors(target.read_text(encoding="utf-8")):
+            broken.append(f"[{match.group(1)}]({match.group(2)}#{anchor}) — 锚点不存在")
+
+    assert not broken, f"{document.relative_to(ROOT)} 中的跨文档锚点失效: {broken}"

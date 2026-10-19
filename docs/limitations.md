@@ -68,7 +68,14 @@ By design, not bugs. These are the next phase's work.
 | Type hierarchy caps at 16 levels; derivation at 5 passes | `type_hierarchy.py`, `derived_attributes.py` |
 | **No full OWL/DL reasoning**, no open-world assumption | deliberate, see [ADR-0005](adr/0005-semantic-generality-ceiling.md) |
 
-> Extension points are no longer on this list: data source adapters, rule functions,
+> Relation cardinality, type hierarchy, cross-object aggregation, derived attributes, units and
+> dimensions, business events and temporal validity are no longer on this list. See the
+> [capability matrix](capabilities.md) and [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md),
+> [ADR-0013](adr/0013-derived-attributes-and-units.md),
+> [ADR-0014](adr/0014-type-hierarchy-and-business-events.md),
+> [ADR-0015](adr/0015-open-data-sources-and-temporal-validity.md).
+>
+> Extension points are no longer on this list either: data source adapters, rule functions,
 > route policies and writeback executors are all registrable. See
 > [the extension guide](extending.md).
 

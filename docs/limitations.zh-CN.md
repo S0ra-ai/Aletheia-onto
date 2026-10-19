@@ -66,12 +66,14 @@
 | **不做完整 OWL/DL 推理**，不做开放世界假设 | 刻意，见 [ADR-0005](adr/0005-semantic-generality-ceiling.md) |
 
 > 关系基数、类型层级、跨对象聚合、派生属性、单位量纲、业务事件、时态生效期、
-> 数据源与写回通道扩展均已不在此列，
-> 见[本体与规则](../README.zh-CN.md#本体与规则)能力矩阵与
+> 数据源与写回通道扩展均已不在此列，见[能力矩阵](capabilities.zh-CN.md)与
 > [ADR-0012](adr/0012-cross-object-aggregation-and-relation-semantics.md)、
 > [ADR-0013](adr/0013-derived-attributes-and-units.md)、
 > [ADR-0014](adr/0014-type-hierarchy-and-business-events.md)、
 > [ADR-0015](adr/0015-open-data-sources-and-temporal-validity.md)。
+>
+> 扩展点也不再此列：数据源适配器、规则函数、路由策略与写回执行器都可注册，
+> 见[扩展指南](extending.zh-CN.md)。
 > 扩展点也不在此列：数据源适配器、规则函数、路由策略、写回执行器
 > 现已开放注册，见[扩展指南](extending.md)。
 

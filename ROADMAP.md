@@ -2,8 +2,8 @@
 
 **当前状态：内核元模型已闭合，包可安装，CLI 可用。**
 本文件描述方向，不描述已实现的能力。已实现能力见
-[README 能力矩阵](README.md#能力矩阵)，未实现项见
-[当前限制](README.md#当前限制)。
+[能力矩阵](docs/capabilities.zh-CN.md)，未实现项见
+[当前限制](docs/limitations.zh-CN.md)。
 
 ## 目标形态：库 + 官方脚手架 + 代码生成器
 
