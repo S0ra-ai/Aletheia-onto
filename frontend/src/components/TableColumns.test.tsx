@@ -26,6 +26,7 @@ import ModellingExtensions from '../pages/ontology/ModellingExtensions';
 import SemanticService from '../pages/semantic';
 import InstanceDrawer from '../pages/objects/InstanceDrawer';
 import Workbench from '../pages/workbench';
+import ObjectBrowser from '../pages/objects/ObjectBrowser';
 
 /**
  * The cells, rendered and read.
@@ -441,6 +442,7 @@ vi.mock('../api', async () => {
       consistency: vi.fn(async () => WIRE_CONSISTENCY),
       instanceEvents: vi.fn(async () => ({ items: WIRE_INSTANCE_EVENTS })),
       instanceVersions: vi.fn(async () => ({ versions: WIRE_INSTANCE_VERSIONS })),
+      listInstances: vi.fn(async () => WIRE_INSTANCES),
     },
     auditApi: {
       sections: vi.fn(async () => []),
@@ -1754,6 +1756,36 @@ describe('Workbench', () => {
     renderPage(<Workbench />);
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_WORKBENCH.decisions.recent.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+});
+
+// -- The object browser: one column per attribute ---------------------------------------------
+
+/**
+ * The browser draws a column per **attribute of the ontology**, not per attribute of the selected
+ * object, and fills each cell by matching `sourceColumn` (or `code`) against the row's `record`
+ * keys case-insensitively. That is why the instance view has fourteen columns that are dashes for
+ * every row when related tables contribute attributes -- a stated limitation, and the reason
+ * `scripts/ui_smoke.py` carries those columns in its allowance.
+ *
+ * This fixture has attributes from one object only, so every column should be populated. What it
+ * catches is the other failure: a cell that draws `—` because the lookup stopped matching -- the
+ * placeholder rule makes that look like a genuinely empty column rather than a broken one.
+ */
+const WIRE_INSTANCES = {
+  ontology: { id: 1, name: '合同管理', version: '0.1.0', status: 'draft' },
+  object: { code: 'contract', name: '合同', sourceTable: 'contract' },
+  attributes: [],
+  items: [{ instanceId: '1', record: { amount: 500, credit_status: 'normal' } }],
+  pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
+};
+
+describe('ObjectBrowser', () => {
+  it('renders a value in every cell of the instance grid', async () => {
+    renderPage(<ObjectBrowser />);
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_INSTANCES.items.length);
     expect(blankColumns(table)).toEqual([]);
   });
 });
