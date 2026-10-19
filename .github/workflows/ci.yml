@@ -462,13 +462,12 @@ jobs:
         working-directory: frontend
         run: npm test
 
-      # The generated response types, held to what the API actually sends. This runs in the
-      # backend job's interpreter because generating them means building a seeded instance and
-      # calling the endpoints -- the file is a *description of observed responses*, which is the
-      # route that needs no annotations. A stale file fails here rather than becoming a column
-      # that renders empty.
-      - name: 生成的响应类型是最新的
-        run: python -m pytest tests/test_generated_types.py -q
+      # The generated response types are checked in the backend job, whose interpreter has
+      # pytest and the backend installed -- it runs the whole suite, `test_generated_types.py`
+      # included, on all three Python versions. This job used to run the check itself, and it
+      # could not: there is no Python setup here, so the step failed with `No module named
+      # pytest` on every push while the rest of the job passed. `test_ci_workflow.py` now
+      # refuses a job that runs Python without having installed it.
 
       - name: 类型检查与构建
         working-directory: frontend

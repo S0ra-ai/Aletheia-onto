@@ -765,6 +765,19 @@
   对一个中文优先的项目来说这是连贯的选择，不是遗漏——但英文读者应该**被告知**，而不是点进去才发现。
   现在英文索引逐行标出，表下有一段说明；守卫则检查：英文索引里链到中文页的行，
   行内必须写明 Chinese。
+
+- **一条从未真正跑过的 CI 检查，和它让整个前端 job 变红**（`.github/workflows/ci.yml`、
+  `tests/test_ci_workflow.py`）。「生成的响应类型是最新的」这一步被放进了 **frontend** job，
+  而那个 job 只装了 Node——它自己的注释还写着「在 backend job 的解释器里跑」。
+  于是每一次推送都在那里失败于 `No module named pytest`，而同一个 job 的其余步骤是绿的：
+  **一条从未运行过的检查，加一个红色的 job，出自一个放错位置的步骤。**
+
+  本地完全看不见它——这类缺陷在推送之前没有任何地方会让它失败。后端 job 本来就在三个 Python 版本上
+  跑整套测试，`test_generated_types.py` 也在里面，所以那一步是重复的，直接删掉。
+
+  守卫是能拦住它的那条最窄的规则：**一个 job 只要调用 `python`，就必须装 Python**；
+  如果它跑 `pytest`，还必须装依赖——只装解释器不够，runner 自带的 python 里没有 pytest，
+  而正是那个状态造成了这次失败。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

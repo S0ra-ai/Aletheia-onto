@@ -142,3 +142,36 @@ def test_the_render_job_passes_its_token_with_an_equals_sign() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "--token=" in text and "--user=" in text, "CI 又用空格分隔的方式传令牌了"
     assert '--token "$TOKEN"' not in text, "CI 里仍有会被当成选项的写法"
+
+
+def _jobs() -> dict[str, dict]:
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+
+
+def test_no_job_runs_python_without_having_installed_it() -> None:
+    """A step that ran `python` in a job with no Python setup, and had never once passed.
+
+    The generated-types check was moved into the `frontend` job -- whose own comment said it
+    "runs in the backend job's interpreter" -- and that job sets up Node and nothing else. Every
+    push since has failed there with `No module named pytest`, while the rest of the job was
+    green: a check that was never running, plus a red job, from one misplaced step. It surfaced
+    only because the work was finally pushed; locally there was nowhere for it to fail.
+
+    The rule is the narrow one that would have caught it: **a job that invokes `python` must set
+    up Python**, and if it runs the test suite it must install the dependencies too. Set-up
+    alone is not enough -- the runner ships a `python` with no `pytest` in it, which is exactly
+    the state that produced the failure.
+    """
+    problems: list[str] = []
+    for name, job in _jobs().items():
+        steps = job.get("steps") or []
+        if not any("python " in (step.get("run") or "") or "python -m" in (step.get("run") or "") for step in steps):
+            continue
+        uses = " ".join(step.get("uses") or "" for step in steps)
+        runs = "\n".join(step.get("run") or "" for step in steps)
+        if "actions/setup-python" not in uses:
+            problems.append(f"{name}: 跑了 python，但没有 actions/setup-python")
+        elif "pytest" in runs and "pip install" not in runs:
+            problems.append(f"{name}: 跑了 pytest，但没有安装依赖（runner 自带的 python 里没有 pytest）")
+
+    assert not problems, "以下 job 会在一个没有相应环境的 runner 上执行 Python：\n  " + "\n  ".join(problems)
