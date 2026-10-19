@@ -331,6 +331,14 @@ def test_a_refusal_reaching_http_carries_its_code(tmp_path: Path, monkeypatch: p
         assert missing.json()["code"] == error_codes.ONTOLOGY_NOT_FOUND, missing.json()
         assert missing.json()["facts"] == {"ontologyId": "99999"}, missing.json()
 
+        # A refusal registered from the operator batch, over the real HTTP layer. The export
+        # route validates the format before it looks the ontology up, so this needs no fixture
+        # beyond the login -- and it is the only way to know the registration reached the wire
+        # rather than merely sitting in the table.
+        bad_format = client.get("/ontologies/1/export?format=xml", headers=headers)
+        assert bad_format.status_code == 400, bad_format.text
+        assert bad_format.json().get("code") == error_codes.EXPORT_FORMAT_UNSUPPORTED, bad_format.json()
+
     database_module._platform_adapter = None
 
 
