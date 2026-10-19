@@ -24,6 +24,7 @@ import AuditReportPanel from '../pages/governance/AuditReportPanel';
 import DataSourceDetail from '../pages/datasource/DataSourceDetail';
 import ModellingExtensions from '../pages/ontology/ModellingExtensions';
 import SemanticService from '../pages/semantic';
+import InstanceDrawer from '../pages/objects/InstanceDrawer';
 
 /**
  * The cells, rendered and read.
@@ -433,9 +434,11 @@ vi.mock('../api', async () => {
     },
     backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
     semanticApi: {
-      explain: vi.fn(async () => WIRE_EXPLAIN),
+      explain: vi.fn(async () => WIRE_DRAWER_EXPLAIN),
       assess: vi.fn(async () => WIRE_ASSESS),
       consistency: vi.fn(async () => WIRE_CONSISTENCY),
+      instanceEvents: vi.fn(async () => ({ items: WIRE_INSTANCE_EVENTS })),
+      instanceVersions: vi.fn(async () => ({ versions: WIRE_INSTANCE_VERSIONS })),
     },
     auditApi: {
       sections: vi.fn(async () => []),
@@ -1514,15 +1517,21 @@ describe('ModellingExtensions', () => {
  * half that renderer unexercised.
  */
 const WIRE_EXPLAIN = {
+  // `InstanceExplainResult`, in full. The first version had `source` as a string -- the semantic
+  // page never reads it, so that page's test passed on a fixture the type says is wrong. The
+  // drawer reads `source.table` and threw. A fixture only has to be right enough for the page
+  // under test, which is exactly why it should be built from the type instead.
+  ontology: { id: 1, name: '合同管理', version: '0.1.0' },
+  object: { code: 'contract', name: '合同' },
   objectCode: 'contract',
   instanceId: '1',
-  source: 'legacy_contracts',
+  source: { table: 'contract', primaryKey: 'id', instanceId: '1' },
   explanation: '合同 1 的金额为 500。',
   explanationParts: [],
   aggregates: [],
   ancestors: [],
   timeline: [],
-  asOf: null,
+  asOf: '',
   attributes: [
     {
       attributeCode: 'amount',
@@ -1592,5 +1601,86 @@ describe('SemanticService', () => {
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_EXPLAIN.attributes.length);
     expect(blankColumns(table)).toEqual([]);
+  });
+});
+
+// -- The instance drawer: four tables behind one click ----------------------------------------
+
+/**
+ * The drawer takes its data from three calls that fail independently -- the explanation, the
+ * event stream and the value history -- and renders one table per section. It also reads
+ * `explain.object.name` for its title, which is why the fixture carries an `object` block the
+ * semantic page's fixture does not need: a missing one throws on render rather than drawing an
+ * empty title.
+ *
+ * The aggregate row is populated because the aggregates table renders unconditionally, and an
+ * empty one would still be *drawn* -- a table with no rows is not the same finding as a column
+ * with no values, and only the second is what this file looks for.
+ */
+const WIRE_DRAWER_EXPLAIN = {
+  ...WIRE_EXPLAIN,
+  aggregates: [
+    { name: 'orderTotal', definition: 'sum(orders.amount)', rowCount: 12 },
+  ],
+};
+
+const WIRE_INSTANCE_EVENTS = [
+  {
+    id: 1,
+    eventCode: 'signed',
+    eventName: '已签署',
+    category: 'state_change',
+    actor: 'alice',
+    occurredAt: '2026-01-02 09:00:00',
+    payload: { effectiveAt: '2026-01-03' },
+  },
+];
+
+const WIRE_INSTANCE_VERSIONS = [
+  {
+    attributeCode: 'amount',
+    value: 500,
+    validFrom: '2026-01-01',
+    validTo: '',
+    recordedAt: '2026-01-02 09:00:00',
+    actor: 'alice',
+  },
+];
+
+describe('InstanceDrawer', () => {
+  it('renders a value in every cell of the attributes table', async () => {
+    renderPage(
+      <InstanceDrawer ontologyId={1} objectCode="contract" instanceId="1" onClose={() => undefined} />,
+    );
+    const [attributes] = await waitForTables(4);
+    expect(attributes.rows.length).toBe(WIRE_EXPLAIN.attributes.length);
+    expect(blankColumns(attributes)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the aggregates table', async () => {
+    renderPage(
+      <InstanceDrawer ontologyId={1} objectCode="contract" instanceId="1" onClose={() => undefined} />,
+    );
+    const [, aggregates] = await waitForTables(4);
+    expect(aggregates.rows.length).toBe(WIRE_DRAWER_EXPLAIN.aggregates.length);
+    expect(blankColumns(aggregates)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the event table', async () => {
+    renderPage(
+      <InstanceDrawer ontologyId={1} objectCode="contract" instanceId="1" onClose={() => undefined} />,
+    );
+    const [, , events] = await waitForTables(4);
+    expect(events.rows.length).toBe(WIRE_INSTANCE_EVENTS.length);
+    expect(blankColumns(events)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the value-history table', async () => {
+    renderPage(
+      <InstanceDrawer ontologyId={1} objectCode="contract" instanceId="1" onClose={() => undefined} />,
+    );
+    const [, , , versions] = await waitForTables(4);
+    expect(versions.rows.length).toBe(WIRE_INSTANCE_VERSIONS.length);
+    expect(blankColumns(versions)).toEqual([]);
   });
 });

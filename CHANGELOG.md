@@ -873,6 +873,19 @@
   这种「参数名不对 → 静默无动作」的失败，只有断言「表格出现了」才看得见。
 
   组件测试现在覆盖 16 个页面 35 张表。
+
+- **实例抽屉的四张表，以及一个「够用就好」的 fixture 是怎么骗过测试的**
+  （`InstanceDrawer.tsx`、`TableColumns.test.tsx`）。属性、跨对象聚合、事件流、取值历史四张表。
+
+  这一轮最值得记的不是新覆盖，而是**上一轮的 fixture 是错的，而它的测试是绿的**：
+  `InstanceExplainResult.source` 在类型里是 `{table, primaryKey, instanceId}` 对象，
+  我上一轮写成了字符串 `'legacy_contracts'`。语义页不读这个字段，所以那个用例照样通过；
+  抽屉要读 `source.table`，一渲染就抛。
+
+  **一个 fixture 只需要「对它正在测的那个页面够用」，而这就是它应该照着类型写、而不是照着页面写的原因。**
+  照页面写，测的就是「页面碰巧读了哪些字段」；照类型写，测的才是契约。fixture 已按类型补全。
+
+  组件测试现在覆盖 17 个页面 39 张表。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
