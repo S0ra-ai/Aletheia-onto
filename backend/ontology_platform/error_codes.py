@@ -441,6 +441,59 @@ WRITEBACK_UNDECLARED = "writeback_undeclared"
 WRITEBACK_URI_REQUIRED = "writeback_uri_required"
 WRITEBACK_WHERE_REQUIRED = "writeback_where_required"
 
+# -- Refusals an operator, not a developer, meets ---------------------------------------------
+#
+# The gap on `docs/framework-readiness.md` used to say the unregistered remainder "fires only
+# when the platform itself is misassembled". Reading all 28 of them showed that was false for
+# most: a user who uploads a .doc on a host without LibreOffice, restores a malformed backup,
+# presents a broken SSO assertion, or exports an unknown format meets one of these sentences
+# directly. They are registered here; what is left really is the misassembly set.
+BACKUP_CONFIG_MISSING = "backup_config_missing"
+BACKUP_DATABASE_INVALID = "backup_database_invalid"
+BACKUP_DATABASE_MISSING = "backup_database_missing"
+BACKUP_NAME_INVALID = "backup_name_invalid"
+BACKUP_PATH_ESCAPE = "backup_path_escape"
+BACKUP_SQLITE_ONLY = "backup_sqlite_only"
+DECISION_VALUE_INVALID = "decision_value_invalid"
+DOCUMENT_CONVERSION_TIMEOUT = "document_conversion_timeout"
+DOCUMENT_CONVERTER_MISSING = "document_converter_missing"
+EXPORT_FORMAT_UNSUPPORTED = "export_format_unsupported"
+OPERATION_OBJECT_UNRESOLVED = "operation_object_unresolved"
+PREFLIGHT_DATA_SOURCE_REQUIRED = "preflight_data_source_required"
+PREFLIGHT_OPERATIONS_MISSING = "preflight_operations_missing"
+SSO_ASSERTION_PAYLOAD_NOT_OBJECT = "sso_assertion_payload_not_object"
+SSO_ASSERTION_PAYLOAD_UNPARSEABLE = "sso_assertion_payload_unparseable"
+SSO_ASSERTION_SIGNATURE_UNDECODABLE = "sso_assertion_signature_undecodable"
+WRITEBACK_API_BASE_URL_REQUIRED = "writeback_api_base_url_required"
+AUDIT_PERIOD_REQUIRED = "audit_period_required"
+
+_OPERATOR_TEMPLATES = {
+    "backup_config_missing": ("缺少 config.json",),
+    "backup_database_invalid": ("备份中的数据库不是有效的 SQLite 文件",),
+    "backup_database_missing": ("备份中找不到数据库文件",),
+    "backup_name_invalid": (
+        "备份名不合法：需为 1-120 位字母／数字／下划线／连字符／点，且以字母或数字开头（不能包含路径分隔符）。",
+    ),
+    "backup_path_escape": ("备份路径不在备份目录内",),
+    "backup_sqlite_only": ("内置备份仅支持 SQLite 平台库；服务端数据库请使用其原生备份工具。",),
+    "decision_value_invalid": ("decision 必须是 approved 或 rejected",),
+    "document_conversion_timeout": ("LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。",),
+    "document_converter_missing": (
+        "未检测到 LibreOffice，无法自动转换 .doc 文件。请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。",
+    ),
+    "export_format_unsupported": ("仅支持 jsonld 或 turtle 导出格式",),
+    "operation_object_unresolved": ("无法从业务操作推断业务对象，请显式传入 objectCode",),
+    "preflight_data_source_required": ("无法定位数据源，不能进行操作预检",),
+    "preflight_operations_missing": ("该数据源尚未登记任何业务操作，无法进行操作预检",),
+    "sso_assertion_payload_not_object": ("断言载荷不是对象",),
+    "sso_assertion_payload_unparseable": ("断言载荷无法解析",),
+    "sso_assertion_signature_undecodable": ("断言签名无法解码",),
+    "writeback_api_base_url_required": (
+        "真实执行需要配置业务 API 基址 apiBaseUrl；数据库连接地址仅用于元数据和实例读取。",
+    ),
+    "audit_period_required": ("审计报表必须给出起止时间：覆盖范围不明的报表无法作为审计依据。",),
+}
+
 _EXTENSION_TEMPLATES = {
     "aggregate_name_invalid": ("聚合名必须是合法标识符: {name}（规则表达式要按此名引用它）",),
     "aggregate_name_underscore": ("聚合名不能以下划线开头，避免与沙箱内部名冲突",),
@@ -568,6 +621,7 @@ _EXTENSION_TEMPLATES = {
     "value_mapping_state_required": ("语义状态名不能为空",),
 }
 TEMPLATES.update(_EXTENSION_TEMPLATES)
+TEMPLATES.update(_OPERATOR_TEMPLATES)
 
 
 # **One sentence, one code.** Two codes naming the identical sentence cannot both be returned by
@@ -879,4 +933,22 @@ CODES: tuple[str, ...] = (
     WRITEBACK_UNDECLARED,
     WRITEBACK_URI_REQUIRED,
     WRITEBACK_WHERE_REQUIRED,
+    AUDIT_PERIOD_REQUIRED,
+    BACKUP_CONFIG_MISSING,
+    BACKUP_DATABASE_INVALID,
+    BACKUP_DATABASE_MISSING,
+    BACKUP_NAME_INVALID,
+    BACKUP_PATH_ESCAPE,
+    BACKUP_SQLITE_ONLY,
+    DECISION_VALUE_INVALID,
+    DOCUMENT_CONVERSION_TIMEOUT,
+    DOCUMENT_CONVERTER_MISSING,
+    EXPORT_FORMAT_UNSUPPORTED,
+    OPERATION_OBJECT_UNRESOLVED,
+    PREFLIGHT_DATA_SOURCE_REQUIRED,
+    PREFLIGHT_OPERATIONS_MISSING,
+    SSO_ASSERTION_PAYLOAD_NOT_OBJECT,
+    SSO_ASSERTION_PAYLOAD_UNPARSEABLE,
+    SSO_ASSERTION_SIGNATURE_UNDECODABLE,
+    WRITEBACK_API_BASE_URL_REQUIRED,
 )

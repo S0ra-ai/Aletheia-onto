@@ -188,13 +188,13 @@ By design, not bugs. These are the next phase's work.
   without confirmed mappings, editing a published ontology, an object with no source table.
 
   What is left is measurable rather than vague: of the 101 single-sentence Chinese refusals the
-  backend raises, **73 are named**. That is the count of literal `raise` sites; the registry as a
-  whole holds **211 codes**, because the refusals built from an f-string -- the ones a reader meets
-  with a value inside them -- are named as well, and **28** remain. The extension-author batch is
+  backend raises, **91 are named**. That is the count of literal `raise` sites; the registry as a
+  whole holds **229 codes**, because the refusals built from an f-string -- the ones a reader meets
+  with a value inside them -- are named as well, and **10** remain. The extension-author batch is
   most of the difference: a framework's extension authors are users too, and the person writing an
   adapter, a resolver, a writeback executor or a dialect profile reads these sentences through
   `aletheia verify`, the modelling screens and their own first run. `tests/test_error_codes.py`
-  holds the 28 as a ceiling, so it can only fall.
+  holds the 10 as a ceiling, so it can only fall.
 
   An unnamed refusal is not broken -- the console shows the server's sentence, which is true and
   readable, just in the other language. What is left is mostly internal invariants a user cannot

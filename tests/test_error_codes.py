@@ -383,8 +383,8 @@ def test_the_untranslated_remainder_is_measured_rather_than_claimed() -> None:
     # (`instance_key` rejecting a malformed key, `schema` rejecting an empty DDL declaration,
     # the extension registry rejecting a duplicate name). A translation for a sentence nobody
     # will ever read is worse than none -- it reads as coverage.
-    assert len(unregistered) <= 28, (
-        f"未登记的中文拒绝语从 28 条涨到了 {len(unregistered)} 条——"
+    assert len(unregistered) <= 10, (
+        f"未登记的中文拒绝语从 10 条涨到了 {len(unregistered)} 条——"
         "新增的拒绝语要么在 error_codes.py 里登记一个码，要么在这里把上限调高并说明理由。\n"
         + "\n".join(f"  {s}" for s in unregistered[:10])
     )

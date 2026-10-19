@@ -616,4 +616,83 @@ export const errors: Record<string, MessageEntry> = {
     zh: '语义状态名不能为空',
     en: 'A value mapping needs the semantic state it maps to.',
   },
+
+  // -- Refusals an operator meets, not a developer ---------------------------------------------
+  //
+  // These were the tail of the unregistered set, and the readiness page claimed all of it
+  // "fires only when the platform itself is misassembled". Reading them showed most were the
+  // opposite: a .doc upload on a host without LibreOffice, a malformed backup archive, a broken
+  // SSO assertion. What is left after this batch really is the misassembly set.
+  'api.audit_period_required': {
+    zh: '审计报表必须给出起止时间：覆盖范围不明的报表无法作为审计依据。',
+    en: 'An audit report needs a start and an end. A report that does not say what period it covers cannot serve as audit evidence.',
+  },
+  'api.backup_config_missing': {
+    zh: '缺少 config.json',
+    en: 'The backup archive has no config.json in it.',
+  },
+  'api.backup_database_invalid': {
+    zh: '备份中的数据库不是有效的 SQLite 文件',
+    en: 'The database inside this backup is not a valid SQLite file.',
+  },
+  'api.backup_database_missing': {
+    zh: '备份中找不到数据库文件',
+    en: 'No database file was found inside this backup.',
+  },
+  'api.backup_name_invalid': {
+    zh: '备份名不合法：需为 1-120 位字母／数字／下划线／连字符／点，且以字母或数字开头（不能包含路径分隔符）。',
+    en: 'That is not a valid backup name: 1–120 letters, digits, underscores, hyphens or dots, starting with a letter or digit, and no path separators.',
+  },
+  'api.backup_path_escape': {
+    zh: '备份路径不在备份目录内',
+    en: 'That backup resolves to a path outside the backup directory.',
+  },
+  'api.backup_sqlite_only': {
+    zh: '内置备份仅支持 SQLite 平台库；服务端数据库请使用其原生备份工具。',
+    en: 'The built-in backup covers the SQLite platform database only; back a server database up with its own tooling.',
+  },
+  'api.decision_value_invalid': {
+    zh: 'decision 必须是 approved 或 rejected',
+    en: 'A decision is either approved or rejected.',
+  },
+  'api.document_conversion_timeout': {
+    zh: 'LibreOffice 转换超时（30秒），请手动将 .doc 转换为 .docx 格式后重试。',
+    en: 'LibreOffice timed out after 30 seconds. Convert the .doc to .docx yourself and upload that.',
+  },
+  'api.document_converter_missing': {
+    zh: '未检测到 LibreOffice，无法自动转换 .doc 文件。请手动将 .doc 另存为 .docx 格式，或安装 LibreOffice 后重试。',
+    en: 'LibreOffice was not found, so .doc files cannot be converted automatically. Save the file as .docx and upload that, or install LibreOffice and try again.',
+  },
+  'api.export_format_unsupported': {
+    zh: '仅支持 jsonld 或 turtle 导出格式',
+    en: 'That export format is not supported here; use jsonld or turtle.',
+  },
+  'api.operation_object_unresolved': {
+    zh: '无法从业务操作推断业务对象，请显式传入 objectCode',
+    en: 'The business object could not be inferred from the operation; pass objectCode explicitly.',
+  },
+  'api.preflight_data_source_required': {
+    zh: '无法定位数据源，不能进行操作预检',
+    en: 'The data source could not be located, so the operation cannot be preflighted.',
+  },
+  'api.preflight_operations_missing': {
+    zh: '该数据源尚未登记任何业务操作，无法进行操作预检',
+    en: 'This data source has no business operations registered, so there is nothing to preflight.',
+  },
+  'api.sso_assertion_payload_not_object': {
+    zh: '断言载荷不是对象',
+    en: 'The identity provider’s assertion payload is not a JSON object.',
+  },
+  'api.sso_assertion_payload_unparseable': {
+    zh: '断言载荷无法解析',
+    en: 'The identity provider’s assertion payload could not be parsed.',
+  },
+  'api.sso_assertion_signature_undecodable': {
+    zh: '断言签名无法解码',
+    en: 'The identity provider’s assertion signature could not be decoded.',
+  },
+  'api.writeback_api_base_url_required': {
+    zh: '真实执行需要配置业务 API 基址 apiBaseUrl；数据库连接地址仅用于元数据和实例读取。',
+    en: 'Executing for real needs a business API base URL (apiBaseUrl). The database connection is used for metadata and instance reads only.',
+  },
 };
