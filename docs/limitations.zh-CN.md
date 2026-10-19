@@ -192,8 +192,14 @@
   非幂等变更现在有处可去。**不采用 Alembic**——它依赖 SQLAlchemy，与内核零依赖冲突；
   而它真正提供的（版本账本 + 有序应用）只需 150 行，且自动生成在此不可用
   （DDL 是按方言声明的字符串，无模型元数据可 diff）。
-- **尚未拆分为多个 PyPI 分发包**。当前是单包 `aletheia-onto` + optional extras，
-  extras 承载了未来分包的接缝但不冻结边界。
+- **还没有发布到任何包索引。** `pip install aletheia-onto` 装不到任何东西——这个名字不在 PyPI 上，
+  而 PyPI 上的 `aletheia` 是另一位作者的不相关项目。wheel 从仓库可以构建并安装
+  （CI 就是把它装进一个干净的 venv 来验证的），但没有可钉住的版本号，也没有 `pip install -U`
+  可用来升级。**发布**正是「一个你克隆下来的仓库」与「一个你采用的框架」之间差的那一步，
+  它写在[框架成熟度](framework-readiness.zh-CN.md#还没有的部分)。
+
+  **尚未拆分为多个 PyPI 分发包**是更晚一步的问题：先发布，再谈单包 + extras，
+  让 extras 承载未来的接缝而不冻结边界。
 
 架构层面的前置技术债逐项定位见 [`docs/architecture-debt.md`](architecture-debt.md)。
 路线与阻塞条件见 [`ROADMAP.md`](../ROADMAP.md)。

@@ -13,9 +13,15 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——声明支持而不执
 内核**零第三方依赖**，不装 web 服务器也能跑通完整闭环。
 
 ```bash
-pip install aletheia-onto          # 内核：本体、规则、判定、留痕
-pip install 'aletheia-onto[all]'   # 加上 HTTP 层、PostgreSQL／MySQL、文档解析
+# 还没有发布到 PyPI：从仓库安装
+git clone https://github.com/S0ra-ai/Aletheia-onto.git
+pip install ./Aletheia-onto          # 内核：本体、规则、判定、留痕
+pip install './Aletheia-onto[all]'   # 加上 HTTP 层、PostgreSQL／MySQL、文档解析
 ```
+
+> **为什么要克隆。** `pip install aletheia-onto` 装不到任何东西——这个名字不在 PyPI 上，
+> 而 PyPI 上的 `aletheia` 是另一个不相关的项目。「发布」正是「一个你克隆下来的仓库」与
+> 「一个你采用的框架」之间差的那一步，它写在[还没有的部分](framework-readiness.zh-CN.md#还没有的部分)。
 
 ```bash
 aletheia demo      # 用内置样例系统跑通：接入 → 建模 → 判定

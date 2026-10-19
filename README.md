@@ -56,9 +56,14 @@ the conclusion can be interrogated.** Retrieval precision is an explicit non-goa
 ## Quick start
 
 ```bash
-pip install aletheia-onto     # dependency-free kernel
+git clone https://github.com/S0ra-ai/Aletheia-onto.git
+pip install ./Aletheia-onto   # dependency-free kernel
 aletheia demo                 # connect → model → assess, in one command
 ```
+
+> **Not on PyPI yet.** `pip install aletheia-onto` installs nothing — the name is not
+> registered there, and `aletheia` on PyPI belongs to an unrelated project. Installing from a
+> checkout is the supported path for now; see [framework readiness](docs/framework-readiness.md).
 
 ```json
 { "ontologyId": 1, "objectCode": "contract", "decision": "approved" }

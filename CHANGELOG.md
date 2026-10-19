@@ -995,6 +995,25 @@
   再断言 `codegen` 对**草稿**会拒绝（非零退出）**并且说明原因**——
   文档写的是「只接受已发布本体」，所以这里要验的是那句话，不是命令能跑通。
   本地先逐条验过：`owl`/`shacl` 各命中 4 处，`codegen` 退出码 1 且输出「仅已发布本体」。
+
+- **README 的第一条命令装不到任何东西**（两份 README、`docs/quickstart*.md`、
+  `docs/framework-readiness.md`、`docs/limitations*.md`、`test_documentation_links.py`）。
+  快速开始写的是 `pip install aletheia-onto`——而这个名字**不在 PyPI 上**（404），
+  而 PyPI 上的 `aletheia` 是**另一位作者的不相关项目**（Daniel Quinn 的解法器）。
+  也就是说：照着 README 走的人，第一步就失败；想换个名字试的人，会装进别人的代码。
+
+  更糟的是，成熟度页把「从包索引安装」列在**「采用」**表里，作为「存在且被检查」的能力，
+  由一个只验证 wheel 能构建、能装进干净 venv 的测试守着。**能构建不等于能安装。**
+
+  现在：
+  - 三处安装说明都改成可执行的路径（`git clone` + `pip install ./Aletheia-onto`），并说明为什么；
+  - 成熟度页那一行从「采用」移到「还没有的部分」，代价写清楚——没有可钉住的版本、
+    没有 `pip install -U`、不能被别的项目写进 `requirements.txt`；
+  - 限制页两种语言都改了措辞，并把「尚未拆分为多个分发包」降为更晚一步的问题；
+  - README 的「安装命令要在第 60 行之前」那条测试原本匹配的是**解释这件事的那句话**，
+    于是把一句注释当成了命令；现在它要求那一行**本身**是 `pip install` 命令。
+
+  这是整个会话里第一条不需要读代码、只需要一次 HTTP 请求就能证伪的文档主张。**没有人做过那次请求。**
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

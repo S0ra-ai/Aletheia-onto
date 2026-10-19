@@ -140,7 +140,7 @@ def test_the_gap_section_is_present_and_every_gap_states_its_cost() -> None:
 
 @pytest.mark.parametrize(
     "capability",
-    ["Install from a package index", "Multi-tenant isolation", "A preflight that **refuses**"],
+    ["Install from a checkout", "Multi-tenant isolation", "A preflight that **refuses**"],
 )
 def test_the_page_covers_the_questions_a_framework_is_judged_on(capability: str) -> None:
     """Adopt, govern, operate -- the three an evaluator asks about in that order.

@@ -130,8 +130,16 @@ def test_the_readme_answers_where_to_start_before_it_explains_itself() -> None:
         text = ROOT.joinpath(filename).read_text(encoding="utf-8")
         lines = text.splitlines()
 
+        # The **runnable** command, which since the package stopped claiming to be on PyPI is
+        # `pip install ./Aletheia-onto`. Matching the bare name found the sentence explaining
+        # that it installs nothing -- a note, not a command -- and reported it as "too late".
+        # A line has to *be* a pip install line, not mention one.
         install = next(
-            (index for index, line in enumerate(lines) if "pip install aletheia-onto" in line),
+            (
+                index
+                for index, line in enumerate(lines)
+                if line.strip().startswith("pip install") and "aletheia-onto" in line.lower()
+            ),
             None,
         )
         assert install is not None, f"{filename} 未包含安装命令"

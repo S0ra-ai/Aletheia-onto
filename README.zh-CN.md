@@ -55,9 +55,14 @@ Aletheia 优化的是**「答案能不能被追问」**。
 ## 快速开始
 
 ```bash
-pip install aletheia-onto     # 内核零第三方依赖
+git clone https://github.com/S0ra-ai/Aletheia-onto.git
+pip install ./Aletheia-onto   # 内核零第三方依赖
 aletheia demo                 # 接入 → 建模 → 判定，一条命令跑通
 ```
+
+> **目前还没有发布到 PyPI。** `pip install aletheia-onto` 装不到任何东西——这个名字在 PyPI
+> 上不存在，而 PyPI 上的 `aletheia` 是另一个不相关的项目。现阶段从仓库安装是受支持的路径，
+> 见[框架成熟度](docs/framework-readiness.zh-CN.md)。
 
 ```json
 { "ontologyId": 1, "objectCode": "contract", "decision": "approved" }

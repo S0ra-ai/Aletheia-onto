@@ -223,8 +223,15 @@ By design, not bugs. These are the next phase's work.
 - **Versioned migrations exist** (`migrations.py`). Alembic is deliberately not used:
   it depends on SQLAlchemy and would break the zero-dependency kernel, while its useful
   properties here—a version ledger and ordered application—are provided directly.
-- **Not yet split into multiple PyPI distributions.** One package plus optional extras;
-  the extras carry the eventual seams without freezing them.
+- **Not published to a package index at all.** `pip install aletheia-onto` resolves to nothing;
+  the name is not on PyPI, and `aletheia` on PyPI is an unrelated project by another author. The
+  wheel builds and installs from a checkout -- CI does exactly that into a clean virtualenv --
+  but there is no version to pin and no `pip install -U` to upgrade with. Publishing is the step
+  between "a repository you clone" and "a framework you adopt", and it is listed in
+  [framework readiness](framework-readiness.md#not-there-yet).
+
+  **Not yet split into multiple PyPI distributions** is the later question: once published, one
+  package plus optional extras, with the extras carrying the eventual seams without freezing them.
 
 See [`docs/architecture-debt.md`](architecture-debt.md) for located details and
 [`ROADMAP.md`](../ROADMAP.md) for sequencing and blockers.

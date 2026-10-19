@@ -15,9 +15,16 @@ The kernel has **no third-party dependencies** -- it runs the whole loop without
 server installed.
 
 ```bash
-pip install aletheia-onto          # kernel: ontology, rules, verdicts, provenance
-pip install 'aletheia-onto[all]'   # plus HTTP layer, PostgreSQL/MySQL, document parsing
+# Not published to PyPI yet: install from a checkout.
+git clone https://github.com/S0ra-ai/Aletheia-onto.git
+pip install ./Aletheia-onto          # kernel: ontology, rules, verdicts, provenance
+pip install './Aletheia-onto[all]'   # plus HTTP layer, PostgreSQL/MySQL, document parsing
 ```
+
+> **Why a checkout.** `pip install aletheia-onto` resolves to nothing — the name is not on
+> PyPI, and `aletheia` on PyPI is an unrelated project. Publishing is the one step between
+> "a repository you clone" and "a framework you adopt", and it is listed in
+> [Not there yet](framework-readiness.md#not-there-yet).
 
 ```bash
 aletheia demo      # onboard → model → assess, against a built-in sample system
