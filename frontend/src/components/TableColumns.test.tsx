@@ -18,6 +18,8 @@ import WorkflowManager from '../pages/workflow/WorkflowManager';
 import BackupManager from '../pages/backup/BackupManager';
 import TenancyManager from '../pages/tenancy/TenancyManager';
 import OntologyDetail from '../pages/ontology/OntologyDetail';
+import KnowledgeBase from '../pages/knowledge/KnowledgeBase';
+import FeedbackConsole from '../pages/feedback/FeedbackConsole';
 
 /**
  * The cells, rendered and read.
@@ -228,6 +230,31 @@ function blankColumns(table: RenderedTable): string[] {
   return blank;
 }
 
+/**
+ * Wait until the page has drawn `count` tables, then read each one on its own.
+ *
+ * `waitForRows` takes the first `.ant-table-wrapper` in the document, which is right only while
+ * a page has one table. The knowledge page has two side by side, and the workflow page opens a
+ * second when its details action is used -- reading "the first table" there would silently check
+ * one and ignore the other.
+ */
+async function waitForTables(count: number): Promise<RenderedTable[]> {
+  await waitFor(() => {
+    if (document.querySelectorAll('.ant-table-wrapper').length < count) {
+      throw new Error(`只渲染了 ${document.querySelectorAll('.ant-table-wrapper').length} 张表，期望 ${count}`);
+    }
+    if (document.querySelectorAll('.ant-table-tbody tr.ant-table-row').length === 0) {
+      throw new Error('还没有数据行');
+    }
+  });
+  return Array.from(document.querySelectorAll('.ant-table-wrapper'))
+    .slice(0, count)
+    .map((table) => ({
+      headers: Array.from(table.querySelectorAll('.ant-table-thead th')).map((th) => (th.textContent ?? '').trim()),
+      rows: Array.from(table.querySelectorAll('.ant-table-tbody tr.ant-table-row')),
+    }));
+}
+
 describe('MappingList', () => {
   it('renders a value in every cell of every column', async () => {
     renderPage(<MappingList />);
@@ -385,6 +412,15 @@ vi.mock('../api', async () => {
       get: vi.fn(async () => normalizeWorkflow(WIRE_WORKFLOWS[0])),
     },
     backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
+    feedbackApi: {
+      list: vi.fn(async () => WIRE_FEEDBACK),
+      resolve: vi.fn(async () => ({})),
+    },
+    conversationApi: { list: vi.fn(async () => WIRE_ESCALATED) },
+    knowledgeApi: {
+      listDocuments: vi.fn(async () => WIRE_KNOWLEDGE_DOCUMENTS),
+      listEntries: vi.fn(async () => WIRE_KNOWLEDGE_ENTRIES),
+    },
     tenancyApi: {
       list: vi.fn(async () => WIRE_TENANTS),
       // The page asks what quota resources exist so the editor can offer them; it is not part
@@ -957,5 +993,172 @@ describe('OntologyDetail', () => {
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_RELEASE_READINESS.gates.length);
     expect(blankColumns(table)).toEqual([]);
+  });
+});
+
+// -- The knowledge base: two tables side by side ---------------------------------------------
+
+/**
+ * `/ontologies/{id}/knowledge/documents` and `/knowledge/entries`, both `dict(row)`.
+ *
+ * The counts column is a render rather than a field: `confirmedCount` and `pendingCount` are
+ * separate keys and the cell composes them into two tags. A fixture with a `counts` string would
+ * render `undefined` into the tag and still look populated, so the fixture carries the two
+ * numbers the renderer reads.
+ *
+ * The entry's anchor column is composed the same way from `objectCode` and `ruleCode`, and draws
+ * 「未锚定」 when both are empty -- which is why one row here is anchored and one is not: a
+ * fixture where everything is anchored would never exercise the branch that says so.
+ */
+const WIRE_KNOWLEDGE_DOCUMENTS = [
+  {
+    id: 1,
+    title: '合同审批制度',
+    sourceName: 'policy.txt',
+    chunkCount: 3,
+    confirmedCount: 2,
+    pendingCount: 1,
+    status: 'confirmed',
+    createdAt: '2026-01-02 09:00:00',
+  },
+];
+
+const WIRE_KNOWLEDGE_ENTRIES = {
+  items: [
+    {
+      id: 1,
+      citation: '第一条',
+      content: '合同金额超过一百万元的，应经部门负责人审批。',
+      heading: '审批',
+      objectCode: 'contract',
+      ruleCode: 'amount_ceiling',
+      status: 'confirmed',
+    },
+    {
+      id: 2,
+      citation: '附则',
+      content: '本制度自发布之日起施行。',
+      heading: '附则',
+      objectCode: '',
+      ruleCode: '',
+      status: 'pending',
+    },
+  ],
+  retrievalBackends: ['bm25'],
+  embeddingModels: ['hashed-ngram'],
+};
+
+describe('KnowledgeBase', () => {
+  // One case per table, because the maturity page's count of covered tables is counted from
+  // these titles -- a case that reads two tables would make the number smaller than the truth.
+  it('renders a value in every cell of the documents table', async () => {
+    renderPage(<KnowledgeBase />);
+    const [documents] = await waitForTables(2);
+    expect(documents.rows.length).toBe(WIRE_KNOWLEDGE_DOCUMENTS.length);
+    expect(blankColumns(documents)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the knowledge-entries table', async () => {
+    renderPage(<KnowledgeBase />);
+    const [, entries] = await waitForTables(2);
+    expect(entries.rows.length).toBe(WIRE_KNOWLEDGE_ENTRIES.items.length);
+    expect(blankColumns(entries)).toEqual([]);
+  });
+
+  it('says an unanchored entry is unanchored rather than leaving the cell empty', async () => {
+    // The anchor column is the one place this page states a negative. `blankColumns` would
+    // accept either an empty cell or the word, so the word is asserted.
+    renderPage(<KnowledgeBase />);
+    const [, entries] = await waitForTables(2);
+    const body = entries.rows.map((row) => row.textContent ?? '').join(' ');
+    expect(body).toContain('未锚定');
+    expect(body).toContain('amount_ceiling');
+  });
+});
+
+// -- The feedback console: what a reader said, and what was escalated -------------------------
+
+/**
+ * `/feedback` returns `{items, summary}`, and the summary is rendered as statistics above the
+ * table -- so a fixture with only `items` throws on `summary.incorrect` rather than drawing an
+ * empty card.
+ *
+ * The 纠正 column is a `render`, not a field: it reads `row.correction` and draws a tag or an
+ * em dash. One row with a correction and one without, because a fixture where every row has one
+ * never exercises the dash, and a fixture where none does is a column of dashes -- which the
+ * blank-cell check rightly reports.
+ */
+const WIRE_FEEDBACK = {
+  items: [
+    {
+      id: 1,
+      messageId: 10,
+      conversationId: 3,
+      rating: 'incorrect',
+      comment: '金额判错了。',
+      correction: '金额上限应为两百万元。',
+      decisionId: '7',
+      objectCode: 'contract',
+      ruleCode: 'amount_ceiling',
+      status: 'resolved',
+      actor: 'alice',
+      resolvedBy: 'admin',
+      createdAt: '2026-01-02 09:30:00',
+    },
+    {
+      id: 2,
+      messageId: 11,
+      conversationId: 4,
+      rating: 'helpful',
+      comment: '',
+      correction: '',
+      decisionId: '8',
+      objectCode: 'contract',
+      ruleCode: '',
+      status: 'open',
+      actor: '',
+      resolvedBy: '',
+      createdAt: '2026-01-02 09:31:00',
+    },
+  ],
+  summary: { incorrect: 1, unhelpful: 0, helpful: 1, corrections: 1 },
+};
+
+/** `/conversations?status=escalated` returns `{items}`; the page renders the list directly. */
+const WIRE_ESCALATED = [
+  {
+    sessionId: 'abc123',
+    title: '合同金额判定有疑问',
+    escalatedTo: '业务专家',
+    escalationReason: '模型给出的结论与制度不符',
+    status: 'escalated',
+  },
+];
+
+describe('FeedbackConsole', () => {
+  // Escalations render above the feedback table, and that order is the page's rather than a
+  // detail to be guessed: reading them the other way round reported a correct page as wrong.
+  it('renders a value in every cell of the escalation table', async () => {
+    renderPage(<FeedbackConsole />);
+    const [escalated] = await waitForTables(2);
+    expect(escalated.rows.length).toBe(WIRE_ESCALATED.length);
+    expect(blankColumns(escalated)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the feedback table', async () => {
+    renderPage(<FeedbackConsole />);
+    const [, feedback] = await waitForTables(2);
+    expect(feedback.rows.length).toBe(WIRE_FEEDBACK.items.length);
+    expect(blankColumns(feedback)).toEqual([]);
+  });
+
+  it('says an anonymous reporter is anonymous rather than leaving the cell empty', async () => {
+    // `actor` has a fallback to 「匿名」, and a fallback is exactly what hides a rename -- so the
+    // word is asserted rather than merely the presence of text.
+    renderPage(<FeedbackConsole />);
+    const [, feedback] = await waitForTables(2);
+    const body = feedback.rows.map((row) => row.textContent ?? '').join(' ');
+    expect(body).toContain('匿名');
+    expect(body).toContain('alice');
   });
 });
