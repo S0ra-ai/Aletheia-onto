@@ -20,6 +20,7 @@ import TenancyManager from '../pages/tenancy/TenancyManager';
 import OntologyDetail from '../pages/ontology/OntologyDetail';
 import KnowledgeBase from '../pages/knowledge/KnowledgeBase';
 import FeedbackConsole from '../pages/feedback/FeedbackConsole';
+import AuditReportPanel from '../pages/governance/AuditReportPanel';
 
 /**
  * The cells, rendered and read.
@@ -412,6 +413,10 @@ vi.mock('../api', async () => {
       get: vi.fn(async () => normalizeWorkflow(WIRE_WORKFLOWS[0])),
     },
     backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
+    auditApi: {
+      sections: vi.fn(async () => []),
+      report: vi.fn(async () => WIRE_AUDIT_REPORT),
+    },
     feedbackApi: {
       list: vi.fn(async () => WIRE_FEEDBACK),
       resolve: vi.fn(async () => ({})),
@@ -1160,5 +1165,110 @@ describe('FeedbackConsole', () => {
     const body = feedback.rows.map((row) => row.textContent ?? '').join(' ');
     expect(body).toContain('匿名');
     expect(body).toContain('alice');
+  });
+});
+
+// -- The audit report: five tables behind one tab --------------------------------------------
+
+/**
+ * `POST /governance/audit-report` returns the whole report in one object, and the panel renders
+ * a table per section: rules that never fired, rules that did, forced publications, blocked
+ * decisions, and the governance event log.
+ *
+ * Every list is populated on purpose. Four of the five sections render only when their list is
+ * non-empty (`forcedPublications.length > 0`, and so on), so a fixture with one row in each is
+ * the only version that reads all five tables -- and the version that would have caught a column
+ * wired to the wrong key in any of them.
+ *
+ * The shape is `AuditReport` in `types/index.ts`, which is the contract this panel reads.
+ */
+const WIRE_AUDIT_REPORT = {
+  period: { start: '2026-01-01 00:00:00', end: '2026-01-31 23:59:59', boundary: 'closed' },
+  ontologyId: null,
+  decisions: {
+    total: 2,
+    byStatus: { approved: 1, review: 1 },
+    blocked: [
+      {
+        decision_id: '9',
+        decision_type: 'operation',
+        object_code: 'contract',
+        instance_id: '1',
+        actor: 'analyst',
+        created_at: '2026-01-02 09:00:00',
+      },
+    ],
+  },
+  rules: {
+    note: '',
+    triggered: [
+      { code: 'amount_ceiling', name: '金额上限', severity: 'blocking', evaluations: 12 },
+    ],
+    neverTriggered: [
+      { code: 'refund_window_check', name: '退款窗口检查', severity: 'warning', evaluations: 0 },
+    ],
+  },
+  actors: { byActor: { admin: { publish: 1 } } },
+  governance: {
+    events: [
+      {
+        actor: 'admin',
+        action: 'ontology.publish',
+        target_type: 'ontology',
+        target_id: '1',
+        detail: '{}',
+        created_at: '2026-01-02 09:10:00',
+      },
+    ],
+    forcedPublications: [
+      {
+        actor: 'admin',
+        action: 'ontology.publish.force',
+        target_type: 'ontology',
+        target_id: '2',
+        detail: '{"blockers": 1}',
+        created_at: '2026-01-02 09:11:00',
+      },
+    ],
+  },
+  model: { total: 3, byPurpose: { ontology_draft: 3 }, failed: 0 },
+  coverage: { evaluations: 12, withTrace: 12, ratio: 1 },
+  findings: [],
+};
+
+describe('AuditReportPanel', () => {
+  it('renders a value in every cell of the never-triggered rules table', async () => {
+    renderPage(<AuditReportPanel />);
+    const [neverTriggered] = await waitForTables(5);
+    expect(neverTriggered.rows.length).toBe(WIRE_AUDIT_REPORT.rules.neverTriggered.length);
+    expect(blankColumns(neverTriggered)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the triggered rules table', async () => {
+    renderPage(<AuditReportPanel />);
+    const [, triggered] = await waitForTables(5);
+    expect(triggered.rows.length).toBe(WIRE_AUDIT_REPORT.rules.triggered.length);
+    expect(blankColumns(triggered)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the forced-publications table', async () => {
+    renderPage(<AuditReportPanel />);
+    const [, , forced] = await waitForTables(5);
+    expect(forced.rows.length).toBe(WIRE_AUDIT_REPORT.governance.forcedPublications.length);
+    expect(blankColumns(forced)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the blocked-decisions table', async () => {
+    renderPage(<AuditReportPanel />);
+    const [, , , blocked] = await waitForTables(5);
+    expect(blocked.rows.length).toBe(WIRE_AUDIT_REPORT.decisions.blocked.length);
+    expect(blankColumns(blocked)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the audit-event table', async () => {
+    renderPage(<AuditReportPanel />);
+    const [, , , , events] = await waitForTables(5);
+    expect(events.rows.length).toBe(WIRE_AUDIT_REPORT.governance.events.length);
+    expect(blankColumns(events)).toEqual([]);
   });
 });
