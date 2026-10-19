@@ -823,3 +823,87 @@ def test_every_design_document_says_it_is_one() -> None:
         for target in ("capabilities.md", "limitations.md"):
             assert target in text, f"{path.name} 没有指向 {target}，而判断现状要看那一份"
         assert path.name in index, f"{path.name} 没在 docs/README.md 的设计文档表里"
+
+
+# The prefixes this platform reads from the environment. Narrow on purpose: a bare `NAME` is
+# too common to attribute to us, and every variable the platform defines carries one of these.
+ENV_PREFIXES = ("ONTOLOGY_", "OPENROUTER_", "DEEPSEEK_", "ALETHEIA_")
+
+
+def _environment_variables_read() -> set[str]:
+    """Every environment-variable-shaped literal in the backend.
+
+    Read from string literals rather than by matching `os.environ.get("...")` call sites: the
+    platform also passes names as data (the preflight iterates over a tuple of key variables),
+    and a check that only sees the call shape would miss exactly those.
+    """
+    # The alternation is non-capturing and sits *inside* the group: the first version ended the
+    # group after the prefix, so `findall` returned `ONTOLOGY_` for every match and the scanner
+    # "found" one variable. A parser bug that shows up as a plausible result.
+    pattern = re.compile(r'["\']((?:' + "|".join(ENV_PREFIXES) + r')[A-Z0-9_]+)["\']')
+    found: set[str] = set()
+    for path in sorted((ROOT / "backend").rglob("*.py")):
+        found |= set(pattern.findall(path.read_text(encoding="utf-8")))
+    return found
+
+
+def _documented_variables() -> tuple[set[str], set[str], set[str]]:
+    """`(names anywhere, names in prose, prefixes)` across every page.
+
+    The configuration page groups families with a wildcard (`ONTOLOGY_CONFIDENCE_*`), which is
+    the right way to document twenty thresholds, so the wildcard is honoured.
+
+    **Two name sets, because a shell variable is not an environment variable.** `$ONTOLOGY_ADMIN_TOKEN`
+    appears in curl examples as a value the operator pastes in from a login response; the
+    platform never reads it. Counting prose separately for the reverse direction is what tells
+    the two apart -- a documented *setting* is written in a table or a sentence, while an
+    example's placeholder lives inside a fence.
+    """
+    documents = [ROOT / "README.md", ROOT / "README.zh-CN.md", *sorted((ROOT / "docs").glob("*.md"))]
+    pattern = re.compile(r"\b((?:" + "|".join(ENV_PREFIXES) + r")[A-Z0-9_]+)\b")
+    prose: list[str] = []
+    for path in documents:
+        fenced = False
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if not fenced:
+                prose.append(line)
+    text = "\n".join(path.read_text(encoding="utf-8") for path in documents)
+    prose_text = "\n".join(prose)
+    names = set(pattern.findall(text))
+    in_prose = set(pattern.findall(prose_text))
+    wildcards = set(re.findall(r"\b((?:" + "|".join(ENV_PREFIXES) + r")[A-Z0-9_]*)\*", text))
+    return names, in_prose, wildcards
+
+
+def test_every_environment_variable_the_code_reads_is_documented() -> None:
+    """`docs/configuration.md` promises "Every environment variable", and nobody had counted.
+
+    Six were read and documented nowhere: the provider-neutral model key, the directory the
+    server serves the console from, the SSO display-name claim, the column-profiling and
+    consistency sample caps, and the name the CLI prints (which `aletheia new` sets so a
+    scaffolded project's output names the project). An operator configuring a deployment from
+    that page would not have known they existed.
+
+    The claim is the assertion. A variable added without a row fails here, and a row for a
+    variable nothing reads fails too -- the same two directions as every other count in this
+    file.
+    """
+    read = _environment_variables_read()
+    assert len(read) > 40, f"只从后端读到 {len(read)} 个环境变量——扫描器失效了"
+
+    names, in_prose, wildcards = _documented_variables()
+    undocumented = sorted(
+        name for name in read if name not in names and not any(name.startswith(prefix) for prefix in wildcards)
+    )
+    assert not undocumented, (
+        "以下环境变量后端会读取，但没有任何文档提到它们——运维照着配置页做，不会知道它们存在：\n  "
+        + "\n  ".join(undocumented)
+    )
+
+    # The other direction: a documented name the code never reads is a knob that does nothing.
+    # Wildcards are excluded because they are prefixes, not names.
+    stale = sorted(name for name in in_prose - read if not name.endswith("_"))
+    assert not stale, "以下环境变量写在文档里，但后端从不读取——它们看起来像可用的开关：\n  " + "\n  ".join(stale)

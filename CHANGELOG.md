@@ -1041,6 +1041,30 @@
   写植入验证时又出了一次错：第一次只替换了英文句子的**开头**，留下一行中英混杂的文本，
   守卫没响——因为规则是「整行的中文句子」，而它已经不是了。**植入没失败，先怀疑植入。
   这是这个会话里第二次。**
+
+- **「每个环境变量」这句话，有 6 个没兑现**（`docs/configuration.md`、
+  `docs/configuration.zh-CN.md`、`tests/test_documented_claims.py`）。
+  配置页承诺列出**每一个**环境变量，而后端实际读取 63 个，文档里没有任何地方提到其中 6 个：
+
+  | 变量 | 干什么 |
+  |---|---|
+  | `ONTOLOGY_MODEL_API_KEY` | 与厂商无关的模型密钥名，preflight 认它或 `OPENROUTER_API_KEY` |
+  | `ALETHEIA_FRONTEND_DIST` | 服务端在 `/admin/` 下提供的控制台构建目录 |
+  | `ONTOLOGY_SSO_NAME_CLAIM` | 承载显示名的 JWT 声明（默认 `name`） |
+  | `ONTOLOGY_COLUMN_PROFILE_SAMPLES` | 列画像采样行数 |
+  | `ONTOLOGY_MAX_CONSISTENCY_SAMPLE` | 一致性评估的采样上限 |
+  | `ONTOLOGY_PROGRAM_NAME` | CLI 打印的程序名，`aletheia new` 会设成 `python -m <包名>` |
+
+  六个都已补进两张语言的表。守卫按两个方向断言：**代码读了却没写**，以及
+  **写了却没人读**——后者会让人以为有个可用的开关。
+
+  写这条守卫时先踩了一个自己的 bug：正则的分组只包住了前缀，`findall` 于是每次都返回
+  `ONTOLOGY_`，扫描器「只找到 1 个变量」。**一个看起来像结果、其实是解析器坏了的数字**——
+  正是这一整个会话反复出现的形状，这次发生在检查自己身上。
+
+  反方向第一次也误报了 `ONTOLOGY_ADMIN_TOKEN`：它在 curl 示例里是运维从登录响应里粘的
+  **shell 变量**，平台从不读它。于是反向检查只看**代码块之外**的名字：一个真的设置项会写在
+  表格或句子里，而示例里的占位符在围栏内。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

@@ -16,6 +16,8 @@ and every one is overridable by environment variable.
 | `ONTOLOGY_SESSION_TTL_HOURS` | Session lifetime | `12` |
 | `ONTOLOGY_AUTH_DISABLED` | Set to `1` to disable all authentication. **Local development only** | Unset (authentication on) |
 | `ONTOLOGY_ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://127.0.0.1:3000,http://localhost:3000` |
+| `ONTOLOGY_MODEL_API_KEY` | The model key, under a provider-neutral name. `aletheia preflight` accepts either this or `OPENROUTER_API_KEY` | Unset |
+| `ALETHEIA_FRONTEND_DIST` | Directory holding a built console for the server to serve at `/admin/`. Without it the API serves no console | Unset: API only |
 
 Only the documented opt-in values disable authentication. A typo
 (`ONTOLOGY_AUTH_DISABLED=ture`) leaves it **on** — guessing at intent here would mean
@@ -66,6 +68,7 @@ SSO is enabled only when all three are set. A half-configured deployment behaves
 | `ONTOLOGY_SSO_ALGORITHM` | `HS256` / `HS384` / `HS512`. **Taken from configuration, never from the token header** | `HS256` |
 | `ONTOLOGY_SSO_GROUP_CLAIM` | Claim carrying group membership | `groups` |
 | `ONTOLOGY_SSO_USERNAME_CLAIM` | Claim carrying the user identifier | `sub` |
+| `ONTOLOGY_SSO_NAME_CLAIM` | Claim carrying the display name shown beside the user ID | `name` |
 
 **The provider asserts identity; the platform decides authority.** An OIDC token can carry
 any claim the provider chooses, including `role: admin` — trusting it would move this
@@ -108,12 +111,13 @@ columns they show in UTC; the backup list shows local time and says so.
 
 | Group | Contents | Env prefix |
 |---|---|---|
-| `QUERY_LIMITS` | Page size caps, consistency sampling, enum-detection distinct bounds | `ONTOLOGY_DEFAULT_PAGE_SIZE`, `ONTOLOGY_MAX_PAGE_SIZE`, `ONTOLOGY_ENUM_*` |
+| `QUERY_LIMITS` | Page size caps, consistency sampling, column profiling sample, enum-detection distinct bounds | `ONTOLOGY_DEFAULT_PAGE_SIZE`, `ONTOLOGY_MAX_PAGE_SIZE`, `ONTOLOGY_MAX_CONSISTENCY_SAMPLE`, `ONTOLOGY_COLUMN_PROFILE_SAMPLES`, `ONTOLOGY_ENUM_*` |
 | `MAPPING_CONFIDENCE` | Mapping candidate confidence (blueprint / structural / vocabulary / weak) | `ONTOLOGY_CONFIDENCE_*` |
 | `ANSWER_CONFIDENCE` | Answer confidence | `ONTOLOGY_ANSWER_CONFIDENCE_*` |
 | `RESOLUTION_CONFIDENCE` | Instance-resolution confidence and boosts | `ONTOLOGY_RESOLUTION_*` |
 | `SEMANTIC_ASSET_NAMING` | IRI namespaces for JSON-LD / Turtle / OWL | `ONTOLOGY_VOCABULARY_BASE_IRI`, `ONTOLOGY_ASSET_BASE_IRI` |
 | `MODEL_PROVIDER_DEFAULTS` | Model endpoint, model name, timeout, service tier | `OPENROUTER_*`; `DEEPSEEK_*` when OpenRouter is unset |
+| `ONTOLOGY_PROGRAM_NAME` | The name the CLI prints in its own messages. Set by `aletheia new` to `python -m <package>`, so a scaffolded project's output names the project rather than the platform | Unset: `aletheia` |
 | `CONNECTION_POOL` | Whether platform-database connections are reused (PostgreSQL and MySQL only) | `ONTOLOGY_CONNECTION_POOL_SIZE` (default `0` = off) |
 
 `ONTOLOGY_CONNECTION_POOL_SIZE` reuses platform-database connections instead of opening one
