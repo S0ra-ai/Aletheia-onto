@@ -23,6 +23,7 @@ import FeedbackConsole from '../pages/feedback/FeedbackConsole';
 import AuditReportPanel from '../pages/governance/AuditReportPanel';
 import DataSourceDetail from '../pages/datasource/DataSourceDetail';
 import ModellingExtensions from '../pages/ontology/ModellingExtensions';
+import SemanticService from '../pages/semantic';
 
 /**
  * The cells, rendered and read.
@@ -431,6 +432,11 @@ vi.mock('../api', async () => {
       get: vi.fn(async () => normalizeWorkflow(WIRE_WORKFLOWS[0])),
     },
     backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
+    semanticApi: {
+      explain: vi.fn(async () => WIRE_EXPLAIN),
+      assess: vi.fn(async () => WIRE_ASSESS),
+      consistency: vi.fn(async () => WIRE_CONSISTENCY),
+    },
     auditApi: {
       sections: vi.fn(async () => []),
       report: vi.fn(async () => WIRE_AUDIT_REPORT),
@@ -1489,5 +1495,102 @@ describe('ModellingExtensions', () => {
     expect(body).toContain('signedBy');
     // The second row has no fields on purpose: its cell must say so, not be empty.
     expect(body).toContain('未声明预期字段');
+  });
+});
+
+// -- The semantic screen: explain and consistency ---------------------------------------------
+
+/**
+ * Both tables are reached through a **deep link**, not by driving the form.
+ *
+ * `?tab=explain&object=…&instance=…` is a documented feature -- the parameters are
+ * `object`/`instance`/`ontology`, not the form fields' names, which is itself worth writing down -- "an instance's
+ * explanation is a link you can paste into a ticket" -- and it is the same code path the form's
+ * submit button takes (`handleExplain`). Driving it this way tests the link as well as the
+ * table, and avoids a test that only passes because it clicked the button the way the author did.
+ *
+ * One attribute is derived and one is plain: the source column draws the derived expression for
+ * the first and the source column for the second, and a fixture with only one kind would leave
+ * half that renderer unexercised.
+ */
+const WIRE_EXPLAIN = {
+  objectCode: 'contract',
+  instanceId: '1',
+  source: 'legacy_contracts',
+  explanation: '合同 1 的金额为 500。',
+  explanationParts: [],
+  aggregates: [],
+  ancestors: [],
+  timeline: [],
+  asOf: null,
+  attributes: [
+    {
+      attributeCode: 'amount',
+      attributeName: '金额',
+      sourceColumn: 'amount',
+      unit: 'cny',
+      unitName: '元',
+      derived: false,
+      derivedExpression: '',
+      value: 500,
+    },
+    {
+      attributeCode: 'effectiveDays',
+      attributeName: '生效天数',
+      sourceColumn: '',
+      unit: '',
+      unitName: '',
+      derived: true,
+      derivedExpression: 'days_between(effective_at, today)',
+      value: 12,
+    },
+  ],
+};
+
+const WIRE_ASSESS = { objectCode: 'contract', instanceId: '1', decision: 'approved', failedRules: [], rules: [] };
+/**
+ * The consistency table renders `failedRules` as tags and `-` when the list is empty -- and a
+ * column of hyphens is what this file treats as blank. The single row here failed a rule, so the
+ * cell has real content; a fixture of clean instances would have made the column permanently
+ * empty-looking and the test would have reported a correct page.
+ */
+const WIRE_CONSISTENCY = {
+  objectCode: 'contract',
+  sampleSize: 3,
+  assessed: 1,
+  status: 'inconsistent',
+  summary: { approved: 0, review: 0, blocked: 1, errors: 0 },
+  nextActions: [],
+  nextActionCodes: [],
+  ruleFailures: [],
+  errors: [],
+  items: [
+    {
+      instanceId: '1',
+      decision: 'blocked',
+      failedRuleCount: 1,
+      failedRules: ['amount_ceiling'],
+      decisionId: '9',
+    },
+  ],
+};
+
+describe('SemanticService', () => {
+  it('renders a value in every cell of the consistency table', async () => {
+    renderRouted(<SemanticService />, '/semantic?tab=consistency&object=contract&ontology=1', '/semantic');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_CONSISTENCY.items.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the explain table', async () => {
+    renderRouted(
+      <SemanticService />,
+      '/semantic?tab=explain&object=contract&instance=1&ontology=1',
+      '/semantic',
+    );
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_EXPLAIN.attributes.length);
+    expect(blankColumns(table)).toEqual([]);
   });
 });
