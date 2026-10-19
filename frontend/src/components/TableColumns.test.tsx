@@ -22,6 +22,7 @@ import KnowledgeBase from '../pages/knowledge/KnowledgeBase';
 import FeedbackConsole from '../pages/feedback/FeedbackConsole';
 import AuditReportPanel from '../pages/governance/AuditReportPanel';
 import DataSourceDetail from '../pages/datasource/DataSourceDetail';
+import ModellingExtensions from '../pages/ontology/ModellingExtensions';
 
 /**
  * The cells, rendered and read.
@@ -396,6 +397,7 @@ vi.mock('../api', async () => {
     ...actual,
     ontologyApi: {
       list: vi.fn(async () => WIRE_ONTOLOGY_LIST),
+      eventTypes: vi.fn(async () => WIRE_EVENT_TYPES),
       get: vi.fn(async () => WIRE_ONTOLOGY_DETAIL),
       getReleaseReadiness: vi.fn(async () => WIRE_RELEASE_READINESS),
       getMappings: vi.fn(async () => page(WIRE_MAPPINGS)),
@@ -1418,5 +1420,74 @@ describe('DataSourceDetail', () => {
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_BINDINGS.items.length);
     expect(blankColumns(table)).toEqual([]);
+  });
+});
+
+// -- Modelling extensions: the event types declared for an object -----------------------------
+
+/**
+ * `/ontologies/{id}/event-types` returns `{items}`, and the component keeps only the rows whose
+ * `objectCode` matches the object selected in the dropdown -- which defaults to the first object
+ * it is given. So the fixture's `objectCode` has to be that one, or the table filters itself
+ * empty and the test reports "no rows" about a correct page.
+ *
+ * Two rows: one with payload fields and one without, because the column renders a different
+ * thing in each case (tags, or 「没有预期字段」) and only one of them is a list.
+ */
+const WIRE_EVENT_TYPES = [
+  {
+    code: 'signed',
+    name: '已签署',
+    objectCode: 'contract',
+    category: 'state_change',
+    payloadFields: ['effectiveAt', 'signedBy'],
+    description: '合同签署时发出。',
+  },
+  {
+    code: 'archived',
+    name: '已归档',
+    objectCode: 'contract',
+    category: 'state_change',
+    payloadFields: [],
+    description: '合同归档时发出，不带载荷。',
+  },
+];
+
+describe('ModellingExtensions', () => {
+  it('renders a value in every cell of the event-types table', async () => {
+    renderPage(
+      <ModellingExtensions
+        ontologyId={1}
+        objects={[{ id: 1, ontologyId: 1, code: 'contract', name: '合同', description: '', sourceTable: 'contract' }]}
+        readOnly={false}
+      />,
+    );
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_EVENT_TYPES.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('shows the declared payload fields rather than saying there are none', async () => {
+    /** The payload column renders tags when it has fields and 「未声明预期字段」 when it does not.
+     *
+     * That fallback is right for a declaration that genuinely has no payload, and it is exactly
+     * what hides a rename: point `dataIndex` at a key the row does not carry and every cell says
+     * 「未声明预期字段」 -- filled, plausible, and false. `blankColumns` cannot see it. Found by
+     * planting `payloadFields -> payloadFieldz` and watching the blank-cell case stay green.
+     */
+    renderPage(
+      <ModellingExtensions
+        ontologyId={1}
+        objects={[{ id: 1, ontologyId: 1, code: 'contract', name: '合同', description: '', sourceTable: 'contract' }]}
+        readOnly={false}
+      />,
+    );
+    const table = await waitForRows();
+
+    const body = table.rows.map((row) => row.textContent ?? '').join(' ');
+    expect(body).toContain('effectiveAt');
+    expect(body).toContain('signedBy');
+    // The second row has no fields on purpose: its cell must say so, not be empty.
+    expect(body).toContain('未声明预期字段');
   });
 });
