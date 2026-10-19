@@ -226,7 +226,9 @@ By design, not bugs. These are the next phase's work.
 - **Not published to a package index at all.** `pip install aletheia-onto` resolves to nothing;
   the name is not on PyPI, and `aletheia` on PyPI is an unrelated project by another author. The
   wheel builds and installs from a checkout -- CI does exactly that into a clean virtualenv --
-  but there is no version to pin and no `pip install -U` to upgrade with. Publishing is the step
+  but there is no version to pin and no `pip install -U` to upgrade with. The release workflow
+  exists -- tag, version check, build, install the built wheel and run the loop, then upload --
+  and what it waits for is a PyPI trusted publisher, not code. Publishing is the step
   between "a repository you clone" and "a framework you adopt", and it is listed in
   [framework readiness](framework-readiness.md#not-there-yet).
 

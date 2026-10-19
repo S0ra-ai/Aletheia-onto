@@ -175,3 +175,41 @@ def test_no_job_runs_python_without_having_installed_it() -> None:
             problems.append(f"{name}: 跑了 pytest，但没有安装依赖（runner 自带的 python 里没有 pytest）")
 
     assert not problems, "以下 job 会在一个没有相应环境的 runner 上执行 Python：\n  " + "\n  ".join(problems)
+
+
+def test_the_release_workflow_publishes_the_artifact_it_verified() -> None:
+    """A workflow that only runs on a tag is a workflow nothing exercises.
+
+    `release.yml` never runs in CI -- it triggers on `v*` -- so every claim it makes is
+    unverified until the day somebody tags a release. These are the parts that would fail
+    silently or expensively on that day: a tag that disagrees with `pyproject.toml` publishes a
+    version nobody chose (and an uploaded version can be yanked, not replaced); a wheel that
+    imports in the build environment can still be missing files; and uploading without
+    `id-token: write` fails at the last step, after the build.
+    """
+    path = ROOT / ".github" / "workflows" / "release.yml"
+    assert path.exists(), "发布工作流不见了"
+
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    # PyYAML reads the bare `on:` key as the boolean True; both spellings are accepted here so
+    # the assertion is about the trigger, not about YAML's opinion of the word.
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers and "push" in triggers, "发布工作流不再由 push 触发"
+    assert "v*" in (triggers["push"].get("tags") or []), "发布工作流不再由 v* 标签触发"
+
+    job = workflow["jobs"]["publish"]
+    steps = job["steps"]
+    runs = "\n".join(step.get("run") or "" for step in steps)
+    uses = " ".join(step.get("uses") or "" for step in steps)
+
+    # Parsed, not grepped. The first version of this assertion looked for the string in the
+    # file -- and the prose above the setting mentions `id-token: write` too, so removing the
+    # actual permission left the test green. A check satisfied by a comment is not a check.
+    assert (job.get("permissions") or {}).get("id-token") == "write", (
+        "publish job 没有 id-token: write，trusted publishing 会在最后一步失败——而那时包已经构建完了"
+    )
+    assert "pyproject.toml" in runs and "GITHUB_REF_NAME" in runs, "没有校验标签与 pyproject 的版本号"
+    assert "pip install dist/*.whl" in runs or "pip install dist/" in runs, (
+        "没有把要发布的那个 wheel 装进干净环境——构建环境里能导入的包，仍可能缺文件"
+    )
+    assert "pypa/gh-action-pypi-publish" in uses, "没有真正上传的步骤"

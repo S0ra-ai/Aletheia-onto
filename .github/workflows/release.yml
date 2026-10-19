@@ -1,0 +1,72 @@
+name: 发布到 PyPI
+
+# Publishing is the step between "a repository you clone" and "a framework you adopt", and it
+# was the one claim in the README that nobody had ever checked: `pip install aletheia-onto`
+# resolved to nothing, and `aletheia` on PyPI belongs to another project.
+#
+# This workflow does not publish on its own. It runs **only** when a `v*` tag is pushed, and it
+# still needs a trusted publisher configured on PyPI for this repository and this environment --
+# until that exists, the job stops at the upload step with an authentication error, which is the
+# correct outcome and is visible rather than silent.
+#
+# Trusted publishing rather than an API token: PyPI mints a short-lived credential from the
+# workflow's OIDC identity, so there is no long-lived secret to leak, rotate or commit. That is
+# also why `id-token: write` is the only permission granted.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: 构建并上传
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC token PyPI exchanges for an upload credential
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          # The floor the package claims, so the artifact is built on it.
+          python-version: "3.11"
+
+      - name: 版本号必须与标签一致
+        # A tag that disagrees with `pyproject.toml` publishes a version nobody chose. Checked
+        # before the build rather than after the upload, because an uploaded version cannot be
+        # replaced -- only yanked.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag=$tag pyproject=$version"
+          test "$tag" = "$version" || { echo "标签 $tag 与 pyproject.toml 的 $version 不一致"; exit 1; }
+
+      - name: 构建 sdist 与 wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --outdir dist
+
+      - name: 在干净环境验证这个 wheel
+        # The same check the CI packaging job runs, repeated on the exact artifact about to be
+        # published: a wheel that imports in the build environment can still be missing files.
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install dist/*.whl
+          /tmp/verify/bin/aletheia --version
+          /tmp/verify/bin/aletheia --platform-db /tmp/verify.sqlite3 \
+            demo --quiet --sample-db /tmp/verify-sample.sqlite3 > /tmp/verify.json
+          python -c "
+          import json
+          payload = json.load(open('/tmp/verify.json'))
+          assert payload['decision'] in {'approved', 'review', 'blocked'}, payload
+          print('安装后的闭环可执行，判定:', payload['decision'])
+          "
+
+      - name: 上传到 PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

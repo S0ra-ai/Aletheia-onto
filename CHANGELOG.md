@@ -1014,6 +1014,19 @@
     于是把一句注释当成了命令；现在它要求那一行**本身**是 `pip install` 命令。
 
   这是整个会话里第一条不需要读代码、只需要一次 HTTP 请求就能证伪的文档主张。**没有人做过那次请求。**
+
+- **发布工作流就位，等的是一个 trusted publisher 而不是代码**
+  （`.github/workflows/release.yml`、`tests/test_ci_workflow.py`）。
+  `v*` 标签触发：先校验标签与 `pyproject.toml` 的版本号一致（已上传的版本只能 yank、不能替换），
+  再构建 sdist 与 wheel，**把即将发布的那一个 wheel 装进干净环境跑通闭环**，最后用
+  trusted publishing 上传——没有长期 API token 可泄漏或轮换。
+
+  这个工作流只在打标签时运行，**平时没有任何东西执行它**，所以它的每一条主张都要靠测试守着：
+  触发条件、`id-token: write`、版本号校验、装的是构建产物、真的调用上传 action。
+
+  写这条守卫时又踩了一次同一类坑：第一版断言在文件文本里找 `id-token: write`，
+  而**文件开头的注释里正好也写着这句话**——把权限删掉，测试照样绿。
+  **一条能被注释满足的检查不是检查。** 现在它读的是解析后的 YAML。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
