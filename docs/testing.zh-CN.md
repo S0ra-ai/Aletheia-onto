@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1886 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1890 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -71,6 +71,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_document_knowledge.py` | 27 | 文档知识层：引用锚定到本体 |
 | `test_domain_neutrality.py` | 25 | 领域中立性 |
 | `test_standard_vocabulary.py` | 24 | OWL/RDFS/SHACL 导出：同一份本体换成别的工具能用的词表 |
+| `test_normaliser_types.py` | 4 | 每个归一化函数写出的字段，正好是它声明类型里列的那些——这是 `tsc` 唯一看不见的漂移 |
 | `test_platform_context.py` | 23 | 平台上下文：取代模块级单例的那个对象 |
 | `test_rate_limiter.py` | 24 | 固定窗口请求限流，以及施加限流的中间件 |
 | `test_relation_expressiveness.py` | 22 | 关系语义：基数、强度与多对多 |

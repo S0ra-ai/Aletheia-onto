@@ -1150,7 +1150,26 @@ export interface WorkflowHistoryItem {
 }
 
 // 权限相关类型
-export type PermissionRole = Generated.PermissionRoleRoles;
+/**
+ * The **normalised** role row, not the wire one.
+ *
+ * This used to be `Generated.PermissionRoleRoles`, which describes what the endpoint sends --
+ * `is_system` and `created_at`. `normalizeRole` spreads that row and then adds `isSystem` and
+ * `createdAt`, and the table reads those; nothing connected the two, because an antd `dataIndex`
+ * is not type-checked and a spread suppresses the excess-property check on the literal. So the
+ * declaration said the row had no `isSystem` while every screen read one.
+ *
+ * `tests/test_normaliser_types.py` is what found it, by comparing the keys a normaliser writes
+ * against the fields its declared type lists.
+ */
+export interface PermissionRole {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  isSystem: number;
+  createdAt: string;
+}
 
 export interface PermissionPolicy {
   id: number;

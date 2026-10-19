@@ -886,6 +886,25 @@
   照页面写，测的就是「页面碰巧读了哪些字段」；照类型写，测的才是契约。fixture 已按类型补全。
 
   组件测试现在覆盖 17 个页面 39 张表。
+
+- **归一化函数的返回类型是线上格式，而每个界面都在读驼峰字段**
+  （`test_normaliser_types.py`、`types/index.ts`、`docs/framework-readiness.md`）。
+  成熟度页上第一条缺口写的是「类型划分是手写的」——这一轮把它变成了**被检查的**，
+  并且在第一次运行时抓到一个真错误：
+
+  `PermissionRole` 声明成 `Generated.PermissionRoleRoles`，那是**线上**的形状
+  （`is_system`、`created_at`）；而 `normalizeRole` 在它之上补了 `isSystem` 与 `createdAt`，
+  每个界面读的也是这两个。两者之间没有任何东西连着，因为 **antd 的 `dataIndex` 不参与类型检查**，
+  而对象字面量里的 `...item` 展开了多余属性检查。于是声明说这一行没有 `isSystem`，
+  而每个屏幕都在读它。
+
+  新守卫比较的是：**归一化函数写出的键** 与 **它声明的类型列出的字段**。
+  这正是 `tsc` 唯一看不见的那类漂移——展开关掉了多余属性检查，而可选字段只要「从不写」就满足声明。
+  第一次运行就报出了 `PermissionRole`；修法是改声明，不是改函数。
+
+  顺带修了解析器自己的一个坑：`export type X = Generated.Y;` 是别名，而 `generated.ts` 里
+  还有一个**同名**的接口（响应外壳）。不解析别名就会拿外壳去比，把一个正确的函数报成错——
+  和这一整轮反复出现的是同一个形状：**读错了那一份声明，比不读更糟**。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
