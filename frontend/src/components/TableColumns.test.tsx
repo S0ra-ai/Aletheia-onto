@@ -15,6 +15,8 @@ import DataSourceList from '../pages/datasource/DataSourceList';
 import PermissionManager from '../pages/permission/PermissionManager';
 import Governance from '../pages/governance';
 import WorkflowManager from '../pages/workflow/WorkflowManager';
+import BackupManager from '../pages/backup/BackupManager';
+import TenancyManager from '../pages/tenancy/TenancyManager';
 
 /**
  * The cells, rendered and read.
@@ -361,6 +363,13 @@ vi.mock('../api', async () => {
     workflowApi: {
       list: vi.fn(async () => WIRE_WORKFLOWS.map(normalizeWorkflow)),
       get: vi.fn(async () => normalizeWorkflow(WIRE_WORKFLOWS[0])),
+    },
+    backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
+    tenancyApi: {
+      list: vi.fn(async () => WIRE_TENANTS),
+      // The page asks what quota resources exist so the editor can offer them; it is not part
+      // of the table, and an empty list is a deployment with no declared quotas.
+      quotaResources: vi.fn(async () => []),
     },
   };
 });
@@ -710,5 +719,77 @@ describe('WorkflowManager', () => {
     };
     expect(rendered.rows.length).toBe(WIRE_WORKFLOWS[0].transitions.length);
     expect(blankColumns(rendered)).toEqual([]);
+  });
+});
+
+// -- Two more screens whose tables nobody had read --------------------------------------------
+
+/**
+ * `/admin/backup/list` returns `dict(row)` -- `name`, `size`, `created_at`, nothing else.
+ *
+ * The date column is why this table is worth reading. The platform stores instants in UTC with
+ * no offset, and `new Date("2026-10-15 19:12:07")` is parsed by a browser as **local** time, so
+ * every row was displayed shifted by the reader's offset. That was fixed by appending `Z` before
+ * parsing -- and then the archive's own `created_at`, which is written with `isoformat()` and
+ * already carries `+00:00`, produced `+00:00Z` and read "Invalid Date". Both shapes are in the
+ * fixture because either one alone passes against a renderer that only handles it.
+ *
+ * `size` is a number formatted into B/KB/MB; a missing value would draw `NaN B`.
+ */
+const WIRE_BACKUPS = [
+  { name: 'nightly-2026-01-02.sqlite3', size: 204800, created_at: '2026-01-02 09:15:00' },
+  // The name deliberately does not repeat the timestamp: the assertion below is that the raw
+  // `created_at` does not reach the screen, and a name carrying the same characters would make
+  // it fail for the wrong reason.
+  { name: 'before-restore-0042.sqlite3', size: 512, created_at: '2026-01-02T09:20:00+00:00' },
+];
+
+/**
+ * `/tenants` sends `{items: [{tenant, schema}]}` and nothing else.
+ *
+ * Multi-tenancy is opt-in, so an empty list on a single-tenant deployment is the expected
+ * answer -- which is exactly why the empty state must not be mistaken for a table that failed
+ * to render. Two tenants here so the table has rows to read.
+ */
+const WIRE_TENANTS = {
+  items: [
+    { tenant: 'acme', schema: 'tenant_acme' },
+    { tenant: 'globex', schema: 'tenant_globex' },
+  ],
+};
+
+describe('BackupManager', () => {
+  it('renders a value in every cell of the backup table', async () => {
+    renderPage(<BackupManager />);
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_BACKUPS.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('reads both timestamp shapes the two writers produce', async () => {
+    /** The list endpoint writes `YYYY-MM-DD HH:MM:SS` (UTC, bare) and the archive's own config
+     * writes `isoformat()` (`+00:00`). Appending `Z` to the second gives `+00:00Z`, which parses
+     * to nothing -- the column read `Invalid Date` for every archive the current release wrote.
+     * A blank-cell check cannot see that: `Invalid Date` is text.
+     */
+    renderPage(<BackupManager />);
+    const table = await waitForRows();
+
+    const body = table.rows.map((row) => row.textContent ?? '').join(' ');
+    expect(body).not.toContain('Invalid Date');
+    // The stronger half: when parsing fails the renderer falls back to the raw value, so the
+    // cell still has text and `Invalid Date` never appears -- the ISO string itself is what a
+    // regression leaves on screen. `toLocaleString()` cannot produce it.
+    expect(body).not.toContain(WIRE_BACKUPS[1].created_at);
+    expect(body).toContain('KB'); // 204800 bytes, formatted rather than raw
+  });
+});
+
+describe('TenancyManager', () => {
+  it('renders a value in every cell of the tenant table', async () => {
+    renderPage(<TenancyManager />);
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_TENANTS.items.length);
+    expect(blankColumns(table)).toEqual([]);
   });
 });

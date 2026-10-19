@@ -21,14 +21,20 @@ Start with the [README](../README.md). This tree holds the depth the entry point
 | [Operations](operations.md) | Monitoring, logs, backup and restore, upgrading |
 | [Tests](testing.md) | Distribution, static checks, why assertions are shaped that way |
 | [Screenshots](screenshots.md) | 15 screens, each captioned with what it proves |
-| [ADRs](adr/) | Architecture decisions, including rejected alternatives |
-| [Architecture debt](architecture-debt.md) | Remaining technical debt, located |
+| [ADRs](adr/) | Architecture decisions, including rejected alternatives — **written in Chinese** |
+| [Architecture debt](architecture-debt.md) | Remaining technical debt, located — **written in Chinese** |
+
+> **The ADRs, the changelog, the roadmap, `SECURITY.md` and `CONTRIBUTING.md` are written in
+> Chinese.** Every page above has an English edition; those documents do not, and this is a
+> standing choice rather than an oversight — the decision records are read by the people making
+> the decisions. The two rows marked above are the same. Everything else an English reader
+> clicks here is in English.
 
 ## Design documents
 
 `01`–`04` record design intent, not a checklist of delivered capability. They are kept
 because the reasoning is still useful, and because the gap between intent and implementation
-is itself worth being able to see.
+is itself worth being able to see. **They are written in Chinese.**
 
 | Document | Contents | Gap vs implementation |
 |---|---|---|

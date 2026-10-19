@@ -179,6 +179,40 @@ def _cjk_share(path: Path) -> float:
     return cjk / max(1, cjk + words)
 
 
+def test_the_english_index_says_which_pages_are_chinese() -> None:
+    """An index row that promises a page in your language and delivers another is a small trap.
+
+    Three pages were in exactly that state: `model-endpoints.md`, `operations.md` and
+    `production-checklist.md` were Chinese under English filenames, listed in this index as
+    English pages. They have English editions now. What remains Chinese-only is the ADR
+    directory, `CHANGELOG.md`, `ROADMAP.md`, `SECURITY.md`, `CONTRIBUTING.md`, the `01`–`04`
+    design documents and `architecture-debt.md` -- a deliberate, coherent choice for a
+    Chinese-first project, and one a reader should be told about rather than discover.
+
+    **A row may link a Chinese page as long as it says so.** The word "Chinese" in the row is
+    the marker; the note under the table explains the rest. Scoped to the main table because
+    the design-documents section carries its own note, and a section-level statement is the
+    right size for four documents that share one reason.
+    """
+    text = (DOCS / "README.md").read_text(encoding="utf-8")
+    main_table = text.split("## Design documents", 1)[0]
+
+    problems: list[str] = []
+    for line in main_table.splitlines():
+        if not line.startswith("| "):
+            continue
+        for target in re.findall(r"\]\(([^)#\s]+\.md)\)", line):
+            path = (DOCS / target).resolve()
+            if not path.exists() or _cjk_share(path) <= 0.30:
+                continue
+            if "Chinese" not in line:
+                problems.append(f"docs/{target} 是中文页，但英文索引的这一行没说")
+
+    assert not problems, (
+        "英文索引把中文页当成英文页列出来了。读者不会先读文件名再判断，他们会点进去：\n  " + "\n  ".join(problems)
+    )
+
+
 def test_every_page_is_reachable_from_somewhere() -> None:
     """A page nothing links to is a page nobody reads, and one was sitting in the repository.
 
