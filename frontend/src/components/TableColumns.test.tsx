@@ -92,25 +92,22 @@ const WIRE_RULES = [
   },
 ];
 
-const WIRE_ONTOLOGIES = [
-  { id: 1, name: '合同管理', domain: '合同管理', version: '0.1.0', status: 'draft', objectCount: 4 },
-];
+// `WIRE_ONTOLOGIES` lived here, used only by the first of the two duplicate `vi.mock` blocks.
+// Removing the duplicate left it unused, and `tsc` said so -- which is the compiler doing the
+// job the duplicate had quietly prevented.
 
-vi.mock('../api', async () => {
-  const actual = await vi.importActual<typeof import('../api')>('../api');
-  const page = (items: unknown[]) => ({
-    items,
-    pagination: { limit: 50, offset: 0, total: items.length, hasMore: false },
-  });
-  return {
-    ...actual,
-    ontologyApi: {
-      list: vi.fn(async () => WIRE_ONTOLOGIES),
-      getMappings: vi.fn(async () => page(WIRE_MAPPINGS)),
-      getRules: vi.fn(async () => page(WIRE_RULES)),
-    },
-  };
-});
+// **One `vi.mock('../api')` in this file, and the second one used to be here.**
+//
+// The file was grown in two rounds -- first the mapping and rule queues, then everything else --
+// and each round added its own mock. Two factories for one module path is not "both apply":
+// which one wins is undefined, and it changed with the module graph. In CI the first won, so
+// `dataSourceApi`, `permissionApi`, `backupApi`, `tenancyApi` and the rest fell through to the
+// real client, every page's fetch rejected, and 23 of 27 tests failed with 「还没有数据行」 and an
+// antd error toast. Locally the second won and everything passed.
+//
+// The tell was that the first four tests passed: they are the ones that need only `ontologyApi`,
+// which both factories provided. A suite whose failures line up with which mock block won is
+// reporting the duplicate, not the pages.
 
 afterEach(cleanup);
 

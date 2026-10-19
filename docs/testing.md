@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1885 tests**, all passing. A case that needs something this machine does not have skips
+**1886 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -95,6 +95,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 | `test_packaging.py` | 16 | Packaging: the project is installable, and the install is usable |
 | `test_workbench_and_graph.py` | 15 | Workbench aggregation and knowledge graph projection |
 | `test_value_domain_mapping.py` | 13 | Value domain mapping: legacy codes to semantic states |
+| `test_frontend_test_hygiene.py` | 1 | A test file mocks a module once: two factories for one path is undefined, and it made the same commit pass one CI run and fail the next |
 | `test_frontend_type_agreement.py` | 97 | The frontend's hand-written types must agree with the API they mirror, on both sides |
 | `test_frontend_serving.py` | 4 | Same-origin production admin shell and API transport prefix |
 | `test_metrics.py` | 5 | Prometheus-compatible runtime metrics and safe re-initialisation |

@@ -8,7 +8,7 @@
 .venv/bin/python -m pytest
 ```
 
-**1885 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
+**1886 个测试**，全绿。需要某种本机没有的东西时，用例**跳过而不是失败**：
 MySQL／PostgreSQL 相关用例在缺驱动或连不上服务时跳过，前端相关用例在没有构建产物时跳过。
 在没装这两个驱动的开发机上这是 **9 个**跳过，在 CI 上是 **3 个**——CI 两个驱动都装，
 并把两个数据库作为 service container 起起来。把数字写死在这里，描述的是读文档那台机器而不是测试套件，
@@ -89,6 +89,7 @@ CI 在 3.11／3.12／3.13 上各跑一遍完整测试——**声明支持而不�
 | `test_packaging.py` | 16 | 打包：项目可安装，装完可用 |
 | `test_workbench_and_graph.py` | 15 | 工作台聚合与知识图谱投影 |
 | `test_value_domain_mapping.py` | 13 | 值域映射：存量代码到语义状态 |
+| `test_frontend_test_hygiene.py` | 1 | 一个测试文件只 mock 一个模块一次：同一个路径两个工厂是未定义行为，它让同一份提交一次过、一次红 |
 | `test_frontend_type_agreement.py` | 97 | 前端手写的类型必须与它所映射的 API 一致，两侧都要 |
 | `test_frontend_serving.py` | 4 | 同源生产管理端与 API 传输前缀 |
 | `test_metrics.py` | 5 | Prometheus 兼容运行指标与安全重复初始化 |
