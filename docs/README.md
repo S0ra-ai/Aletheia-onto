@@ -11,6 +11,7 @@ Start with the [README](../README.md). This tree holds the depth the entry point
 | [Architecture](architecture.md) | Layers, data flow, and the three invariants behind them |
 | [Capability matrix](capabilities.md) | Per-item implementation status and location |
 | [Current limitations](limitations.md) | What it cannot do, and why that is design |
+| [Framework readiness](framework-readiness.md) | Adopt, extend, govern, operate — and what is still missing |
 | [Design decisions](design-decisions.md) | Key trade-offs, each covered by a test |
 | [Configuration](configuration.md) | Every environment variable |
 | [Self-hosted deployment](deployment.md) | Images, orchestration, preflight |
@@ -54,9 +55,11 @@ is itself worth being able to see.
 | [架构](architecture.zh-CN.md) | 分层、数据流，以及背后的三条不变量 |
 | [能力矩阵](capabilities.zh-CN.md) | 逐项实现状态与位置 |
 | [当前限制](limitations.zh-CN.md) | 做不到什么，以及为什么那是设计 |
+| [框架成熟度](framework-readiness.zh-CN.md) | 采用、扩展、治理、运维——以及现在还缺什么 |
 | [设计决策](design-decisions.zh-CN.md) | 关键取舍，均有测试覆盖 |
 | [配置](configuration.zh-CN.md) | 全部环境变量 |
 | [私有化部署](deployment.zh-CN.md) | 镜像、编排、部署前自检 |
+| [角色与能力](roles.zh-CN.md) | 六个角色、六项能力，默认拒绝的策略表 |
 | [扩展指南](extending.md) | 数据源、规则函数、检索后端、写回执行器 |
 | [接入自定义模型服务](model-endpoints.md) | Azure OpenAI、vLLM、中转网关 |
 | [测试](testing.zh-CN.md) | 分布、静态检查，以及为什么这样断言 |

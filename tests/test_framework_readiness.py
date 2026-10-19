@@ -156,9 +156,19 @@ def test_the_page_is_reachable_from_the_README() -> None:
 
     `tests/test_documentation_links.py` checks that links resolve; this checks that the one
     link that matters for this page was not simply left out.
+
+    **Each README links the edition in its own language.** The page has two now, and the
+    Chinese README used to send its reader to the English one -- which was the state of the
+    whole documentation until `tests/test_bilingual_documents.py` started comparing pairs.
+    Asserting the *target* rather than the bare filename is what caught that.
     """
-    for name in ("README.md", "README.zh-CN.md"):
+    for name, target in (
+        ("README.md", "framework-readiness.md"),
+        ("README.zh-CN.md", "framework-readiness.zh-CN.md"),
+    ):
         readme = (ROOT / name).read_text(encoding="utf-8")
-        assert "framework-readiness.md" in readme, (
-            f"{name} 没有指向框架成熟度这一页——读者不会找到它。两份 README 都要有：只在一份里就等于只对一半读者可见。"
+        assert target in readme, (
+            f"{name} 没有指向本语言版本的框架成熟度那一页——读者会被送到另一种语言。"
+            "两份 README 都要有：只在一份里就等于只对一半读者可见。"
         )
+        assert (ROOT / "docs" / target).exists(), f"{name} 指向了 docs/{target}，但它不存在"
