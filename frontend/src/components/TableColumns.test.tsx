@@ -25,6 +25,7 @@ import DataSourceDetail from '../pages/datasource/DataSourceDetail';
 import ModellingExtensions from '../pages/ontology/ModellingExtensions';
 import SemanticService from '../pages/semantic';
 import InstanceDrawer from '../pages/objects/InstanceDrawer';
+import Workbench from '../pages/workbench';
 
 /**
  * The cells, rendered and read.
@@ -433,6 +434,7 @@ vi.mock('../api', async () => {
       get: vi.fn(async () => normalizeWorkflow(WIRE_WORKFLOWS[0])),
     },
     backupApi: { list: vi.fn(async () => WIRE_BACKUPS) },
+    workbenchApi: { get: vi.fn(async () => WIRE_WORKBENCH) },
     semanticApi: {
       explain: vi.fn(async () => WIRE_DRAWER_EXPLAIN),
       assess: vi.fn(async () => WIRE_ASSESS),
@@ -1682,5 +1684,76 @@ describe('InstanceDrawer', () => {
     const [, , , versions] = await waitForTables(4);
     expect(versions.rows.length).toBe(WIRE_INSTANCE_VERSIONS.length);
     expect(blankColumns(versions)).toEqual([]);
+  });
+});
+
+// -- The workbench: what to do next -----------------------------------------------------------
+
+/**
+ * `Workbench`, in full. The page destructures every section at the top of its render, so a
+ * fixture missing one throws before any table is drawn -- `summary` and `knowledge` in
+ * particular are read for the header statistics, not for the table this test reads.
+ *
+ * The action items are a `<List>`, not a `<Table>`; the recent decisions are the table.
+ */
+const WIRE_WORKBENCH = {
+  generatedAt: '2026-01-02 09:00:00',
+  dataSources: { total: 1, scanned: 1, unscanned: 0, withBusinessApi: 0, tables: 2, columns: 9 },
+  ontologies: {
+    total: 1,
+    draft: 1,
+    published: 0,
+    byStatus: { draft: 1 },
+    objects: 2,
+    attributes: 4,
+    relations: 1,
+    unboundObjects: 0,
+  },
+  governance: {
+    pendingMappings: 0,
+    confirmedMappings: 1,
+    rejectedMappings: 0,
+    mappingsByStatus: { confirmed: 1 },
+    reviewableTransitions: 0,
+    auditEntries: 1,
+  },
+  rules: {
+    total: 1,
+    blocking: 1,
+    warning: 0,
+    info: 0,
+    bySeverity: { blocking: 1 },
+    byStatus: { published: 1 },
+    objectsWithoutRules: 1,
+  },
+  decisions: {
+    total: 1,
+    byStatus: { approved: 1 },
+    blocked: 0,
+    review: 0,
+    approved: 1,
+    recent: [
+      {
+        decisionId: '9',
+        decisionType: 'operation',
+        objectCode: 'contract',
+        instanceId: '1',
+        status: 'approved',
+        actor: 'analyst',
+        createdAt: '2026-01-02 09:00:00',
+      },
+    ],
+  },
+  knowledge: { valueMappings: 0, confirmedValueMappings: 0, pendingValueMappings: 0 },
+  actionItems: [],
+  summary: { blockers: 0, warnings: 0, totalActionItems: 0 },
+};
+
+describe('Workbench', () => {
+  it('renders a value in every cell of the recent-decisions table', async () => {
+    renderPage(<Workbench />);
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_WORKBENCH.decisions.recent.length);
+    expect(blankColumns(table)).toEqual([]);
   });
 });

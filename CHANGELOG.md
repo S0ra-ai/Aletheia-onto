@@ -905,6 +905,14 @@
   顺带修了解析器自己的一个坑：`export type X = Generated.Y;` 是别名，而 `generated.ts` 里
   还有一个**同名**的接口（响应外壳）。不解析别名就会拿外壳去比，把一个正确的函数报成错——
   和这一整轮反复出现的是同一个形状：**读错了那一份声明，比不读更糟**。
+
+- **工作台的「最近判定」表**（`workbench/index.tsx`、`TableColumns.test.tsx`）。
+  这一页的行动项是 `<List>` 而不是 `<Table>`，所以只有一张表。
+  fixture 按 `Workbench` 类型补全——页面在渲染开头就把每个分区解构出来，
+  少一个分区会在画表之前抛错，`summary` 与 `knowledge` 尤其如此（它们只供页头统计用，
+  与这张表无关，但缺了照样挂）。
+
+  组件测试现在覆盖 18 个页面 40 张表。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**
