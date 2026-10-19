@@ -1090,8 +1090,8 @@
 
 - **跨文档锚点从来没有被检查过，而它已经坏了三处**
   （`tests/test_documentation_links.py`、`docs/limitations*.md`、`ROADMAP.md`）。
-  锚点测试只读 `](#...)`——链到**同一页**的锚点。链到**另一页**某一节的
-  `[text](other.md#section)` 既没被跟随也没被检查：
+  锚点测试只读 `](#...)`——链到**同一页**的锚点。链到**另一页**某一节的写法
+  （`other.md#section` 这种）既没被跟随也没被检查：
 
   - `limitations.zh-CN.md` 链到 `README.zh-CN.md#本体与规则`，而 README 里从来没有这个标题；
   - `ROADMAP.md` 链到 `README.md#能力矩阵` 与 `README.md#当前限制`——两个中文锚点，
