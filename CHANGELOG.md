@@ -778,6 +778,22 @@
   守卫是能拦住它的那条最窄的规则：**一个 job 只要调用 `python`，就必须装 Python**；
   如果它跑 `pytest`，还必须装依赖——只装解释器不够，runner 自带的 python 里没有 pytest，
   而正是那个状态造成了这次失败。
+
+- **本体详情页六张表第一次被读取，读出一个永远空着的列**
+  （`OntologyDetail.tsx`、`TableColumns.test.tsx`、`docs/framework-readiness.md`）。
+  对象、属性、关系、映射、规则、发布门禁六个标签页各有一张表，此前一张都没被测过。
+  属性和「属性描述」这一列**不可能有值**：`business_attribute` 在 schema 里没有 description 列，
+  `_business_attribute_row` 直接写死 `"description": ""`。每一行、每一个本体，那一列都是空的。
+  两边各自自洽——后端返回它承诺返回的，前端渲染它声明要渲染的——**裂缝只在两者之间**，
+  只有把表真正渲染出来读格子才看得见。该列已删除。
+
+  写这组测试时 fixture 也踩了同一个坑两次，都记在注释里：
+  页面读的是 `ontology.ontology.status`（`summarize_ontology` 把摘要行同时铺在顶层和 `ontology` 下），
+  以及 `releaseReadiness.summary.passedGates`——照「看起来合理」的载荷写，会在渲染时抛
+  `Cannot read properties of undefined`，而不是变成一个空表。**一个抛错的页面和一个空表，
+  在只数行的断言里长得一模一样**，所以 fixture 必须来自后端的行构造器。
+
+  组件测试现在覆盖 10 个页面 21 张表；成熟度页面上那个数字由测试自己数文件得出。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

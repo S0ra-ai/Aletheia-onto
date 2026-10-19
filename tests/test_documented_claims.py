@@ -366,7 +366,9 @@ def test_the_component_coverage_number_matches_the_component_tests() -> None:
     tables = len(re.findall(r"it\('renders a value in every cell of ", source))
 
     claimed = re.search(
-        r"cover (\w+) tables across (\w+) screens",
+        # Hyphenated number words included: the count reached "twenty-one", and `\w+` stops at
+        # the hyphen, matching "twenty" and then failing to find " tables across".
+        r"cover ([\w-]+) tables across ([\w-]+) screens",
         (ROOT / "docs" / "framework-readiness.md").read_text(encoding="utf-8"),
     )
     assert claimed, "框架成熟度页面上的组件测试那一行改写了，这里要跟着改"
@@ -381,6 +383,10 @@ def test_the_component_coverage_number_matches_the_component_tests() -> None:
         "eighteen": 18,
         "nineteen": 19,
         "twenty": 20,
+        "twenty-one": 21,
+        "twenty-two": 22,
+        "twenty-three": 23,
+        "twenty-four": 24,
     }
     asserted = words.get(claimed.group(1))
     assert asserted is not None, (

@@ -124,7 +124,11 @@ const OntologyDetailPage: React.FC = () => {
     { title: t('ontology.name'), dataIndex: 'name', key: 'name' },
     { title: t('ontology.dataType'), dataIndex: 'dataType', key: 'dataType', render: (type: string) => <Tag>{type}</Tag> },
     { title: t('ontology.sourceColumn'), dataIndex: 'sourceColumn', key: 'sourceColumn' },
-    { title: t('ontology.description'), dataIndex: 'description', key: 'description' },
+    // There is deliberately no 描述 column here. `business_attribute` has no description
+    // column in the schema, and `_business_attribute_row` hardcodes `"description": ""` -- so
+    // the column rendered blank for every row of every ontology. It was found by writing the
+    // component test that reads this table, which is the only place it could have been seen:
+    // the backend was consistent with itself and the frontend was consistent with itself.
   ];
 
   const relationColumns = [

@@ -5,7 +5,7 @@
 import React from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, cleanup, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import { LocaleProvider } from '../i18n/locale';
 import MappingList from '../pages/mapping/MappingList';
@@ -17,6 +17,7 @@ import Governance from '../pages/governance';
 import WorkflowManager from '../pages/workflow/WorkflowManager';
 import BackupManager from '../pages/backup/BackupManager';
 import TenancyManager from '../pages/tenancy/TenancyManager';
+import OntologyDetail from '../pages/ontology/OntologyDetail';
 
 /**
  * The cells, rendered and read.
@@ -117,6 +118,26 @@ function renderPage(component: React.ReactElement, route = '/') {
   return render(
     <LocaleProvider>
       <MemoryRouter initialEntries={[route]}>{component}</MemoryRouter>
+    </LocaleProvider>,
+  );
+}
+
+/**
+ * The same, under a matching `<Route>`, for a page that reads `useParams`.
+ *
+ * `MemoryRouter initialEntries` alone does not populate `useParams`: the parameter comes from a
+ * route *match*, not from the address bar. `OntologyDetail` reads `:id` that way, so rendering
+ * it without a Route leaves `id` undefined and the page short-circuits to `notFound` -- which is
+ * a table that renders nothing, and the assertions would then pass on an empty document.
+ */
+function renderRouted(component: React.ReactElement, entry: string, path: string) {
+  return render(
+    <LocaleProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path={path} element={component} />
+        </Routes>
+      </MemoryRouter>
     </LocaleProvider>,
   );
 }
@@ -341,6 +362,8 @@ vi.mock('../api', async () => {
     ...actual,
     ontologyApi: {
       list: vi.fn(async () => WIRE_ONTOLOGY_LIST),
+      get: vi.fn(async () => WIRE_ONTOLOGY_DETAIL),
+      getReleaseReadiness: vi.fn(async () => WIRE_RELEASE_READINESS),
       getMappings: vi.fn(async () => page(WIRE_MAPPINGS)),
       getRules: vi.fn(async () => page(WIRE_RULES)),
     },
@@ -790,6 +813,152 @@ describe('TenancyManager', () => {
     renderPage(<TenancyManager />);
     const table = await waitForRows();
     expect(table.rows.length).toBe(WIRE_TENANTS.items.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+});
+
+// -- The ontology detail page: six tables behind six tabs ------------------------------------
+
+/**
+ * `/ontologies/{id}` returns five lists beside the summary, and the page renders one table per
+ * tab. Nothing read any of them, and one had a column that could never hold a value: the
+ * attributes table asked for `description`, `business_attribute` has no such column in the
+ * schema, and `_business_attribute_row` hardcodes `"description": ""`. Every cell was blank in
+ * every ontology. Both sides were internally consistent; only a test that renders the table and
+ * reads the cells can see the seam between them.
+ *
+ * Field names come from the row shapers in `backend/ontology_platform/ontology.py`
+ * (`_business_object_row`, `_business_attribute_row`, `_business_relation_row`,
+ * `business_rule_row`), not from this page.
+ */
+const WIRE_ONTOLOGY_DETAIL = {
+  id: 1,
+  name: '合同管理',
+  domain: '合同管理',
+  version: '0.1.0',
+  status: 'draft',
+  // `summarize_ontology` returns the summary row twice: spread at the top level *and* under
+  // `ontology`. The header renders `ontology.ontology.*`, so a fixture with only the flat form
+  // throws on `undefined.status` -- which is how this shape was found.
+  ontology: {
+    id: 1,
+    name: '合同管理',
+    domain: '合同管理',
+    version: '0.1.0',
+    status: 'draft',
+    createdAt: '2026-01-02 08:00:00',
+  },
+  objects: [
+    { id: 1, code: 'contract', name: '合同', sourceTable: 'contract', description: '一份已签署的合同。' },
+    { id: 2, code: 'party', name: '签约方', sourceTable: 'party', description: '合同的一方。' },
+  ],
+  attributes: [
+    { id: 1, objectCode: 'contract', code: 'amount', name: '金额', dataType: 'number', sourceColumn: 'amount', required: true },
+    { id: 2, objectCode: 'contract', code: 'credit_status', name: '信用状态', dataType: 'string', sourceColumn: 'credit_status', required: false },
+  ],
+  relations: [
+    { id: 1, code: 'contract_party', name: '签约方', type: 'many_to_one', sourceForeignKey: 'party_id' },
+  ],
+  mappings: [
+    {
+      id: 1,
+      mappingType: 'column_to_attribute',
+      sourceTable: 'contract',
+      sourceColumn: 'credit_status',
+      targetObjectCode: 'contract',
+      targetAttributeCode: 'creditStatus',
+      confidence: 0.92,
+      status: 'confirmed',
+    },
+  ],
+  rules: [
+    { id: 1, code: 'amount_positive', name: '金额必须为正', severity: 'blocking', enabled: true, expression: 'amount > 0' },
+  ],
+};
+
+const WIRE_RELEASE_READINESS = {
+  ontologyId: 1,
+  name: '合同管理',
+  version: '0.1.0',
+  status: 'blocked',
+  summary: {
+    objects: 2,
+    dataSources: 1,
+    confirmedMappings: 1,
+    pendingMappings: 0,
+    rejectedMappings: 0,
+    publishedRules: 1,
+    passedGates: 1,
+    totalGates: 2,
+    blockers: 1,
+    warnings: 0,
+  },
+  gates: [
+    {
+      code: 'business_objects',
+      name: '业务对象',
+      passed: true,
+      severity: 'blocker',
+      numbers: { objects: 2 },
+      status: 'draft',
+      evidence: '识别到 2 个业务对象。',
+      remediation: '',
+    },
+    {
+      code: 'ontology_status',
+      name: '本体状态',
+      passed: false,
+      severity: 'blocker',
+      numbers: {},
+      status: 'draft',
+      evidence: '当前状态 draft。',
+      remediation: '确认映射后发布。',
+    },
+  ],
+  dataSources: [],
+  nextActions: [],
+};
+
+describe('OntologyDetail', () => {
+  it('renders a value in every cell of the objects table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_ONTOLOGY_DETAIL.objects.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the attributes table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1?tab=attributes', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_ONTOLOGY_DETAIL.attributes.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the relations table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1?tab=relations', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_ONTOLOGY_DETAIL.relations.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the mappings table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1?tab=mappings', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_ONTOLOGY_DETAIL.mappings.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the rules table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1?tab=rules', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_ONTOLOGY_DETAIL.rules.length);
+    expect(blankColumns(table)).toEqual([]);
+  });
+
+  it('renders a value in every cell of the release-gate table', async () => {
+    renderRouted(<OntologyDetail />, '/ontologies/1?tab=release', '/ontologies/:id');
+    const table = await waitForRows();
+    expect(table.rows.length).toBe(WIRE_RELEASE_READINESS.gates.length);
     expect(blankColumns(table)).toEqual([]);
   });
 });
