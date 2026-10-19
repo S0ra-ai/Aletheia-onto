@@ -621,12 +621,18 @@ def test_the_documented_scale_is_current() -> None:
     assert claim, "docs/testing.zh-CN.md 规模一节格式已变，请同步本测试"
     stated_modules, stated_lines, stated_endpoints, stated_tables = (int(value) for value in claim.groups())
 
-    english = regex.search(r"(\d+) backend modules, roughly ([\d,]+) lines, (\d+) API endpoints", en)
+    # The table count was captured from the Chinese page only. The English page states it in
+    # the same sentence, so it could drift alone -- the exact failure the two-language check in
+    # this file exists to prevent, sitting in the one number it did not read.
+    english = regex.search(
+        r"(\d+) backend modules, roughly ([\d,]+) lines, (\d+) API endpoints, (\d+) platform tables", en
+    )
     assert english, "docs/testing.md 规模一节格式已变，请同步本测试"
-    en_modules, en_lines, en_endpoints = (
+    en_modules, en_lines, en_endpoints, en_tables = (
         int(english.group(1)),
         int(english.group(2).replace(",", "")),
         int(english.group(3)),
+        int(english.group(4)),
     )
 
     assert stated_modules == len(modules), f"声明 {stated_modules} 个模块，实际 {len(modules)}"
@@ -640,6 +646,7 @@ def test_the_documented_scale_is_current() -> None:
 
     tables = _platform_table_count()
     assert stated_tables == tables, f"声明 {stated_tables} 张平台表，实际 {tables}"
+    assert en_tables == tables, f"docs/testing.md 声明 {en_tables} 张平台表，实际 {tables}"
 
 
 def _platform_table_count() -> int:
