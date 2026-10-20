@@ -8,7 +8,7 @@ Back to [English README](../README.md) · [中文 README](../README.zh-CN.md)
 .venv/bin/python -m pytest
 ```
 
-**1961 tests**, all passing. A case that needs something this machine does not have skips
+**1962 tests**, all passing. A case that needs something this machine does not have skips
 rather than fails: the MySQL and PostgreSQL cases without their driver or a reachable server,
 the frontend ones without a build. That is **nine** skips on a developer machine with neither
 database driver and **three** in CI, which installs both drivers and runs both databases as
@@ -44,7 +44,7 @@ unreachable from the tenant, IRI namespace stability, forged signature rejection
 
 | File | Count | Covers |
 |---|--:|---|
-| `test_documentation_links.py` | 204 | Documentation links resolve, and the entry points a newcomer needs exist |
+| `test_documentation_links.py` | 205 | Documentation links resolve, and the entry points a newcomer needs exist |
 | `test_error_codes.py` | 14 | Refusal codes: the registry quotes sentences the platform says, and the console can name every one of them |
 | `test_query_limit_clamping.py` | 8 | A caller-supplied `limit` cannot widen a response past the cap (SQLite reads `LIMIT -1` as "no limit") |
 | `test_list_pagination.py` | 21 | Every list that grows with the customer's data takes a page; not passing a limit still returns everything |

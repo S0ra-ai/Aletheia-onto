@@ -256,3 +256,23 @@ def test_cross_document_anchors_resolve(document: Path) -> None:
             broken.append(f"[{match.group(1)}]({match.group(2)}#{anchor}) — 锚点不存在")
 
     assert not broken, f"{document.relative_to(ROOT)} 中的跨文档锚点失效: {broken}"
+
+
+def test_the_docs_index_reaches_every_page_in_the_directory() -> None:
+    """An index that omits a page is an index that sends the reader looking for it elsewhere.
+
+    Three pages existed and were absent from `docs/README.md`: the Chinese extension guide, and
+    both editions of the production checklist. Worse, the Chinese half of the index linked
+    `extending.md` -- so a Chinese reader was handed the English page while a Chinese one sat in
+    the same directory, which is the failure `tests/test_bilingual_documents.py` exists to
+    prevent and could not see here because both files are valid.
+
+    Reachability from the READMEs is checked elsewhere; this is the narrower claim the index
+    makes about itself: *this* page lists *this* tree.
+    """
+    index = ROOT / "docs" / "README.md"
+    linked = {Path(target).name for target in re.findall(r"\]\(([^)#\s]+\.md)", index.read_text(encoding="utf-8"))}
+    pages = {path.name for path in (ROOT / "docs").glob("*.md")} - {"README.md"}
+
+    missing = sorted(pages - linked)
+    assert not missing, "docs/README.md 没有列出这些页面——读者从索引里找不到它们：\n  " + "\n  ".join(missing)

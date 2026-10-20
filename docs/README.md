@@ -15,6 +15,7 @@ Start with the [README](../README.md). This tree holds the depth the entry point
 | [Design decisions](design-decisions.md) | Key trade-offs, each covered by a test |
 | [Configuration](configuration.md) | Every environment variable |
 | [Self-hosted deployment](deployment.md) | Images, orchestration, preflight |
+| [Production checklist](production-checklist.md) | Infrastructure, secrets, and the defaults that are safe only before go-live |
 | [Roles and capabilities](roles.md) | Six capabilities across six roles |
 | [Extension guide](extending.md) | Data sources, rule functions, retrieval backends, writeback |
 | [Model endpoints](model-endpoints.md) | Azure OpenAI, vLLM, gateways |
@@ -66,8 +67,9 @@ is itself worth being able to see. **They are written in Chinese.**
 | [设计决策](design-decisions.zh-CN.md) | 关键取舍，均有测试覆盖 |
 | [配置](configuration.zh-CN.md) | 全部环境变量 |
 | [私有化部署](deployment.zh-CN.md) | 镜像、编排、部署前自检 |
+| [生产环境检查清单](production-checklist.zh-CN.md) | 基础设施、密钥，以及只在上线前才安全的默认值 |
 | [角色与能力](roles.zh-CN.md) | 六个角色、六项能力，默认拒绝的策略表 |
-| [扩展指南](extending.md) | 数据源、规则函数、检索后端、写回执行器 |
+| [扩展指南](extending.zh-CN.md) | 数据源、规则函数、检索后端、写回执行器 |
 | [接入自定义模型服务](model-endpoints.zh-CN.md) | Azure OpenAI、vLLM、中转网关 |
 | [运维](operations.zh-CN.md) | 监控、日志、备份恢复、升级 |
 | [测试](testing.zh-CN.md) | 分布、静态检查，以及为什么这样断言 |
