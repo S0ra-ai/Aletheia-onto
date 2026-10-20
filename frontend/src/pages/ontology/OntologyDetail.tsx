@@ -11,7 +11,6 @@ import { useTabParam } from '../../hooks/useTabParam';
 import ModellingExtensions from './ModellingExtensions';
 
 const { Title } = Typography;
-const { TabPane } = Tabs;
 
 const OntologyDetailPage: React.FC = () => {
   const label = useLabel();
@@ -368,43 +367,80 @@ const OntologyDetailPage: React.FC = () => {
       )}
 
       <Card>
-        <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={t('ontology.objectsTab', { count: ontology.objects.length })} key="objects">
+        <Tabs
+          activeKey={tab}
+          onChange={setTab}
+          items={[
+            {
+              key: 'objects',
+              label: t('ontology.objectsTab', { count: ontology.objects.length }),
+              children: (
+                <>
             <Table
               columns={objectColumns}
               dataSource={ontology.objects}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('ontology.attributesTab', { count: ontology.attributes.length })} key="attributes">
+                </>
+              ),
+            },
+            {
+              key: 'attributes',
+              label: t('ontology.attributesTab', { count: ontology.attributes.length }),
+              children: (
+                <>
             <Table
               columns={attributeColumns}
               dataSource={ontology.attributes}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('ontology.relationsTab', { count: ontology.relations.length })} key="relations">
+                </>
+              ),
+            },
+            {
+              key: 'relations',
+              label: t('ontology.relationsTab', { count: ontology.relations.length }),
+              children: (
+                <>
             <Table
               columns={relationColumns}
               dataSource={ontology.relations}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('ontology.mappingsTab', { count: ontology.mappings.length })} key="mappings">
+                </>
+              ),
+            },
+            {
+              key: 'mappings',
+              label: t('ontology.mappingsTab', { count: ontology.mappings.length }),
+              children: (
+                <>
             <Table
               columns={mappingColumns}
               dataSource={ontology.mappings}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('ontology.rulesTab', { count: ontology.rules.length })} key="rules">
+                </>
+              ),
+            },
+            {
+              key: 'rules',
+              label: t('ontology.rulesTab', { count: ontology.rules.length }),
+              children: (
+                <>
             <Table
               columns={ruleColumns}
               dataSource={ontology.rules}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('ontology.releaseGatesTab')} key="release">
+                </>
+              ),
+            },
+            {
+              key: 'release',
+              label: t('ontology.releaseGatesTab'),
+              children: (
+                <>
             {/*
               The gate's verdict had no door: this tab listed what blocks a release, the card
               above listed what is ready, and there was no way to publish from the application
@@ -448,15 +484,24 @@ const OntologyDetailPage: React.FC = () => {
               rowKey="code"
               pagination={false}
             />
-          </TabPane>
-          <TabPane tab={t('ontology.extensionsTab')} key="extensions">
+                </>
+              ),
+            },
+            {
+              key: 'extensions',
+              label: t('ontology.extensionsTab'),
+              children: (
+                <>
             <ModellingExtensions
               ontologyId={ontology.ontology.id}
               objects={ontology.objects ?? []}
               readOnly={['published', 'reviewing'].includes(ontology.ontology.status)}
             />
-          </TabPane>
-        </Tabs>
+                </>
+              ),
+            },
+          ]}
+        />
       </Card>
     </div>
   );

@@ -10,7 +10,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title, Paragraph } = Typography;
-const { TabPane } = Tabs;
 
 const SemanticService: React.FC = () => {
   const label = useLabel();
@@ -265,8 +264,15 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
         {t('semantic.subtitle')}
       </Paragraph>
 
-      <Tabs activeKey={tab} onChange={setTab}>
-        <TabPane tab={t('semantic.tab.natural')} key="natural">
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          {
+            key: 'natural',
+            label: t('semantic.tab.natural'),
+            children: (
+              <>
           <Card>
             <Form
               form={naturalForm}
@@ -340,9 +346,15 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
               </Card>
             )}
           </Card>
-        </TabPane>
+              </>
+            ),
 
-        <TabPane tab={t('semantic.tab.explain')} key="explain">
+          },
+          {
+            key: 'explain',
+            label: t('semantic.tab.explain'),
+            children: (
+              <>
           <Card>
             <Form form={explainForm} layout="inline" onFinish={handleExplain}>
               <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
@@ -424,9 +436,15 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
               </Card>
             )}
           </Card>
-        </TabPane>
+              </>
+            ),
 
-        <TabPane tab={t('semantic.tab.assess')} key="assess">
+          },
+          {
+            key: 'assess',
+            label: t('semantic.tab.assess'),
+            children: (
+              <>
           <Card>
             <Form form={assessForm} layout="inline" onFinish={handleAssess}>
               <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
@@ -475,9 +493,15 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
               </Card>
             )}
           </Card>
-        </TabPane>
+              </>
+            ),
 
-        <TabPane tab={t('semantic.tab.consistency')} key="consistency">
+          },
+          {
+            key: 'consistency',
+            label: t('semantic.tab.consistency'),
+            children: (
+              <>
           <Card>
             <Form form={consistencyForm} layout="vertical" onFinish={handleConsistency} initialValues={{ limit: 50 }}>
               <Form.Item name="objectCode" label={t('semantic.objectCode')} rules={[{ required: true }]}>
@@ -554,9 +578,15 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
               </Card>
             )}
           </Card>
-        </TabPane>
+              </>
+            ),
 
-        <TabPane tab={t('semantic.tab.preflight')} key="preflight">
+          },
+          {
+            key: 'preflight',
+            label: t('semantic.tab.preflight'),
+            children: (
+              <>
           <Card>
             <Form form={operationForm} layout="vertical" onFinish={handlePreflight} initialValues={{ dryRun: true }}>
               <Form.Item name="operationCode" label={t('semantic.operationCode')} rules={[{ required: true }]}>
@@ -656,8 +686,11 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
               </Card>
             )}
           </Card>
-        </TabPane>
-      </Tabs>
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 };

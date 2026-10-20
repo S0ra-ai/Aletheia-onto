@@ -10,7 +10,6 @@ import AuditReportPanel from './AuditReportPanel';
 import { codedText } from '../../i18n/text';
 
 const { Title } = Typography;
-const { TabPane } = Tabs;
 
 const Governance: React.FC = () => {
   const t = useT();
@@ -197,35 +196,49 @@ const Governance: React.FC = () => {
       </div>
 
       <Card>
-        <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={t('governance.tabDecisions', { count: decisions.length })} key="decisions">
-            <Table
-              columns={decisionColumns}
-              dataSource={decisions}
-              rowKey="decisionId"
-              loading={loading}
-            />
-          </TabPane>
-          <TabPane tab={t('governance.tabAudit', { count: auditLogs.length })} key="audit">
-            <Table
-              columns={auditColumns}
-              dataSource={auditLogs}
-              rowKey={(record) => `${record.created_at}-${record.action}`}
-              loading={loading}
-            />
-          </TabPane>
-          <TabPane tab={t('governance.tabInvocations', { count: modelInvocations.length })} key="invocations">
-            <Table
-              columns={invocationColumns}
-              dataSource={modelInvocations}
-              rowKey={(record) => `${record.created_at}-${record.model}`}
-              loading={loading}
-            />
-          </TabPane>
-          <TabPane tab={t('governance.tabReport')} key="report">
-            <AuditReportPanel />
-          </TabPane>
-        </Tabs>
+        <Tabs
+          activeKey={tab}
+          onChange={setTab}
+          items={[
+            {
+              key: 'decisions',
+              label: t('governance.tabDecisions', { count: decisions.length }),
+              children: (
+                <Table
+                  columns={decisionColumns}
+                  dataSource={decisions}
+                  rowKey="decisionId"
+                  loading={loading}
+                />
+              ),
+            },
+            {
+              key: 'audit',
+              label: t('governance.tabAudit', { count: auditLogs.length }),
+              children: (
+                <Table
+                  columns={auditColumns}
+                  dataSource={auditLogs}
+                  rowKey={(record) => `${record.created_at}-${record.action}`}
+                  loading={loading}
+                />
+              ),
+            },
+            {
+              key: 'invocations',
+              label: t('governance.tabInvocations', { count: modelInvocations.length }),
+              children: (
+                <Table
+                  columns={invocationColumns}
+                  dataSource={modelInvocations}
+                  rowKey={(record) => `${record.created_at}-${record.model}`}
+                  loading={loading}
+                />
+              ),
+            },
+            { key: 'report', label: t('governance.tabReport'), children: <AuditReportPanel /> },
+          ]}
+        />
       </Card>
     </div>
   );

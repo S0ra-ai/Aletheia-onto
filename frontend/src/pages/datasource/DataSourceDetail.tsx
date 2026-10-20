@@ -26,7 +26,6 @@ import type {
 import { useTabParam } from '../../hooks/useTabParam';
 
 const { Title } = Typography;
-const { TabPane } = Tabs;
 
 /**
  * A rule as this page renders it: the rule list's own shape, plus the ontology it came from.
@@ -821,8 +820,15 @@ const DataSourceDetail: React.FC = () => {
       )}
 
       <Card>
-        <Tabs activeKey={tab} onChange={setTab}>
-          <TabPane tab={t('datasource.scannedTablesTab', { count: tables.length })} key="tables">
+        <Tabs
+          activeKey={tab}
+          onChange={setTab}
+          items={[
+            {
+              key: 'tables',
+              label: t('datasource.scannedTablesTab', { count: tables.length }),
+              children: (
+                <>
             <div style={{ marginBottom: 16 }}>
               <Space>
                 <Button
@@ -848,8 +854,14 @@ const DataSourceDetail: React.FC = () => {
               dataSource={tables}
               rowKey="id"
             />
-          </TabPane>
-          <TabPane tab={t('datasource.registeredApisTab', { count: apis.length })} key="apis">
+                </>
+              ),
+            },
+            {
+              key: 'apis',
+              label: t('datasource.registeredApisTab', { count: apis.length }),
+              children: (
+                <>
             <div style={{ marginBottom: 16 }}>
               <Button icon={<PlusOutlined />}>
                 {t('datasource.addApiButton')}
@@ -890,11 +902,23 @@ const DataSourceDetail: React.FC = () => {
               dataSource={operationBindings?.items || []}
               rowKey="operationCode"
             />
-          </TabPane>
-          <TabPane tab={t('datasource.coverageTab')} key="coverage">
+                </>
+              ),
+            },
+            {
+              key: 'coverage',
+              label: t('datasource.coverageTab'),
+              children: (
+                <>
             {renderSemanticCoverage()}
-          </TabPane>
-          <TabPane tab={t('datasource.rulesTab', { count: businessRules.length })} key="rules">
+                </>
+              ),
+            },
+            {
+              key: 'rules',
+              label: t('datasource.rulesTab', { count: businessRules.length }),
+              children: (
+                <>
             <Alert
               style={{ marginBottom: 16 }}
               type="info"
@@ -949,8 +973,14 @@ const DataSourceDetail: React.FC = () => {
                 ),
               }}
             />
-          </TabPane>
-          <TabPane tab={t('datasource.reasoningTitle')} key="reasoning-chain">
+                </>
+              ),
+            },
+            {
+              key: 'reasoning-chain',
+              label: t('datasource.reasoningTitle'),
+              children: (
+                <>
             {!reasoningChain?.initialized ? (
               <Alert type="warning" title={t('datasource.notInitialized')} description={t('datasource.notInitializedHint')} />
             ) : (
@@ -971,16 +1001,25 @@ const DataSourceDetail: React.FC = () => {
                 />
               </Space>
             )}
-          </TabPane>
-          <TabPane tab={t('datasource.readinessTab')} key="readiness">
+                </>
+              ),
+            },
+            {
+              key: 'readiness',
+              label: t('datasource.readinessTab'),
+              children: (
+                <>
             <Table
               columns={readinessColumns}
               dataSource={readiness?.checks || []}
               rowKey="code"
               pagination={false}
             />
-          </TabPane>
-        </Tabs>
+                </>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       <Modal
