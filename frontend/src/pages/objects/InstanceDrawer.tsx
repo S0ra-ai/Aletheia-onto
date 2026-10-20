@@ -142,7 +142,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       title: t('objects.attributeColumn'),
       key: 'attribute',
       render: (_: unknown, row: InstanceExplainAttribute) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Space size={4}>
             <Text strong>{row.attributeName || row.attributeCode}</Text>
             {row.derived && <Tag color="purple">{t('objects.tagDerived')}</Tag>}
@@ -163,7 +163,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       // this table entirely, because the query inner-joined the source column.
       render: (_: unknown, row: InstanceExplainAttribute) =>
         row.derived ? (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t('objects.derivedFromExpression')}
             </Text>
@@ -215,7 +215,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
       title: t('objects.eventColumn'),
       key: 'event',
       render: (_: unknown, row: InstanceEvent) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Text strong>{row.eventName || row.eventCode}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {row.eventCode}
@@ -250,7 +250,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         Object.keys(payload ?? {}).length === 0 ? (
           <Text type="secondary">—</Text>
         ) : (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Text code style={{ fontSize: 12 }}>
               {JSON.stringify(payload)}
             </Text>
@@ -288,12 +288,12 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
   return (
     <Drawer
       open
-      width={880}
+      size={880}
       onClose={onClose}
       title={explain ? `${explain.object.name || objectCode} · ${instanceId}` : `${objectCode} · ${instanceId}`}
     >
       {explainError && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('objects.loadExplainFailed')} description={explainError} />
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} title={t('objects.loadExplainFailed')} description={explainError} />
       )}
 
       {explain && (
@@ -325,7 +325,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message={explanationParts(explain.explanationParts, t, explain.explanation)}
+            title={explanationParts(explain.explanationParts, t, explain.explanation)}
           />
 
           <Text strong>{t('objects.attributesHeading')}</Text>
@@ -405,7 +405,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         {eventTypes.length === 0 && t('objects.eventsNoTypesHint')}
       </Paragraph>
       {eventsError ? (
-        <Alert type="error" showIcon style={{ marginBottom: 24 }} message={t('objects.loadEventsFailed')} description={eventsError} />
+        <Alert type="error" showIcon style={{ marginBottom: 24 }} title={t('objects.loadEventsFailed')} description={eventsError} />
       ) : events && events.length === 0 ? (
         <Empty
           style={{ marginBottom: 24 }}
@@ -430,7 +430,7 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         {t('objects.versionsHintTail')}
       </Paragraph>
       {versionsError ? (
-        <Alert type="error" showIcon message={t('objects.loadVersionsFailed')} description={versionsError} />
+        <Alert type="error" showIcon title={t('objects.loadVersionsFailed')} description={versionsError} />
       ) : versions && versions.versions.length === 0 ? (
         <Empty description={t('objects.emptyNoVersions')} />
       ) : (
@@ -450,13 +450,13 @@ const InstanceDrawer: React.FC<Props> = ({ ontologyId, objectCode, instanceId, o
         onCancel={() => setRecordOpen(false)}
         onOk={() => recordForm.submit()}
         confirmLoading={recording}
-        destroyOnClose
+        destroyOnHidden
       >
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('objects.recordEventNote')}
+          title={t('objects.recordEventNote')}
           description={t('objects.recordEventNoteDescription')}
         />
         <Form form={recordForm} layout="vertical" onFinish={handleRecord}>

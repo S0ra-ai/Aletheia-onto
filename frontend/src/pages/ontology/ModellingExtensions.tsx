@@ -115,11 +115,11 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message={t('ontology.readOnlyTitle')}
+          title={t('ontology.readOnlyTitle')}
           description={t('ontology.readOnlyDetail')}
         />
       )}
-      {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t('ontology.eventTypesLoadFailed')} description={error} />}
+      {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} title={t('ontology.eventTypesLoadFailed')} description={error} />}
 
       <Space style={{ marginBottom: 12 }}>
         <Select
@@ -145,7 +145,7 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
             title: t('ontology.event'),
             key: 'event',
             render: (_: unknown, row) => (
-              <Space direction="vertical" size={0}>
+              <Space orientation="vertical" size={0}>
                 <Text strong>{row.name}</Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {row.code}
@@ -191,7 +191,7 @@ const ModellingExtensions: React.FC<Props> = ({ ontologyId, objects, readOnly })
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={saving}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleDeclare} initialValues={{ category: 'interaction' }}>
           <Form.Item

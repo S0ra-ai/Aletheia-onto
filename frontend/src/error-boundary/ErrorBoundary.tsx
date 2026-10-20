@@ -53,7 +53,7 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ fullPage, error }) => {
       type="error"
       showIcon
       icon={<SafetyOutlined />}
-      message={t('errors.title')}
+      title={t('errors.title')}
       description={
         <div>
           <p style={{ marginBottom: 8 }}>{error?.message || t('errors.unknownShort')}</p>

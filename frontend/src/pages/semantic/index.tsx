@@ -304,7 +304,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
             {naturalLanguageResult && (
               <Card style={{ marginTop: 16 }} type="inner" title={t('semantic.answerTitle')}>
                 <Alert
-                  message={naturalLanguageResult.answer}
+                  title={naturalLanguageResult.answer}
                   type={
                     naturalLanguageResult.intent === 'operation_preflight' || naturalLanguageResult.intent === 'compliance_assessment'
                       ? 'info'
@@ -417,7 +417,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                   ]}
                 />
                 <Title level={5} style={{ marginTop: 16 }}>{t('semantic.explanation')}</Title>
-                <Alert message={explanationParts(explainResult.explanationParts, t, explainResult.explanation)} type="info" />
+                <Alert title={explanationParts(explainResult.explanationParts, t, explainResult.explanation)} type="info" />
                 <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
                   {t('semantic.objectsHint')}
                 </Typography.Paragraph>
@@ -471,7 +471,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                 </ul>
                 <Divider />
                 <Title level={5}>{t('semantic.explanation')}</Title>
-                <Alert message={assessResult.explanation} type={assessResult.decision === 'approved' ? 'success' : assessResult.decision === 'review' ? 'warning' : 'error'} />
+                <Alert title={assessResult.explanation} type={assessResult.decision === 'approved' ? 'success' : assessResult.decision === 'review' ? 'warning' : 'error'} />
               </Card>
             )}
           </Card>
@@ -519,7 +519,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                   <>
                     <Divider />
                     <Alert
-                      message={t('semantic.governanceAdvice')}
+                      title={t('semantic.governanceAdvice')}
                       description={joinSentences(adviceTexts(consistencyResult.nextActions, consistencyResult.nextActionCodes, t, 'semantic'), locale)}
                       type={consistencyResult.status === 'consistent' ? 'success' : 'warning'}
                     />
@@ -545,7 +545,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                   <>
                     <Divider />
                     <Alert
-                      message={t('semantic.assessmentErrors')}
+                      title={t('semantic.assessmentErrors')}
                       description={consistencyResult.errors.map(item => `${item.instanceId}: ${item.error}`).join(t('semantic.listSeparator'))}
                       type="error"
                     />
@@ -620,7 +620,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                 <Divider />
                 <Title level={5}>{t('semantic.recommendation')}</Title>
                 <Alert
-                  message={
+                  title={
                     recommendationText(preflightResult) ||
                     label(NEXT_ACTION, preflightResult.nextAction) ||
                     t('semantic.none')
@@ -643,7 +643,7 @@ const recommendationText = (source: { recommendation?: string; recommendationCod
                   <Descriptions.Item label={t('semantic.decision')}>{label(DECISION_STATUS, executeResult.decision)}</Descriptions.Item>
                 </Descriptions>
                 <Divider />
-                <Alert message={executeResult.message} type={executeResult.status === 'blocked_by_semantic_kernel' ? 'error' : 'success'} />
+                <Alert title={executeResult.message} type={executeResult.status === 'blocked_by_semantic_kernel' ? 'error' : 'success'} />
                 {executeResult.execution && (
                   <>
                     <Divider />

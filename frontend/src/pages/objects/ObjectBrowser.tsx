@@ -245,7 +245,7 @@ const ObjectBrowser: React.FC = () => {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('objects.rowFilterApplied')}
+          title={t('objects.rowFilterApplied')}
           description={t('objects.rowFilterAppliedDescription')}
         />
       )}
@@ -255,7 +255,7 @@ const ObjectBrowser: React.FC = () => {
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('objects.rowFilterError')}
+          title={t('objects.rowFilterError')}
           description={
             <>
               {rowFilterError}
@@ -267,7 +267,7 @@ const ObjectBrowser: React.FC = () => {
       )}
 
       {listError && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('objects.loadFailed')} description={listError} />
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} title={t('objects.loadFailed')} description={listError} />
       )}
 
       <Card>

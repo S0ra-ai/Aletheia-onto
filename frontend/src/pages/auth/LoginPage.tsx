@@ -70,7 +70,7 @@ const LoginPage: React.FC = () => {
         </Paragraph>
 
         {error ? (
-          <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} role="alert" />
+          <Alert type="error" title={error} showIcon style={{ marginBottom: 16 }} role="alert" />
         ) : null}
 
         <Form<LoginFormValues> layout="vertical" onFinish={handleSubmit} requiredMark={false}>

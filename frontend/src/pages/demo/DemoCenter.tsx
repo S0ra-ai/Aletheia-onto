@@ -46,7 +46,7 @@ const DemoCenter: React.FC = () => {
       </Paragraph>
 
       <Alert
-        message={t('demo.notice.title')}
+        title={t('demo.notice.title')}
         description={t('demo.notice.body')}
         type="info"
         showIcon
@@ -116,7 +116,7 @@ const DemoCenter: React.FC = () => {
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message={t('ontology.draftRebuilt', { summary: lost })}
+              title={t('ontology.draftRebuilt', { summary: lost })}
             />
           )}
           <Result

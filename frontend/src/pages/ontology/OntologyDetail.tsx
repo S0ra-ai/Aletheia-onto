@@ -101,7 +101,7 @@ const OntologyDetailPage: React.FC = () => {
       <Alert
         type="error"
         showIcon
-        message={t('ontology.loadFailed')}
+        title={t('ontology.loadFailed')}
         description={loadError}
         action={<Button onClick={fetchOntology}>{t('ontology.retry')}</Button>}
       />
@@ -360,7 +360,7 @@ const OntologyDetailPage: React.FC = () => {
             <Alert
               style={{ marginTop: 16 }}
               type={releaseReadiness.status === 'ready' ? 'success' : releaseReadiness.status === 'blocked' ? 'error' : 'warning'}
-              message={t('ontology.nextActions')}
+              title={t('ontology.nextActions')}
               description={joinSentences(releaseActions, locale)}
             />
           )}
@@ -411,7 +411,7 @@ const OntologyDetailPage: React.FC = () => {
               at all -- while `ontologyApi.publish` sat unused in the client. A screen that
               shows a gate and offers no way through it is a screen that ends in a terminal.
             */}
-            <Space style={{ marginBottom: 12 }} direction="vertical" size={8}>
+            <Space style={{ marginBottom: 12 }} orientation="vertical" size={8}>
               <Space>
                 <Popconfirm
                   title={t('ontology.publish')}

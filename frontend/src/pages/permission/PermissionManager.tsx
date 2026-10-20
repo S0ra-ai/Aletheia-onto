@@ -280,14 +280,14 @@ const PermissionManager: React.FC = () => {
                 <Alert
                   type="warning"
                   showIcon
-                  message={t('permission.ssoUnknownTitle')}
+                  title={t('permission.ssoUnknownTitle')}
                   description={t('permission.ssoUnknownDesc')}
                 />
               ) : !sso.enabled ? (
                 <Alert
                   type="info"
                   showIcon
-                  message={t('permission.ssoDisabledTitle')}
+                  title={t('permission.ssoDisabledTitle')}
                   description={t('permission.ssoDisabledDesc')}
                 />
               ) : (
@@ -296,7 +296,7 @@ const PermissionManager: React.FC = () => {
                     type="success"
                     showIcon
                     style={{ marginBottom: 16 }}
-                    message={t('permission.ssoEnabledTitle', { count: sso?.mappedGroups ?? 0 })}
+                    title={t('permission.ssoEnabledTitle', { count: sso?.mappedGroups ?? 0 })}
                     description={
                       <>
                         <div>{t('permission.ssoIssuerLine', { issuer: sso?.issuer ?? '', audience: sso?.audience ?? '', algorithm: sso?.algorithm ?? '' })}</div>
@@ -310,7 +310,7 @@ const PermissionManager: React.FC = () => {
                       type="warning"
                       showIcon
                       style={{ marginBottom: 16 }}
-                      message={t('permission.noMappingsTitle')}
+                      title={t('permission.noMappingsTitle')}
                       description={t('permission.noMappingsDesc')}
                     />
                   )}
@@ -360,7 +360,7 @@ const PermissionManager: React.FC = () => {
         onCancel={() => setSsoModalOpen(false)}
         onOk={() => ssoForm.submit()}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={ssoForm} layout="vertical" onFinish={handleDeclareSso}>
           <Form.Item

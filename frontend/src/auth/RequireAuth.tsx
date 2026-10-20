@@ -15,7 +15,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <div
         style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        <Spin size="large" tip={t('shell.login.verifying')} />
+        <Spin size="large" description={t('shell.login.verifying')} />
       </div>
     );
   }

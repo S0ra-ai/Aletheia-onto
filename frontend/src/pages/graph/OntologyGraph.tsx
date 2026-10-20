@@ -343,7 +343,7 @@ const OntologyGraphPage: React.FC = () => {
                 {graph.stats.isolatedObjects.length === 0 && graph.stats.objectsWithoutRules.length === 0 ? (
                   <Text type="secondary" style={{ fontSize: 13 }}>{t('graph.noGaps')}</Text>
                 ) : (
-                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Space orientation="vertical" size={8} style={{ width: '100%' }}>
                     {graph.stats.isolatedObjects.length > 0 && (
                       <div>
                         <Text strong style={{ fontSize: 13 }}>{t('graph.isolatedTitle')}</Text>
@@ -369,7 +369,7 @@ const OntologyGraphPage: React.FC = () => {
               type="info"
               showIcon
               style={{ marginTop: 16 }}
-              message={t('graph.limitationTitle')}
+              title={t('graph.limitationTitle')}
               description={t('graph.limitation')}
             />
           </Col>

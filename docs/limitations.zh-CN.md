@@ -79,6 +79,13 @@
 
 ## 工程限制
 
+- **还剩一个 antd 弃用 API：`Tabs.TabPane`。** 治理、本体详情、数据源详情、语义四个页面
+  仍以子元素的形式声明标签页，antd 6 在渲染时会打印弃用警告。其余弃用属性都已迁移：
+  `Space direction` → `orientation`、`Modal destroyOnClose` → `destroyOnHidden`、
+  `Alert message` → `title`、`Spin tip` → `description`、`Statistic valueStyle` → `styles.content`、
+  `Drawer width` → `size`。标签页这一处是四个页面的**结构性重写**而不是改名，所以写下来而不是顺手做掉；
+  antd 7 会移除这个别名，到那时构建会直接报出来。
+
 - **连接池已经有了，默认关闭。** `ONTOLOGY_CONNECTION_POOL_SIZE` 让 PostgreSQL 与 MySQL 复用平台库连接；
   `0` 保持旧行为（每次 `connect()` 新建），也就是每个既有部署现在的样子，以及运维升级后
   除非主动要求否则应该得到的东西。默认关闭而不是默认开启，因为打开它会改变部署持有的连接数，

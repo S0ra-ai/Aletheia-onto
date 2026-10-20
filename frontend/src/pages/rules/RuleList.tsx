@@ -341,7 +341,7 @@ const RuleList: React.FC = () => {
           <Alert
             type="error"
             showIcon
-            message={t('rules.rulesLoadFailed')}
+            title={t('rules.rulesLoadFailed')}
             description={loadError}
             action={<Button onClick={() => selectedOntology && void fetchRules(selectedOntology, page)}>{t('rules.retry')}</Button>}
           />
@@ -385,7 +385,7 @@ const RuleList: React.FC = () => {
         onOk={handleFormSubmit}
         onCancel={() => setModalVisible(false)}
         width={640}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Row gutter={16}>

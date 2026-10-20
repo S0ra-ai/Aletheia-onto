@@ -88,13 +88,13 @@ const WorkbenchPage: React.FC = () => {
   if (loading && !data) {
     return (
       <div style={{ textAlign: 'center', padding: '80px 0' }}>
-        <Spin size="large" tip={t('workbench.loading')} />
+        <Spin size="large" description={t('workbench.loading')} />
       </div>
     );
   }
 
   if (!data) {
-    return <Alert type="error" showIcon message={t('workbench.loadFailedTitle')} description={t('workbench.loadFailedHint')} />;
+    return <Alert type="error" showIcon title={t('workbench.loadFailedTitle')} description={t('workbench.loadFailedHint')} />;
   }
 
   const { dataSources, ontologies, governance, rules, decisions, knowledge, actionItems, summary } = data;
@@ -150,7 +150,7 @@ const WorkbenchPage: React.FC = () => {
         <Alert
           type="success"
           showIcon
-          message={t('workbench.noActionItems')}
+          title={t('workbench.noActionItems')}
           description={t('workbench.noActionItemsHint')}
           style={{ marginBottom: 16 }}
         />
@@ -209,7 +209,7 @@ const WorkbenchPage: React.FC = () => {
             <Statistic
               title={t('workbench.businessRules')}
               value={rules.total}
-              valueStyle={rules.total === 0 ? { color: '#cf1322' } : undefined}
+              styles={rules.total === 0 ? { content: { color: '#cf1322' } } : undefined}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t('workbench.blockingRules', { count: rules.blocking })} · {t('workbench.advisoryRules', { count: rules.warning + rules.info })}
@@ -221,7 +221,7 @@ const WorkbenchPage: React.FC = () => {
             <Statistic
               title={t('workbench.decisionLog')}
               value={decisions.total}
-              valueStyle={decisions.blocked ? { color: '#cf1322' } : undefined}
+              styles={decisions.blocked ? { content: { color: '#cf1322' } } : undefined}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t('workbench.decisionsBlocked', { count: decisions.blocked })} · {t('workbench.decisionsReview', { count: decisions.review })} · {t('workbench.decisionsApproved', { count: decisions.approved })}
@@ -241,7 +241,7 @@ const WorkbenchPage: React.FC = () => {
               status={governance.pendingMappings ? 'active' : 'success'}
               format={() => `${governance.confirmedMappings}/${totalMappings}`}
             />
-            <Space direction="vertical" size={4} style={{ marginTop: 12, width: '100%' }}>
+            <Space orientation="vertical" size={4} style={{ marginTop: 12, width: '100%' }}>
               <Text style={{ fontSize: 13 }}>{t('workbench.pendingMappings', { count: governance.pendingMappings })}</Text>
               <Text style={{ fontSize: 13 }}>{t('workbench.auditEntries', { count: governance.auditEntries })}</Text>
               <Text style={{ fontSize: 13 }}>
@@ -258,7 +258,7 @@ const WorkbenchPage: React.FC = () => {
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
-                  <Space direction="vertical" size={4}>
+                  <Space orientation="vertical" size={4}>
                     <Text strong>{t('workbench.noDecisions')}</Text>
                     <Text type="secondary" style={{ maxWidth: 420, display: 'inline-block' }}>
                       {t('workbench.noDecisionsHint')}

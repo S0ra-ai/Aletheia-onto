@@ -121,7 +121,7 @@ const FeedbackConsolePage: React.FC = () => {
               <Statistic
                 title={t('feedback.statIncorrect')}
                 value={summary.incorrect}
-                valueStyle={summary.incorrect ? { color: '#cf1322' } : undefined}
+                styles={summary.incorrect ? { content: { color: '#cf1322' } } : undefined}
               />
               <Text type="secondary" style={{ fontSize: 12 }}>{t('feedback.statIncorrectHint')}</Text>
             </Card>
@@ -145,7 +145,7 @@ const FeedbackConsolePage: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message={t('feedback.correctionsAlertTitle')}
+        title={t('feedback.correctionsAlertTitle')}
         description={t('feedback.correctionsAlertBody')}
       />
 

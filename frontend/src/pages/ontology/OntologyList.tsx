@@ -204,7 +204,7 @@ const OntologyList: React.FC = () => {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message={t('ontology.rebuildWarning')}
+            title={t('ontology.rebuildWarning')}
             description={t('ontology.rebuildDetail')}
           />
           <Form.Item

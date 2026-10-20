@@ -199,14 +199,14 @@ const MappingList: React.FC = () => {
           <Alert
             type="error"
             showIcon
-            message={t('mapping.loadMappingsFailed')}
+            title={t('mapping.loadMappingsFailed')}
             description={loadError}
             action={<Button onClick={() => selectedOntology && fetchMappings(selectedOntology)}>{t('mapping.retry')}</Button>}
           />
         ) : !selectedOntology ? (
           <Empty
             description={
-              <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
+              <Space orientation="vertical" size={4} style={{ maxWidth: 620 }}>
                 <Text strong>{t('mapping.noOntologies')}</Text>
                 <Text type="secondary">{t('mapping.noOntologiesHint')}</Text>
               </Space>

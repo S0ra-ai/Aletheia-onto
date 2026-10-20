@@ -1114,6 +1114,28 @@
 
   新守卫断言索引与目录的一一对应：`docs/` 下每一页都必须出现在 `docs/README.md` 里。
   植入验证：删掉一行，测试点名那一页。
+
+- **前端清掉六类 antd 弃用属性，并如实记下剩下的那一类**
+  （`Space`、`Modal`、`Alert`、`Spin`、`Statistic`、`Drawer`、`docs/limitations*.md`）。
+  测试输出里的弃用警告此前一直被忽略，现在归零到只剩一条：
+
+  | 属性 | 迁移 | 处数 |
+  |---|---|---|
+  | `Space direction` | → `orientation` | 22 |
+  | `Modal destroyOnClose` | → `destroyOnHidden` | 6 |
+  | `Alert message` | → `title` | 64 |
+  | `Spin tip` | → `description` | 4 |
+  | `Statistic valueStyle` | → `styles.content` | 4 |
+  | `Drawer width` | → `size` | 1 |
+
+  `Steps direction` 仍然是有效属性，**没有**被一起改掉——脚本按「最近的 `<Tag`」判断归属，
+  而不是按属性名。
+
+  `Tabs.TabPane` 留在原地：22 个标签页分布在 4 个页面，是**结构性重写**而不是改名。
+  我写了一个转换脚本，它把 `DataSourceDetail` 的语法改坏了；**回滚**（从 HEAD 重建这四个文件、
+  再重跑其余迁移）之后，把这一条写进两种语言的限制页——而不是留一个半成品，或者假装没看见。
+
+  一句实话：**这次是「没做完」，不是「做完了」。** 但它是被记录的空缺，不是被忽略的。
 ### Changed
 
 - **九个页面的加载函数改成 `useCallback`，`exhaustive-deps` 警告从 12 条降到 0**

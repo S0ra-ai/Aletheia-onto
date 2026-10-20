@@ -34,7 +34,7 @@ const GuidedEmpty: React.FC<GuidedEmptyProps> = ({ title, body, hint, children }
   <Empty
     image={Empty.PRESENTED_IMAGE_SIMPLE}
     description={
-      <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
+      <Space orientation="vertical" size={4} style={{ maxWidth: 620 }}>
         <Text strong>{title}</Text>
         {body && <Text type="secondary">{body}</Text>}
         {hint && (

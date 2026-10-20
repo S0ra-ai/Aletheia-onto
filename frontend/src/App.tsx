@@ -39,7 +39,7 @@ const PageLoader = () => {
   const t = useT();
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-      <Spin size="large" tip={t('shell.app.loading')} />
+      <Spin size="large" description={t('shell.app.loading')} />
     </div>
   );
 };

@@ -270,7 +270,7 @@ const WorkflowManager: React.FC = () => {
       </Modal>
 
       <Modal title={t('workflow.transitionTitle')} open={transitionModalOpen} onCancel={() => setTransitionModalOpen(false)} footer={null} width={500}>
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+        <Space orientation="vertical" style={{ width: '100%' }} size="middle">
           <Input placeholder={t('workflow.instanceIdPlaceholder')} value={transitionInstanceId} onChange={e => setTransitionInstanceId(e.target.value)} onPressEnter={loadActions} />
           <Button onClick={loadActions}>{t('workflow.loadActionButton')}</Button>
           {transitionActions.length > 0 ? (

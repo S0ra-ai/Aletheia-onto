@@ -150,14 +150,14 @@ const TenancyManager: React.FC = () => {
         {t('tenancy.introAfter')}
       </Paragraph>
 
-      {loadError && <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('tenancy.loadFailedTitle')} description={loadError} />}
+      {loadError && <Alert type="error" showIcon style={{ marginBottom: 16 }} title={t('tenancy.loadFailedTitle')} description={loadError} />}
 
       {tenants && (
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('tenancy.isolationModel', { model: tenants.isolationModel, database: tenants.dbType })}
+          title={t('tenancy.isolationModel', { model: tenants.isolationModel, database: tenants.dbType })}
         />
       )}
 
@@ -240,7 +240,7 @@ const TenancyManager: React.FC = () => {
                   dataIndex: 'resource',
                   key: 'resource',
                   render: (resource: string, row: QuotaState & { resource: string }) => (
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                       <Text strong>{resource}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {/* The resource code is a closed vocabulary; the server's Chinese
@@ -286,13 +286,13 @@ const TenancyManager: React.FC = () => {
         onCancel={() => setCreateOpen(false)}
         onOk={() => createForm.submit()}
         confirmLoading={busy}
-        destroyOnClose
+        destroyOnHidden
       >
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={t('tenancy.idempotentTitle')}
+          title={t('tenancy.idempotentTitle')}
           description={t('tenancy.idempotentHint')}
         />
         <Form form={createForm} layout="vertical" onFinish={handleCreate}>
@@ -313,7 +313,7 @@ const TenancyManager: React.FC = () => {
         onCancel={() => setQuotaOpen(false)}
         onOk={() => quotaForm.submit()}
         confirmLoading={busy}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={quotaForm} layout="vertical" onFinish={handleSetQuota}>
           <Form.Item name="resource" label={t('tenancy.resource')} rules={[{ required: true, message: t('tenancy.resourceRequired') }]}>

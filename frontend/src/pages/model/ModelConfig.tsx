@@ -301,7 +301,7 @@ const ModelConfigPage: React.FC = () => {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message={t(appliedPreset.noteKey)}
+            title={t(appliedPreset.noteKey)}
           />
         )}
         <Form form={form} layout="vertical" onFinish={handleSave}>
@@ -435,7 +435,7 @@ const ModelConfigPage: React.FC = () => {
             style={{ marginTop: 16 }}
             type={testResult.success ? 'success' : 'error'}
             showIcon
-            message={testResult.success ? t('model.connected') : t('model.connectionFailed')}
+            title={testResult.success ? t('model.connected') : t('model.connectionFailed')}
             description={
               <>
                 <div>{testResult.message}</div>

@@ -81,6 +81,15 @@ By design, not bugs. These are the next phase's work.
 
 ## Engineering limitations
 
+- **One deprecated antd API remains: `Tabs.TabPane`.** Four screens -- governance, ontology
+  detail, the data source detail, the semantic screen -- declare their tabs as children, and
+  antd 6 prints a deprecation warning when they render. Every other deprecated prop the console
+  used has been migrated: `Space direction` -> `orientation`, `Modal destroyOnClose` ->
+  `destroyOnHidden`, `Alert message` -> `title`, `Spin tip` -> `description`, `Statistic
+  valueStyle` -> `styles.content`, `Drawer width` -> `size`. The tab migration is a structural
+  rewrite of four pages rather than a rename, so it is written down instead of done in passing;
+  antd 7 removes the alias, and the build will say so.
+
 - **Connection pooling exists and is off by default.** `ONTOLOGY_CONNECTION_POOL_SIZE` reuses
   platform-database connections for PostgreSQL and MySQL; `0` keeps the old behaviour of one
   connection per `connect()`, which is what every existing deployment has and what an operator

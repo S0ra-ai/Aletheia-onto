@@ -112,13 +112,13 @@ const KnowledgeBasePage: React.FC = () => {
               {t('knowledge.citationsLabel')}{result.citations.slice(0, 8).join(t('knowledge.citationSeparator'))}
               {result.citations.length > 8 ? ' …' : ''}
             </Paragraph>
-            <Alert type="info" showIcon message={result.note} />
+            <Alert type="info" showIcon title={result.note} />
             {result.warnings.length > 0 && (
               <Alert
                 type="warning"
                 showIcon
                 style={{ marginTop: 8 }}
-                message={t('knowledge.splitWarnings')}
+                title={t('knowledge.splitWarnings')}
                 description={joinSentences(result.warnings, locale)}
               />
             )}
@@ -186,7 +186,7 @@ const KnowledgeBasePage: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message={t('knowledge.confirmedOnly')}
+        title={t('knowledge.confirmedOnly')}
         description={t('knowledge.confirmedOnlyDetail')}
       />
 

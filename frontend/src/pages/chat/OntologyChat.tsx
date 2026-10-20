@@ -346,7 +346,7 @@ const OntologyChat: React.FC = () => {
       </div>
 
       {knowledgeBases.length === 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon message={t('chat.noKnowledgeTitle')} description={t('chat.noKnowledgeHint')} />
+        <Alert style={{ marginBottom: 12 }} type="warning" showIcon title={t('chat.noKnowledgeTitle')} description={t('chat.noKnowledgeHint')} />
       )}
 
       <Card
@@ -437,7 +437,7 @@ const OntologyChat: React.FC = () => {
                 icon={<span style={{ fontSize: 12, fontWeight: 600 }}>{roleAvatar(roles, selectedRoleId)}</span>}
                 style={{ background: roleColor(selectedRoleId) }}
               />
-              <Alert message={<Spin size="small" />} description={t('chat.analysing')} type="info" />
+              <Alert title={<Spin size="small" />} description={t('chat.analysing')} type="info" />
             </div>
           )}
         </div>

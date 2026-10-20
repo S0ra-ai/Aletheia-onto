@@ -306,7 +306,7 @@ const DataSourceList: React.FC = () => {
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              <Space direction="vertical" size={4} style={{ maxWidth: 620 }}>
+              <Space orientation="vertical" size={4} style={{ maxWidth: 620 }}>
                 <Text strong>{t('datasource.emptyTitle')}</Text>
                 <Text type="secondary">
                   {t('datasource.emptyBody')}
@@ -349,7 +349,7 @@ const DataSourceList: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          message={t('datasource.introTitle')}
+          title={t('datasource.introTitle')}
           description={t('datasource.introBody')}
           style={{ marginBottom: 16 }}
         />
@@ -396,7 +396,7 @@ const DataSourceList: React.FC = () => {
             <Alert
               style={{ marginBottom: 16 }}
               type={connectionResult.reachable ? 'success' : 'warning'}
-              message={label(CONNECTION_STATUS, connectionResult.status)}
+              title={label(CONNECTION_STATUS, connectionResult.status)}
               description={connectionResult.message}
               showIcon
             />
@@ -498,13 +498,13 @@ const DataSourceList: React.FC = () => {
         ]}
         width={920}
       >
-        {reasoningLoading && <Alert type="info" showIcon message={t('datasource.reasoningLoading')} />}
+        {reasoningLoading && <Alert type="info" showIcon title={t('datasource.reasoningLoading')} />}
         {reasoningResult && (
           <div>
             <Alert
               type={reasoningResult.usedRemoteModel ? 'success' : 'warning'}
               showIcon
-              message={reasoningResult.usedRemoteModel ? t('datasource.reasoningRemoteDone') : t('datasource.reasoningLocalDone')}
+              title={reasoningResult.usedRemoteModel ? t('datasource.reasoningRemoteDone') : t('datasource.reasoningLocalDone')}
               description={reasoningResult.remoteError || t('datasource.modelLabel', { model: reasoningResult.model })}
               style={{ marginBottom: 16 }}
             />
@@ -532,7 +532,7 @@ const DataSourceList: React.FC = () => {
             />
             <Divider />
             <Title level={5}>{t('datasource.relationRuleCandidates')}</Title>
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <Space orientation="vertical" style={{ width: '100%' }}>
               {reasoningResult.chain.proposedRelations.slice(0, 8).map((item, index) => (
                 <Tag key={`rel-${index}`} color="blue">
                   {String(item.sourceObject || item.source || '-') } → {String(item.targetObject || item.target || '-')}

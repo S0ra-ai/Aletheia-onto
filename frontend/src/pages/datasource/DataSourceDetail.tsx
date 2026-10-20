@@ -478,7 +478,7 @@ const DataSourceDetail: React.FC = () => {
       title: t('datasource.businessObjects'),
       key: 'object',
       render: (_: unknown, record: SemanticCoverageObject) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.objectName}</Typography.Text>
           <Typography.Text type="secondary">{record.objectCode}</Typography.Text>
         </Space>
@@ -597,7 +597,7 @@ const DataSourceDetail: React.FC = () => {
   const renderSemanticCoverage = () => {
     if (!semanticCoverage) return null;
     return (
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <div style={{ padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
           <Space align="start" size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 220 }}>
@@ -626,7 +626,7 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               style={{ marginTop: 16 }}
               type={semanticCoverage.status === 'ready' ? 'success' : semanticCoverage.status === 'blocked' ? 'error' : 'warning'}
-              message={t('datasource.governanceAdvice')}
+              title={t('datasource.governanceAdvice')}
               description={joinSentences(adviceTexts(semanticCoverage.nextActions, semanticCoverage.nextActionCodes, t), locale)}
             />
           )}
@@ -637,8 +637,8 @@ const DataSourceDetail: React.FC = () => {
           rowKey={(record) => `${record.ontologyId}-${record.objectCode}`}
           expandable={{
             expandedRowRender: (record) => (
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {record.gaps.length > 0 && <Alert type="warning" message={t('datasource.gaps')} description={joinSentences(record.gaps, locale)} />}
+              <Space orientation="vertical" style={{ width: '100%' }}>
+                {record.gaps.length > 0 && <Alert type="warning" title={t('datasource.gaps')} description={joinSentences(record.gaps, locale)} />}
                 <Table
                   size="small"
                   columns={apiColumns}
@@ -687,7 +687,7 @@ const DataSourceDetail: React.FC = () => {
 
     return (
       <div style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Text strong>{t('datasource.driftTitle')}</Typography.Text>
           <Descriptions column={4}>
             <Descriptions.Item label={t('datasource.status')}>
@@ -706,7 +706,7 @@ const DataSourceDetail: React.FC = () => {
           {schemaDrift.nextActions.length > 0 && (
             <Alert
               type={schemaDrift.status === 'drift_detected' ? 'warning' : schemaDrift.status === 'no_drift' ? 'success' : 'info'}
-              message={t('datasource.suggestedActions')}
+              title={t('datasource.suggestedActions')}
               description={joinSentences(adviceTexts(schemaDrift.nextActions, schemaDrift.nextActionCodes, t), locale)}
             />
           )}
@@ -813,7 +813,7 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               style={{ marginTop: 16 }}
               type={readiness.status === 'blocked' ? 'error' : 'warning'}
-              message={t('datasource.nextActions')}
+              title={t('datasource.nextActions')}
               description={joinSentences(adviceTexts(readiness.nextActions, readiness.nextActionCodes, t), locale)}
             />
           )}
@@ -879,7 +879,7 @@ const DataSourceDetail: React.FC = () => {
                   <Alert
                     style={{ marginTop: 16 }}
                     type={operationBindings.status === 'ready' ? 'success' : operationBindings.status === 'blocked' ? 'error' : 'warning'}
-                    message={t('datasource.bindingAdvice')}
+                    title={t('datasource.bindingAdvice')}
                     description={joinSentences(adviceTexts(operationBindings.nextActions, operationBindings.nextActionCodes, t), locale)}
                   />
                 )}
@@ -898,14 +898,14 @@ const DataSourceDetail: React.FC = () => {
             <Alert
               style={{ marginBottom: 16 }}
               type="info"
-              message={t('datasource.rulesInfoTitle')}
+              title={t('datasource.rulesInfoTitle')}
               description={t('datasource.rulesInfoBody')}
             />
             <Card size="small" title={t('datasource.wordRulesTitle')} style={{ marginBottom: 16 }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space orientation="vertical" style={{ width: '100%' }}>
                 <Alert
                   type="success"
-                  message={t('datasource.wordRulesInfoTitle')}
+                  title={t('datasource.wordRulesInfoTitle')}
                   description={t('datasource.wordRulesInfoBody')}
                 />
                 <Upload.Dragger
@@ -922,11 +922,11 @@ const DataSourceDetail: React.FC = () => {
                   <p className="ant-upload-text">{t('datasource.uploadText')}</p>
                   <p className="ant-upload-hint">{t('datasource.uploadHint')}</p>
                 </Upload.Dragger>
-                {ruleImporting && <Spin tip={t('datasource.importingRules')} />}
+                {ruleImporting && <Spin description={t('datasource.importingRules')} />}
                 {ruleImportResult && (
                   <Alert
                     type={ruleImportResult.errorCount > 0 ? 'warning' : 'success'}
-                    message={t('datasource.ruleImportRecognized', { recognized: ruleImportResult.rules.length, imported: ruleImportResult.importedCount })}
+                    title={t('datasource.ruleImportRecognized', { recognized: ruleImportResult.rules.length, imported: ruleImportResult.importedCount })}
                     description={joinSentences([
                       ...ruleImportResult.warnings,
                       ...ruleImportResult.errors.map(item => `${item.code}: ${item.error}`),
@@ -952,9 +952,9 @@ const DataSourceDetail: React.FC = () => {
           </TabPane>
           <TabPane tab={t('datasource.reasoningTitle')} key="reasoning-chain">
             {!reasoningChain?.initialized ? (
-              <Alert type="warning" message={t('datasource.notInitialized')} description={t('datasource.notInitializedHint')} />
+              <Alert type="warning" title={t('datasource.notInitialized')} description={t('datasource.notInitializedHint')} />
             ) : (
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                 <Descriptions column={4}>
                   <Descriptions.Item label={t('datasource.ontology')}>{reasoningChain.ontologyName}</Descriptions.Item>
                   <Descriptions.Item label={t('datasource.version')}>{reasoningChain.version}</Descriptions.Item>
@@ -992,7 +992,7 @@ const DataSourceDetail: React.FC = () => {
       >
         <Spin spinning={tableBrowserLoading}>
           {tableBrowser && <>
-            <Alert style={{ marginBottom: 12 }} type="info" message={t('datasource.browseRange', { total: tableBrowser.page.total, from: tableBrowser.page.offset + 1, to: tableBrowser.page.offset + tableBrowser.rows.length })} />
+            <Alert style={{ marginBottom: 12 }} type="info" title={t('datasource.browseRange', { total: tableBrowser.page.total, from: tableBrowser.page.offset + 1, to: tableBrowser.page.offset + tableBrowser.rows.length })} />
             <Table
               size="small"
               scroll={{ x: 'max-content' }}

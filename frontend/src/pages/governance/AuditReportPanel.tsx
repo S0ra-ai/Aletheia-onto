@@ -143,7 +143,7 @@ const AuditReportPanel: React.FC = () => {
     <>
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap align="end">
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {t('governance.reportRange')}
             </Text>
@@ -174,7 +174,7 @@ const AuditReportPanel: React.FC = () => {
         </Paragraph>
       </Card>
 
-      {error && <Alert type="error" showIcon style={{ marginBottom: 16 }} message={t('governance.generateFailedTitle')} description={error} />}
+      {error && <Alert type="error" showIcon style={{ marginBottom: 16 }} title={t('governance.generateFailedTitle')} description={error} />}
 
       {report && (
         <>
@@ -182,7 +182,7 @@ const AuditReportPanel: React.FC = () => {
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message={t('governance.reportPeriod', { start: report.period.start, end: report.period.end })}
+            title={t('governance.reportPeriod', { start: report.period.start, end: report.period.end })}
             description={t('governance.reportScope', {
               scope: report.ontologyId ? t('governance.ontologyScope', { id: report.ontologyId }) : t('governance.allOntologies'),
               boundary: t('governance.rangeBoundary'),
@@ -194,7 +194,7 @@ const AuditReportPanel: React.FC = () => {
               type="success"
               showIcon
               style={{ marginBottom: 16 }}
-              message={t('governance.noFindings')}
+              title={t('governance.noFindings')}
               description={t('governance.noFindingsDetail')}
             />
           ) : (
@@ -204,7 +204,7 @@ const AuditReportPanel: React.FC = () => {
                 type={finding.severity === 'blocker' ? 'error' : 'warning'}
                 showIcon
                 style={{ marginBottom: 12 }}
-                message={findingText(finding, 'finding')}
+                title={findingText(finding, 'finding')}
                 description={findingText(finding, 'action')}
               />
             ))
@@ -243,7 +243,7 @@ const AuditReportPanel: React.FC = () => {
                 <Statistic
                   title={t('governance.statNeverTriggered')}
                   value={report.rules.neverTriggered.length}
-                  valueStyle={report.rules.neverTriggered.length ? { color: '#d4380d' } : undefined}
+                  styles={report.rules.neverTriggered.length ? { content: { color: '#d4380d' } } : undefined}
                 />
               </Card>
             </Col>
@@ -257,7 +257,7 @@ const AuditReportPanel: React.FC = () => {
             )}
             {/* The server's `rules.note` says the same thing in Chinese. This is static copy
                 rather than data, so the console keeps its own; the field stays for the CLI. */}
-            <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t('governance.rulesNote')} />
+            <Alert type="info" showIcon style={{ marginBottom: 12 }} title={t('governance.rulesNote')} />
             <Text strong>{t('governance.neverTriggered', { count: report.rules.neverTriggered.length })}</Text>
             <Table<AuditRuleEntry>
               size="small"
@@ -286,7 +286,7 @@ const AuditReportPanel: React.FC = () => {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 12 }}
-                message={t('governance.forcedNote')}
+                title={t('governance.forcedNote')}
               />
               <Table<AuditEvent>
                 size="small"
