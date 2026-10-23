@@ -45,23 +45,23 @@ dependencies = []
 # Pinned rather than ranged. A range on a rule-engine dependency means a transitive
 # upgrade can change a verdict, and a verdict is what this platform is accountable for.
 web = [
-    "fastapi==0.141.1",
-    "prometheus-client==0.20.0",
-    "uvicorn[standard]==0.52.4",
+    "fastapi==0.152.0",
+    "prometheus-client==0.26.0",
+    "uvicorn[standard]==0.54.0",
     # Declared rather than inherited: `api.py` uses File()/Form(), and FastAPI moved
     # the multipart parser out of its base install into `fastapi[standard]`. Relying on
     # the transitive copy means a FastAPI upgrade turns document upload into a 500 at
     # request time, not an install-time error.
     "python-multipart==0.0.32",
 ]
-postgresql = ["psycopg[binary]==3.3.4"]
-mysql = ["PyMySQL==1.2.0"]
+postgresql = ["psycopg[binary]==3.3.6"]
+mysql = ["PyMySQL==1.2.3"]
 # Document ingestion for the knowledge layer.
 documents = ["python-docx==1.2.0"]
 dev = [
     "pytest==9.1.1",
-    "ruff==0.16.4",
-    "mypy==2.3.1",
+    "ruff==0.17.1",
+    "mypy==2.4.0",
     # Only `fastapi.testclient` needs an HTTP client; the platform's own outbound calls
     # (REST data sources, model endpoints) use `urllib` so the kernel stays dependency
     # free. It sat in `web` until 3.11, which made every deployment install a client it
